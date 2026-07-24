@@ -38,7 +38,15 @@ related_sprints: []
 - 전체 회귀: `pnpm -r exec tsc --noEmit` + `pnpm exec vitest run` green.
 
 ## 사용자 테스트
-> (worktree 개발 완료 시 `/cling:notify --all` 로 채움.)
+> sprint `lineage-plan` 완료 기준 전체 (`/cling:notify --all`).
+
+**순수 라이브러리 (state + projections) — 사용자 가시 테스트 없음** (dev 서버·UI·단말 없음).
+
+자동 게이트 (제가 머지 전 실행 — 이미 green):
+- `pnpm -r exec tsc --noEmit` → 3/3 exit 0
+- `pnpm exec vitest run` → **16/16** (신규 plan 6: state worktree↔initiative 매핑·lineage DAG / **B2 ①②③④ 순서 재현**·NOW+방치비용(git)·독립 정지점·blocked 선행)
+
+직접 확인 원하면 worktree `code/web` 에서 `pnpm run verify`.
 
 ## 관련 todo / spec
 - [002-state-projections](../todo/002-state-projections.md)
