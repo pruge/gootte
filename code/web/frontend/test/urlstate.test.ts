@@ -33,4 +33,20 @@ describe("useUrlState", () => {
     expect(result.current.project).toBe("tuya");
     expect(result.current.tab).toBe("lineage");
   });
+
+  it("setView → `?view=` 반영", () => {
+    const { result } = renderHook(() => useUrlState());
+    act(() => result.current.setView("board"));
+    expect(result.current.view).toBe("board");
+    expect(new URLSearchParams(window.location.search).get("view")).toBe("board");
+  });
+
+  it("setTab 은 view 초기화(다른 탭 모드 안 샘)", () => {
+    window.history.pushState({}, "", "/?p=x&tab=plan&view=board");
+    const { result } = renderHook(() => useUrlState());
+    expect(result.current.view).toBe("board");
+    act(() => result.current.setTab("lineage"));
+    expect(result.current.view).toBeNull();
+    expect(new URLSearchParams(window.location.search).get("view")).toBeNull();
+  });
 });

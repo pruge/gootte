@@ -20,7 +20,8 @@
   --font-sans: Pretendard, "Pretendard Variable", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 
-  --text-hero: clamp(1.5rem, 1rem + 2vw, 2.25rem);
+  /* Tailwind 기본 텍스트 스케일 사용(override X) — sm 14 / base 16 / lg 18 … */
+  --text-hero: clamp(1.75rem, 1.2rem + 2vw, 2.5rem);
 }
 
 /* light = 에디토리얼: 고대비 타이포, 종이 느낌 */
@@ -68,7 +69,7 @@
   code,
   .mono {
     font-family: var(--font-mono);
-    font-size: 0.86em;
+    font-size: 0.9em;
     font-feature-settings: "zero", "ss01";
     letter-spacing: -0.01em;
   }

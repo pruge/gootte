@@ -12,25 +12,25 @@ export function PlanItemRow({ item }: { item: PlanItem }) {
       }`}
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="mono text-sm text-accent">{circled(item.order)}</span>
+        <span className="mono text-base text-accent">{circled(item.order)}</span>
         {item.now && (
-          <span className="mono inline-flex items-center gap-1 rounded bg-accent px-1.5 py-0.5 text-[0.6rem] font-semibold text-accent-fg">
+          <span className="mono inline-flex items-center gap-1 rounded bg-accent px-1.5 py-0.5 text-sm font-semibold text-accent-fg">
             <IconPlayerPlayFilled size={9} /> NOW
           </span>
         )}
         <span className="font-medium tracking-tight">{item.initiative}</span>
         <StatusChip status={item.status} />
-        {item.track && <span className="mono text-xs text-muted">· {item.track}</span>}
+        {item.track && <span className="mono text-sm text-muted">· {item.track}</span>}
       </div>
 
       {item.deps.length > 0 && (
-        <p className="mono mt-1.5 pl-6 text-xs text-muted">← 의존: {item.deps.join(", ")}</p>
+        <p className="mono mt-1.5 pl-6 text-base text-muted">← 의존: {item.deps.join(", ")}</p>
       )}
 
       {item.subSteps.length > 0 && (
         <ul className="mt-1.5 space-y-0.5 pl-6">
           {item.subSteps.map((s, i) => (
-            <li key={i} className="flex gap-1.5 text-sm text-muted">
+            <li key={i} className="flex gap-1.5 text-base text-muted">
               <span className="select-none text-border">
                 {i === item.subSteps.length - 1 ? "└" : "├"}
               </span>

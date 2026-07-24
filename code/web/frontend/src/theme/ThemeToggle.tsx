@@ -21,7 +21,7 @@ export function ThemeToggle() {
       className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-muted transition-colors hover:text-fg hover:border-accent focus-visible:outline-2 focus-visible:outline-accent"
     >
       <Icon size={16} stroke={1.75} />
-      <span className="mono text-xs">{LABEL[mode]}</span>
+      <span className="mono text-sm">{LABEL[mode]}</span>
     </button>
   );
 }

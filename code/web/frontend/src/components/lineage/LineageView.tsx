@@ -22,7 +22,7 @@ export function LineageView({ project }: { project: string }) {
     <div className="mx-auto max-w-3xl space-y-6">
       {chain.length > 0 && (
         <section aria-labelledby="chain-heading">
-          <h2 id="chain-heading" className="mono mb-2 text-xs tracking-[0.2em] text-muted">
+          <h2 id="chain-heading" className="mono mb-2 text-sm tracking-[0.2em] text-muted">
             ── supersede 체인 ({chain.length}) ──
           </h2>
           <ul className="space-y-1">
