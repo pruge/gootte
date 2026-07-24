@@ -1,11 +1,12 @@
 ---
 created: 2026-07-24
-status: in_progress
+status: done
 priority: normal
 kind: single
 todos: [007-cli-lineage]
 worktree: lineage-command
 startedAt: 2026-07-24
+endedAt: 2026-07-25
 related_sprints: []
 ---
 
