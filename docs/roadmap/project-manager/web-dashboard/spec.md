@@ -32,10 +32,11 @@ API req/resp = CONTRACT 타입. 도메인 타입(`Project`·`PlanItem`·`Superse
 ```
 GET /api/projects            → ProjectsResponse  { projects: Project[] }
 GET /api/plan/:slug          → PlanResponse      { project, plan: PlanItem[], rationale: PlanRationale[] }
-GET /api/lineage/:slug       → LineageResponse   { project, supersessions: Supersession[], drops: DropRecord[] }
+GET /api/lineage/:slug       → LineageResponse   { project, edges: LineageEdge[], drops: DropRecord[] }
 (에러)                        → ApiError          { error }
 ```
 - **envelope 4종(`ProjectsResponse`·`PlanResponse`·`LineageResponse`·`ApiError`) = `@gootte/contract`에 신규**. backend 생산·frontend 소비가 같은 SoT import → 재선언 0. (T1에서 contract 추가 후 소비.)
+- **lineage = `edges: LineageEdge[]`**(not raw Supersession) — CORE가 `kind`(supersede/partial/reference)를 결정적으로 해소해 보냄. frontend는 partial 색·ADR 배지를 kind/adr로 렌더만, 재계산 X(INV-4 — 해소는 CORE). (as-built 정제, T1.)
 - **API 응답 = `@hono/zod-validator`로 이 CONTRACT 스키마 검증** 후 반환(INV-4 보증 — 릴레이 형상 고정).
 - **slug→path 해소** — discover 결과에서 `slug`(=디렉토리 basename)로 lookup. **충돌 규칙**: 같은 basename 프로젝트 2개↑면 first-match(discover 순서) + `console.warn`으로 모호 경고(2a=localhost 단일 사용자라 허용). path 기반 고유 id는 2b 강화(W1).
 - 없으면 404 `ApiError { error }`.

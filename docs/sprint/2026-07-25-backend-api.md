@@ -48,7 +48,19 @@ related_sprints: []
 - 전체 회귀: `pnpm verify`(tsc + vitest, contract drift-guard diff 0) green. jinwooauto 실데이터로 3 라우트 200 응답 + plan/lineage 내용이 `pnpm plan`/`pnpm lineage` CLI 출력과 일치(같은 CORE 릴레이).
 
 ## 사용자 테스트
-> `/cling:worktree` 개발 완료 보고 시 채움.
+> sprint backend-api 완료 기준 — worktree 안 검토용. (자동 게이트 `pnpm verify` = 제가 머지 전 실행, green 32/32.)
+
+🌐 Backend dev (user-runs)
+```
+GOOTTE_ROOTS=$HOME/Documents/ai PORT=8788 pnpm -C code/web/backend start
+```
+
+✅ 테스트 (다른 터미널에서 curl)
+- `curl -s localhost:8788/api/projects` → jinwooauto 포함 9개 목록
+- `curl -s localhost:8788/api/plan/jinwooauto` → plan 15 + rationale(왜)
+- `curl -s localhost:8788/api/lineage/jinwooauto` → edges 65 + drops 40 (verbatim)
+- `curl -s localhost:8788/api/plan/none` → 404 `{error}`
+- 브라우저 `localhost:8788/` → "frontend 미빌드" 스텁(2a T2+에서 교체)
 
 ## 관련 todo / spec
 - [008-backend-api](../todo/008-backend-api.md) — Hono API (T1)
