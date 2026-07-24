@@ -91,6 +91,7 @@
 - **INV-1** — projection(digest · render-data)은 **관리대상 프로젝트의 md SoT 에서 재생성**되는 파생물. 손으로 유지되는 2차 SoT 금지(desync = 틀린 다음-할일 = 원 통증 재발).
 - **INV-2** — gootte 는 관리대상 프로젝트 문서를 **읽기 전용**. gootte 는 자기 **`.gootte/` 네임스페이스만** 생성·write(AUTO-GENERATED) + `.gitignore` 1줄 append. cling SoT 문서(ledger/spec/adr/todo)는 **절대 mutate X**. (carve-out — blueprint B4)
 - **INV-3** — 뷰·digest 는 **항상 현재 SoT 반영**(실시간 체크·재생성). stale 뷰 금지.
+- **INV-4** — gootte **read-path(plan/lineage/digest 생성)는 결정적·LLM-free.** 산문 "왜"는 요약 말고 **verbatim 릴레이** — 지능(왜 판단)은 write-time(cling 세션 AI) 캡처, read-time 은 계산·릴레이만. (lineage-supersede ADR-0002)
 
 ## Delegation policy
 - mode: `solo`
