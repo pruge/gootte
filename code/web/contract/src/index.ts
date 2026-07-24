@@ -173,7 +173,9 @@ export type PlanResponse = z.infer<typeof PlanResponse>;
 
 export const LineageResponse = z.object({
   project: z.string(),
-  supersessions: z.array(Supersession),
+  // edges = CORE 해소 결과(kind supersede/partial/reference·note verbatim·adr). partial 색·ADR 배지는
+  // frontend가 kind를 재계산하지 않게 서버가 확정해 보냄(INV-4 — 해소는 CORE 결정적).
+  edges: z.array(LineageEdge),
   drops: z.array(DropRecord),
 });
 export type LineageResponse = z.infer<typeof LineageResponse>;
