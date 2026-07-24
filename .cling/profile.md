@@ -67,7 +67,9 @@
 | `pnpm verify` | tsc + vitest | claude-ok | 전체 회귀 |
 | `pnpm test` | vitest | claude-ok | |
 | `pnpm dev:backend` | Hono API dev 서버 | user-runs | `tsx watch` · env `PORT`(기본 8787)·`GOOTTE_ROOTS`(기본 `~/Documents`) |
-> frontend dev(009) · `pnpm dev`(둘 다) · 포트 배정 = 그 phase 에서 `/cling:ops`·`/cling:check` 재실행.
+| `pnpm dev:frontend` | Vite dev 서버 | user-runs | `:5173` · `/api` → backend 프록시(`VITE_BACKEND_URL` 기본 `:8787`) |
+| `pnpm dev` | backend+frontend 동시 | user-runs | `-r --parallel run dev` (둘 다 dev 스크립트 보유) |
+> 포트 배정(main 밴드 + worktree 격리 매니페스트) = dev 서버 2개 동시라 `/cling:check` 로 확정 권장.
 > worktree node_modules = `pnpm -C code/web install`(1회, claude-ok) — 전용 스크립트 불요.
 
 ## Ports

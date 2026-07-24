@@ -3,3 +3,4 @@ docs/_memo/
 node_modules/
 .claude/worktrees/
 /pnpm-lock.yaml
+dist/
