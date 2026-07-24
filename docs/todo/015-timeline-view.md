@@ -1,5 +1,6 @@
 ---
-status: pending
+status: in_progress
+sprint: timeline-view
 priority: normal
 initiative: null
 area: [web/frontend]
