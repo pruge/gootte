@@ -42,7 +42,18 @@ related_sprints: [2026-07-25-frontend-scaffold]
 - 전체 회귀: `pnpm verify`(tsc + vitest 41+) green.
 
 ## 사용자 테스트
-> `/cling:worktree` 개발 완료 보고 시 채움.
+> sprint plan-lineage-views 완료 기준 — worktree 안 검토용. (자동 게이트 `pnpm verify` = 제가 머지 전 실행, green 47/47 · vite build 75kb gzip.)
+
+🌐 dev 서버 (user-runs)
+```
+GOOTTE_ROOTS=$HOME/Documents/ai pnpm dev   → localhost:5173
+```
+
+✅ 테스트 (브라우저, jinwooauto 선택)
+- **plan 탭** — ▶NOW 마커 + ①②③ 순서로 15개 이니셔티브, subSteps(할일) 들여쓰기·deps 표시
+- plan 하단 "── 왜 이 순서 ──" — priorityBasis·방치비용·정지점 verbatim(요약 없이 그대로)
+- **lineage 탭** — supersede 체인 65(from→to·ADR 배지·note verbatim), 부분대체=다른 색, drop 40(todo→resolvedBy verbatim)
+- 탭 전환/프로젝트 전환 시 각 뷰 정확 반영 · 테마 다크/라이트 둘 다 가독
 
 ## 관련 todo / spec
 - [010-plan-lineage-views](../todo/010-plan-lineage-views.md) — plan+lineage 뷰 (T4·T5)
