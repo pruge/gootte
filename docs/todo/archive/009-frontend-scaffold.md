@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: done
 sprint: frontend-scaffold
 priority: high
 initiative: null
@@ -7,6 +7,7 @@ area: [web/frontend]
 source: spec-decompose
 related: [../roadmap/project-manager/web-dashboard/spec.md, 008-backend-api, 010-plan-lineage-views]
 created: 2026-07-25
+completedAt: 2026-07-25
 ---
 
 # frontend scaffold + 사이드바/라우팅 (T2·T3)
