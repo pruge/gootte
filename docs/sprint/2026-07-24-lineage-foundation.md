@@ -41,7 +41,15 @@ related_sprints: []
 - 전체 회귀: `pnpm -r test` + `pnpm -r exec tsc --noEmit` green.
 
 ## 사용자 테스트
-> (worktree 개발 완료 시 `/cling:notify --all` 로 채움.)
+> sprint `lineage-foundation` 완료 기준 전체 (이번 turn 변경 아님 · `/cling:notify --all`).
+
+**순수 라이브러리 foundation — 사용자 가시 테스트 없음** (dev 서버·UI·단말 없음).
+
+자동 게이트 (제가 머지 전 실행 — 이미 green):
+- `pnpm -r exec tsc --noEmit` → contract·core·core-io 3/3 exit 0
+- `pnpm exec vitest run` → **10/10** (parse fixture 6: todo·sprint·adr·ledger fallback·INDEX·구조화 events 하이브리드 / git primitive 4: **conflictRisk high·med·low**·mergeBase·scanWorktrees)
+
+직접 확인 원하면 worktree `code/web` 에서 `pnpm run verify`.
 
 ## 관련 todo / spec
 - [001-contract-parsers](../todo/001-contract-parsers.md) — 토대
