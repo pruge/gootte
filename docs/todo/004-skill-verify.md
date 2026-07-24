@@ -1,5 +1,6 @@
 ---
-status: pending
+status: in_progress
+sprint: lineage-cli
 priority: normal
 initiative: null
 area: [web/cli, web/core]

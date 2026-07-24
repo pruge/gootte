@@ -1,6 +1,7 @@
 ---
-status: in_progress
+status: done
 sprint: lineage-plan
+completedAt: 2026-07-24
 priority: high
 initiative: null
 area: [web/core]
