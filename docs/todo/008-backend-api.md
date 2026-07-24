@@ -1,5 +1,5 @@
 ---
-status: in_sprint
+status: in_progress
 sprint: backend-api
 priority: high
 initiative: null

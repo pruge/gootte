@@ -1,10 +1,11 @@
 ---
 created: 2026-07-25
-status: pending
+status: in_progress
 priority: high
 kind: single
 todos: [008-backend-api]
-worktree: null
+worktree: backend-api
+startedAt: 2026-07-25
 related_sprints: []
 ---
 
