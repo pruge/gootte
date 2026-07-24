@@ -1,5 +1,6 @@
 ---
-status: pending
+status: in_progress
+sprint: plan-lineage-views
 priority: high
 initiative: null
 area: [web/frontend]
