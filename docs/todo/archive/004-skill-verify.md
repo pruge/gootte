@@ -1,6 +1,7 @@
 ---
-status: in_progress
+status: done
 sprint: lineage-cli
+completedAt: 2026-07-24
 priority: normal
 initiative: null
 area: [web/cli, web/core]

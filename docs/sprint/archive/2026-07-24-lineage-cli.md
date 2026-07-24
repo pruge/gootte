@@ -1,11 +1,12 @@
 ---
 created: 2026-07-24
-status: in_progress
+status: done
 priority: high
 kind: bundle
 todos: [003-cli-digest, 004-skill-verify]
 worktree: lineage-cli
 startedAt: 2026-07-24
+endedAt: 2026-07-24
 related_sprints: []
 ---
 
