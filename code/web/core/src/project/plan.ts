@@ -24,8 +24,12 @@ export function buildPlan(input: PlanInput): PlanResult {
   const gitSignals = input.gitSignals ?? new Map<string, GitSignal>();
 
   const shipped = new Set(state.initiatives.filter((i) => SHIPPED.has(i.status)).map((i) => i.slug));
+  // actionable 만 = 할일이 남았거나(활성 todo>0) 진행 중(worktree). 0-todo "완결"은 plan 에서 제외.
   const candidates = state.initiatives.filter(
-    (i) => !SHIPPED.has(i.status) && i.status !== "superseded",
+    (i) =>
+      !SHIPPED.has(i.status) &&
+      i.status !== "superseded" &&
+      (i.activeTodos > 0 || i.worktree !== null),
   );
 
   const dependedOnBy = new Map<string, number>();
