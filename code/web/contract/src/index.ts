@@ -156,3 +156,30 @@ export const Digest = z.object({
   rationale: z.array(PlanRationale),
 });
 export type Digest = z.infer<typeof Digest>;
+
+// ── API envelope (backend 생산 · frontend 소비 = cross-boundary seam) ──────
+// 2a web-dashboard. HTTP 경계를 넘는 공유 응답 타입 — backend/frontend 재선언 금지(단일 SoT).
+export const ProjectsResponse = z.object({
+  projects: z.array(Project),
+});
+export type ProjectsResponse = z.infer<typeof ProjectsResponse>;
+
+export const PlanResponse = z.object({
+  project: z.string(),
+  plan: z.array(PlanItem),
+  rationale: z.array(PlanRationale),
+});
+export type PlanResponse = z.infer<typeof PlanResponse>;
+
+export const LineageResponse = z.object({
+  project: z.string(),
+  supersessions: z.array(Supersession),
+  drops: z.array(DropRecord),
+});
+export type LineageResponse = z.infer<typeof LineageResponse>;
+
+/** 에러 응답 (slug 미해소 404 등). */
+export const ApiError = z.object({
+  error: z.string(),
+});
+export type ApiError = z.infer<typeof ApiError>;
