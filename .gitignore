@@ -4,3 +4,6 @@ node_modules/
 .claude/worktrees/
 /pnpm-lock.yaml
 dist/
+test-results/
+playwright-report/
+playwright/.cache/
