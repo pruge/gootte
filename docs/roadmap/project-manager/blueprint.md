@@ -50,8 +50,8 @@
 ## phases — 로드맵 (Now/Next/Later + 소비 seam + DAG)
 | phase | capability | 소비 seam | dep |
 |---|---|---|---|
-| **1 · lineage-engine** 🔜 Now | CORE(pure)+core-io+CONTRACT+CLI+digest+agent-skill · jinwooauto 검증 | 전체 CONTRACT **스캐폴드**(T1) | — |
-| **2 · web-dashboard** ⬜ Next | backend(WS)+watcher(즉시)+frontend(칸반·Gantt·그래프·worktree·test)+자동발견 전체+.env | CORE projections·CONTRACT | 1 |
+| **1 · lineage-engine** ✅ done | CORE(pure)+core-io+CONTRACT+CLI+digest+agent-skill · jinwooauto 검증 | 전체 CONTRACT **스캐폴드**(T1) | — |
+| **2 · web-dashboard** 🔜 Now | backend(WS)+watcher(즉시)+frontend(칸반·Gantt·그래프·worktree·test)+자동발견 전체+.env | CORE projections·CONTRACT | 1 |
 | **3 · remote-mobile** ⬜ Later | CF 터널 노출 + Android 뷰어(Kotlin codegen) | CONTRACT(codegen) | 2 |
 | **4 · notify** ⬜ Later ⓓ | worktree 검토/test → slack/push 어댑터 | `Notification`·`PlanItem` | 2 |
 | **5 · report-export** ⬜ Later ⓑ | 기간 요약 projection + export | `Report`·state | 2 |
