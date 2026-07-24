@@ -32,7 +32,15 @@ related_sprints: []
 - 전체 회귀: `pnpm verify` green.
 
 ## 사용자 테스트
-> (worktree 개발 완료 시 `/cling:notify --all` 로 채움.)
+> sprint `lineage-command` 완료 기준 (`/cling:notify --all`).
+
+✅ 직접 확인 (CLI 실행 가능 — repo 루트에서):
+- **`pnpm lineage ~/Documents/ai/jinwooauto`** → supersede 체인 15 + drop 40 (verbatim·결정적)
+- `pnpm plan ~/Documents/ai/jinwooauto` → 순서 + (supersede 소유 시)뒤엎음 주석
+
+자동 게이트 (제가 머지 전 실행 — 이미 green):
+- `pnpm verify` → tsc 4/4 · **vitest 26/26** (신규 cli lineage 1: supersede 체인·drop verbatim)
+- 실데이터: `pnpm lineage jinwooauto` 동작 확인
 
 ## 관련 todo / spec
 - [007-cli-lineage](../todo/007-cli-lineage.md)

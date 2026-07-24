@@ -5,6 +5,7 @@
     "setup": "pnpm -C code/web install",
     "gootte": "pnpm -s -C code/web gootte",
     "plan": "pnpm -s -C code/web gootte plan",
+    "lineage": "pnpm -s -C code/web gootte lineage",
     "digest": "pnpm -s -C code/web gootte digest",
     "discover": "pnpm -s -C code/web gootte discover",
     "verify": "pnpm -C code/web verify",
