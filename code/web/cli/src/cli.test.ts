@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { beforeAll, describe, it, expect } from "vitest";
 import { discoverProjects } from "@gootte/core-io";
-import { planText, discoverText } from "./commands";
+import { planText, lineageText, discoverText } from "./commands";
 
 function w(root: string, rel: string, content: string): void {
   const full = join(root, rel);
@@ -22,7 +22,8 @@ describe("cli — 프로젝트 로드 → plan (T8·T10 wiring)", () => {
     w(
       proj,
       "docs/roadmap/INDEX.md",
-      "## Now/Next\n1. **[alpha](alpha/ledger.md)** 🔜\n2. **[beta](beta/ledger.md)** ⬜\n",
+      "## Now/Next\n1. **[alpha](alpha/ledger.md)** 🔜\n2. **[beta](beta/ledger.md)** ⬜\n" +
+        "## Supersession 색인\n1. old-x → **alpha** — [alpha](alpha/ledger.md) (ADR-0001, 왜테스트)\n",
     );
     w(
       proj,
@@ -33,6 +34,19 @@ describe("cli — 프로젝트 로드 → plan (T8·T10 wiring)", () => {
     w(proj, "docs/roadmap/beta/ledger.md", "# beta — ledger\n- 상태: ⬜ planned · 트랙: B · 의존: gamma\n");
     w(proj, "docs/todo/t-alpha.md", todo("alpha", "high"));
     w(proj, "docs/todo/t-beta.md", todo("beta", "normal"));
+    w(
+      proj,
+      "docs/todo/t-drop.md",
+      "---\nstatus: dropped\npriority: low\ninitiative: alpha\ncreated: 2026-07-01\nresolvedBy: beta (흡수됨)\n---\n",
+    );
+  });
+
+  it("lineageText — supersede 체인 + drop verbatim (T7)", () => {
+    const txt = lineageText(proj);
+    expect(txt).toContain("old-x → **alpha**");
+    expect(txt).toContain("왜테스트"); // note verbatim (요약 X)
+    expect(txt).toContain("t-drop");
+    expect(txt).toContain("흡수됨"); // resolvedBy verbatim
   });
 
   it("planText — 순서(alpha → beta) + 왜 섹션", () => {

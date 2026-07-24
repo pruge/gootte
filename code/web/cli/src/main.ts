@@ -1,9 +1,9 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { planText, writeDigest, discoverText } from "./commands";
+import { planText, lineageText, writeDigest, discoverText } from "./commands";
 
 function usage(): number {
-  process.stderr.write("usage: gootte <plan|digest|discover> [path]\n");
+  process.stderr.write("usage: gootte <plan|lineage|digest|discover> [path]\n");
   return 1;
 }
 
@@ -14,6 +14,11 @@ function run(argv: string[]): number {
     case "plan": {
       if (!arg) return usage();
       process.stdout.write(planText(resolve(arg)));
+      return 0;
+    }
+    case "lineage": {
+      if (!arg) return usage();
+      process.stdout.write(lineageText(resolve(arg)));
       return 0;
     }
     case "digest": {
