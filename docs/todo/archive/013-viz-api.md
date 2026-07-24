@@ -1,6 +1,7 @@
 ---
-status: in_progress
+status: done
 sprint: viz-api
+completedAt: 2026-07-25
 priority: high
 initiative: null
 area: [web/backend]
