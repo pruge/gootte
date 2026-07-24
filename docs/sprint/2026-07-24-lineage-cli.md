@@ -43,7 +43,16 @@ related_sprints: []
 - 전체 회귀: `pnpm -r exec tsc --noEmit` + `pnpm exec vitest run` green.
 
 ## 사용자 테스트
-> (worktree 개발 완료 시 `/cling:notify --all` 로 채움.)
+> sprint `lineage-cli` 완료 기준 전체 (`/cling:notify --all`).
+
+자동 게이트 (제가 머지 전 실행 — 이미 green):
+- `pnpm -r exec tsc --noEmit` → 4/4 exit 0
+- `pnpm exec vitest run` → **19/19** (parse 6 · git 4 · plan 6 · **cli 3**: 프로젝트 로드→plan 순서·blocked·discover)
+
+✅ 직접 확인 (선택 — CLI가 이제 실행 가능):
+- `pnpm gootte plan ~/Documents/ai/jinwooauto` → 실 99 이니셔티브의 "개발해야 할 순서(full) + 왜"
+- `pnpm gootte discover ~/Documents/ai` → 로컬 cling 프로젝트 목록
+- `pnpm gootte digest ~/Documents/ai/jinwooauto` → `jinwooauto/.gootte/PLAN.md` 생성(AI floor)
 
 ## 관련 todo / spec
 - [003-cli-digest](../todo/003-cli-digest.md) · [004-skill-verify](../todo/004-skill-verify.md)
