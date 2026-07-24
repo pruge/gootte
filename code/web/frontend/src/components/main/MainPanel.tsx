@@ -2,6 +2,7 @@ import { IconTelescope } from "@tabler/icons-react";
 import type { Tab } from "../../hooks/useUrlState";
 import { PlanView } from "../plan/PlanView";
 import { BoardView } from "../board/BoardView";
+import { TimelineView } from "../timeline/TimelineView";
 import { LineageView } from "../lineage/LineageView";
 import { Tabs } from "./Tabs";
 import { ViewMode, type ViewModeOption } from "./ViewMode";
@@ -50,9 +51,7 @@ export function MainPanel({ project, tab, view, onTab, onView }: MainPanelProps)
         ) : mode === "board" ? (
           <BoardView key={`${project}-board`} project={project} />
         ) : mode === "timeline" ? (
-          <p className="text-base text-muted">
-            타임라인 뷰는 <span className="mono">015</span>에서 렌더됩니다.
-          </p>
+          <TimelineView key={`${project}-timeline`} project={project} />
         ) : (
           <div className="h-full overflow-y-auto">
             <PlanView key={`${project}-plan`} project={project} />

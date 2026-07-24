@@ -1,5 +1,5 @@
 import { QueryClient, useQuery } from "@tanstack/react-query";
-import { fetchProjects, fetchPlan, fetchLineage, fetchBoard } from "./api";
+import { fetchProjects, fetchPlan, fetchLineage, fetchBoard, fetchTimeline } from "./api";
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
 export function makeQueryClient(): QueryClient {
@@ -15,6 +15,7 @@ export const qk = {
   plan: (slug: string) => ["plan", slug] as const,
   lineage: (slug: string) => ["lineage", slug] as const,
   board: (slug: string) => ["board", slug] as const,
+  timeline: (slug: string) => ["timeline", slug] as const,
 };
 
 export function useProjects() {
@@ -41,6 +42,14 @@ export function useBoard(slug: string | null) {
   return useQuery({
     queryKey: qk.board(slug ?? ""),
     queryFn: () => fetchBoard(slug as string),
+    enabled: slug !== null,
+  });
+}
+
+export function useTimeline(slug: string | null) {
+  return useQuery({
+    queryKey: qk.timeline(slug ?? ""),
+    queryFn: () => fetchTimeline(slug as string),
     enabled: slug !== null,
   });
 }

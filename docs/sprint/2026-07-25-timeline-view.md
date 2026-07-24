@@ -38,7 +38,19 @@ related_sprints: [2026-07-25-kanban-board]
 - 전체 회귀: `pnpm verify`(63+) green.
 
 ## 사용자 테스트
-> `/cling:worktree` 개발 완료 보고 시 채움.
+> sprint `timeline-view` 완료 기준 전체 (이번 turn 변경 아니라 sprint 전체 회귀). 자동 게이트(`pnpm verify` 78 tests + `mermaid-refs-check`)는 머지 전 실행 완료.
+
+🌐 Frontend + Backend dev (user-runs)
+```
+pnpm dev
+```
+
+✅ 테스트
+- plan 탭 → **[타임라인]** 뷰모드 = 이니셔티브별 가로 sprint 바 + 날짜축(MM-DD 눈금) 렌더
+- 각 행에 kickoff(● accent)·재-kickoff(▲ amber) 마커가 날짜 위치에 표시, 상단 범례와 일치
+- jinwooauto 선택 시 07-05~07-24 범위로 바·마커 배치(실데이터)
+- 날짜 있는 sprint·kickoff 없는 프로젝트 = "타임라인을 그릴 수 없습니다" 빈 상태
+- 창 폭 줄여도 % 기반이라 바/눈금이 반응형으로 재배치(overflow 없음)
 
 ## 관련 todo / spec
 - [015-timeline-view](../todo/015-timeline-view.md) — 타임라인 Gantt (T4)
