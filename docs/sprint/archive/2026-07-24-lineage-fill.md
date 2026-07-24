@@ -1,11 +1,12 @@
 ---
 created: 2026-07-24
-status: in_progress
+status: done
 priority: high
 kind: bundle
 todos: [005-contract-parse-adr, 006-state-render]
 worktree: lineage-fill
 startedAt: 2026-07-24
+endedAt: 2026-07-24
 related_sprints: []
 ---
 
