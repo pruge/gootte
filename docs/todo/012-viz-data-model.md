@@ -1,5 +1,6 @@
 ---
-status: pending
+status: in_progress
+sprint: viz-data-model
 priority: high
 initiative: null
 area: [web/contract, web/core]
