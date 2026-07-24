@@ -44,6 +44,11 @@ updated: YYYY-MM-DD
   - 순수 CORE + IO 층 + CONTRACT(zod) → 얇은 어댑터. phase별 색칠 + ⓐ~ⓓ 예약.
   - 소유 prose = docs/roadmap/project-manager/{blueprint.md, lineage-engine/spec.md}
 
+<a id="M-0002"></a>
+- **M-0002** — [web-dashboard 2a — CORE → Hono API → React 데이터흐름](M-0002-web-dashboard-2a.md) · 🟢 living
+  - M-0001 phase 2a 상세(sources: M-0001). backend=CORE 릴레이 · frontend=렌더 · TanStack Query.
+  - 소유 prose = docs/roadmap/project-manager/web-dashboard/spec.md
+
 ## Supersede 체인
 
 > 체인당 한 줄: `M-000X ⚫→ M-000Y — <왜>`. (아직 없음)
@@ -52,4 +57,4 @@ updated: YYYY-MM-DD
 
 > kickoff/신규 시 여기서 다음 번호를 취득하고 즉시 예약(영구). 리넘버 금지.
 
-- **다음 = M-0002**
+- **다음 = M-0003**

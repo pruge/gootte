@@ -52,7 +52,9 @@
 |---|---|---|---|
 | **1 · lineage-engine** ✅ done | CORE(pure)+core-io+CONTRACT+CLI+digest+agent-skill · jinwooauto 검증 | 전체 CONTRACT **스캐폴드**(T1) | — |
 | **1b · lineage-supersede** ✅ done | supersede/drop 채움 + `gootte lineage` + plan rationale (타임라인=2차) | LineageEdge/TodoItem **확장** | 1 |
-| **2 · web-dashboard** 🔜 Now | backend(WS)+watcher(즉시)+frontend(칸반·Gantt·그래프·worktree·test)+자동발견 전체+.env | CORE projections·CONTRACT | 1b |
+| **2a · web-dashboard** 🔜 Now | Hono API + React(목록→plan/lineage read-only) + theme 3-mode · localhost | CORE projections·CONTRACT | 1b |
+| **2b · web-realtime** ⬜ Later | WS + watcher(즉시) + .env 로그인 | CORE·CONTRACT | 2a |
+| **2c · web-viz** ⬜ Later | 칸반·Gantt(시간축)·supersede 시각그래프·worktree·test | CORE·CONTRACT | 2a |
 | **3 · remote-mobile** ⬜ Later | CF 터널 노출 + Android 뷰어(Kotlin codegen) | CONTRACT(codegen) | 2 |
 | **4 · notify** ⬜ Later ⓓ | worktree 검토/test → slack/push 어댑터 | `Notification`·`PlanItem` | 2 |
 | **5 · report-export** ⬜ Later ⓑ | 기간 요약 projection + export | `Report`·state | 2 |
