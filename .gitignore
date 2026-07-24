@@ -1,2 +1,4 @@
 _memo/
 docs/_memo/
+node_modules/
+.claude/worktrees/

@@ -1,0 +1,6 @@
+packages:
+  - "contract"
+  - "core"
+  - "core-io"
+allowBuilds:
+  esbuild: true

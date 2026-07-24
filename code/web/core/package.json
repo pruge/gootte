@@ -1,0 +1,19 @@
+{
+  "name": "@gootte/core",
+  "version": "0.0.0",
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./parse": "./src/parse/index.ts"
+  },
+  "dependencies": {
+    "@gootte/contract": "workspace:*",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.9.0"
+  }
+}

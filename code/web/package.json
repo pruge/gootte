@@ -1,0 +1,14 @@
+{
+  "name": "@gootte/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "pnpm -r exec tsc --noEmit",
+    "test": "vitest run",
+    "verify": "pnpm -r exec tsc --noEmit && vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}
