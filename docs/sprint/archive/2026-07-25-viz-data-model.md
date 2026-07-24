@@ -1,11 +1,12 @@
 ---
 created: 2026-07-25
-status: in_progress
+status: done
 priority: high
 kind: single
 todos: [012-viz-data-model]
 worktree: viz-data-model
 startedAt: 2026-07-25
+endedAt: 2026-07-25
 related_sprints: [2026-07-25-theme-e2e]
 ---
 
