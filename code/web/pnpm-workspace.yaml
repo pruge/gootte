@@ -4,5 +4,6 @@ packages:
   - "core-io"
   - "cli"
   - "backend"
+  - "frontend"
 allowBuilds:
   esbuild: true

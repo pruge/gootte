@@ -39,7 +39,20 @@ related_sprints: [2026-07-25-backend-api]
 - 전체 회귀: `pnpm verify`(tsc + vitest, backend 회귀 포함) green.
 
 ## 사용자 테스트
-> `/cling:worktree` 개발 완료 보고 시 채움.
+> sprint frontend-scaffold 완료 기준 — worktree 안 검토용. (자동 게이트 `pnpm verify` = 제가 머지 전 실행, green 41/41 · vite build 74kb gzip.)
+
+🌐 dev 서버 (user-runs) — `pnpm dev` = backend+frontend 동시
+```
+GOOTTE_ROOTS=$HOME/Documents/ai pnpm dev
+# (개별: pnpm dev:backend · pnpm dev:frontend) → 프론트 localhost:5173, /api → :8787 프록시
+```
+
+✅ 테스트 (브라우저 `localhost:5173`)
+- 좌측 사이드바에 자동발견 프로젝트 9개(jinwooauto·tuya…) 목록 + Tabler 폴더 아이콘
+- 프로젝트 클릭 → URL `?p=jinwooauto`, 우측 헤더에 이름, 선택 항목 강조
+- `plan`/`lineage` 탭 전환 → URL `?tab=` 반영 + 개수 표시(plan 15·rationale / edges 65·drops 40) — **뷰 본체는 010**
+- 우상단 테마 토글(◐) → system→dark→light 순환(**다크=미션컨트롤 / 라이트=에디토리얼**), 새로고침 후 유지
+- 브라우저 뒤로/앞으로 → URL state(선택·탭) 복원
 
 ## 관련 todo / spec
 - [009-frontend-scaffold](../todo/009-frontend-scaffold.md) — scaffold + 사이드바/라우팅 (T2·T3)
