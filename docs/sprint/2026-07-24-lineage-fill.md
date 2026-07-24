@@ -44,7 +44,15 @@ related_sprints: []
 - 전체 회귀: `pnpm verify` green.
 
 ## 사용자 테스트
-> (worktree 개발 완료 시 `/cling:notify --all` 로 채움.)
+> sprint `lineage-fill` 완료 기준 (`/cling:notify --all`).
+
+**순수 라이브러리 (lineage 엔진) — 사용자 가시 CLI = 007(`gootte lineage`).** 이 sprint는 엔진.
+
+자동 게이트 (제가 머지 전 실행 — 이미 green):
+- `pnpm verify` → tsc 4/4 · **vitest 25/25** (신규 lineage 5: supersedeKind B1 우선순위 · buildLineage supersede/ADR/drop · parseIndex Supersession · renderLineage verbatim)
+- 실데이터 확인: jinwooauto INDEX → **supersession 15 파싱**(graceful, 6 변이 skip) · resolvedBy/ADR 추출 동작
+
+(007에서 `gootte lineage jinwooauto`로 15 체인 + drop 43 실제 텍스트 출력.)
 
 ## 관련 todo / spec
 - [005](../todo/005-contract-parse-adr.md) · [006](../todo/006-state-render.md)

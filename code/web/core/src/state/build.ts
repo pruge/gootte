@@ -1,6 +1,7 @@
 import type { TodoItem, LineageNode, LineageEdge } from "@gootte/contract";
 import { PRIORITY_RANK, type Priority } from "../rank";
 import type { StateInput, ProjectState, InitiativeState, WorktreeInput } from "./model";
+import { buildLineage } from "./lineage";
 
 const ACTIVE_TODO = new Set(["pending", "in_sprint", "in_progress"]);
 
@@ -57,5 +58,20 @@ export function buildState(input: StateInput): ProjectState {
     }
   }
 
-  return { initiatives, lineage: { nodes, edges }, indexOrder: input.indexOrder ?? [] };
+  // supersede/drop 채움 (W3 — lineage.ts)
+  const fill = buildLineage({
+    supersessions: input.supersessions ?? [],
+    adrs: input.adrs ?? [],
+    todos: input.todos,
+  });
+  nodes.push(...fill.nodes);
+  edges.push(...fill.edges);
+
+  return {
+    initiatives,
+    lineage: { nodes, edges },
+    indexOrder: input.indexOrder ?? [],
+    drops: fill.drops,
+    supersessions: input.supersessions ?? [],
+  };
 }

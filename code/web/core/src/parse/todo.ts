@@ -11,5 +11,7 @@ export function parseTodo(slug: string, content: string): TodoItem {
     initiative: data.initiative ?? null,
     created: dstr(data.created),
     completedAt: data.completedAt ? dstr(data.completedAt) : undefined,
+    resolvedBy: typeof data.resolvedBy === "string" ? data.resolvedBy : undefined,
+    source: typeof data.source === "string" ? data.source : undefined,
   });
 }
