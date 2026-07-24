@@ -41,7 +41,8 @@ related_sprints: [2026-07-25-theme-e2e]
 - 전체 회귀: `pnpm verify`(기존 47 + 신규) green.
 
 ## 사용자 테스트
-> `/cling:worktree` 개발 완료 보고 시 채움.
+> CORE projection + CONTRACT 타입 — **사용자 가시 테스트 없음**(dev 서버·UI 무변경). 가시화는 013 API/014 뷰.
+> 자동 게이트: `pnpm verify` 54/54 green(viz 7 신규 + buildPlan 회귀). jinwooauto 실데이터 스모크: kanban active0/ready15/blocked0 · gantt 47행(07-05~07-24, 바 47·마커 0=events 없음 W1).
 
 ## 관련 todo / spec
 - [012-viz-data-model](../todo/012-viz-data-model.md) — CONTRACT + CORE projection (T1)

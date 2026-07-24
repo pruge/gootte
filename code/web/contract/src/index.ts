@@ -40,6 +40,9 @@ export const Sprint = z.object({
   status: z.enum(["pending", "in_progress", "done"]),
   todos: z.array(z.string()).default([]),
   worktree: z.string().nullable().default(null),
+  created: z.string().optional(), // 날짜 YYYY-MM-DD — Gantt 바 기간 소스(2c)
+  startedAt: z.string().optional(),
+  endedAt: z.string().optional(),
 });
 export type Sprint = z.infer<typeof Sprint>;
 
@@ -173,12 +176,76 @@ export type PlanResponse = z.infer<typeof PlanResponse>;
 
 export const LineageResponse = z.object({
   project: z.string(),
+  // nodes = 그래프 스파인(status/kind). 2a 체인 뷰는 무시, 2c 그래프가 사용(additive).
+  nodes: z.array(LineageNode).default([]),
   // edges = CORE 해소 결과(kind supersede/partial/reference·note verbatim·adr). partial 색·ADR 배지는
   // frontend가 kind를 재계산하지 않게 서버가 확정해 보냄(INV-4 — 해소는 CORE 결정적).
   edges: z.array(LineageEdge),
   drops: z.array(DropRecord),
 });
 export type LineageResponse = z.infer<typeof LineageResponse>;
+
+// ── 2c viz projection (칸반·Gantt·worktree) — CORE 결정적 산출 ──────────────
+export const KanbanColumn = z.object({
+  key: z.enum(["active", "ready", "blocked"]),
+  title: z.string(),
+  items: z.array(PlanItem),
+});
+export type KanbanColumn = z.infer<typeof KanbanColumn>;
+
+/** Gantt 바 — sprint 기간(날짜). worktree는 날짜 소스 없어 제외(패널이 담당). */
+export const GanttBar = z.object({
+  kind: z.literal("sprint"),
+  label: z.string(),
+  start: z.string(), // YYYY-MM-DD
+  end: z.string(),
+});
+export type GanttBar = z.infer<typeof GanttBar>;
+
+export const GanttMarker = z.object({
+  at: z.string(), // YYYY-MM-DD
+  kind: KickoffKind,
+  label: z.string(),
+});
+export type GanttMarker = z.infer<typeof GanttMarker>;
+
+export const GanttRow = z.object({
+  initiative: z.string(),
+  bars: z.array(GanttBar).default([]),
+  markers: z.array(GanttMarker).default([]),
+});
+export type GanttRow = z.infer<typeof GanttRow>;
+
+export const WorktreeStatus = z.object({
+  slug: z.string(),
+  branch: z.string(),
+  base: z.string(),
+  initiative: z.string().nullable(),
+  sprint: z.string().nullable(),
+  signal: GitSignal,
+});
+export type WorktreeStatus = z.infer<typeof WorktreeStatus>;
+
+// ── viz envelope (backend 생산·frontend 소비) ──────────────────────────────
+export const BoardResponse = z.object({
+  project: z.string(),
+  columns: z.array(KanbanColumn),
+});
+export type BoardResponse = z.infer<typeof BoardResponse>;
+
+export const TimelineResponse = z.object({
+  project: z.string(),
+  from: z.string().nullable(),
+  to: z.string().nullable(),
+  rows: z.array(GanttRow),
+});
+export type TimelineResponse = z.infer<typeof TimelineResponse>;
+
+export const WorktreeResponse = z.object({
+  project: z.string(),
+  worktrees: z.array(WorktreeStatus),
+});
+export type WorktreeResponse = z.infer<typeof WorktreeResponse>;
 
 /** 에러 응답 (slug 미해소 404 등). */
 export const ApiError = z.object({
