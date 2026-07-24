@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: done
 sprint: backend-api
 priority: high
 initiative: null
@@ -7,6 +7,7 @@ area: [web/backend]
 source: spec-decompose
 related: [../roadmap/project-manager/web-dashboard/spec.md, 009-frontend-scaffold, 010-plan-lineage-views, 011-theme-e2e]
 created: 2026-07-25
+completedAt: 2026-07-25
 ---
 
 # backend Hono API (T1)
