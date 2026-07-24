@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: done
 sprint: plan-lineage-views
 priority: high
 initiative: null
@@ -7,6 +7,7 @@ area: [web/frontend]
 source: spec-decompose
 related: [../roadmap/project-manager/web-dashboard/spec.md, 009-frontend-scaffold, 011-theme-e2e]
 created: 2026-07-25
+completedAt: 2026-07-25
 ---
 
 # plan + lineage 뷰 (T4·T5)

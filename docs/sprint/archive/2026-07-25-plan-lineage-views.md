@@ -1,11 +1,12 @@
 ---
 created: 2026-07-25
-status: in_progress
+status: done
 priority: high
 kind: single
 todos: [010-plan-lineage-views]
 worktree: plan-lineage-views
 startedAt: 2026-07-25
+endedAt: 2026-07-25
 related_sprints: [2026-07-25-frontend-scaffold]
 ---
 
