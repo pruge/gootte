@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: done
 sprint: theme-e2e
 priority: normal
 initiative: null
@@ -7,6 +7,7 @@ area: [web/frontend]
 source: spec-decompose
 related: [../roadmap/project-manager/web-dashboard/spec.md, 010-plan-lineage-views]
 created: 2026-07-25
+completedAt: 2026-07-25
 ---
 
 # theme 토글 + polish + e2e (T6·T7)
