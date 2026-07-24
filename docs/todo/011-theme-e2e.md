@@ -1,5 +1,6 @@
 ---
-status: pending
+status: in_progress
+sprint: theme-e2e
 priority: normal
 initiative: null
 area: [web/frontend]
