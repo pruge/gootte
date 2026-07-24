@@ -36,7 +36,19 @@ related_sprints: [2026-07-25-viz-api]
 - 전체 회귀: `pnpm verify`(58+) green.
 
 ## 사용자 테스트
-> `/cling:worktree` 개발 완료 보고 시 채움.
+> sprint kanban-board 완료 기준 — worktree 안 검토용. (자동 게이트 `pnpm verify` 63/63 · build 76.5kb gzip — 제가 머지 전 실행.)
+
+🌐 dev 서버 (user-runs)
+```
+GOOTTE_ROOTS=$HOME/Documents/ai pnpm dev   → localhost:5173
+```
+
+✅ 테스트 (브라우저, jinwooauto 선택 · plan 탭)
+- 상단에 **[리스트 · 보드 · 타임라인]** 뷰모드 토글
+- **보드** 클릭 → URL `?view=board` · **진행 중 / 착수 가능 / 선행 대기 3컬럼**(actionability 버킷 — worktree 있음 / 의존 충족 / 선행 미완, 헤더 hover=의미 tooltip) · count 배지 · 카드(status·할일수·deps), jinwooauto = 착수 가능 15
+- 본문 16px(text-base) 가독성 — 프로젝트명·plan/lineage 내용 읽을 만한지 · 칩만 14px
+- **타임라인** 클릭 → "015에서 렌더" 플레이스홀더(정상)
+- 리스트 ↔ 보드 전환 시 URL 반영 · 뒤로가기 복원 · lineage 탭으로 가면 view 초기화
 
 ## 관련 todo / spec
 - [014-kanban-board](../todo/014-kanban-board.md) — 뷰모드 인프라 + 칸반 (T3)

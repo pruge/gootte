@@ -15,21 +15,21 @@ export function EdgeRow({ edge }: { edge: LineageEdge }) {
   const partial = edge.kind === "supersede-partial";
   return (
     <li className={`border-l-2 py-1.5 pl-3 ${partial ? "border-partial" : "border-border"}`}>
-      <div className="flex flex-wrap items-baseline gap-1.5 text-sm">
+      <div className="flex flex-wrap items-baseline gap-1.5 text-base">
         <span className="mono text-muted">{edge.from}</span>
         <IconArrowNarrowRight size={14} className="shrink-0 text-border" />
         <span className={`mono font-medium ${meta.cls}`}>{edge.to}</span>
-        <span className={`mono text-[0.6rem] ${meta.cls} opacity-80`}>{meta.label}</span>
+        <span className={`mono text-sm ${meta.cls} opacity-80`}>{meta.label}</span>
         {edge.adr?.map((a) => (
           <span
             key={a}
-            className="mono inline-flex items-center gap-0.5 rounded bg-surface-2 px-1 py-0.5 text-[0.6rem] text-muted"
+            className="mono inline-flex items-center gap-0.5 rounded bg-surface-2 px-1 py-0.5 text-sm text-muted"
           >
             <IconTag size={9} /> {a}
           </span>
         ))}
       </div>
-      {edge.note && <p className="mt-0.5 pl-1 text-xs leading-relaxed text-muted">{edge.note}</p>}
+      {edge.note && <p className="mt-1 pl-1 text-base leading-relaxed text-muted">{edge.note}</p>}
     </li>
   );
 }

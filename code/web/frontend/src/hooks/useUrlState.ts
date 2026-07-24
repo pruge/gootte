@@ -4,22 +4,29 @@ export type Tab = "plan" | "lineage";
 export interface UrlState {
   project: string | null;
   tab: Tab;
+  /** 탭별 뷰모드(raw) — plan: list|board|timeline · lineage: chain|graph. 소비처가 유효값 해소. */
+  view: string | null;
 }
 
 function read(): UrlState {
   const sp = new URLSearchParams(window.location.search);
-  return { project: sp.get("p"), tab: sp.get("tab") === "lineage" ? "lineage" : "plan" };
+  return {
+    project: sp.get("p"),
+    tab: sp.get("tab") === "lineage" ? "lineage" : "plan",
+    view: sp.get("view"),
+  };
 }
 
 function write(next: UrlState): void {
   const sp = new URLSearchParams();
   if (next.project) sp.set("p", next.project);
   sp.set("tab", next.tab);
+  if (next.view) sp.set("view", next.view);
   const qs = sp.toString();
   window.history.pushState({}, "", qs ? `?${qs}` : window.location.pathname);
 }
 
-/** 네비 상태(선택 프로젝트·탭)를 URL search param 으로. 공유가능(터널)·북마크. */
+/** 네비 상태(선택 프로젝트·탭·뷰모드)를 URL search param 으로. 공유가능(터널)·북마크. */
 export function useUrlState() {
   const [state, setState] = useState<UrlState>(read);
 
@@ -38,7 +45,10 @@ export function useUrlState() {
   return {
     project: state.project,
     tab: state.tab,
+    view: state.view,
     setProject: useCallback((p: string) => update({ project: p }), [update]),
-    setTab: useCallback((t: Tab) => update({ tab: t }), [update]),
+    // 탭 전환 시 view 초기화(다른 탭의 모드가 새지 않게)
+    setTab: useCallback((t: Tab) => update({ tab: t, view: null }), [update]),
+    setView: useCallback((v: string) => update({ view: v }), [update]),
   };
 }

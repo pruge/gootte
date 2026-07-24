@@ -5,12 +5,12 @@ export function RationaleList({ rationale }: { rationale: PlanRationale[] }) {
   if (rationale.length === 0) return null;
   return (
     <section aria-labelledby="why-heading" className="border-t border-border pt-4">
-      <h2 id="why-heading" className="mono mb-3 text-xs tracking-[0.2em] text-muted">
+      <h2 id="why-heading" className="mono mb-3 text-sm tracking-[0.2em] text-muted">
         ── 왜 이 순서 ──
       </h2>
       <ul className="space-y-2.5">
         {rationale.map((r) => (
-          <li key={r.initiative} className="text-sm leading-relaxed">
+          <li key={r.initiative} className="text-base leading-relaxed">
             <span className="font-medium">{r.initiative}</span>{" "}
             <span className="text-muted">— {r.priorityBasis}</span>
             {r.delayCost && <Detail label="방치비용">{r.delayCost}</Detail>}
@@ -25,8 +25,8 @@ export function RationaleList({ rationale }: { rationale: PlanRationale[] }) {
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <span className="mt-0.5 block pl-4 text-xs text-muted">
-      <span className="mono text-[0.65rem] opacity-70">{label}:</span> {children}
+    <span className="mt-0.5 block pl-4 text-base text-muted">
+      <span className="mono text-sm opacity-70">{label}:</span> {children}
     </span>
   );
 }
