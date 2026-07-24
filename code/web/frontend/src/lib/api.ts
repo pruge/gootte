@@ -4,6 +4,7 @@ import {
   PlanResponse,
   LineageResponse,
   BoardResponse,
+  TimelineResponse,
   ApiError,
   type Project,
 } from "@gootte/contract";
@@ -31,3 +32,6 @@ export const fetchLineage = (slug: string) =>
 
 export const fetchBoard = (slug: string) =>
   get(`/api/board/${encodeURIComponent(slug)}`, BoardResponse);
+
+export const fetchTimeline = (slug: string) =>
+  get(`/api/timeline/${encodeURIComponent(slug)}`, TimelineResponse);
