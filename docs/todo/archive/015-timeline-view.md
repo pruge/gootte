@@ -1,5 +1,6 @@
 ---
-status: in_progress
+status: done
+completedAt: 2026-07-25
 sprint: timeline-view
 priority: normal
 initiative: null

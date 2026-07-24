@@ -1,11 +1,12 @@
 ---
 created: 2026-07-25
-status: in_progress
+status: done
 priority: normal
 kind: single
 todos: [015-timeline-view]
 worktree: timeline-view
 startedAt: 2026-07-25
+endedAt: 2026-07-25
 related_sprints: [2026-07-25-kanban-board]
 ---
 
