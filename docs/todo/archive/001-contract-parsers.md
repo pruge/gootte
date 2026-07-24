@@ -1,6 +1,7 @@
 ---
-status: in_progress
+status: done
 sprint: lineage-foundation
+completedAt: 2026-07-24
 priority: high
 initiative: null
 area: [web/contract, web/core, web/core-io]
