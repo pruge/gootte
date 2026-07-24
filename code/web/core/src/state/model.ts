@@ -54,4 +54,6 @@ export interface ProjectState {
   drops: DropRecord[];
   /** INDEX Supersession 색인 (텍스트 뷰·plan 주석 소스, verbatim). */
   supersessions: Supersession[];
+  /** 파싱된 sprint (Gantt 바 기간 소스 — 2c). archived 포함. */
+  sprints: Sprint[];
 }

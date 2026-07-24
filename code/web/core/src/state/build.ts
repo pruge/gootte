@@ -73,5 +73,6 @@ export function buildState(input: StateInput): ProjectState {
     indexOrder: input.indexOrder ?? [],
     drops: fill.drops,
     supersessions: input.supersessions ?? [],
+    sprints: input.sprints,
   };
 }

@@ -17,11 +17,13 @@ describe("parse — jinwooauto 실 fixture", () => {
     expect(t.created).toBe("2026-06-18");
   });
 
-  it("sprint frontmatter", () => {
+  it("sprint frontmatter (+날짜 — Gantt 소스)", () => {
     const s = parseSprint("auth-hardening", read("sprint-sample.md"));
     expect(s.status).toBe("pending");
     expect(s.todos.length).toBeGreaterThan(0);
     expect(s.worktree).toBeNull();
+    expect(s.created).toBe("2026-06-26"); // 날짜 파싱
+    expect(s.startedAt).toBeUndefined(); // 없으면 undefined
   });
 
   it("adr Status/Date/id", () => {

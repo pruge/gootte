@@ -7,6 +7,7 @@ import { qk } from "../src/lib/query";
 
 const DATA: LineageResponse = {
   project: "alpha",
+  nodes: [],
   edges: [
     {
       from: "old-approach",
