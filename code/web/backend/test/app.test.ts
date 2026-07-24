@@ -5,6 +5,9 @@ import {
   ProjectsResponse,
   PlanResponse,
   LineageResponse,
+  BoardResponse,
+  TimelineResponse,
+  WorktreeResponse,
   ApiError,
   type Project,
 } from "@gootte/contract";
@@ -63,6 +66,46 @@ describe("GET /api/lineage/:slug", () => {
     // dropped todo → drop (resolvedBy verbatim, 요약 X)
     expect(body.drops).toHaveLength(1);
     expect(body.drops[0]?.resolvedBy).toContain("흡수");
+    // nodes 추가(그래프용, 013) — 배열 존재
+    expect(Array.isArray(body.nodes)).toBe(true);
+  });
+});
+
+describe("2c viz endpoints (013)", () => {
+  test("GET /api/board — BoardResponse 3 파티션 envelope", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/board/alpha");
+    expect(res.status).toBe(200);
+    const body = BoardResponse.parse(await res.json()); // zod 검증
+    expect(body.project).toBe("alpha");
+    expect(body.columns.map((c) => c.key)).toEqual(["active", "ready", "blocked"]);
+  });
+
+  test("GET /api/timeline — TimelineResponse envelope(rows·bounds)", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/timeline/alpha");
+    expect(res.status).toBe(200);
+    const body = TimelineResponse.parse(await res.json());
+    expect(body.project).toBe("alpha");
+    expect(Array.isArray(body.rows)).toBe(true);
+    expect(body).toHaveProperty("from");
+    expect(body).toHaveProperty("to");
+  });
+
+  test("GET /api/worktree — WorktreeResponse envelope", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/worktree/alpha");
+    expect(res.status).toBe(200);
+    const body = WorktreeResponse.parse(await res.json());
+    expect(body.project).toBe("alpha");
+    expect(Array.isArray(body.worktrees)).toBe(true);
+  });
+
+  test("미해소 slug → 404 ApiError (board)", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/board/nope-xyz");
+    expect(res.status).toBe(404);
+    expect(ApiError.parse(await res.json()).error).toContain("nope-xyz");
   });
 });
 
