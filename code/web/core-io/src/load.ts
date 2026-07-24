@@ -1,14 +1,16 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { GitSignal, TodoItem, Sprint } from "@gootte/contract";
+import type { GitSignal, TodoItem, Sprint, Supersession } from "@gootte/contract";
 import {
   parseTodo,
   parseSprint,
   parseLedger,
   parseIndex,
+  parseAdr,
   buildState,
   type LedgerInfo,
+  type AdrInfo,
   type StateInput,
   type ProjectState,
 } from "@gootte/core";
@@ -66,6 +68,7 @@ export function loadProjectState(repoPath: string): LoadedProject {
 
   const ledgers: LedgerInfo[] = [];
   const specPresent: string[] = [];
+  const adrs: AdrInfo[] = [];
   for (const name of dir(roadmap)) {
     const initDir = join(roadmap, name);
     const ledgerFile = join(initDir, "ledger.md");
@@ -74,15 +77,31 @@ export function loadProjectState(repoPath: string): LoadedProject {
       if (l) ledgers.push(l);
     }
     if (existsSync(join(initDir, "spec.md"))) specPresent.push(name);
+    // ADR (+ _superseded/) 배선 (T4)
+    for (const adrBase of [join(initDir, "adr"), join(initDir, "adr", "_superseded")]) {
+      for (const { content } of readMd(adrBase)) {
+        const a = safe(() => parseAdr(content));
+        if (a?.id) adrs.push(a);
+      }
+    }
   }
 
   const indexFile = join(roadmap, "INDEX.md");
-  const indexOrder = existsSync(indexFile)
-    ? parseIndex(readFileSync(indexFile, "utf8")).order
-    : [];
+  const indexInfo = existsSync(indexFile)
+    ? parseIndex(readFileSync(indexFile, "utf8"))
+    : { order: [] as string[], initiatives: [], supersessions: [] as Supersession[] };
 
   const worktrees = scanWorktrees(repoPath);
-  const input: StateInput = { ledgers, todos, sprints, worktrees, specPresent, indexOrder };
+  const input: StateInput = {
+    ledgers,
+    todos,
+    sprints,
+    worktrees,
+    specPresent,
+    indexOrder: indexInfo.order,
+    supersessions: indexInfo.supersessions,
+    adrs,
+  };
   const state = buildState(input);
 
   // active worktree 있는 이니셔티브에만 GitSignal 조립 (state 매핑 사용)

@@ -12,7 +12,7 @@ export const InitiativeStatus = z.enum(["active", "shipped", "planned", "superse
 export const ConflictRisk = z.enum(["low", "med", "high"]);
 export const KickoffKind = z.enum(["kickoff", "re-kickoff"]);
 export const LineageNodeKind = z.enum(["initiative", "adr", "mermaid"]);
-export const LineageEdgeKind = z.enum(["supersede", "spawn", "dep"]);
+export const LineageEdgeKind = z.enum(["supersede", "supersede-partial", "spawn", "dep", "reference"]);
 
 // ── 관리대상 프로젝트 (ⓐ source = machine, 예약) ──────────
 export const Project = z.object({
@@ -30,6 +30,8 @@ export const TodoItem = z.object({
   initiative: z.string().nullable().default(null),
   created: z.string(),
   completedAt: z.string().optional(),
+  resolvedBy: z.string().optional(), // dropped 시 — 무엇이 대체/흡수 (verbatim)
+  source: z.string().optional(), // spec-decompose 등
 });
 export type TodoItem = z.infer<typeof TodoItem>;
 
@@ -74,8 +76,38 @@ export const LineageEdge = z.object({
   from: z.string(),
   to: z.string(),
   kind: LineageEdgeKind,
+  note: z.string().optional(), // verbatim 왜 (요약 X — INV-4)
+  adr: z.array(z.string()).optional(), // 근거 앵커 (ADR-N)
 });
 export type LineageEdge = z.infer<typeof LineageEdge>;
+
+/** INDEX `## Supersession 색인` 한 줄. */
+export const Supersession = z.object({
+  old: z.string(),
+  new: z.string(),
+  ledger: z.string(),
+  adr: z.array(z.string()).default([]),
+  note: z.string(),
+});
+export type Supersession = z.infer<typeof Supersession>;
+
+/** dropped todo (resolvedBy = 무엇이 이걸 drop 시켰나). */
+export const DropRecord = z.object({
+  todo: z.string(),
+  initiative: z.string().nullable().default(null),
+  resolvedBy: z.string(),
+  at: z.string(),
+});
+export type DropRecord = z.infer<typeof DropRecord>;
+
+/** 타임라인 이벤트 — 타입 정의만, 채움 = phase 2(W1). */
+export const TimelineEvent = z.object({
+  at: z.string(),
+  kind: z.string(),
+  ref: z.string(),
+  summary: z.string(),
+});
+export type TimelineEvent = z.infer<typeof TimelineEvent>;
 
 // ── worktree / git ───────────────────────────────────────
 export const Worktree = z.object({

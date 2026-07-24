@@ -7,7 +7,7 @@ import { loadProjectState, emitDigest, discoverProjects } from "@gootte/core-io"
 export function planText(repoPath: string): string {
   const { state, gitSignals } = loadProjectState(repoPath);
   const { plan, rationale } = buildPlan({ state, gitSignals });
-  return renderPlan(plan, rationale, basename(repoPath));
+  return renderPlan(plan, rationale, basename(repoPath), state);
 }
 
 export function writeDigest(repoPath: string): string {
