@@ -66,10 +66,14 @@
 | `pnpm discover <root>` | 로컬 cling 프로젝트 발견 | claude-ok | 읽기 전용 |
 | `pnpm verify` | tsc + vitest | claude-ok | 전체 회귀 |
 | `pnpm test` | vitest | claude-ok | |
-> web dev 서버(2차) · 터널·Android(3차) = 그 phase 에서 `/cling:ops` 재실행.
+| `pnpm dev:backend` | Hono API dev 서버 | user-runs | `tsx watch` · env `PORT`(기본 8787)·`GOOTTE_ROOTS`(기본 `~/Documents`) |
+> frontend dev(009) · `pnpm dev`(둘 다) · 포트 배정 = 그 phase 에서 `/cling:ops`·`/cling:check` 재실행.
+> worktree node_modules = `pnpm -C code/web install`(1회, claude-ok) — 전용 스크립트 불요.
 
 ## Ports
-> web dev 서버(vite frontend + backend) 생기면 `/cling:check` 가 main 밴드(8800–8899 / 5300–5399) 배정 + port-site 주입. 지금 config 없어 보류.
+> backend dev 서버 존재(008) — 포트 = env `PORT`(기본 8787, config 파일 하드코딩 X). 서버 1개라 아직 충돌 없음.
+> **frontend(009) 합류로 2개가 되면** `/cling:check` 가 main 밴드(backend 8800–8899 / frontend 5300–5399) 배정 + port-site 매니페스트(`<!-- cling:port-sites -->`) 등록 → worktree 격리. 그 전엔 단일 PORT env 로 충분(보류).
+> worktree node_modules = 진입 후 `pnpm -C code/web install` 1회(claude-ok, 멱등) — 복사할 untracked dev secret 없음이라 전용 bootstrap 섹션 불요.
 
 ## Docs layout
 - roadmap: `docs/roadmap/`   # kickoff 산출물 (brief/spec/wireframe/adr/ledger)

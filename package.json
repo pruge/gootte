@@ -9,6 +9,7 @@
     "digest": "pnpm -s -C code/web gootte digest",
     "discover": "pnpm -s -C code/web gootte discover",
     "verify": "pnpm -C code/web verify",
-    "test": "pnpm -C code/web test"
+    "test": "pnpm -C code/web test",
+    "dev:backend": "pnpm -C code/web/backend dev"
   }
 }
