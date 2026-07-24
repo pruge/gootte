@@ -56,15 +56,17 @@
 - 상세(CLI 명령셋 · SKILL.md · env 신호 · digest 스키마) = **kickoff 설계.**
 
 ## Operations (Runbook)
-> 코드 생기면 `/cling:ops` 가 실행체(pnpm scripts) 생성/동기. 아래는 spec 확정 명령.
+> `/cling:ops` 생성 — 루트 `package.json` scripts → `code/web` 위임(러너=pnpm). **repo 루트에서 실행.**
 
 | 명령 | 목적 | who | 비고 |
 |---|---|---|---|
-| `gootte plan <project>` | 순서(full)+왜 출력 | claude-ok | 읽기 전용 |
-| `gootte digest <project>` | `<repo>/.gootte/PLAN.md` emit | claude-ok | AUTO-GENERATED, gitignore |
-| `gootte discover` | 로컬 cling 프로젝트 자동발견 | claude-ok | 읽기 전용 |
-| `pnpm --filter @gootte/cli build` | CLI 빌드 | claude-ok | |
-> web dev 서버(2차) · 터널(3차) = 그 phase 에서 추가.
+| `pnpm setup` | 최초 1회 의존 설치 | claude-ok | `pnpm -C code/web install` |
+| `pnpm plan <project>` | 순서(full)+왜 출력 | claude-ok | 읽기 전용 · 파일 X (`pnpm -s plan` = clean) |
+| `pnpm digest <project>` | `<project>/.gootte/PLAN.md` emit | claude-ok | AUTO-GENERATED · **타깃 폴더**에 생성 |
+| `pnpm discover <root>` | 로컬 cling 프로젝트 발견 | claude-ok | 읽기 전용 |
+| `pnpm verify` | tsc + vitest | claude-ok | 전체 회귀 |
+| `pnpm test` | vitest | claude-ok | |
+> web dev 서버(2차) · 터널·Android(3차) = 그 phase 에서 `/cling:ops` 재실행.
 
 ## Ports
 > web dev 서버(vite frontend + backend) 생기면 `/cling:check` 가 main 밴드(8800–8899 / 5300–5399) 배정 + port-site 주입. 지금 config 없어 보류.

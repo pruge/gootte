@@ -1,0 +1,13 @@
+{
+  "name": "gootte",
+  "private": true,
+  "scripts": {
+    "setup": "pnpm -C code/web install",
+    "gootte": "pnpm -s -C code/web gootte",
+    "plan": "pnpm -s -C code/web gootte plan",
+    "digest": "pnpm -s -C code/web gootte digest",
+    "discover": "pnpm -s -C code/web gootte discover",
+    "verify": "pnpm -C code/web verify",
+    "test": "pnpm -C code/web test"
+  }
+}
