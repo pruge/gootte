@@ -1,5 +1,6 @@
 ---
-status: pending
+status: in_progress
+sprint: kanban-board
 priority: high
 initiative: null
 area: [web/frontend]
