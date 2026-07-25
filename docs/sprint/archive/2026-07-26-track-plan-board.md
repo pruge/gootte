@@ -1,11 +1,12 @@
 ---
 created: 2026-07-26
-status: in_progress
+status: done
 priority: normal
 kind: single
 todos: [021-track-plan-board]
 worktree: track-plan-board
 startedAt: 2026-07-26
+endedAt: 2026-07-26
 related_sprints: [2026-07-26-track-projection, 2026-07-26-track-timeline-grouped]
 ---
 
