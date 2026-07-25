@@ -12,15 +12,18 @@ const DATA: TimelineResponse = {
   rows: [
     {
       initiative: "auth-hardening",
+      track: null,
       bars: [{ kind: "sprint", label: "jwt-rotate", start: "2026-07-06", end: "2026-07-12" }],
       markers: [{ at: "2026-07-05", kind: "kickoff", label: "auth-hardening" }],
     },
     {
       initiative: "gateway-restructure",
+      track: null,
       bars: [{ kind: "sprint", label: "relay-split", start: "2026-07-18", end: "2026-07-24" }],
       markers: [{ at: "2026-07-17", kind: "re-kickoff", label: "gateway-restructure" }],
     },
   ],
+  trackOrder: [],
 };
 
 function renderTimeline(data: TimelineResponse = DATA) {
@@ -59,7 +62,7 @@ describe("TimelineView (CI 워터폴 Gantt)", () => {
   });
 
   it("날짜 없음(from/to null) = 빈 상태", () => {
-    renderTimeline({ project: "alpha", from: null, to: null, rows: [] });
+    renderTimeline({ project: "alpha", from: null, to: null, rows: [], trackOrder: [] });
     expect(screen.getByText(/타임라인을 그릴 수 없습니다/)).toBeInTheDocument();
   });
 });

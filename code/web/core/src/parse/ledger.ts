@@ -1,5 +1,6 @@
 import yaml from "js-yaml";
 import { KickoffEvent } from "@gootte/contract";
+import { frontmatter, str } from "./frontmatter";
 
 /**
  * initiative `ledger.md` → 상태·트랙·의존 + KickoffEvent(하이브리드) + supersede.
@@ -28,7 +29,9 @@ function sectionBody(content: string, heading: string): string | null {
 }
 
 export function parseLedger(initiative: string, content: string): LedgerInfo {
-  const header = content.match(/^-\s*상태:\s*(.+)$/m)?.[1] ?? "";
+  // frontmatter 있으면 분리(없으면 body===content — 레거시 무회귀).
+  const { data, body } = frontmatter(content);
+  const header = body.match(/^-\s*상태:\s*(.+)$/m)?.[1] ?? "";
   let status = "active";
   for (const [emoji, s] of Object.entries(STATUS_EMOJI)) {
     if (header.includes(emoji)) status = s;
@@ -36,14 +39,16 @@ export function parseLedger(initiative: string, content: string): LedgerInfo {
   const word = header.match(/\b(active|shipped|planned|superseded)\b/)?.[1];
   if (word) status = word;
 
-  const track = header.match(/트랙:\s*([^·\n]+)/)?.[1]?.trim() ?? null;
+  // 하이브리드: frontmatter `track:`(카노니컬) 우선, 없으면 프로즈 `트랙:`(레거시). 원문 반환(정규화는 projection).
+  const proseTrack = header.match(/트랙:\s*([^·\n]+)/)?.[1]?.trim();
+  const track = str(data.track) ?? proseTrack ?? null;
   const depsRaw = header.match(/의존:\s*([^·\n]+)/)?.[1]?.trim() ?? "";
   const deps =
     depsRaw && !/없음|none|^-$/.test(depsRaw) ? depsRaw.split(/[,\s]+/).filter(Boolean) : [];
 
   // 하이브리드 구조화 경로: ## events
   const events: KickoffEvent[] = [];
-  const evBody = sectionBody(content, "events");
+  const evBody = sectionBody(body, "events");
   if (evBody && evBody.trim()) {
     const raw = yaml.load(evBody);
     if (Array.isArray(raw)) {
@@ -56,7 +61,7 @@ export function parseLedger(initiative: string, content: string): LedgerInfo {
 
   // 산문 fallback: ## supersede
   const supersedes: string[] = [];
-  const supBody = sectionBody(content, "supersede");
+  const supBody = sectionBody(body, "supersede");
   if (supBody) {
     for (const m of supBody.matchAll(/supersedes?\s+([^\s—·(),]+)/g)) {
       const ref = m[1];

@@ -36,7 +36,11 @@ related_sprints: [2026-07-25-timeline-view]
 - 전체 회귀: `pnpm verify`(78+) green + `mermaid-refs-check`.
 
 ## 사용자 테스트
-> `/cling:worktree` 개발 완료 보고 시 채움.
+> 018 = 내부 seam(CONTRACT Track 타입 + 정규화 순수함수 + parseLedger frontmatter). **사용자 가시 UI 변화 없음** — PlanItem.track 미변경, GanttRow.track/trackOrder = stub(019가 populate). 자동 게이트(`pnpm verify` 90 tests)는 머지 전 실행 완료.
+
+**사용자 가시 테스트 없음** (내부 계약·정규화). 검증은 자동:
+- `pnpm verify` → tsc + 90 tests green (신규 12: normalizeTrack 18변형 수렴·어휘/프로즈 label·미분류·parseProfileTracks·parseLedger frontmatter 우선).
+- 실데이터 sanity: jinwooauto 93 track ledger → 정규화 후 **7 distinct key(A~G)** 수렴 확인(그룹핑 기반).
 
 ## 관련 todo / spec
 - [018-track-contract-parse](../todo/018-track-contract-parse.md) — Track seam + 정규화 (T1+T2)
