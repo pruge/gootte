@@ -1,10 +1,14 @@
 import type { GanttRow, GanttBar, GanttMarker } from "@gootte/contract";
 import type { ProjectState } from "../state/model";
+import { normalizeTrack } from "../parse/track";
+import { presentTrackOrder } from "./track";
 
 export interface GanttResult {
   rows: GanttRow[];
   from: string | null;
   to: string | null;
+  /** 대분류 그룹 순서(등장 track + 미분류 last) — 결정적. 프론트 그룹 렌더 순서. */
+  trackOrder: string[];
 }
 
 /**
@@ -14,6 +18,10 @@ export interface GanttResult {
 export function buildGantt(state: ProjectState): GanttResult {
   const todoInit = new Map<string, string>(); // todo slug → initiative
   for (const i of state.initiatives) for (const t of i.todos) todoInit.set(t.slug, i.slug);
+  // 이니셔티브 → 정규화 track(어휘 있으면 canonical label, 없으면 프로즈 파생).
+  const trackByInit = new Map(
+    state.initiatives.map((i) => [i.slug, normalizeTrack(i.track, state.tracks)] as const),
+  );
 
   const barsByInit = new Map<string, GanttBar[]>();
   for (const s of state.sprints) {
@@ -40,7 +48,7 @@ export function buildGantt(state: ProjectState): GanttResult {
     const markers = markersByInit.get(slug) ?? [];
     for (const b of bars) dates.push(b.start, b.end);
     for (const m of markers) dates.push(m.at);
-    rows.push({ initiative: slug, track: null, bars, markers }); // track = 019 projection 이 정규화 부착
+    rows.push({ initiative: slug, track: trackByInit.get(slug) ?? null, bars, markers });
   }
 
   const earliest = (r: GanttRow): string =>
@@ -52,6 +60,15 @@ export function buildGantt(state: ProjectState): GanttResult {
     return state.indexOrder.indexOf(a.initiative) - state.indexOrder.indexOf(b.initiative);
   });
 
+  // 대분류 그룹 순서 — 등장한 track key + 미분류 last(결정적).
+  const presentKeys: string[] = [];
+  let anyUngrouped = false;
+  for (const r of rows) {
+    if (r.track) presentKeys.push(r.track.key);
+    else anyUngrouped = true;
+  }
+  const trackOrder = presentTrackOrder(state, presentKeys, anyUngrouped);
+
   const sorted = dates.slice().sort();
-  return { rows, from: sorted[0] ?? null, to: sorted[sorted.length - 1] ?? null };
+  return { rows, from: sorted[0] ?? null, to: sorted[sorted.length - 1] ?? null, trackOrder };
 }

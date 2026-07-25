@@ -31,6 +31,8 @@ export interface StateInput {
   supersessions?: Supersession[];
   /** roadmap 이니셔티브 adr 폴더(+_superseded) 파싱 결과. */
   adrs?: AdrInfo[];
+  /** profile `## Tracks` 어휘(key→label) — 대분류 canonical label SoT(ADR-0002). 없으면 프로즈 fallback. */
+  tracks?: Map<string, string>;
 }
 
 export interface InitiativeState {
@@ -56,4 +58,6 @@ export interface ProjectState {
   supersessions: Supersession[];
   /** 파싱된 sprint (Gantt 바 기간 소스 — 2c). archived 포함. */
   sprints: Sprint[];
+  /** profile `## Tracks` 어휘(key→label). 대분류 label 해소 SoT(ADR-0002). 빈 맵 = 프로즈 fallback. */
+  tracks: Map<string, string>;
 }

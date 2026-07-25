@@ -43,7 +43,12 @@ related_sprints: [2026-07-25-track-seam]
 - 실데이터: jinwooauto vocab 없이도(현재) 7축 trackOrder 산출 — dev /api/timeline 에서 rows.track key 확인.
 
 ## 사용자 테스트
-> `/cling:worktree` 개발 완료 보고 시 채움.
+> 019 = CORE projection + core-io vocab + backend envelope. **프론트 그룹 렌더는 020/021** — dev 화면은 아직 동일(API만 track/trackOrder 반입). 자동 게이트(`pnpm verify` 96 tests)는 머지 전 실행 완료.
+
+**사용자 가시 UI 변화 없음** (그룹 렌더 = 020 타임라인/021 리스트·보드). API 관측만:
+- `pnpm verify` → tsc + 96 tests green (신규 6: computeTrackOrder 결정 순서·buildGantt track 부착·buildPlan trackOrder·app.test envelope).
+- 실데이터 e2e: `pnpm dev:backend` 후 `curl :8787/api/timeline/jinwooauto` → **47행 전부 track 부착**(F15·C16·E7·A2·B3·D1·G3, 미분류 0) + `trackOrder` 7축. `/api/plan` 도 trackOrder.
+- 부산물 수정: parseLedger 프로즈 `트랙:` 를 **body 전체 탐색**(별도 `- 트랙:` 줄 포맷 회복 — 원래 상태-줄만 봐 놓치던 사각).
 
 ## 관련 todo / spec
 - [019-track-projection-api](../todo/019-track-projection-api.md) — projection + vocab + envelope (T3+T4)

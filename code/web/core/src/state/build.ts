@@ -74,5 +74,6 @@ export function buildState(input: StateInput): ProjectState {
     drops: fill.drops,
     supersessions: input.supersessions ?? [],
     sprints: input.sprints,
+    tracks: input.tracks ?? new Map(),
   };
 }

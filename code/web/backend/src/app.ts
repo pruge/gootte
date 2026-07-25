@@ -73,8 +73,8 @@ export function createApp(options: AppOptions = {}): Hono {
   app.get("/api/plan/:slug", zValidator("param", slugParam), (c) => {
     const p = load(c.req.valid("param").slug);
     if (!p) return c.json(notFound(c.req.param("slug")), 404);
-    const { plan, rationale } = buildPlan({ state: p.state, gitSignals: p.gitSignals });
-    return c.json(PlanResponse.parse({ project: p.name, plan, rationale }));
+    const { plan, rationale, trackOrder } = buildPlan({ state: p.state, gitSignals: p.gitSignals });
+    return c.json(PlanResponse.parse({ project: p.name, plan, rationale, trackOrder }));
   });
 
   // GET /api/lineage/:slug → LineageResponse (nodes + edges = CORE 해소, drops verbatim)
@@ -102,8 +102,8 @@ export function createApp(options: AppOptions = {}): Hono {
   app.get("/api/timeline/:slug", zValidator("param", slugParam), (c) => {
     const p = load(c.req.valid("param").slug);
     if (!p) return c.json(notFound(c.req.param("slug")), 404);
-    const { rows, from, to } = buildGantt(p.state);
-    return c.json(TimelineResponse.parse({ project: p.name, from, to, rows }));
+    const { rows, from, to, trackOrder } = buildGantt(p.state);
+    return c.json(TimelineResponse.parse({ project: p.name, from, to, rows, trackOrder }));
   });
 
   // GET /api/worktree/:slug → WorktreeResponse (구조적 상태, ADR-0004)

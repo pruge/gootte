@@ -40,7 +40,8 @@ export function parseLedger(initiative: string, content: string): LedgerInfo {
   if (word) status = word;
 
   // 하이브리드: frontmatter `track:`(카노니컬) 우선, 없으면 프로즈 `트랙:`(레거시). 원문 반환(정규화는 projection).
-  const proseTrack = header.match(/트랙:\s*([^·\n]+)/)?.[1]?.trim();
+  // 🔴 프로즈는 body 전체에서 탐색 — jinwooauto 등은 track 을 상태 줄이 아닌 별도 `- 트랙:` 줄에 둔다.
+  const proseTrack = body.match(/트랙:\s*([^·\n]+)/)?.[1]?.trim();
   const track = str(data.track) ?? proseTrack ?? null;
   const depsRaw = header.match(/의존:\s*([^·\n]+)/)?.[1]?.trim() ?? "";
   const deps =

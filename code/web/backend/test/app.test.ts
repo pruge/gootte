@@ -43,6 +43,7 @@ describe("GET /api/plan/:slug", () => {
     expect(body.project).toBe("alpha");
     expect(Array.isArray(body.plan)).toBe(true);
     expect(Array.isArray(body.rationale)).toBe(true);
+    expect(Array.isArray(body.trackOrder)).toBe(true); // 대분류 그룹 순서(019)
   });
 
   test("미해소 slug → 404 ApiError", async () => {
@@ -90,6 +91,7 @@ describe("2c viz endpoints (013)", () => {
     expect(Array.isArray(body.rows)).toBe(true);
     expect(body).toHaveProperty("from");
     expect(body).toHaveProperty("to");
+    expect(Array.isArray(body.trackOrder)).toBe(true); // 대분류 그룹 순서(019)
   });
 
   test("GET /api/worktree — WorktreeResponse envelope", async () => {
