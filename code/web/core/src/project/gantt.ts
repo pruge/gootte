@@ -40,7 +40,7 @@ export function buildGantt(state: ProjectState): GanttResult {
     const markers = markersByInit.get(slug) ?? [];
     for (const b of bars) dates.push(b.start, b.end);
     for (const m of markers) dates.push(m.at);
-    rows.push({ initiative: slug, bars, markers });
+    rows.push({ initiative: slug, track: null, bars, markers }); // track = 019 projection 이 정규화 부착
   }
 
   const earliest = (r: GanttRow): string =>

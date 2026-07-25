@@ -130,10 +130,20 @@ export const GitSignal = z.object({
 export type GitSignal = z.infer<typeof GitSignal>;
 
 // ── projection 산출 (plan + rationale) ───────────────────
+/**
+ * 대분류(track) — external-writer seam (cling writer + gootte reader 공동소유, KickoffEvent 동형).
+ * 관리대상 ledger `track:`(frontmatter) 또는 프로즈 `트랙:` → 정규화 → {key,label}. label SoT = profile `## Tracks`.
+ */
+export const Track = z.object({
+  key: z.string(), // canonical 식별자 (A~G 또는 도메인 slug) — 그룹핑 키
+  label: z.string(), // 사람 읽는 한 줄 (어휘/프로즈에서 verbatim)
+});
+export type Track = z.infer<typeof Track>;
+
 export const PlanItem = z.object({
   order: z.number().int(),
   initiative: z.string(),
-  track: z.string().optional(),
+  track: z.string().optional(), // 021 에서 Track 정규화로 승격 (소비처 board/list/CLI 와 함께)
   status: z.string(),
   now: z.boolean(),
   subSteps: z.array(z.string()).default([]),
@@ -171,6 +181,7 @@ export const PlanResponse = z.object({
   project: z.string(),
   plan: z.array(PlanItem),
   rationale: z.array(PlanRationale),
+  trackOrder: z.array(z.string()).default([]), // 대분류 그룹 순서 (019 populate) — 미분류 = "__ungrouped__" last
 });
 export type PlanResponse = z.infer<typeof PlanResponse>;
 
@@ -211,6 +222,7 @@ export type GanttMarker = z.infer<typeof GanttMarker>;
 
 export const GanttRow = z.object({
   initiative: z.string(),
+  track: Track.nullable().default(null), // 대분류 — 019 projection 이 정규화 부착(018=stub null)
   bars: z.array(GanttBar).default([]),
   markers: z.array(GanttMarker).default([]),
 });
@@ -238,6 +250,7 @@ export const TimelineResponse = z.object({
   from: z.string().nullable(),
   to: z.string().nullable(),
   rows: z.array(GanttRow),
+  trackOrder: z.array(z.string()).default([]), // 대분류 그룹 순서 (019 populate) — 미분류 = "__ungrouped__" last
 });
 export type TimelineResponse = z.infer<typeof TimelineResponse>;
 

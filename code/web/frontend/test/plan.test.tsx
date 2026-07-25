@@ -27,6 +27,7 @@ const DATA: PlanResponse = {
       stoppingPoint: null,
     },
   ],
+  trackOrder: [],
 };
 
 function renderPlan() {
