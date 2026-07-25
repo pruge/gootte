@@ -11,12 +11,12 @@ const DATA: BoardResponse = {
     {
       key: "active",
       title: "ACTIVE",
-      items: [{ order: 1, initiative: "auth-hardening", status: "active", now: true, subSteps: ["t1"], deps: [] }],
+      items: [{ order: 1, initiative: "auth-hardening", status: "active", now: true, subSteps: ["t1"], deps: [], track: { key: "G", label: "인증" } }],
     },
     {
       key: "ready",
       title: "READY",
-      items: [{ order: 2, initiative: "misc-gateway", status: "planned", now: false, subSteps: [], deps: ["auth-hardening"] }],
+      items: [{ order: 2, initiative: "misc-gateway", status: "planned", now: false, subSteps: [], deps: ["auth-hardening"], track: null }],
     },
     { key: "blocked", title: "BLOCKED", items: [] },
   ],
@@ -51,5 +51,11 @@ describe("BoardView (칸반)", () => {
     renderBoard();
     const blocked = screen.getByRole("region", { name: "선행 대기" });
     expect(blocked).toHaveTextContent("비어있음");
+  });
+
+  it("카드 = 정규화 track 칩(key + label)", () => {
+    renderBoard();
+    expect(screen.getByText("G 인증")).toBeInTheDocument(); // {key} {label}
+    expect(screen.getByTitle("대분류 G — 인증")).toBeInTheDocument();
   });
 });

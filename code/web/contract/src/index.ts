@@ -143,7 +143,7 @@ export type Track = z.infer<typeof Track>;
 export const PlanItem = z.object({
   order: z.number().int(),
   initiative: z.string(),
-  track: z.string().optional(), // 021 에서 Track 정규화로 승격 (소비처 board/list/CLI 와 함께)
+  track: Track.nullable().default(null), // 대분류 — 정규화 {key,label} (019 buildGantt 와 동일). 미분류=null
   status: z.string(),
   now: z.boolean(),
   subSteps: z.array(z.string()).default([]),

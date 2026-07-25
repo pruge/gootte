@@ -57,7 +57,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   }
 
   return {
-    plan: ranked.map((r, idx) => planItemOf(r, idx + 1)),
+    plan: ranked.map((r, idx) => planItemOf(r, idx + 1, input.state.tracks)),
     rationale: ranked.map((r) => rationaleOf(r, gitSignals)),
     trackOrder: presentTrackOrder(input.state, presentKeys, anyUngrouped),
   };

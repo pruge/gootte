@@ -11,7 +11,7 @@ export function buildKanban(
   gitSignals: Map<string, GitSignal> = new Map(),
 ): KanbanColumn[] {
   const ranked = partitionInitiatives(state, gitSignals);
-  const cards = ranked.map((r, idx) => ({ item: planItemOf(r, idx + 1), bucket: r.bucket }));
+  const cards = ranked.map((r, idx) => ({ item: planItemOf(r, idx + 1, state.tracks), bucket: r.bucket }));
   const col = (
     key: KanbanColumn["key"],
     title: string,

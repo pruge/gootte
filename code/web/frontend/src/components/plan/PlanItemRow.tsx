@@ -20,7 +20,7 @@ export function PlanItemRow({ item }: { item: PlanItem }) {
         )}
         <span className="font-medium tracking-tight">{item.initiative}</span>
         <StatusChip status={item.status} />
-        {item.track && <span className="mono text-sm text-muted">· {item.track}</span>}
+        {/* track 은 PlanView 섹션 헤더로 이동(그룹핑) — 행 인라인 표기 제거 */}
       </div>
 
       {item.deps.length > 0 && (

@@ -40,7 +40,18 @@ related_sprints: [2026-07-26-track-projection, 2026-07-26-track-timeline-grouped
 - 실렌더: jinwooauto 리스트 = track 섹션 헤더로 묶임 · 보드 카드 = `C 제어 알고리즘` 류 칩.
 
 ## 사용자 테스트
-> `/cling:worktree` 개발 완료 보고 시 채움.
+> 021 = track-grouping 마지막 — 리스트 track 헤더 + 보드 칩 + PlanItem.track 승격. 자동 게이트(`pnpm verify` 104 tests)는 머지 전 실행 완료. 실렌더 스크린샷으로 두 뷰 확인.
+
+🌐 Frontend + Backend dev (user-runs)
+```
+pnpm dev
+```
+
+✅ 테스트
+- plan 탭 → **[리스트]** = 대분류(track) 섹션 헤더(`C 제어 알고리즘`·`F 실시간`…)로 이니셔티브 묶임, 헤더 안은 서버 order 유지, 미분류 맨 아래
+- plan 탭 → **[보드]** = 카드에 정규화 track 칩(`G 프로비저닝 / 인증 / 기타` 류 `{key} {label}`) — 기존 원문 칩 대체
+- **[타임라인]** = 020의 대분류 세로 span (세 뷰 전부 track 반영 = track-grouping 종결)
+- CLI `pnpm plan jinwooauto` 도 `(key label)` 표기
 
 ## 관련 todo / spec
 - [021-track-plan-board](../todo/021-track-plan-board.md) — 리스트 헤더 + 보드 칩 (T6)

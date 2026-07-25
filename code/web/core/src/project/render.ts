@@ -25,7 +25,7 @@ export function renderPlan(
   const out: string[] = [`# 개발해야 할 순서 (full) — ${project}`, ""];
   for (const p of plan) {
     const now = p.now ? "▶ NOW  " : "       ";
-    const track = p.track ? ` (${p.track})` : "";
+    const track = p.track ? ` (${p.track.key} ${p.track.label})` : "";
     const done = p.completeOn ? ` [${p.completeOn}]` : "";
     out.push(`${now}${mark(p.order)} ${p.initiative}${track} — ${p.status}${done}`);
     if (p.subSteps.length) out.push(`         할일: ${p.subSteps.join(" · ")}`);
