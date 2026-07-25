@@ -1,11 +1,12 @@
 ---
 created: 2026-07-26
-status: in_progress
+status: done
 priority: normal
 kind: single
 todos: [020-track-timeline-grouped]
 worktree: track-timeline-grouped
 startedAt: 2026-07-26
+endedAt: 2026-07-26
 related_sprints: [2026-07-26-track-projection]
 ---
 
