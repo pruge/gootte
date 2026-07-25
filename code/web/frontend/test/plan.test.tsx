@@ -8,7 +8,15 @@ import { qk } from "../src/lib/query";
 const DATA: PlanResponse = {
   project: "alpha",
   plan: [
-    { order: 1, initiative: "auth-hardening", status: "active", now: true, subSteps: [], deps: [] },
+    {
+      order: 1,
+      initiative: "auth-hardening",
+      status: "active",
+      now: true,
+      subSteps: [],
+      deps: [],
+      track: { key: "G", label: "인증" },
+    },
     {
       order: 2,
       initiative: "misc-gateway",
@@ -16,6 +24,7 @@ const DATA: PlanResponse = {
       now: false,
       subSteps: ["field-device-hardening", "fsm-state-siteid"],
       deps: ["auth-hardening"],
+      track: null,
     },
   ],
   rationale: [
@@ -27,7 +36,7 @@ const DATA: PlanResponse = {
       stoppingPoint: null,
     },
   ],
-  trackOrder: [],
+  trackOrder: ["G", "__ungrouped__"],
 };
 
 function renderPlan() {
@@ -59,5 +68,15 @@ describe("PlanView", () => {
     expect(screen.getByText(/왜 이 순서/)).toBeInTheDocument();
     expect(screen.getByText(/의존 충족·다음 전선/)).toBeInTheDocument();
     expect(screen.getByText(/인증 취약 누적/)).toBeInTheDocument();
+  });
+
+  it("대분류 track 섹션 헤더로 그룹핑(trackOrder 순, 미분류 last)", () => {
+    const { container } = renderPlan();
+    const groups = [...container.querySelectorAll("[data-track-group]")].map((e) =>
+      e.getAttribute("data-track-group"),
+    );
+    expect(groups).toEqual(["G", "__ungrouped__"]); // 서버 trackOrder 순
+    expect(screen.getByRole("region", { name: "인증" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "미분류" })).toBeInTheDocument();
   });
 });

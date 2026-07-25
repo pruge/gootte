@@ -1,6 +1,7 @@
 import type { GitSignal, PlanItem } from "@gootte/contract";
 import { PRIORITY_RANK, RISK_RANK } from "../rank";
 import type { ProjectState, InitiativeState } from "../state/model";
+import { normalizeTrack } from "../parse/track";
 
 const SHIPPED = new Set(["shipped", "done"]);
 
@@ -76,12 +77,12 @@ export function partitionInitiatives(
 }
 
 /** Ranked → PlanItem. now = 전역 1위 && active(idx0&&bucket0와 동치). plan·kanban 공유(카드 형상 일관). */
-export function planItemOf(r: Ranked, order: number): PlanItem {
+export function planItemOf(r: Ranked, order: number, vocab: Map<string, string> = new Map()): PlanItem {
   const pending = r.init.todos.filter((t) => t.status !== "done" && t.status !== "dropped");
   return {
     order,
     initiative: r.init.slug,
-    track: r.init.track ?? undefined,
+    track: normalizeTrack(r.init.track, vocab), // 정규화 {key,label} | null (buildGantt 와 동일)
     status: r.init.status,
     now: order === 1 && r.bucket === 0,
     subSteps: pending.map((t) => t.slug),

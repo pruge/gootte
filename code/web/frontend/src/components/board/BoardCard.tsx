@@ -20,7 +20,14 @@ export function BoardCard({ item, blocked = false }: { item: PlanItem; blocked?:
       </div>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <StatusChip status={item.status} />
-        {item.track && <span className="mono text-sm text-muted">{item.track}</span>}
+        {item.track && (
+          <span
+            className="mono rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted"
+            title={`대분류 ${item.track.key} — ${item.track.label}`}
+          >
+            {item.track.key} {item.track.label}
+          </span>
+        )}
         {item.subSteps.length > 0 && (
           <span className="mono text-sm text-muted">{item.subSteps.length} 할일</span>
         )}
