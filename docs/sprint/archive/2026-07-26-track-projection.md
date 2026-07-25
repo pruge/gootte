@@ -1,11 +1,12 @@
 ---
 created: 2026-07-26
-status: in_progress
+status: done
 priority: normal
 kind: single
 todos: [019-track-projection-api]
 worktree: track-projection
 startedAt: 2026-07-26
+endedAt: 2026-07-26
 related_sprints: [2026-07-25-track-seam]
 ---
 

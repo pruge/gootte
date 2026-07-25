@@ -1,5 +1,6 @@
 ---
-status: in_progress
+status: done
+completedAt: 2026-07-26
 sprint: track-projection
 priority: normal
 initiative: null
