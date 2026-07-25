@@ -19,7 +19,13 @@ export function TimelineView({ project }: { project: string }) {
     <div className="flex h-full flex-col">
       <Legend />
       <div className="min-h-0 flex-1">
-        <TimelineChart rows={data.rows} from={data.from} to={data.to} />
+        <TimelineChart
+          project={project}
+          rows={data.rows}
+          from={data.from}
+          to={data.to}
+          trackOrder={data.trackOrder}
+        />
       </div>
     </div>
   );

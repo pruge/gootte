@@ -1,5 +1,39 @@
 import { describe, it, expect } from "vitest";
-import { dayNumber, dateToT, dateToX, barSpanT, axisTicks } from "../src/lib/timeline";
+import type { GanttRow } from "@gootte/contract";
+import { dayNumber, dateToT, dateToX, barSpanT, axisTicks, groupByTrack } from "../src/lib/timeline";
+
+const row = (initiative: string, track: GanttRow["track"]): GanttRow => ({
+  initiative,
+  track,
+  bars: [],
+  markers: [],
+});
+
+describe("groupByTrack — trackOrder 순 그룹핑(서버값 그대로)", () => {
+  const rows = [
+    row("a", { key: "C", label: "제어" }),
+    row("b", { key: "F", label: "실시간" }),
+    row("c", { key: "C", label: "제어" }),
+    row("d", null),
+  ];
+
+  it("trackOrder 순 그룹 + 미분류 last, 같은 key 는 한 그룹", () => {
+    const g = groupByTrack(rows, ["C", "F", "__ungrouped__"]);
+    expect(g.map((x) => x.key)).toEqual(["C", "F", "__ungrouped__"]);
+    expect(g[0]!.rows.map((r) => r.initiative)).toEqual(["a", "c"]);
+    expect(g[2]!.label).toBe("미분류");
+  });
+
+  it("서버 trackOrder 순서를 그대로 반영(F 먼저)", () => {
+    const g = groupByTrack(rows, ["F", "C", "__ungrouped__"]);
+    expect(g.map((x) => x.key)).toEqual(["F", "C", "__ungrouped__"]);
+  });
+
+  it("trackOrder 에 없는 key 는 방어적으로 끝에 append", () => {
+    const g = groupByTrack([row("x", { key: "Z", label: "실험" })], []);
+    expect(g.map((x) => x.key)).toEqual(["Z"]);
+  });
+});
 
 describe("timeline scale — dateToT (날짜→정규화 위치)", () => {
   const from = "2026-07-05";
