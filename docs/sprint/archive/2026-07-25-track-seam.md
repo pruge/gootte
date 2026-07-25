@@ -1,11 +1,12 @@
 ---
 created: 2026-07-25
-status: in_progress
+status: done
 priority: normal
 kind: single
 todos: [018-track-contract-parse]
 worktree: track-seam
 startedAt: 2026-07-25
+endedAt: 2026-07-25
 related_sprints: [2026-07-25-timeline-view]
 ---
 
