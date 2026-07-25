@@ -1,5 +1,40 @@
+import type { GanttRow } from "@gootte/contract";
+
 // 타임라인(Gantt) 순수 스케일 — 날짜(YYYY-MM-DD) → 정규화 위치(0..1)/픽셀.
 // 레이아웃(배치)만 계산 — 데이터 재판정 X(INV-4). 부수효과 0, 단위 테스트 대상.
+
+/** 서버 trackOrder 의 미분류 그룹 sentinel(= core UNGROUPED). */
+export const UNGROUPED = "__ungrouped__";
+
+export interface TrackGroup {
+  key: string;
+  label: string;
+  rows: GanttRow[];
+}
+
+/**
+ * rows 를 대분류(track.key)로 그룹핑, **서버 trackOrder 순** 정렬(미분류 last).
+ * 순서 재판정 X — 서버값 그대로 소비(INV-4). 순수·결정적.
+ */
+export function groupByTrack(rows: GanttRow[], trackOrder: string[]): TrackGroup[] {
+  const byKey = new Map<string, TrackGroup>();
+  for (const row of rows) {
+    const key = row.track?.key ?? UNGROUPED;
+    let g = byKey.get(key);
+    if (!g) {
+      g = { key, label: row.track?.label ?? "미분류", rows: [] };
+      byKey.set(key, g);
+    }
+    g.rows.push(row);
+  }
+  const ordered = trackOrder
+    .map((k) => byKey.get(k))
+    .filter((g): g is TrackGroup => g !== undefined);
+  // 서버 trackOrder 에 없는 잔여(방어) — 끝에 append.
+  const seen = new Set(trackOrder);
+  for (const [k, g] of byKey) if (!seen.has(k)) ordered.push(g);
+  return ordered;
+}
 
 const MS_PER_DAY = 86_400_000;
 

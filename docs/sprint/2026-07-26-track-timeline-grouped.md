@@ -38,7 +38,20 @@ related_sprints: [2026-07-26-track-projection]
 - 전체 회귀: `pnpm verify`(96+) green + `mermaid-refs-check`.
 
 ## 사용자 테스트
-> `/cling:worktree` 개발 완료 보고 시 채움.
+> 020 = 타임라인 대분류 그룹 렌더(사용자 원 요구). 자동 게이트(`pnpm verify` 100 tests)는 머지 전 실행 완료. 실렌더 스크린샷으로 좌측 대분류 세로 span 확인.
+
+🌐 Frontend + Backend dev (user-runs)
+```
+pnpm dev
+```
+
+✅ 테스트
+- plan 탭 → **[타임라인]** = 왼쪽 대분류 라벨(`label`+`key`)이 그 track 이니셔티브 행들을 **세로 span** + `│` + 오른쪽 sprint 바
+- jinwooauto 선택 시 7 그룹(제어 알고리즘·실시간·owner…) — 각 그룹 아래 소속 sprint 라인들, 미분류 그룹은 맨 아래
+- sprint 바/행에 **마우스 올리면 그 행 + 왼쪽 대분류 라벨 셀이 같이 배경색 변경**(co-highlight)
+- 그룹 순서 = 서버 trackOrder 그대로(결정적)
+- **대분류·이니셔티브 열 경계를 드래그**하면 폭 조절 → 긴 이니셔티브 이름 말줄임 해소(min 64px). 핸들은 컬럼 전체 높이에서 잡힘(hover 시 accent 세로선)
+- 조절한 폭은 **localStorage에 프로젝트별 저장** → refresh 후 복원, 프로젝트 전환 시 각자 폭
 
 ## 관련 todo / spec
 - [020-track-timeline-grouped](../todo/020-track-timeline-grouped.md) — 타임라인 그룹 + hover (T5)
