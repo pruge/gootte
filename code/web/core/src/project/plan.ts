@@ -1,6 +1,8 @@
 import type { PlanItem, PlanRationale, GitSignal } from "@gootte/contract";
 import type { ProjectState } from "../state/model";
 import { partitionInitiatives, planItemOf, type Ranked } from "./partition";
+import { normalizeTrack } from "../parse/track";
+import { presentTrackOrder } from "./track";
 
 export interface PlanInput {
   state: ProjectState;
@@ -11,6 +13,8 @@ export interface PlanInput {
 export interface PlanResult {
   plan: PlanItem[];
   rationale: PlanRationale[];
+  /** 대분류 그룹 순서(등장 track + 미분류 last) — 리스트 그룹 렌더(021). 결정적. */
+  trackOrder: string[];
 }
 
 function rationaleOf(r: Ranked, gitSignals: Map<string, GitSignal>): PlanRationale {
@@ -43,8 +47,18 @@ function rationaleOf(r: Ranked, gitSignals: Map<string, GitSignal>): PlanRationa
 export function buildPlan(input: PlanInput): PlanResult {
   const gitSignals = input.gitSignals ?? new Map<string, GitSignal>();
   const ranked = partitionInitiatives(input.state, gitSignals);
+
+  const presentKeys: string[] = [];
+  let anyUngrouped = false;
+  for (const r of ranked) {
+    const t = normalizeTrack(r.init.track, input.state.tracks);
+    if (t) presentKeys.push(t.key);
+    else anyUngrouped = true;
+  }
+
   return {
     plan: ranked.map((r, idx) => planItemOf(r, idx + 1)),
     rationale: ranked.map((r) => rationaleOf(r, gitSignals)),
+    trackOrder: presentTrackOrder(input.state, presentKeys, anyUngrouped),
   };
 }

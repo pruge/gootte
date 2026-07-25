@@ -21,13 +21,14 @@ export function normalizeTrack(raw: string | null | undefined, vocab: Map<string
   const compound = s.match(/^(.*?)\s*\/\s*[A-Z]\s*[—-]/);
   if (compound?.[1]) s = compound[1].trim();
 
-  // key 추출: 선두 대문자 1자(뒤가 공백/대시/콜론/끝) = key. 아니면 도메인 slug(첫 토큰).
-  const m = s.match(/^([A-Z])(?=$|[\s—:-])/);
+  // key 추출: 선두 대문자 1자(뒤가 공백/대시/콜론/슬래시/끝) = key. 아니면 도메인 slug(첫 토큰).
+  // `C/F`(공백없는 이중표기)도 선두 C 채택 — vocab 있으면 canonical 로 해소.
+  const m = s.match(/^([A-Z])(?=$|[\s—:/-])/);
   let key: string;
   let proseLabel: string;
   if (m?.[1]) {
     key = m[1];
-    proseLabel = s.slice(1).replace(/^\s*[—:-]\s*/, "").trim();
+    proseLabel = s.slice(1).replace(/^\s*[—:/-]\s*/, "").trim();
   } else {
     key = s.split(/\s+/)[0] ?? s;
     proseLabel = s;

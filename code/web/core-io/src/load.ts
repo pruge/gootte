@@ -8,6 +8,7 @@ import {
   parseLedger,
   parseIndex,
   parseAdr,
+  parseProfileTracks,
   buildState,
   type LedgerInfo,
   type AdrInfo,
@@ -91,6 +92,12 @@ export function loadProjectState(repoPath: string): LoadedProject {
     ? parseIndex(readFileSync(indexFile, "utf8"))
     : { order: [] as string[], initiatives: [], supersessions: [] as Supersession[] };
 
+  // 대분류 어휘 — 관리대상 profile `## Tracks` (INV-2 read-only). 없으면 빈 맵(프로즈 fallback).
+  const profileFile = join(repoPath, ".cling", "profile.md");
+  const tracks = existsSync(profileFile)
+    ? parseProfileTracks(readFileSync(profileFile, "utf8"))
+    : new Map<string, string>();
+
   const worktrees = scanWorktrees(repoPath);
   const input: StateInput = {
     ledgers,
@@ -101,6 +108,7 @@ export function loadProjectState(repoPath: string): LoadedProject {
     indexOrder: indexInfo.order,
     supersessions: indexInfo.supersessions,
     adrs,
+    tracks,
   };
   const state = buildState(input);
 
