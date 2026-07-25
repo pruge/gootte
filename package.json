@@ -13,6 +13,7 @@
     "dev:backend": "pnpm -C code/web/backend dev",
     "dev:frontend": "pnpm -C code/web/frontend dev",
     "dev": "pnpm -C code/web -r --parallel run dev",
+    "dev:stop": "bash scripts/dev-stop.sh",
     "e2e": "pnpm -C code/web/frontend e2e"
   }
 }
