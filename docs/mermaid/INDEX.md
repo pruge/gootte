@@ -54,6 +54,11 @@ updated: YYYY-MM-DD
   - M-0002 위 시각화 레이어(sources: M-0001·M-0002). buildKanban/buildGantt + lineage 재사용 → 신규 endpoint → 커스텀 SVG/CSS 뷰.
   - 소유 prose = docs/roadmap/project-manager/web-viz/spec.md
 
+<a id="M-0004"></a>
+- **M-0004** — [track-grouping 2d — ledger/profile track → 정규화 → 그룹 projection → 그룹 렌더](M-0004-track-grouping.md) · 🟢 living
+  - M-0003 위 대분류 축(sources: M-0003). external-writer seam(cling writer + gootte reader, KickoffEvent 동형) · normalizeTrack + profile ## Tracks 어휘 → 그룹 렌더.
+  - 소유 prose = docs/roadmap/project-manager/track-grouping/spec.md
+
 ## Supersede 체인
 
 > 체인당 한 줄: `M-000X ⚫→ M-000Y — <왜>`. (아직 없음)
@@ -62,4 +67,4 @@ updated: YYYY-MM-DD
 
 > kickoff/신규 시 여기서 다음 번호를 취득하고 즉시 예약(영구). 리넘버 금지.
 
-- **다음 = M-0004**
+- **다음 = M-0005**

@@ -55,6 +55,7 @@
 | **2a · web-dashboard** ✅ done | Hono API + React(목록→plan/lineage read-only) + theme 3-mode · localhost · Playwright e2e | CORE projections·CONTRACT | 1b |
 | **2b · web-realtime** 🔜 Now | WS + watcher(즉시) + .env 로그인 | CORE·CONTRACT | 2a |
 | **2c · web-viz** 🔜 Next | 칸반·Gantt(시간축)·supersede 시각그래프·worktree·test | CORE·CONTRACT | 2a |
+| **2d · track-grouping** 🔜 Next | 대분류(track) 그룹핑 — ledger/profile track → 정규화 → 보드 칩·타임라인/리스트 그룹 | `Track` seam(external-writer, KickoffEvent 동형)·CORE·CONTRACT | 2c |
 | **3 · remote-mobile** ⬜ Later | CF 터널 노출 + Android 뷰어(Kotlin codegen) | CONTRACT(codegen) | 2 |
 | **4 · notify** ⬜ Later ⓓ | worktree 검토/test → slack/push 어댑터 | `Notification`·`PlanItem` | 2 |
 | **5 · report-export** ⬜ Later ⓑ | 기간 요약 projection + export | `Report`·state | 2 |
