@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { GitSignal, TodoItem, Sprint, Supersession } from "@gootte/contract";
 import {
@@ -9,6 +9,7 @@ import {
   parseIndex,
   parseAdr,
   parseProfileTracks,
+  parseBlueprint,
   buildState,
   type LedgerInfo,
   type AdrInfo,
@@ -28,6 +29,13 @@ function dir(p: string): string[] {
     return readdirSync(p);
   } catch {
     return [];
+  }
+}
+function isDir(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
   }
 }
 function readMd(base: string): { slug: string; content: string }[] {
@@ -87,10 +95,36 @@ export function loadProjectState(repoPath: string): LoadedProject {
     }
   }
 
+  // blueprint fallback — ledger 없는 이니셔티브를 blueprint `## phases` 표에서 도출(dogfooding: gootte 자신).
+  // roadmap 최상위 + 각 하위(epic)의 blueprint.md 스캔.
+  const blueprintPhases = [roadmap, ...dir(roadmap).map((n) => join(roadmap, n)).filter(isDir)]
+    .map((d) => join(d, "blueprint.md"))
+    .filter((f) => existsSync(f))
+    .flatMap((f) => safe(() => parseBlueprint(readFileSync(f, "utf8"))) ?? []);
+
+  // ledger 우선 dedupe — 같은 slug 는 ledger 가 더 상세(blueprint 는 fallback).
+  const ledgerSlugs = new Set(ledgers.map((l) => l.initiative));
+  for (const p of blueprintPhases) {
+    if (ledgerSlugs.has(p.slug)) continue;
+    ledgers.push({
+      initiative: p.slug,
+      status: p.status,
+      track: null,
+      deps: [],
+      events: [],
+      supersedes: [],
+    });
+    ledgerSlugs.add(p.slug);
+  }
+
   const indexFile = join(roadmap, "INDEX.md");
   const indexInfo = existsSync(indexFile)
     ? parseIndex(readFileSync(indexFile, "utf8"))
     : { order: [] as string[], initiatives: [], supersessions: [] as Supersession[] };
+
+  // 순서 = INDEX 우선, 없으면 blueprint phase 순서(gootte 엔 INDEX.md 없음).
+  const indexOrder =
+    indexInfo.order.length > 0 ? indexInfo.order : blueprintPhases.map((p) => p.slug);
 
   // 대분류 어휘 — 관리대상 profile `## Tracks` (INV-2 read-only). 없으면 빈 맵(프로즈 fallback).
   const profileFile = join(repoPath, ".cling", "profile.md");
@@ -105,7 +139,7 @@ export function loadProjectState(repoPath: string): LoadedProject {
     sprints,
     worktrees,
     specPresent,
-    indexOrder: indexInfo.order,
+    indexOrder,
     supersessions: indexInfo.supersessions,
     adrs,
     tracks,

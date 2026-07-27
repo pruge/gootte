@@ -32,6 +32,7 @@ export const TodoItem = z.object({
   completedAt: z.string().optional(),
   resolvedBy: z.string().optional(), // dropped 시 — 무엇이 대체/흡수 (verbatim)
   source: z.string().optional(), // spec-decompose 등
+  related: z.array(z.string()).optional(), // 관련 spec/todo 경로 — initiative:null 일 때 이니셔티브 추론 소스
 });
 export type TodoItem = z.infer<typeof TodoItem>;
 

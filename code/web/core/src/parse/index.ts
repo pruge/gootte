@@ -4,5 +4,7 @@ export * from "./sprint";
 export * from "./adr";
 export * from "./mermaid";
 export * from "./ledger";
+export * from "./blueprint";
+export * from "./status";
 export * from "./index-doc";
 export * from "./track";

@@ -1,5 +1,5 @@
 ---
-status: in_sprint
+status: in_progress
 priority: normal
 sprint: blueprint-roadmap-reader
 initiative: null

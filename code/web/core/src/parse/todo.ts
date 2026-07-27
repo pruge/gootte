@@ -13,5 +13,6 @@ export function parseTodo(slug: string, content: string): TodoItem {
     completedAt: data.completedAt ? dstr(data.completedAt) : undefined,
     resolvedBy: typeof data.resolvedBy === "string" ? data.resolvedBy : undefined,
     source: typeof data.source === "string" ? data.source : undefined,
+    related: Array.isArray(data.related) ? data.related.map((r) => String(r)) : undefined,
   });
 }
