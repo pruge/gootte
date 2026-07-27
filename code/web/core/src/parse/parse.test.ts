@@ -73,3 +73,29 @@ describe("parse — 기록계약 하이브리드 (구조화 ## events)", () => {
     expect(l.supersedes).toContain("ADR-0005");
   });
 });
+
+describe("parse — ledger 트랙 프로즈 형식 관용 (볼드/전각콜론)", () => {
+  const ledger = (trackLine: string) =>
+    `# feat — ledger\n- **상태**: 🔜 active\n${trackLine}\n- **의존**: 없음\n`;
+
+  it("볼드 `- **트랙**: F` (트랙**:) 를 인식 — 원문 반환", () => {
+    // 회귀: jinwooauto gateway-bus-hang-fix 등 다수가 볼드 형식 → 옛 `/트랙:/` 이 놓쳐 미분류 오탐.
+    const l = parseLedger("feat", ledger("- **트랙**: F(실시간 / 게이트웨이 오케스트레이션)"));
+    expect(l.track).toBe("F(실시간 / 게이트웨이 오케스트레이션)");
+  });
+
+  it("비볼드 `- 트랙: G — legacy` 무회귀", () => {
+    const l = parseLedger("feat", ledger("- 트랙: G — legacy/living-spec"));
+    expect(l.track).toBe("G — legacy/living-spec");
+  });
+
+  it("전각 콜론 `트랙：C` 도 인식", () => {
+    const l = parseLedger("feat", ledger("- 트랙：C(제어 알고리즘)"));
+    expect(l.track).toBe("C(제어 알고리즘)");
+  });
+
+  it("frontmatter track 이 프로즈보다 우선", () => {
+    const l = parseLedger("feat", `---\ntrack: A\n---\n# feat\n- **트랙**: F(무시됨)\n`);
+    expect(l.track).toBe("A");
+  });
+});
