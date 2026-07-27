@@ -26,8 +26,8 @@ export function Sidebar({ selected, onSelect }: SidebarProps) {
         className="flex h-16 shrink-0 items-center gap-2 border-b border-border px-4"
         title="gootte — 프로젝트 관리"
       >
-        <IconTopologyStar3 size={20} className="shrink-0 text-accent" stroke={1.75} />
-        <span className="truncate text-base font-semibold tracking-tight">gootte</span>
+        <IconTopologyStar3 size={22} className="shrink-0 text-accent" stroke={1.75} />
+        <span className="truncate text-hero font-semibold tracking-tight">gootte</span>
       </div>
       <h2 className="mono px-4 pt-3 pb-2 text-sm font-semibold tracking-[0.15em] text-muted">
         PROJECTS

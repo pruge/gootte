@@ -31,7 +31,7 @@ export function MainPanel({ project, tab, view, onTab, onView }: MainPanelProps)
     <section className="flex flex-1 flex-col overflow-hidden">
       <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border px-6">
         {project ? (
-          <h1 className="min-w-0 truncate text-hero font-semibold tracking-tight">{project}</h1>
+          <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight">{project}</h1>
         ) : (
           <span />
         )}
