@@ -17,7 +17,7 @@ export function TrackSidebar({ groups, selected, onSelect, worktreeCounts }: Tra
   return (
     <nav
       aria-label="대분류"
-      className="w-52 shrink-0 space-y-1 overflow-y-auto border-r border-border pr-3"
+      className="w-60 shrink-0 space-y-1 overflow-y-auto border-r border-border pr-3"
     >
       {groups.map((g) => {
         const done = doneCount(g.items);
@@ -44,7 +44,7 @@ export function TrackSidebar({ groups, selected, onSelect, worktreeCounts }: Tra
                 {g.label}
               </span>
             </span>
-            <span className="mono text-xs tabular-nums text-muted">
+            <span className="mono whitespace-nowrap text-xs tabular-nums text-muted">
               진행 {wip} · 완료 {done}
               {wt > 0 && (
                 <>

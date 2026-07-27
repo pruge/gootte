@@ -29,7 +29,7 @@ export function MainPanel({ project, tab, view, onTab, onView }: MainPanelProps)
 
   return (
     <section className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border px-6">
+      <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border pl-4 pr-6">
         {project ? (
           <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight">{project}</h1>
         ) : (
@@ -49,7 +49,7 @@ export function MainPanel({ project, tab, view, onTab, onView }: MainPanelProps)
           <p className="text-sm">왼쪽에서 프로젝트를 선택하세요.</p>
         </div>
       ) : (
-        <div className="flex-1 overflow-hidden px-6 py-5">
+        <div className="flex-1 overflow-hidden pl-4 pr-6 py-5">
           {tab === "lineage" ? (
             <LineageView key={`${project}-lineage`} project={project} />
           ) : mode === "board" ? (
