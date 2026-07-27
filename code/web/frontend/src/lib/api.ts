@@ -6,6 +6,7 @@ import {
   LineageResponse,
   BoardResponse,
   TimelineResponse,
+  WorktreeResponse,
   DocResponse,
   ApiError,
   type Project,
@@ -41,8 +42,13 @@ export const fetchBoard = (slug: string) =>
 export const fetchTimeline = (slug: string) =>
   get(`/api/timeline/${encodeURIComponent(slug)}`, TimelineResponse);
 
-export const fetchDoc = (slug: string, kind: "todo" | "sprint", name: string) =>
-  get(
-    `/api/doc/${encodeURIComponent(slug)}/${kind}/${encodeURIComponent(name)}`,
+export const fetchWorktree = (slug: string) =>
+  get(`/api/worktree/${encodeURIComponent(slug)}`, WorktreeResponse);
+
+export const fetchDoc = (slug: string, kind: "todo" | "sprint", name: string, worktree?: string) => {
+  const q = worktree ? `?worktree=${encodeURIComponent(worktree)}` : "";
+  return get(
+    `/api/doc/${encodeURIComponent(slug)}/${kind}/${encodeURIComponent(name)}${q}`,
     DocResponse,
   );
+};

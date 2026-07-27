@@ -29,13 +29,19 @@ export function buildState(input: StateInput): ProjectState {
     return null;
   };
 
-  // worktree↔initiative: worktree.slug → sprint(slug/worktree 매칭) → todos → initiative
+  // worktree↔initiative: worktree.slug → sprint(slug/worktree 매칭) → todos → initiative(effInitiative — related 포함)
   const wtByInitiative = new Map<string, WorktreeInput>();
   for (const wt of input.worktrees) {
     const sprint = input.sprints.find((s) => s.slug === wt.slug || s.worktree === wt.slug);
     if (!sprint) continue;
-    const todo = input.todos.find((t) => sprint.todos.includes(t.slug) && t.initiative);
-    if (todo?.initiative) wtByInitiative.set(todo.initiative, wt);
+    for (const t of input.todos) {
+      if (!sprint.todos.includes(t.slug)) continue;
+      const init = effInitiative(t);
+      if (init) {
+        wtByInitiative.set(init, wt);
+        break;
+      }
+    }
   }
 
   const initiatives: InitiativeState[] = input.ledgers.map((l) => {

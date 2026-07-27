@@ -288,8 +288,9 @@ export const DocResponse = z.object({
   project: z.string(),
   kind: DocKind,
   name: z.string(),
-  path: z.string(), // repo 기준 상대 경로 (archive 반영)
+  path: z.string(), // repo 기준 상대 경로 (archive·worktree 반영)
   archived: z.boolean(),
+  worktree: z.string().optional(), // worktree 트리에서 읽었으면 그 slug (미커밋 라이브 버전)
   content: z.string(), // raw markdown (verbatim — INV-4)
 });
 export type DocResponse = z.infer<typeof DocResponse>;

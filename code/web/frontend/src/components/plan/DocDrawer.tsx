@@ -12,6 +12,9 @@ const Markdown = lazy(() =>
 interface DocDrawerProps {
   project: string;
   name: string;
+  kind?: "todo" | "sprint";
+  /** 지정 시 그 worktree 트리에서 읽음 (활성 sprint 의 미커밋 라이브 버전). */
+  worktree?: string;
   onClose: () => void;
 }
 
@@ -21,8 +24,8 @@ const MODES: ViewModeOption[] = [
 ];
 
 /** 할일(todo) 문서 뷰어 — 우측 슬라이드오버. 보기(md+mermaid 렌더) / raw(원문) 토글. ESC·백드롭·X 로 닫음. */
-export function DocDrawer({ project, name, onClose }: DocDrawerProps) {
-  const { data, isLoading, isError, error } = useDoc(project, "todo", name);
+export function DocDrawer({ project, name, kind = "todo", worktree, onClose }: DocDrawerProps) {
+  const { data, isLoading, isError, error } = useDoc(project, kind, name, worktree);
   const [mode, setMode] = useState<"view" | "raw">("view");
 
   useEffect(() => {
@@ -42,6 +45,9 @@ export function DocDrawer({ project, name, onClose }: DocDrawerProps) {
         <header className="flex items-center gap-2 border-b border-border px-4 py-3">
           <IconFileText size={16} className="shrink-0 text-accent" />
           <span className="mono min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
+          {data?.worktree && (
+            <span className="mono rounded bg-accent/15 px-1.5 py-0.5 text-xs text-accent">worktree</span>
+          )}
           {data?.archived && (
             <span className="mono rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted">archive</span>
           )}

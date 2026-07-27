@@ -36,6 +36,12 @@ const docParam = z.object({
     .min(1)
     .regex(/^[A-Za-z0-9._-]+$/), // slug 만 — 경로 traversal 차단
 });
+const docQuery = z.object({
+  worktree: z
+    .string()
+    .regex(/^[A-Za-z0-9._-]+$/)
+    .optional(), // worktree 트리에서 읽기 (활성 sprint 라이브 버전)
+});
 const NO_SIGNAL: GitSignal = { mainCommitsSince: 0, overlapFiles: [], conflictRisk: "low" };
 
 /** 활성 worktree → WorktreeStatus[] (구조적, ADR-0004 — 산문 파싱 X). */
@@ -95,15 +101,22 @@ export function createApp(options: AppOptions = {}): Hono {
     return c.json(RoadmapResponse.parse({ project: p.name, items, trackOrder }));
   });
 
-  // GET /api/doc/:slug/:kind/:name → DocResponse (관리대상 todo/sprint raw md, INV-2 read-only)
-  app.get("/api/doc/:slug/:kind/:name", zValidator("param", docParam), (c) => {
-    const { slug, kind, name } = c.req.valid("param");
-    const proj = resolveSlug(roots, slug);
-    if (!proj) return c.json(notFound(slug), 404);
-    const doc = readDoc(proj.path, kind, name);
-    if (!doc) return c.json({ error: `문서 없음: ${kind}/${name}` } satisfies ApiError, 404);
-    return c.json(DocResponse.parse({ project: basename(proj.path), ...doc }));
-  });
+  // GET /api/doc/:slug/:kind/:name[?worktree=] → DocResponse (관리대상 todo/sprint raw md, INV-2 read-only)
+  // worktree 지정 시 그 worktree 트리 우선(활성 sprint 의 미커밋 라이브 버전 — `## 사용자 테스트` 등).
+  app.get(
+    "/api/doc/:slug/:kind/:name",
+    zValidator("param", docParam),
+    zValidator("query", docQuery),
+    (c) => {
+      const { slug, kind, name } = c.req.valid("param");
+      const { worktree } = c.req.valid("query");
+      const proj = resolveSlug(roots, slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      const doc = readDoc(proj.path, kind, name, worktree);
+      if (!doc) return c.json({ error: `문서 없음: ${kind}/${name}` } satisfies ApiError, 404);
+      return c.json(DocResponse.parse({ project: basename(proj.path), ...doc }));
+    },
+  );
 
   // GET /api/lineage/:slug → LineageResponse (nodes + edges = CORE 해소, drops verbatim)
   app.get("/api/lineage/:slug", zValidator("param", slugParam), (c) => {
