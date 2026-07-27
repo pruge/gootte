@@ -8,7 +8,8 @@
   },
   "dependencies": {
     "@gootte/contract": "workspace:*",
-    "@gootte/core": "workspace:*"
+    "@gootte/core": "workspace:*",
+    "chokidar": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.9.0"

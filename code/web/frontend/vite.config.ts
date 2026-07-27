@@ -11,7 +11,7 @@ export default defineConfig({
   server: {
     port: 5304,
     proxy: {
-      "/api": { target: BACKEND, changeOrigin: true },
+      "/api": { target: BACKEND, changeOrigin: true, ws: true }, // ws:true = WS /api/live 업그레이드 프록시(2b)
     },
   },
   test: {

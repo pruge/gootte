@@ -295,6 +295,18 @@ export const DocResponse = z.object({
 });
 export type DocResponse = z.infer<typeof DocResponse>;
 
+// ── 실시간(2b) — WS 메시지 seam (backend watcher 생산 · frontend 소비, 단일 방향) ──────
+/**
+ * 파일 변경 push 신호 — INV-4(해석·요약 X, "바뀜"만). coarse 단위(ADR-0004):
+ * `project` = 그 프로젝트 문서/worktree 변경 → 그 프로젝트 쿼리 invalidate.
+ * `projects` = 프로젝트 추가/삭제 → projects 쿼리 invalidate(+서버 discover-cache bust).
+ */
+export const ChangeEvent = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("project"), project: z.string() }),
+  z.object({ kind: z.literal("projects") }),
+]);
+export type ChangeEvent = z.infer<typeof ChangeEvent>;
+
 /** 에러 응답 (slug 미해소 404 등). */
 export const ApiError = z.object({
   error: z.string(),
