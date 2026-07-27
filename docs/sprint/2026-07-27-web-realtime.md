@@ -43,6 +43,21 @@ related_sprints: []
 - 023 완료: verify green — useLiveSync(mock WS: 메시지→invalidate predicate·재연결→전체 invalidate) + vite ws 프록시.
 - 전체 회귀: dev — 관리대상 문서 편집 → 대시보드 **새로고침 없이** 자동 최신화. 프로젝트 추가/삭제 → 사이드바 목록 갱신. plan/lineage/board/timeline 무회귀.
 
+## 사용자 테스트
+> 자동 게이트(제가 머지 전 실행): `pnpm verify` — tsc 전 패키지 + vitest **134 passed**(watchProjects 2 · liveHub 2 · useLiveSync 4). 아래는 사용자 몫 가시 확인.
+
+🌐 dev 서버 (backend+frontend)
+```
+pnpm dev
+```
+
+✅ 테스트 (스크래치 프로젝트로 실증함 — 새로고침 없이 갱신 확인)
+- `:5304` → dev 실행 후 아무 프로젝트 선택 → 다른 창/에디터에서 **그 프로젝트의 문서를 편집·저장**(예: todo status pending→done) → 대시보드가 **새로고침 없이** 자동 갱신(예: 진척 0/1 → 1/1).
+- **worktree 생성/머지**(git worktree 변경) → 작업중 탭·plan 자동 반영.
+- 새 cling 프로젝트 생성(`.cling/profile.md`) 또는 삭제 → 사이드바 **프로젝트 목록** 자동 갱신.
+- backend 재시작·네트워크 끊김 후 자동 재연결(재연결 시 전체 재조회로 놓친 변경 흡수).
+- 기존 뷰(plan/lineage/board/timeline/worktree) 무회귀.
+
 ## 관련 todo / spec
 - [022-realtime-backend](../todo/022-realtime-backend.md) · [023-realtime-frontend](../todo/023-realtime-frontend.md)
 - [spec](../roadmap/project-manager/web-realtime/spec.md) · [M-0005](../mermaid/INDEX.md#M-0005)

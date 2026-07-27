@@ -154,8 +154,13 @@ export function createApp(options: AppOptions = {}): Hono {
     return c.json(WorktreeResponse.parse({ project: p.name, worktrees: worktreeStatuses(p) }));
   });
 
-  // 정적 frontend 서빙(Phase 5) — frontend(2a T2+) 빌드 전이라 no-op 가드.
-  app.get("*", (c) => c.text("gootte backend — frontend 미빌드 (web-dashboard 2a T2+)", 200));
-
   return app;
+}
+
+/**
+ * 캐치올 fallback — server.ts 가 `/api/live`(WS) 등록 *후* 마지막에 마운트(순서상 `*` 가 WS 라우트를 삼키지 않게).
+ * 정적 frontend 서빙(Phase 5)은 여기서 확장.
+ */
+export function mountFallback(app: Hono): void {
+  app.get("*", (c) => c.text("gootte backend — frontend 미빌드 (web-dashboard 2a T2+)", 200));
 }
