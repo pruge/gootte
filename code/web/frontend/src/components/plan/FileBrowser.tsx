@@ -2,6 +2,8 @@ import { useState } from "react";
 import {
   IconFolder,
   IconFileText,
+  IconSquareCheckFilled,
+  IconSquare,
   IconCornerLeftUp,
   IconChevronRight,
 } from "@tabler/icons-react";
@@ -102,22 +104,29 @@ export function FileBrowser({ project, initiative, onOpen }: FileBrowserProps) {
               </button>
             </li>
           ) : (
-            <li key={n.path}>
-              <button
-                type="button"
-                onClick={() => n.read && onOpen(n.read)}
-                title="문서 보기"
-                className="group flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-base transition-colors hover:bg-fg/[0.05]"
-              >
-                <IconFileText size={16} className="shrink-0 text-muted" />
-                <span className="mono truncate text-fg group-hover:text-accent">{n.name}</span>
-                {n.badge && (
-                  <span className="mono ml-auto shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-xs text-muted">
-                    {n.badge}
-                  </span>
-                )}
-              </button>
-            </li>
+            (() => {
+              // 가상 todo 노드(badge 有)는 체크박스로 완료/진행 즉시 구분(완료=☑+취소선, 진행=☐). 실제 문서=파일 아이콘.
+              const done = n.badge === "완료";
+              const isTodo = n.badge != null;
+              const Icon = isTodo ? (done ? IconSquareCheckFilled : IconSquare) : IconFileText;
+              return (
+                <li key={n.path}>
+                  <button
+                    type="button"
+                    onClick={() => n.read && onOpen(n.read)}
+                    title="문서 보기"
+                    className="group flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-base transition-colors hover:bg-fg/[0.05]"
+                  >
+                    <Icon size={16} className={`shrink-0 ${done ? "text-accent" : "text-muted"}`} />
+                    <span
+                      className={`mono truncate ${done ? "text-muted line-through group-hover:text-fg" : "text-fg group-hover:text-accent"}`}
+                    >
+                      {n.name}
+                    </span>
+                  </button>
+                </li>
+              );
+            })()
           ),
         )}
       </ul>
