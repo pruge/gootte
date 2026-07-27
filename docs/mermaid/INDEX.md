@@ -59,6 +59,11 @@ updated: YYYY-MM-DD
   - M-0003 위 대분류 축(sources: M-0003). external-writer seam(cling writer + gootte reader, KickoffEvent 동형) · normalizeTrack + profile ## Tracks 어휘 → 그룹 렌더.
   - 소유 prose = docs/roadmap/project-manager/track-grouping/spec.md
 
+<a id="M-0005"></a>
+- **M-0005** — [web-realtime 2b — 파일변경 → chokidar → WS broadcast → 클라 invalidate → refetch](M-0005-web-realtime-2b.md) · 🟢 living
+  - M-0002 위 실시간(sources: M-0001·M-0002). core-io watchProjects(chokidar) → backend WS `/api/live` broadcast → useLiveSync invalidate(프로젝트 단위 coarse) → 재조회. INV-3 웹 실현.
+  - 소유 prose = docs/roadmap/project-manager/web-realtime/spec.md
+
 ## Supersede 체인
 
 > 체인당 한 줄: `M-000X ⚫→ M-000Y — <왜>`. (아직 없음)
@@ -67,4 +72,4 @@ updated: YYYY-MM-DD
 
 > kickoff/신규 시 여기서 다음 번호를 취득하고 즉시 예약(영구). 리넘버 금지.
 
-- **다음 = M-0005**
+- **다음 = M-0006**
