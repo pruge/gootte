@@ -1,6 +1,5 @@
 ---
-status: in_progress
-sprint: web-viz-finish
+status: pending
 priority: normal
 initiative: null
 area: [web/frontend]
