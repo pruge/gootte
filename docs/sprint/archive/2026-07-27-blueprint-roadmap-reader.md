@@ -1,11 +1,12 @@
 ---
 created: 2026-07-27
-status: in_progress       # pending | in_progress | done
+status: done              # pending | in_progress | done
 priority: normal
 kind: single
 todos: [019-blueprint-roadmap-reader]
 worktree: blueprint-roadmap-reader
 startedAt: 2026-07-27
+endedAt: 2026-07-27
 related_sprints: []
 ---
 
