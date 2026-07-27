@@ -6,6 +6,7 @@ import {
   fetchLineage,
   fetchBoard,
   fetchTimeline,
+  fetchWorktree,
   fetchDoc,
 } from "./api";
 
@@ -25,7 +26,9 @@ export const qk = {
   lineage: (slug: string) => ["lineage", slug] as const,
   board: (slug: string) => ["board", slug] as const,
   timeline: (slug: string) => ["timeline", slug] as const,
-  doc: (slug: string, kind: string, name: string) => ["doc", slug, kind, name] as const,
+  worktree: (slug: string) => ["worktree", slug] as const,
+  doc: (slug: string, kind: string, name: string, worktree?: string) =>
+    ["doc", slug, kind, name, worktree ?? ""] as const,
 };
 
 export function useProjects() {
@@ -48,10 +51,23 @@ export function useRoadmap(slug: string | null) {
   });
 }
 
-export function useDoc(slug: string, kind: "todo" | "sprint", name: string | null) {
+export function useWorktree(slug: string | null) {
   return useQuery({
-    queryKey: qk.doc(slug, kind, name ?? ""),
-    queryFn: () => fetchDoc(slug, kind, name as string),
+    queryKey: qk.worktree(slug ?? ""),
+    queryFn: () => fetchWorktree(slug as string),
+    enabled: slug !== null,
+  });
+}
+
+export function useDoc(
+  slug: string,
+  kind: "todo" | "sprint",
+  name: string | null,
+  worktree?: string,
+) {
+  return useQuery({
+    queryKey: qk.doc(slug, kind, name ?? "", worktree),
+    queryFn: () => fetchDoc(slug, kind, name as string, worktree),
     enabled: name !== null,
   });
 }

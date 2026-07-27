@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 export type Tab = "plan" | "lineage";
+const TABS: readonly Tab[] = ["plan", "lineage"];
 export interface UrlState {
   project: string | null;
   tab: Tab;
@@ -10,9 +11,10 @@ export interface UrlState {
 
 function read(): UrlState {
   const sp = new URLSearchParams(window.location.search);
+  const rawTab = sp.get("tab");
   return {
     project: sp.get("p"),
-    tab: sp.get("tab") === "lineage" ? "lineage" : "plan",
+    tab: (TABS as readonly string[]).includes(rawTab ?? "") ? (rawTab as Tab) : "plan",
     view: sp.get("view"),
   };
 }
