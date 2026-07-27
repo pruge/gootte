@@ -66,16 +66,30 @@
 | `pnpm discover <root>` | 로컬 cling 프로젝트 발견 | claude-ok | 읽기 전용 |
 | `pnpm verify` | tsc + vitest | claude-ok | 전체 회귀 |
 | `pnpm test` | vitest | claude-ok | |
-| `pnpm dev:backend` | Hono API dev 서버 | user-runs | `tsx watch` · env `PORT`(기본 8787)·`GOOTTE_ROOTS`(기본 `~/Documents`) |
-| `pnpm dev:frontend` | Vite dev 서버 | user-runs | `:5173` · `/api` → backend 프록시(`VITE_BACKEND_URL` 기본 `:8787`) |
+| `pnpm dev:backend` | Hono API dev 서버 | user-runs | `tsx watch` · env `PORT`(기본 8804)·`GOOTTE_ROOTS`(기본 `~/Documents`) |
+| `pnpm dev:frontend` | Vite dev 서버 | user-runs | `:5304` · `/api` → backend 프록시(`VITE_BACKEND_URL` 기본 `:8804`) |
 | `pnpm dev` | backend+frontend 동시 | user-runs | `-r --parallel run dev` (둘 다 dev 스크립트 보유) |
-> 포트 배정(main 밴드 + worktree 격리 매니페스트) = dev 서버 2개 동시라 `/cling:check` 로 확정 권장.
+> 포트 = 글로벌 레지스트리 배정(main backend 8804 / frontend 5304). worktree 는 `/cling:worktree` 가 밴드 격리 주입. 점검 = `/cling:check`.
 > worktree node_modules = `pnpm -C code/web install`(1회, claude-ok) — 전용 스크립트 불요.
 
 ## Ports
-> backend dev 서버 존재(008) — 포트 = env `PORT`(기본 8787, config 파일 하드코딩 X). 서버 1개라 아직 충돌 없음.
-> **frontend(009) 합류로 2개가 되면** `/cling:check` 가 main 밴드(backend 8800–8899 / frontend 5300–5399) 배정 + port-site 매니페스트(`<!-- cling:port-sites -->`) 등록 → worktree 격리. 그 전엔 단일 PORT env 로 충분(보류).
-> worktree node_modules = 진입 후 `pnpm -C code/web install` 1회(claude-ok, 멱등) — 복사할 untracked dev secret 없음이라 전용 bootstrap 섹션 불요.
+> 글로벌 레지스트리 `~/.cling/ports`(엔진 `~/.cling/bin/port-alloc.sh`)가 배정·충돌 방지. 2-밴드.
+
+- **main 밴드 배정:** backend `8804` · frontend `5304` (레지스트리 active — `port-alloc alloc main <role> gootte`). 대역 = backend 8800–8899 / frontend 5300–5399.
+- **worktree 밴드:** `/cling:worktree` 가 진입 시 동적 alloc(8900–8999 / 5400–5499), `worktree-end` 가 역치환+release.
+- **port-site(재기록 대상):**
+  - `code/web/backend/src/server.ts` — `PORT ?? 8804` (backend dev 기본 포트)
+  - `code/web/frontend/vite.config.ts` — `server.port` (= 5304) + `VITE_BACKEND_URL ?? http://localhost:8804` (프록시 대상)
+- **machine-readable 매니페스트** (아래 — `port-inject` 엔진이 파싱해 *모든* port-site 를 빠짐없이 주입/역치환. 수동 sed 누락 방지). role = 그 파일에 박힌 포트의 밴드(backend 8800–8999 / frontend 5300–5499). 새 port-site 추가 시 위 목록 + 아래 블록 둘 다 갱신.
+
+<!-- cling:port-sites
+backend  code/web/backend/src/server.ts
+backend  code/web/frontend/vite.config.ts
+frontend code/web/frontend/vite.config.ts
+-->
+
+- worktree node_modules = 진입 후 `pnpm -C code/web install` 1회(claude-ok, 멱등) — 복사할 untracked dev secret 없음이라 전용 bootstrap 섹션 불요.
+- aging: `/cling:check` 가 last_seen 갱신 + `port-alloc gc`.
 
 ## Docs layout
 - roadmap: `docs/roadmap/`   # kickoff 산출물 (brief/spec/wireframe/adr/ledger)

@@ -1,8 +1,9 @@
 import { serve } from "@hono/node-server";
 import { createApp, defaultRoots } from "./app";
 
-/** 로컬 dev/prod 엔트리. PORT env(기본 8787) — main 밴드 배정은 /cling:ops(구현 후). */
-const port = Number(process.env.PORT ?? 8787);
+/** 로컬 dev/prod 엔트리. PORT env(기본 8804 = cling 글로벌 레지스트리 main 밴드 배정). */
+// worktree 는 /cling:worktree 가 매니페스트로 worktree 밴드 포트를 격리 주입 → main 과 무충돌.
+const port = Number(process.env.PORT ?? 8804);
 const roots = defaultRoots();
 const app = createApp({ roots });
 
