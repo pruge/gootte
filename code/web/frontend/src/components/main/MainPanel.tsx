@@ -1,4 +1,4 @@
-import { IconTelescope, IconTopologyStar3 } from "@tabler/icons-react";
+import { IconTelescope } from "@tabler/icons-react";
 import type { Tab } from "../../hooks/useUrlState";
 import { RoadmapView } from "../plan/RoadmapView";
 import { BoardView } from "../board/BoardView";
@@ -29,21 +29,12 @@ export function MainPanel({ project, tab, view, onTab, onView }: MainPanelProps)
 
   return (
     <section className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex shrink-0 items-center gap-2" title="gootte — 프로젝트 관리">
-            <IconTopologyStar3 size={20} className="text-accent" stroke={1.75} />
-            <span className="text-base font-semibold tracking-tight">gootte</span>
-          </span>
-          {project && (
-            <>
-              <span className="text-muted/40" aria-hidden>
-                /
-              </span>
-              <h1 className="truncate text-hero font-semibold tracking-tight">{project}</h1>
-            </>
-          )}
-        </div>
+      <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border px-6">
+        {project ? (
+          <h1 className="min-w-0 truncate text-hero font-semibold tracking-tight">{project}</h1>
+        ) : (
+          <span />
+        )}
         {project && (
           <div className="flex shrink-0 items-center gap-3">
             {tab === "plan" && <ViewMode options={PLAN_MODES} value={mode} onChange={onView} />}
