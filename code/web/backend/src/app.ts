@@ -6,16 +6,18 @@ import { z } from "zod";
 import {
   ProjectsResponse,
   PlanResponse,
+  RoadmapResponse,
   LineageResponse,
   BoardResponse,
   TimelineResponse,
   WorktreeResponse,
+  DocResponse,
   type ApiError,
   type WorktreeStatus,
   type GitSignal,
 } from "@gootte/contract";
-import { buildPlan, buildKanban, buildGantt } from "@gootte/core";
-import { loadProjectState, type LoadedProject } from "@gootte/core-io";
+import { buildPlan, buildRoadmap, buildKanban, buildGantt } from "@gootte/core";
+import { loadProjectState, readDoc, type LoadedProject } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
 /** env `GOOTTE_ROOTS`(콜론 구분) → discover 루트. 기본 `~/Documents`. */
@@ -26,6 +28,14 @@ export function defaultRoots(): string[] {
 }
 
 const slugParam = z.object({ slug: z.string().min(1) });
+const docParam = z.object({
+  slug: z.string().min(1),
+  kind: z.enum(["todo", "sprint"]),
+  name: z
+    .string()
+    .min(1)
+    .regex(/^[A-Za-z0-9._-]+$/), // slug 만 — 경로 traversal 차단
+});
 const NO_SIGNAL: GitSignal = { mainCommitsSince: 0, overlapFiles: [], conflictRisk: "low" };
 
 /** 활성 worktree → WorktreeStatus[] (구조적, ADR-0004 — 산문 파싱 X). */
@@ -75,6 +85,24 @@ export function createApp(options: AppOptions = {}): Hono {
     if (!p) return c.json(notFound(c.req.param("slug")), 404);
     const { plan, rationale, trackOrder } = buildPlan({ state: p.state, gitSignals: p.gitSignals });
     return c.json(PlanResponse.parse({ project: p.name, plan, rationale, trackOrder }));
+  });
+
+  // GET /api/roadmap/:slug → RoadmapResponse (완료 포함 roadmap + 할일 체크리스트, 018)
+  app.get("/api/roadmap/:slug", zValidator("param", slugParam), (c) => {
+    const p = load(c.req.valid("param").slug);
+    if (!p) return c.json(notFound(c.req.param("slug")), 404);
+    const { items, trackOrder } = buildRoadmap(p.state);
+    return c.json(RoadmapResponse.parse({ project: p.name, items, trackOrder }));
+  });
+
+  // GET /api/doc/:slug/:kind/:name → DocResponse (관리대상 todo/sprint raw md, INV-2 read-only)
+  app.get("/api/doc/:slug/:kind/:name", zValidator("param", docParam), (c) => {
+    const { slug, kind, name } = c.req.valid("param");
+    const proj = resolveSlug(roots, slug);
+    if (!proj) return c.json(notFound(slug), 404);
+    const doc = readDoc(proj.path, kind, name);
+    if (!doc) return c.json({ error: `문서 없음: ${kind}/${name}` } satisfies ApiError, 404);
+    return c.json(DocResponse.parse({ project: basename(proj.path), ...doc }));
   });
 
   // GET /api/lineage/:slug → LineageResponse (nodes + edges = CORE 해소, drops verbatim)
