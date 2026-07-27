@@ -1,10 +1,11 @@
 ---
 created: 2026-07-27
-status: pending           # pending | in_progress | done
+status: in_progress       # pending | in_progress | done
 priority: normal
 kind: single
 todos: [017-worktree-panel]
-worktree: null            # /cling:worktree 가 박음
+worktree: worktree-panel
+startedAt: 2026-07-27
 related_sprints: []
 ---
 
