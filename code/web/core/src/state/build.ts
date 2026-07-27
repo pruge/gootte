@@ -5,6 +5,12 @@ import { buildLineage } from "./lineage";
 
 const ACTIVE_TODO = new Set(["pending", "in_sprint", "in_progress"]);
 
+/**
+ * slug 날짜접두사 정규화 — cling 규약상 cross-ref(sprint.todos·todo `sprint:`)는 undated 이나
+ * 파일유래 slug 는 `YYYY-MM-DD-` 접두사를 가짐. 매칭 전 양쪽을 벗겨 identity↔reference 를 브리지.
+ */
+const undate = (slug: string): string => slug.replace(/^\d{4}-\d{2}-\d{2}-/, "");
+
 function maxPriority(todos: TodoItem[]): Priority {
   let best: Priority = "low";
   for (const t of todos) if (PRIORITY_RANK[t.priority] < PRIORITY_RANK[best]) best = t.priority;
@@ -34,8 +40,9 @@ export function buildState(input: StateInput): ProjectState {
   for (const wt of input.worktrees) {
     const sprint = input.sprints.find((s) => s.slug === wt.slug || s.worktree === wt.slug);
     if (!sprint) continue;
+    const sprintTodos = new Set(sprint.todos.map(undate));
     for (const t of input.todos) {
-      if (!sprint.todos.includes(t.slug)) continue;
+      if (!sprintTodos.has(undate(t.slug))) continue;
       const init = effInitiative(t);
       if (init) {
         wtByInitiative.set(init, wt);

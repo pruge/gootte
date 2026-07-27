@@ -53,6 +53,38 @@ describe("T3 buildState — worktree 매핑 + DAG", () => {
     expect(fsm?.worktree).toBeNull();
   });
 
+  it("worktree↔initiative 매핑 — sprint.todos(날짜없음) ↔ todo.slug(날짜접두사) 불일치 브리지", () => {
+    // 실세계 cling 규약: cross-ref(sprint.todos)는 undated, 파일유래 todo.slug 는 `YYYY-MM-DD-` 접두사.
+    const dated = buildState({
+      ledgers: [
+        { initiative: "studio-fsm", status: "active", track: null, deps: [], events: [], supersedes: [] },
+      ],
+      todos: [
+        {
+          slug: "2026-07-27-sfu-int-1-safety-contract",
+          status: "in_progress",
+          priority: "high",
+          initiative: "studio-fsm",
+          created: "2026-07-27",
+        },
+      ],
+      sprints: [
+        {
+          slug: "2026-07-27-sfu-int-safety-authoring",
+          status: "in_progress",
+          todos: ["sfu-int-1-safety-contract"], // ← 날짜 없음
+          worktree: "sfu-int-safety-authoring",
+        },
+      ],
+      worktrees: [{ slug: "sfu-int-safety-authoring", branch: "worktree-x", base: "abc" }],
+      specPresent: [],
+      indexOrder: ["studio-fsm"],
+    });
+    expect(dated.initiatives.find((i) => i.slug === "studio-fsm")?.worktree?.slug).toBe(
+      "sfu-int-safety-authoring",
+    );
+  });
+
   it("lineage DAG dep 엣지", () => {
     expect(state.lineage.edges).toContainEqual({
       from: "protocol-read",
