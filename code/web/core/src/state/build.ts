@@ -38,7 +38,12 @@ export function buildState(input: StateInput): ProjectState {
   // worktree↔initiative: worktree.slug → sprint(slug/worktree 매칭) → todos → initiative(effInitiative — related 포함)
   const wtByInitiative = new Map<string, WorktreeInput>();
   for (const wt of input.worktrees) {
-    const sprint = input.sprints.find((s) => s.slug === wt.slug || s.worktree === wt.slug);
+    // sprint.worktree 필드가 바인딩됐으면 그걸로, 아니면 slug 로 fallback.
+    // slug 매칭도 undate — sprint.slug 는 `YYYY-MM-DD-` 접두사, wt.slug(디렉토리명)는 undated →
+    // `worktree:` 미바인딩(pre-entry 커밋 누락) 이어도 slug 로 복구.
+    const sprint = input.sprints.find(
+      (s) => s.worktree === wt.slug || undate(s.slug) === undate(wt.slug),
+    );
     if (!sprint) continue;
     const sprintTodos = new Set(sprint.todos.map(undate));
     for (const t of input.todos) {

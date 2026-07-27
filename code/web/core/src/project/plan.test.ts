@@ -85,6 +85,39 @@ describe("T3 buildState — worktree 매핑 + DAG", () => {
     );
   });
 
+  it("worktree↔initiative 매핑 — sprint.worktree:null 이어도 dated slug fallback 으로 바인딩 (todo 030)", () => {
+    // 재발 시나리오: /cling:worktree 바인딩이 pre-entry 커밋에 안 실려 sprint.worktree=null.
+    // 활성 worktree(디렉토리명 undated)는 존재 → undate(sprint.slug)===undate(wt.slug) 로 복구해야 함.
+    const unbound = buildState({
+      ledgers: [
+        { initiative: "studio-fsm", status: "active", track: null, deps: [], events: [], supersedes: [] },
+      ],
+      todos: [
+        {
+          slug: "2026-07-27-doc-browser-seam",
+          status: "in_progress",
+          priority: "high",
+          initiative: "studio-fsm",
+          created: "2026-07-27",
+        },
+      ],
+      sprints: [
+        {
+          slug: "2026-07-27-doc-browser",
+          status: "pending",
+          todos: ["doc-browser-seam"],
+          worktree: null, // ← 미바인딩(pre-entry 커밋 누락)
+        },
+      ],
+      worktrees: [{ slug: "doc-browser", branch: "worktree-doc-browser", base: "abc" }],
+      specPresent: [],
+      indexOrder: ["studio-fsm"],
+    });
+    expect(unbound.initiatives.find((i) => i.slug === "studio-fsm")?.worktree?.slug).toBe(
+      "doc-browser",
+    );
+  });
+
   it("lineage DAG dep 엣지", () => {
     expect(state.lineage.edges).toContainEqual({
       from: "protocol-read",
