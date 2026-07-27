@@ -25,14 +25,16 @@ function sectionBody(content: string, heading: string): string | null {
 export function parseLedger(initiative: string, content: string): LedgerInfo {
   // frontmatter 있으면 분리(없으면 body===content — 레거시 무회귀).
   const { data, body } = frontmatter(content);
-  // 볼드 `- **상태**: ✅`(상태**:) · 전각 콜론(：) 관용 — jinwooauto 등 다수 원장이 볼드 표기(트랙 파싱과 동일 부류).
+  // body 프로즈 상태 줄(볼드 `**상태**:` · 전각 ： 관용) — 상태 fallback + 의존 추출(jinwooauto 는 `상태 … · 의존:` 동일 줄).
   const header = body.match(/^-\s*\**\s*상태\**\s*[:：]\s*(.+)$/m)?.[1] ?? "";
+  // 상태: frontmatter `status:`(카노니컬 — track 과 동형) 우선, 없으면 body 프로즈(레거시). emoji/word(+ done=shipped 별칭) 양쪽.
+  const statusText = str(data.status) ?? header;
   let status = "active";
   for (const [emoji, s] of Object.entries(STATUS_EMOJI)) {
-    if (header.includes(emoji)) status = s;
+    if (statusText.includes(emoji)) status = s;
   }
-  const word = header.match(/\b(active|shipped|planned|superseded)\b/)?.[1];
-  if (word) status = word;
+  const word = statusText.match(/\b(active|shipped|planned|superseded|done)\b/)?.[1];
+  if (word) status = word === "done" ? "shipped" : word;
 
   // 하이브리드: frontmatter `track:`(카노니컬) 우선, 없으면 프로즈 `트랙:`(레거시). 원문 반환(정규화는 projection).
   // 🔴 프로즈는 body 전체에서 탐색 — jinwooauto 등은 track 을 상태 줄이 아닌 별도 `- 트랙:` 줄에 둔다.

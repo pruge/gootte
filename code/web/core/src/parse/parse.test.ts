@@ -120,4 +120,19 @@ describe("parse — ledger 상태 형식 관용 (볼드/전각콜론)", () => {
   it("전각 콜론 `상태：✅` 도 인식", () => {
     expect(parseLedger("feat", ledger("- **상태**：✅ 완결")).status).toBe("shipped");
   });
+
+  it("frontmatter `status: ✅` (body 상태 줄 없음) → shipped", () => {
+    // 회귀: studio-deploy-instance-confirm 은 상태를 frontmatter 에 두고 body 엔 `## 상태` 헤딩만.
+    const l = parseLedger("feat", `---\nstatus: ✅\n---\n# feat\n## 상태\n완결 서술\n`);
+    expect(l.status).toBe("shipped");
+  });
+
+  it("frontmatter `status: done` (word 별칭) → shipped", () => {
+    expect(parseLedger("feat", `---\nstatus: done\n---\n# feat\n`).status).toBe("shipped");
+  });
+
+  it("frontmatter status 가 body 프로즈보다 우선(track 동형)", () => {
+    const l = parseLedger("feat", `---\nstatus: ✅\n---\n# feat\n- **상태**: 🔜 active(무시)\n`);
+    expect(l.status).toBe("shipped");
+  });
 });
