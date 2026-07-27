@@ -1,10 +1,11 @@
 ---
 created: 2026-07-27
-status: pending           # pending | in_progress | done
+status: in_progress       # pending | in_progress | done
 priority: normal
 kind: single
 todos: [018-plan-roadmap-checklist]
-worktree: null            # /cling:worktree 가 박음
+worktree: plan-roadmap-checklist
+startedAt: 2026-07-27
 related_sprints: []
 ---
 
@@ -41,6 +42,23 @@ related_sprints: []
 ## 완료 기준
 - 018 완료: `pnpm -C code/web verify`(tsc --noEmit + vitest run) green — buildRoadmap 테스트(완료 포함·done/pending 분리·trackOrder) + 체크리스트 렌더 + 클릭 펼침 토글 + app.test `/api/roadmap` 통과.
 - 전체 회귀: dev(jinwooauto) — plan 리스트에 완료 이니셔티브 표시 → 클릭 → 그 이니셔티브 할일 done☑/남은☐ 펼쳐짐. 기존 timeline/board 무회귀.
+
+## 사용자 테스트
+> 자동 게이트(제가 머지 전 실행): `pnpm verify` — tsc 전 패키지 + vitest **113 passed**(buildRoadmap 5 · app /api/roadmap · RoadmapView 6 포함). 아래는 사용자 몫 가시 확인.
+
+🌐 dev 서버 (backend+frontend)
+```
+pnpm dev
+```
+
+✅ 테스트 (sprint 전체 — jinwooauto 실데이터로 확인함)
+- `:5173` → 왼쪽 **jinwooauto** 선택 → **plan** 탭 → **리스트** 모드: 본문 좌측에 **대분류(track) 사이드바**(C 제어 알고리즘 · E · F …, 각 track 에 `진행 n · 완료 m` 카운트).
+- 대분류 클릭 → 우측 패널이 그 track 으로 전환. 우측 상단 **진행 / 완료 탭**으로 이니셔티브 구분(탭 본문은 넘치면 화면 높이 내에서 자체 스크롤).
+- 이니셔티브 클릭 → 할일 체크리스트 펼침: **한일 ☑(취소선) / 남은일 ☐** + 진척 배경 fill. 다시 클릭 → 접힘.
+- **할일 클릭 → 우측 문서 뷰어** 슬라이드오버(archive면 배지). ESC·백드롭·X 로 닫힘.
+- 뷰어 우측 상단 **보기 / raw 토글**: `보기` = 마크다운 렌더(제목·표·task-list) + **mermaid 다이어그램**, `raw` = 원문(프론트마터 포함). mermaid/markdown 라이브러리는 뷰 진입 시에만 lazy 로드(메인 번들 무영향).
+- 완료 탭에 shipped 이니셔티브(예: `mapping-platform-restore` 4/4) → 클릭하면 done 만 ☑.
+- 보드/타임라인 모드 무회귀(기존 그대로).
 
 ## 관련 todo / spec
 - [018-plan-roadmap-checklist](../todo/018-plan-roadmap-checklist.md) — 이 sprint 의 유일 todo (설계 확정본)

@@ -161,6 +161,27 @@ export const PlanRationale = z.object({
 });
 export type PlanRationale = z.infer<typeof PlanRationale>;
 
+// ── roadmap projection (plan 리스트 v2 — 018) ────────────
+/**
+ * roadmap 이니셔티브 1개 — 완료(shipped)/진행(active)/예정(planned) + 할일 체크리스트.
+ * done/pending = 그 이니셔티브 todos(archive된 done 포함)를 상태로 재구성(INV-1, ledger md 파싱 X).
+ */
+export const RoadmapItem = z.object({
+  initiative: z.string(),
+  track: Track.nullable().default(null), // 대분류 — 정규화 {key,label} (미분류=null)
+  status: InitiativeStatus, // active | shipped | planned (superseded 제외 — lineage 관심사)
+  done: z.array(z.string()).default([]), // 한일 — done todo slug (☑)
+  pending: z.array(z.string()).default([]), // 남은일 — 미완 todo slug (☐, dropped 제외)
+});
+export type RoadmapItem = z.infer<typeof RoadmapItem>;
+
+export const RoadmapResponse = z.object({
+  project: z.string(),
+  items: z.array(RoadmapItem),
+  trackOrder: z.array(z.string()).default([]), // 대분류 그룹 순서 — 미분류 = "__ungrouped__" last
+});
+export type RoadmapResponse = z.infer<typeof RoadmapResponse>;
+
 /** AUTO-GENERATED digest (AI floor). */
 export const Digest = z.object({
   generatedAt: z.string(),
@@ -259,6 +280,18 @@ export const WorktreeResponse = z.object({
   worktrees: z.array(WorktreeStatus),
 });
 export type WorktreeResponse = z.infer<typeof WorktreeResponse>;
+
+/** 관리대상 문서(todo/sprint) raw md — 드릴다운 뷰어(018 할일 클릭 → 문서). INV-2 read-only. */
+export const DocKind = z.enum(["todo", "sprint"]);
+export const DocResponse = z.object({
+  project: z.string(),
+  kind: DocKind,
+  name: z.string(),
+  path: z.string(), // repo 기준 상대 경로 (archive 반영)
+  archived: z.boolean(),
+  content: z.string(), // raw markdown (verbatim — INV-4)
+});
+export type DocResponse = z.infer<typeof DocResponse>;
 
 /** 에러 응답 (slug 미해소 404 등). */
 export const ApiError = z.object({

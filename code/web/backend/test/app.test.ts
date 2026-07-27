@@ -4,10 +4,12 @@ import { beforeEach, describe, expect, test } from "vitest";
 import {
   ProjectsResponse,
   PlanResponse,
+  RoadmapResponse,
   LineageResponse,
   BoardResponse,
   TimelineResponse,
   WorktreeResponse,
+  DocResponse,
   ApiError,
   type Project,
 } from "@gootte/contract";
@@ -52,6 +54,56 @@ describe("GET /api/plan/:slug", () => {
     expect(res.status).toBe(404);
     const body = ApiError.parse(await res.json());
     expect(body.error).toContain("does-not-exist");
+  });
+});
+
+describe("GET /api/roadmap/:slug", () => {
+  test("RoadmapResponse envelope 반환 (items·trackOrder)", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/roadmap/alpha");
+    expect(res.status).toBe(200);
+    const body = RoadmapResponse.parse(await res.json());
+    expect(body.project).toBe("alpha");
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(Array.isArray(body.trackOrder)).toBe(true);
+    // 각 항목 = done/pending 배열(할일 체크리스트 재구성)
+    for (const it of body.items) {
+      expect(Array.isArray(it.done)).toBe(true);
+      expect(Array.isArray(it.pending)).toBe(true);
+    }
+  });
+
+  test("미해소 slug → 404 ApiError", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/roadmap/does-not-exist");
+    expect(res.status).toBe(404);
+    expect(ApiError.parse(await res.json()).error).toContain("does-not-exist");
+  });
+});
+
+describe("GET /api/doc/:slug/:kind/:name", () => {
+  test("todo 문서 raw md 반환(DocResponse)", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/doc/alpha/todo/001-old-thing");
+    expect(res.status).toBe(200);
+    const body = DocResponse.parse(await res.json());
+    expect(body.project).toBe("alpha");
+    expect(body.kind).toBe("todo");
+    expect(body.name).toBe("001-old-thing");
+    expect(body.content.length).toBeGreaterThan(0); // verbatim md
+  });
+
+  test("없는 문서 → 404 ApiError", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/doc/alpha/todo/nope-nope");
+    expect(res.status).toBe(404);
+    expect(ApiError.parse(await res.json()).error).toContain("nope-nope");
+  });
+
+  test("경로 traversal 시도 → 400/404 (파일 유출 없음)", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/doc/alpha/todo/..%2F..%2F..%2Fprofile");
+    expect(res.status).not.toBe(200);
   });
 });
 

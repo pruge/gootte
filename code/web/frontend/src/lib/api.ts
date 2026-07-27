@@ -2,9 +2,11 @@ import { z, type ZodTypeAny } from "zod";
 import {
   ProjectsResponse,
   PlanResponse,
+  RoadmapResponse,
   LineageResponse,
   BoardResponse,
   TimelineResponse,
+  DocResponse,
   ApiError,
   type Project,
 } from "@gootte/contract";
@@ -27,6 +29,9 @@ export const fetchProjects = (): Promise<Project[]> =>
 export const fetchPlan = (slug: string) =>
   get(`/api/plan/${encodeURIComponent(slug)}`, PlanResponse);
 
+export const fetchRoadmap = (slug: string) =>
+  get(`/api/roadmap/${encodeURIComponent(slug)}`, RoadmapResponse);
+
 export const fetchLineage = (slug: string) =>
   get(`/api/lineage/${encodeURIComponent(slug)}`, LineageResponse);
 
@@ -35,3 +40,9 @@ export const fetchBoard = (slug: string) =>
 
 export const fetchTimeline = (slug: string) =>
   get(`/api/timeline/${encodeURIComponent(slug)}`, TimelineResponse);
+
+export const fetchDoc = (slug: string, kind: "todo" | "sprint", name: string) =>
+  get(
+    `/api/doc/${encodeURIComponent(slug)}/${kind}/${encodeURIComponent(name)}`,
+    DocResponse,
+  );

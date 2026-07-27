@@ -1,6 +1,6 @@
 import { IconTelescope } from "@tabler/icons-react";
 import type { Tab } from "../../hooks/useUrlState";
-import { PlanView } from "../plan/PlanView";
+import { RoadmapView } from "../plan/RoadmapView";
 import { BoardView } from "../board/BoardView";
 import { TimelineView } from "../timeline/TimelineView";
 import { LineageView } from "../lineage/LineageView";
@@ -53,8 +53,8 @@ export function MainPanel({ project, tab, view, onTab, onView }: MainPanelProps)
         ) : mode === "timeline" ? (
           <TimelineView key={`${project}-timeline`} project={project} />
         ) : (
-          <div className="h-full overflow-y-auto">
-            <PlanView key={`${project}-plan`} project={project} />
+          <div className="h-full overflow-hidden">
+            <RoadmapView key={`${project}-plan`} project={project} />
           </div>
         )}
       </div>
