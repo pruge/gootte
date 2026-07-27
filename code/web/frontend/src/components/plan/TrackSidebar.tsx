@@ -5,13 +5,15 @@ interface TrackSidebarProps {
   groups: TrackGrouped<RoadmapItem>[];
   selected: string;
   onSelect: (key: string) => void;
+  /** track key → 활성 worktree(작업중) 수 (worktreesByTrack 파생). 없으면 0. */
+  worktreeCounts: Record<string, number>;
 }
 
 const doneCount = (items: RoadmapItem[]): number =>
   items.filter((i) => i.status === "shipped").length;
 
-/** 본문 내 대분류(track) 사이드바 — 클릭 시 우측 패널이 그 track 의 진행/완료 탭을 보여줌. */
-export function TrackSidebar({ groups, selected, onSelect }: TrackSidebarProps) {
+/** 본문 내 대분류(track) 사이드바 — 클릭 시 우측 패널이 그 track 의 진행/완료/작업중 탭을 보여줌. */
+export function TrackSidebar({ groups, selected, onSelect, worktreeCounts }: TrackSidebarProps) {
   return (
     <nav
       aria-label="대분류"
@@ -20,6 +22,7 @@ export function TrackSidebar({ groups, selected, onSelect }: TrackSidebarProps) 
       {groups.map((g) => {
         const done = doneCount(g.items);
         const wip = g.items.length - done;
+        const wt = worktreeCounts[g.key] ?? 0;
         const on = g.key === selected;
         return (
           <button
@@ -43,6 +46,12 @@ export function TrackSidebar({ groups, selected, onSelect }: TrackSidebarProps) 
             </span>
             <span className="mono text-xs tabular-nums text-muted">
               진행 {wip} · 완료 {done}
+              {wt > 0 && (
+                <>
+                  {" · "}
+                  <span className="font-medium text-accent">작업중 {wt}</span>
+                </>
+              )}
             </span>
           </button>
         );

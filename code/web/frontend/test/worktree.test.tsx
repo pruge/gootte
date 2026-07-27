@@ -5,12 +5,11 @@ import type { RoadmapResponse, WorktreeResponse } from "@gootte/contract";
 import { RoadmapView } from "../src/components/plan/RoadmapView";
 import { qk } from "../src/lib/query";
 
+// worktree 들은 미분류(track 없음·미바인딩) — 미분류 그룹 하나에 모여 기본 선택됨.
 const ROADMAP: RoadmapResponse = {
   project: "alpha",
-  items: [
-    { initiative: "web-viz", track: { key: "B", label: "디바이스" }, status: "active", done: [], pending: ["x"] },
-  ],
-  trackOrder: ["B"],
+  items: [{ initiative: "web-viz", track: null, status: "active", done: [], pending: ["x"] }],
+  trackOrder: [],
 };
 
 const WT: WorktreeResponse = {

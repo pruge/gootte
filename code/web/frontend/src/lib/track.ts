@@ -1,4 +1,4 @@
-import type { Track } from "@gootte/contract";
+import type { RoadmapItem, Track, WorktreeStatus } from "@gootte/contract";
 
 /** 서버 trackOrder 의 미분류 그룹 sentinel(= core UNGROUPED). */
 export const UNGROUPED = "__ungrouped__";
@@ -35,4 +35,23 @@ export function groupByTrack<T>(
   const seen = new Set(trackOrder);
   for (const [k, g] of byKey) if (!seen.has(k)) ordered.push(g);
   return ordered;
+}
+
+/**
+ * 활성 worktree 를 소속 대분류(track)로 묶음 — worktree.initiative → RoadmapItem.track.key.
+ * initiative 미바인딩(null)·roadmap 에 없는 것은 UNGROUPED. 순수·결정적("작업중" 카운트/필터 공용).
+ */
+export function worktreesByTrack(
+  worktrees: WorktreeStatus[],
+  items: RoadmapItem[],
+): Map<string, WorktreeStatus[]> {
+  const trackKeyOf = new Map(items.map((i) => [i.initiative, i.track?.key ?? UNGROUPED]));
+  const out = new Map<string, WorktreeStatus[]>();
+  for (const w of worktrees) {
+    const key = (w.initiative ? trackKeyOf.get(w.initiative) : undefined) ?? UNGROUPED;
+    const arr = out.get(key);
+    if (arr) arr.push(w);
+    else out.set(key, [w]);
+  }
+  return out;
 }

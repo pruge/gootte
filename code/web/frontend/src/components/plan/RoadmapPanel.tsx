@@ -10,7 +10,7 @@ const isDone = (i: RoadmapItem): boolean => i.status === "shipped";
 
 interface RoadmapPanelProps {
   group: TrackGrouped<RoadmapItem>;
-  /** 현재 작업중(활성) worktree — 전역(track 무관). "작업중" 탭이 보여줌. */
+  /** 이 track 의 작업중(활성) worktree — "작업중" 탭이 보여줌(사이드바 카운트와 일치). */
   worktrees: WorktreeStatus[];
   onOpenDoc: (name: string) => void;
   onOpenSprint: (sprint: string, worktree: string) => void;

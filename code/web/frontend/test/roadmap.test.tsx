@@ -43,6 +43,29 @@ function renderRoadmap() {
   );
 }
 
+function renderRoadmapWithWorktrees() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  qc.setQueryData(qk.roadmap("alpha"), DATA);
+  qc.setQueryData(qk.worktree("alpha"), {
+    project: "alpha",
+    worktrees: [
+      {
+        slug: "wt-auth",
+        branch: "worktree-wt-auth",
+        base: "abc",
+        initiative: "auth-login", // track A
+        sprint: null,
+        signal: { mainCommitsSince: 0, overlapFiles: [], conflictRisk: "low" },
+      },
+    ],
+  });
+  return render(
+    <QueryClientProvider client={qc}>
+      <RoadmapView project="alpha" />
+    </QueryClientProvider>,
+  );
+}
+
 describe("RoadmapView (018 — 대분류 사이드바 + 진행/완료 탭)", () => {
   it("대분류 사이드바 + 기본 선택(첫 track A) 진행 탭", () => {
     renderRoadmap();
@@ -81,6 +104,27 @@ describe("RoadmapView (018 — 대분류 사이드바 + 진행/완료 탭)", () 
     expect(screen.getByText("진행 1 · 완료 1")).toBeInTheDocument();
     // track B: 진행 1(device-read) · 완료 0
     expect(screen.getByText("진행 1 · 완료 0")).toBeInTheDocument();
+  });
+
+  it("사이드바에 track별 작업중(활성 worktree) 카운트 — 해당 track 만", () => {
+    renderRoadmapWithWorktrees();
+    // worktree 가 auth-login(track A)에 바인딩 → track A 버튼에 '작업중 1', track B 엔 없음
+    const trackA = screen.getByRole("button", { name: /인증/ });
+    const trackB = screen.getByRole("button", { name: /디바이스/ });
+    expect(within(trackA).getByText("작업중 1")).toBeInTheDocument();
+    expect(within(trackB).queryByText(/작업중/)).not.toBeInTheDocument();
+  });
+
+  it("작업중 탭 → 선택 track 의 worktree 만", () => {
+    renderRoadmapWithWorktrees();
+    // 기본 = track A. 작업중 탭 클릭 → auth 카드 보임
+    fireEvent.click(screen.getByRole("tab", { name: /작업중/ }));
+    expect(screen.getByText("wt-auth")).toBeInTheDocument();
+    // track B 로 전환 → 그 track 작업중 없음
+    fireEvent.click(screen.getByRole("button", { name: /디바이스/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /작업중/ }));
+    expect(screen.queryByText("wt-auth")).not.toBeInTheDocument();
+    expect(screen.getByText(/worktree 가 없습니다/)).toBeInTheDocument();
   });
 
   it("할일 클릭 → 문서 뷰어(dialog) + 보기 모드 마크다운 렌더 + raw 토글", async () => {
