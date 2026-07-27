@@ -53,9 +53,9 @@
 | **1 · lineage-engine** ✅ done | E — 엔진/lineage | CORE(pure)+core-io+CONTRACT+CLI+digest+agent-skill · jinwooauto 검증 | 전체 CONTRACT **스캐폴드**(T1) | — |
 | **1b · lineage-supersede** ✅ done | E — 엔진/lineage | supersede/drop 채움 + `gootte lineage` + plan rationale (타임라인=2차) | LineageEdge/TodoItem **확장** | 1 |
 | **2a · web-dashboard** ✅ done | W — 웹 대시보드 | Hono API + React(목록→plan/lineage read-only) + theme 3-mode · localhost · Playwright e2e | CORE projections·CONTRACT | 1b |
-| **2b · web-realtime** 🔜 Now | W — 웹 대시보드 | WS + watcher(즉시) + .env 로그인 | CORE·CONTRACT | 2a |
+| **2b · web-realtime** ✅ done | W — 웹 대시보드 | WS + watcher(즉시) · 로그인은 3으로 이관(ADR-0001) | CORE·CONTRACT | 2a |
 | **2c · web-viz** 🔜 Next | W — 웹 대시보드 | 칸반·Gantt(시간축)·supersede 시각그래프·worktree·test | CORE·CONTRACT | 2a |
-| **2d · track-grouping** 🔜 Next | W — 웹 대시보드 | 대분류(track) 그룹핑 — ledger/profile track → 정규화 → 보드 칩·타임라인/리스트 그룹 | `Track` seam(external-writer, KickoffEvent 동형)·CORE·CONTRACT | 2c |
+| **2d · track-grouping** ✅ done | W — 웹 대시보드 | 대분류(track) 그룹핑 — ledger/profile track + blueprint track 열 → 정규화 → 보드 칩·타임라인/리스트/사이드바 그룹 | `Track` seam(external-writer, KickoffEvent 동형)·CORE·CONTRACT | 2c |
 | **3 · remote-mobile** ⬜ Later | R — 원격/모바일 | CF 터널 노출 + Android 뷰어(Kotlin codegen) | CONTRACT(codegen) | 2 |
 | **4 · notify** ⬜ Later ⓓ | X — 확장 | worktree 검토/test → slack/push 어댑터 | `Notification`·`PlanItem` | 2 |
 | **5 · report-export** ⬜ Later ⓑ | X — 확장 | 기간 요약 projection + export | `Report`·state | 2 |
