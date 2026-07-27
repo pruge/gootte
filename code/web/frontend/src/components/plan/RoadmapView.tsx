@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { RoadmapItem } from "@gootte/contract";
+import type { DocRef, RoadmapItem } from "@gootte/contract";
 import { useRoadmap, useWorktree } from "../../lib/query";
 import { groupByTrack, worktreesByTrack, UNGROUPED } from "../../lib/track";
 import { Loading, ErrorMsg, Empty } from "../common/states";
@@ -7,7 +7,7 @@ import { TrackSidebar } from "./TrackSidebar";
 import { RoadmapPanel } from "./RoadmapPanel";
 import { DocDrawer } from "./DocDrawer";
 
-type OpenDoc = { name: string; kind: "todo" | "sprint"; worktree?: string };
+type OpenDoc = { ref: DocRef; worktree?: string };
 
 /**
  * plan 리스트 v2 — 본문 내 대분류 사이드바 + 우측 진행/완료/작업중 탭 패널.
@@ -49,16 +49,16 @@ export function RoadmapView({ project }: { project: string }) {
       />
       <RoadmapPanel
         key={active.key}
+        project={project}
         group={active}
         worktrees={wtByTrack.get(active.key) ?? []}
-        onOpenDoc={(name) => setDoc({ name, kind: "todo" })}
-        onOpenSprint={(sprint, worktree) => setDoc({ name: sprint, kind: "sprint", worktree })}
+        onOpen={(ref) => setDoc({ ref })}
+        onOpenSprint={(sprint, worktree) => setDoc({ ref: { source: "sprint", name: sprint }, worktree })}
       />
       {doc && (
         <DocDrawer
           project={project}
-          name={doc.name}
-          kind={doc.kind}
+          docRef={doc.ref}
           worktree={doc.worktree}
           onClose={() => setDoc(null)}
         />

@@ -29,7 +29,7 @@ Date: 2026-07-27 / 관련: spec.md §Data Model / Contracts, §Task Breakdown
    으로 `todo/<slug>.md` 노드 생성(`read: {source:"todo", name}`, badge = pending→진행/done→완료). 정렬 = pending 먼저 → slug.
 
 `TreeNode.read` = `DocRef` 판별합집합: `{source:"roadmap", initiative, relPath}` | `{source:"todo"|"sprint", name}`
-→ 프론트가 소스별 read 엔드포인트 선택(roadmap = `/api/doc/:slug/roadmap/:initiative?path=...`, todo/sprint = 기존 `/api/doc/:slug/:kind/:name`).
+→ 프론트가 소스별 read 엔드포인트 선택(roadmap = `/api/roadmap-doc/:slug/:initiative?path=...`(generic doc 라우트 충돌 회피), todo/sprint = 기존 `/api/doc/:slug/:kind/:name`).
 **`DocKind` 에 `"roadmap"` 추가** + `DocResponse`(roadmap 시 `name`=relPath·`archived`=false)로 read 응답 통일 → 프론트 `useDoc`/`DocDrawer` 는 `kind`/`DocRef` source 분기로 확장(하드타입 `"todo"|"sprint"` 제거).
 
 ## Alternatives

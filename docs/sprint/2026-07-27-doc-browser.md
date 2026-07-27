@@ -39,3 +39,13 @@ related_sprints: []
 - 028: `pnpm verify`(tsc+vitest) green + contract drift-guard(codegen diff 0) · app.test(tree/roadmap read·traversal 404·무회귀).
 - 029: 프론트 vitest(기본 todo/·cd·breadcrumb·파일→drawer·roadmap open) + Playwright e2e(이니셔티브→브라우저→spec.md 열람).
 - 전체 회귀: 대시보드에서 이니셔티브 클릭 → 인라인 브라우저(기본 todo/) → 상위 cd → brief/spec/adr 열람(mermaid 인라인).
+
+## 사용자 테스트
+> 검증 완료: `pnpm verify` green(**160 tests** — 신규 seam 14[resolver·tree·realpath 가드·엔드포인트·라우팅] + 프론트 브라우저 플로우 3) + tsc + mermaid-refs. 실데이터 스모크(전용 :8899, GOOTTE_ROOTS=~/Documents): `/api/tree/gootte/roadmap-doc-browser` = adr/·brief·spec·wireframe + 가상 todo/(028·029 진행) 정확 반환 · spec.md read 정상 · `../../../../.cling/profile.md` traversal → **404**(INV-2).
+
+**대시보드에서 직접 테스트** (dev 서버는 이 worktree 밴드 포트로 격리 — backend 8906 / frontend 5407):
+- 프로젝트 선택(gootte 또는 jinwooauto) → plan 리스트 → **이니셔티브 클릭** → 인라인 **문서 브라우저** 펼침(기본 = 가상 `todo/` 폴더 = 할일 목록, badge 진행/완료).
+- `../` 또는 breadcrumc(이니셔티브명) 클릭 → 상위(루트)로 cd → **brief.md·spec.md·wireframe.md·adr/** 형제 문서 보임.
+- `adr/` 폴더 진입 → ADR 파일들 → 파일 클릭 → 우측 뷰어(보기/raw 토글, spec 열면 **mermaid 인라인 렌더**).
+- 가상 `todo/`의 할일 파일 클릭 → 그 todo 문서 뷰어(기존 018 동작 보존).
+- (선택) Playwright: alpha 픽스처는 이니셔티브가 없어 e2e 대상 아님 — 실데이터(위 수동 플로우)로 검토가 자연스러움.

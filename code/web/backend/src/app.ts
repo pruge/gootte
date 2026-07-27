@@ -12,12 +12,21 @@ import {
   TimelineResponse,
   WorktreeResponse,
   DocResponse,
+  TreeResponse,
   type ApiError,
   type WorktreeStatus,
   type GitSignal,
 } from "@gootte/contract";
 import { buildPlan, buildRoadmap, buildKanban, buildGantt } from "@gootte/core";
-import { loadProjectState, readDoc, scanWorktrees, type LoadedProject } from "@gootte/core-io";
+import {
+  loadProjectState,
+  readDoc,
+  readRoadmapDoc,
+  listInitiativeTree,
+  resolveInitiativeDir,
+  scanWorktrees,
+  type LoadedProject,
+} from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
 /** env `GOOTTE_ROOTS`(콜론 구분) → discover 루트. 기본 `~/Documents`. */
@@ -41,6 +50,20 @@ const docQuery = z.object({
     .string()
     .regex(/^[A-Za-z0-9._-]+$/)
     .optional(), // worktree 트리에서 읽기 (활성 sprint 라이브 버전)
+});
+// 문서 브라우저(2e) — initiative slug 만(traversal 차단). relPath 는 서브폴더 허용(charset 검증 + readRoadmapDoc realpath 가드).
+const treeParam = z.object({
+  slug: z.string().min(1),
+  initiative: z
+    .string()
+    .min(1)
+    .regex(/^[A-Za-z0-9._-]+$/),
+});
+const roadmapDocQuery = z.object({
+  path: z
+    .string()
+    .min(1)
+    .regex(/^[A-Za-z0-9._/-]+$/), // 서브경로 허용 — 실제 traversal 가드는 readRoadmapDoc realpath
 });
 const NO_SIGNAL: GitSignal = { mainCommitsSince: 0, overlapFiles: [], conflictRisk: "low" };
 
@@ -120,6 +143,37 @@ export function createApp(options: AppOptions = {}): Hono {
       if (!proj) return c.json(notFound(slug), 404);
       const doc = readDoc(proj.path, kind, name, worktree);
       if (!doc) return c.json({ error: `문서 없음: ${kind}/${name}` } satisfies ApiError, 404);
+      return c.json(DocResponse.parse({ project: basename(proj.path), ...doc }));
+    },
+  );
+
+  // GET /api/tree/:slug/:initiative → TreeResponse (이니셔티브 폴더 파일 + 가상 todo/, 문서 브라우저 2e). INV-2/4.
+  app.get("/api/tree/:slug/:initiative", zValidator("param", treeParam), (c) => {
+    const { slug, initiative } = c.req.valid("param");
+    const proj = resolveSlug(roots, slug);
+    if (!proj) return c.json(notFound(slug), 404);
+    const { state } = loadProjectState(proj.path);
+    const item = buildRoadmap(state).items.find((i) => i.initiative === initiative) ?? null;
+    // 폴더도 없고 roadmap item 도 없으면 미존재 이니셔티브.
+    if (!item && !resolveInitiativeDir(proj.path, initiative))
+      return c.json({ error: `이니셔티브 없음: ${initiative}` } satisfies ApiError, 404);
+    const nodes = listInitiativeTree(proj.path, initiative, item);
+    return c.json(TreeResponse.parse({ project: basename(proj.path), initiative, nodes }));
+  });
+
+  // GET /api/roadmap-doc/:slug/:initiative?path=<relPath> → DocResponse (roadmap 폴더 파일, realpath 가드). INV-2.
+  // 🔴 별도 경로(`/api/doc/...` 아님) — generic doc 라우트(:kind enum)와의 충돌 회피.
+  app.get(
+    "/api/roadmap-doc/:slug/:initiative",
+    zValidator("param", treeParam),
+    zValidator("query", roadmapDocQuery),
+    (c) => {
+      const { slug, initiative } = c.req.valid("param");
+      const { path } = c.req.valid("query");
+      const proj = resolveSlug(roots, slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      const doc = readRoadmapDoc(proj.path, initiative, path);
+      if (!doc) return c.json({ error: `문서 없음: ${initiative}/${path}` } satisfies ApiError, 404);
       return c.json(DocResponse.parse({ project: basename(proj.path), ...doc }));
     },
   );

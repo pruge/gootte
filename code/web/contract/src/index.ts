@@ -283,18 +283,44 @@ export const WorktreeResponse = z.object({
 });
 export type WorktreeResponse = z.infer<typeof WorktreeResponse>;
 
-/** 관리대상 문서(todo/sprint) raw md — 드릴다운 뷰어(018 할일 클릭 → 문서). INV-2 read-only. */
-export const DocKind = z.enum(["todo", "sprint"]);
+/** 관리대상 문서(todo/sprint/roadmap) raw md — 드릴다운 뷰어(018) + 문서 브라우저(2e). INV-2 read-only. */
+export const DocKind = z.enum(["todo", "sprint", "roadmap"]);
 export const DocResponse = z.object({
   project: z.string(),
   kind: DocKind,
-  name: z.string(),
+  name: z.string(), // todo/sprint = slug · roadmap = 이니셔티브 폴더 상대경로
   path: z.string(), // repo 기준 상대 경로 (archive·worktree 반영)
   archived: z.boolean(),
   worktree: z.string().optional(), // worktree 트리에서 읽었으면 그 slug (미커밋 라이브 버전)
   content: z.string(), // raw markdown (verbatim — INV-4)
 });
 export type DocResponse = z.infer<typeof DocResponse>;
+
+// ── 문서 브라우저(2e) — 이니셔티브 폴더 tree 나열 seam (backend 생산 · frontend cd 소비) ──────
+/** 파일 열기 참조 — source 판별. roadmap = 이니셔티브 폴더 상대경로, todo/sprint = 기존 basename read. */
+export const DocRef = z.discriminatedUnion("source", [
+  z.object({ source: z.literal("roadmap"), initiative: z.string(), relPath: z.string() }),
+  z.object({ source: z.literal("todo"), name: z.string() }),
+  z.object({ source: z.literal("sprint"), name: z.string() }),
+]);
+export type DocRef = z.infer<typeof DocRef>;
+
+/** tree 노드(flat) — path=브라우저 논리경로, dir 은 read 없음. INV-4 결정적. */
+export const TreeNode = z.object({
+  name: z.string(),
+  type: z.enum(["file", "dir"]),
+  path: z.string(), // spec.md · adr · adr/0001-x.md · todo · todo/016-graph-view.md
+  read: DocRef.optional(), // file 만
+  badge: z.string().nullable().default(null), // 가상 todo 노드 status(진행/완료)
+});
+export type TreeNode = z.infer<typeof TreeNode>;
+
+export const TreeResponse = z.object({
+  project: z.string(),
+  initiative: z.string(),
+  nodes: z.array(TreeNode), // flat — 프론트가 path prefix 로 cd
+});
+export type TreeResponse = z.infer<typeof TreeResponse>;
 
 // ── 실시간(2b) — WS 메시지 seam (backend watcher 생산 · frontend 소비, 단일 방향) ──────
 /**
