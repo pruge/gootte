@@ -1,12 +1,12 @@
 ---
 created: 2026-07-27
-status: in_progress          # pending | in_progress | done
+status: done                 # pending | in_progress | done
 priority: normal
 kind: bundle
 todos: [028-doc-browser-seam, 029-doc-browser-ui]
 worktree: doc-browser        # /cling:worktree 가 박음
 startedAt: 2026-07-27
-endedAt: null
+endedAt: 2026-07-27
 related_sprints: []
 ---
 

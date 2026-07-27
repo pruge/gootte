@@ -36,7 +36,7 @@ flowchart TD
 
   subgraph BE["@gootte/backend (Hono)"]
     E1["GET /api/tree/:slug/:initiative"]
-    E2["GET /api/doc/... (roadmap source 확장)"]
+    E2["GET /api/roadmap-doc/:slug/:init (별도 경로 · 라우팅 충돌 회피)"]
   end
 
   subgraph FE["@gootte/frontend (React)"]

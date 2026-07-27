@@ -1,6 +1,7 @@
 ---
 created: 2026-07-27
-status: in_progress
+status: done
+completedAt: 2026-07-27
 priority: normal
 sprint: doc-browser
 initiative: null          # gootte = blueprint 스타일(ledger 미선언) → related 로 연결
