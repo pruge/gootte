@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { GitSignal } from "@gootte/contract";
 import type { StateInput } from "../state/model";
-import { buildState } from "../state/build";
+import { buildState, sprintForWorktree } from "../state/build";
 import { buildPlan } from "./plan";
 
 /** 사용자 샘플 형태: ① active worktree · ② ready-connected · ③ 독립+설계완결 · ④ blocked */
@@ -125,6 +125,25 @@ describe("T3 buildState — worktree 매핑 + DAG", () => {
       kind: "dep",
     });
     expect(state.lineage.nodes).toHaveLength(4);
+  });
+});
+
+describe("sprintForWorktree — worktree↔sprint 매칭 단일 SoT (todo 030)", () => {
+  const sprints = [
+    { slug: "2026-07-27-doc-browser", worktree: null }, // 미바인딩(pre-entry 커밋 누락)
+    { slug: "2026-07-20-other", worktree: "other-wt" }, // 필드 바인딩
+  ];
+
+  it("① worktree 필드 바인딩 시 그걸로 매칭", () => {
+    expect(sprintForWorktree(sprints, "other-wt")?.slug).toBe("2026-07-20-other");
+  });
+
+  it("② worktree:null 이어도 dated slug fallback 으로 매칭 (build·worktreeStatuses 공유 경로)", () => {
+    expect(sprintForWorktree(sprints, "doc-browser")?.slug).toBe("2026-07-27-doc-browser");
+  });
+
+  it("③ 매칭 없으면 undefined", () => {
+    expect(sprintForWorktree(sprints, "nope")).toBeUndefined();
   });
 });
 

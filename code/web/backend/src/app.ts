@@ -16,7 +16,7 @@ import {
   type WorktreeStatus,
   type GitSignal,
 } from "@gootte/contract";
-import { buildPlan, buildRoadmap, buildKanban, buildGantt } from "@gootte/core";
+import { buildPlan, buildRoadmap, buildKanban, buildGantt, sprintForWorktree } from "@gootte/core";
 import { loadProjectState, readDoc, scanWorktrees, type LoadedProject } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
@@ -55,7 +55,8 @@ function worktreeStatuses(loaded: LoadedProject): WorktreeStatus[] {
       branch: i.worktree.branch,
       base: i.worktree.base,
       initiative: i.slug,
-      sprint: state.sprints.find((s) => s.worktree === i.worktree!.slug)?.slug ?? null,
+      // worktree↔sprint 매칭은 core 단일 SoT — sprint.worktree 미바인딩이어도 slug 로 복구(todo 030).
+      sprint: sprintForWorktree(state.sprints, i.worktree.slug)?.slug ?? null,
       signal: gitSignals.get(i.slug) ?? NO_SIGNAL,
     });
   }
