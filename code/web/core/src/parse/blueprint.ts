@@ -8,6 +8,8 @@ export interface BlueprintPhase {
   slug: string;
   /** 이모지 → 상태(shipped|active|planned|superseded). */
   status: string;
+  /** `track` 열이 있으면 그 raw 값(예: "E — 엔진/lineage"), 없으면 null. normalizeTrack 이 projection 에서 파싱. */
+  track: string | null;
   /** 표 등장 순서 (indexOrder 대체 — gootte 엔 INDEX.md 없음). */
   order: number;
 }
@@ -17,25 +19,51 @@ function phasesSection(content: string): string | null {
   return content.match(/(?:^|\n)##\s+phases[^\n]*\n([\s\S]*?)(?=\n##\s|$)/)?.[1] ?? null;
 }
 
-// 표 첫 셀: `**<num> · <slug>** <상태 라벨>` — 예 `**2a · web-dashboard** ✅ done`.
-// 이모지를 문자 클래스로 캡처하지 않는다(astral 이모지 🔜 는 서로게이트 반쪽만 잡힘) — 셀 나머지를 statusFromEmoji 에 위임.
-const PHASE_ROW = /\*\*\s*([A-Za-z0-9]+)\s*·\s*([a-z0-9][a-z0-9-]*)\s*\*\*([^|\n]*)/g;
+/** 표 행 `| a | b | c |` → 셀 배열(양끝 빈칸 제거·trim). */
+function cells(row: string): string[] {
+  return row
+    .split("|")
+    .slice(1, -1)
+    .map((c) => c.trim());
+}
+
+// phase 셀: `**<num> · <slug>** <상태 라벨>` — astral 이모지는 statusFromEmoji 에 위임(문자클래스 X).
+const PHASE_CELL = /^\*\*\s*([A-Za-z0-9]+)\s*·\s*([a-z0-9][a-z0-9-]*)\s*\*\*(.*)$/;
 
 /**
- * blueprint.md `## phases` 표 → phase 목록(+상태). 순수·결정적(INV-4).
- * ledger 없는 blueprint 스타일 프로젝트의 이니셔티브 SoT — 이모지 규약은 ledger 와 공유(status.ts).
+ * blueprint.md `## phases` 표 → phase 목록(+상태·track). 순수·결정적(INV-4).
+ * `track` 열이 있으면 그 값을 raw track 으로(정규화는 projection 의 normalizeTrack). 없으면 null(하위호환).
+ * 이모지 규약은 ledger 와 공유(status.ts).
  */
 export function parseBlueprint(content: string): BlueprintPhase[] {
   const body = phasesSection(content) ?? content;
+  const rows = body
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith("|"));
+
+  // 헤더에서 track 열 인덱스(있으면). "phase" 를 포함한 행 = 헤더.
+  let trackCol = -1;
+  for (const r of rows) {
+    const lc = cells(r).map((c) => c.toLowerCase());
+    if (lc.includes("phase")) {
+      trackCol = lc.indexOf("track");
+      break;
+    }
+  }
+
   const out: BlueprintPhase[] = [];
   let order = 0;
-  let m: RegExpExecArray | null;
-  PHASE_ROW.lastIndex = 0;
-  while ((m = PHASE_ROW.exec(body)) !== null) {
+  for (const r of rows) {
+    const cs = cells(r);
+    const m = PHASE_CELL.exec(cs[0] ?? "");
+    if (!m) continue; // 헤더·구분선·비-phase 행
+    const track = trackCol >= 0 ? (cs[trackCol] ?? "").trim() || null : null;
     out.push({
       num: m[1]!,
       slug: m[2]!,
-      status: statusFromEmoji(m[3]!) ?? "planned",
+      status: statusFromEmoji(m[3] ?? "") ?? "planned",
+      track,
       order: order++,
     });
   }

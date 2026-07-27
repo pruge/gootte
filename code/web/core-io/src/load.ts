@@ -109,7 +109,7 @@ export function loadProjectState(repoPath: string): LoadedProject {
     ledgers.push({
       initiative: p.slug,
       status: p.status,
-      track: null,
+      track: p.track, // blueprint `track` 열 (없으면 null) — 정규화는 projection
       deps: [],
       events: [],
       supersedes: [],

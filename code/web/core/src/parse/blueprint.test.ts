@@ -52,4 +52,30 @@ describe("019 parseBlueprint — ## phases 표 → 이니셔티브", () => {
     // '## phases' 없으면 전체를 훑되, 형식 안 맞으면 빈 배열
     expect(parseBlueprint(noPhases)).toEqual([]);
   });
+
+  it("track 열 없으면 track=null (하위호환)", () => {
+    expect(phases.every((p) => p.track === null)).toBe(true);
+  });
+});
+
+describe("parseBlueprint — track 열", () => {
+  const WITH_TRACK = `## phases
+| phase | track | capability | dep |
+|---|---|---|---|
+| **1 · engine** ✅ done | E — 엔진 | CORE | — |
+| **2a · web** 🔜 Now | W — 웹 대시보드 | Hono | 1 |
+| **3 · mobile** ⬜ Later | R — 원격 | 터널 | 2 |
+`;
+  const p = parseBlueprint(WITH_TRACK);
+
+  it("track 열 있으면 raw track 값 파싱(정규화는 projection)", () => {
+    expect(p.find((x) => x.slug === "engine")?.track).toBe("E — 엔진");
+    expect(p.find((x) => x.slug === "web")?.track).toBe("W — 웹 대시보드");
+    expect(p.find((x) => x.slug === "mobile")?.track).toBe("R — 원격");
+  });
+
+  it("track 열이 있어도 slug·status 정상", () => {
+    expect(p.map((x) => x.slug)).toEqual(["engine", "web", "mobile"]);
+    expect(p.find((x) => x.slug === "web")?.status).toBe("active");
+  });
 });

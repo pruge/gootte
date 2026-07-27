@@ -48,19 +48,19 @@
 - **INV-3** 뷰·digest 는 항상 현재 SoT 반영 — CLI=호출 시 재계산, 웹=watcher push.
 
 ## phases — 로드맵 (Now/Next/Later + 소비 seam + DAG)
-| phase | capability | 소비 seam | dep |
-|---|---|---|---|
-| **1 · lineage-engine** ✅ done | CORE(pure)+core-io+CONTRACT+CLI+digest+agent-skill · jinwooauto 검증 | 전체 CONTRACT **스캐폴드**(T1) | — |
-| **1b · lineage-supersede** ✅ done | supersede/drop 채움 + `gootte lineage` + plan rationale (타임라인=2차) | LineageEdge/TodoItem **확장** | 1 |
-| **2a · web-dashboard** ✅ done | Hono API + React(목록→plan/lineage read-only) + theme 3-mode · localhost · Playwright e2e | CORE projections·CONTRACT | 1b |
-| **2b · web-realtime** 🔜 Now | WS + watcher(즉시) + .env 로그인 | CORE·CONTRACT | 2a |
-| **2c · web-viz** 🔜 Next | 칸반·Gantt(시간축)·supersede 시각그래프·worktree·test | CORE·CONTRACT | 2a |
-| **2d · track-grouping** 🔜 Next | 대분류(track) 그룹핑 — ledger/profile track → 정규화 → 보드 칩·타임라인/리스트 그룹 | `Track` seam(external-writer, KickoffEvent 동형)·CORE·CONTRACT | 2c |
-| **3 · remote-mobile** ⬜ Later | CF 터널 노출 + Android 뷰어(Kotlin codegen) | CONTRACT(codegen) | 2 |
-| **4 · notify** ⬜ Later ⓓ | worktree 검토/test → slack/push 어댑터 | `Notification`·`PlanItem` | 2 |
-| **5 · report-export** ⬜ Later ⓑ | 기간 요약 projection + export | `Report`·state | 2 |
-| **6 · distributed** ⬜ Later ⓐⓒ | 멀티머신 aggregation + multi-user auth | `Project.source`·`User` | 3 |
-| **7 · learning-store** ⬜ Later P2 | cross-project 학습 집계·일반화·분류·bootstrap | CORE·CONTRACT | 1 |
+| phase | track | capability | 소비 seam | dep |
+|---|---|---|---|---|
+| **1 · lineage-engine** ✅ done | E — 엔진/lineage | CORE(pure)+core-io+CONTRACT+CLI+digest+agent-skill · jinwooauto 검증 | 전체 CONTRACT **스캐폴드**(T1) | — |
+| **1b · lineage-supersede** ✅ done | E — 엔진/lineage | supersede/drop 채움 + `gootte lineage` + plan rationale (타임라인=2차) | LineageEdge/TodoItem **확장** | 1 |
+| **2a · web-dashboard** ✅ done | W — 웹 대시보드 | Hono API + React(목록→plan/lineage read-only) + theme 3-mode · localhost · Playwright e2e | CORE projections·CONTRACT | 1b |
+| **2b · web-realtime** 🔜 Now | W — 웹 대시보드 | WS + watcher(즉시) + .env 로그인 | CORE·CONTRACT | 2a |
+| **2c · web-viz** 🔜 Next | W — 웹 대시보드 | 칸반·Gantt(시간축)·supersede 시각그래프·worktree·test | CORE·CONTRACT | 2a |
+| **2d · track-grouping** 🔜 Next | W — 웹 대시보드 | 대분류(track) 그룹핑 — ledger/profile track → 정규화 → 보드 칩·타임라인/리스트 그룹 | `Track` seam(external-writer, KickoffEvent 동형)·CORE·CONTRACT | 2c |
+| **3 · remote-mobile** ⬜ Later | R — 원격/모바일 | CF 터널 노출 + Android 뷰어(Kotlin codegen) | CONTRACT(codegen) | 2 |
+| **4 · notify** ⬜ Later ⓓ | X — 확장 | worktree 검토/test → slack/push 어댑터 | `Notification`·`PlanItem` | 2 |
+| **5 · report-export** ⬜ Later ⓑ | X — 확장 | 기간 요약 projection + export | `Report`·state | 2 |
+| **6 · distributed** ⬜ Later ⓐⓒ | X — 확장 | 멀티머신 aggregation + multi-user auth | `Project.source`·`User` | 3 |
+| **7 · learning-store** ⬜ Later P2 | X — 확장 | cross-project 학습 집계·일반화·분류·bootstrap | CORE·CONTRACT | 1 |
 
 - 첫 phase = **lineage-engine**(wedge — AI/터미널에 즉시 값 + 파싱/state/git 리스크 조기 제거).
 - 4·5·7 은 phase 1 state 만 있으면 독립 착수 가능(2 는 UI 설정용). ledger 미선언 → 로드맵은 본 blueprint 가 SoT.

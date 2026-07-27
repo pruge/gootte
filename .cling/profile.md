@@ -91,6 +91,16 @@ frontend code/web/frontend/vite.config.ts
 - worktree node_modules = 진입 후 `pnpm -C code/web install` 1회(claude-ok, 멱등) — 복사할 untracked dev secret 없음이라 전용 bootstrap 섹션 불요.
 - aging: `/cling:check` 가 last_seen 갱신 + `port-alloc gc`.
 
+## Tracks
+> 대분류(track) 통제 어휘 — blueprint `## phases` 표 `track` 열이 이 key 를 쓴다. label SoT(normalizeTrack 이 vocab 우선, 없으면 프로즈). 순서 = 대시보드 그룹 순서.
+
+| key | label |
+|---|---|
+| E | 엔진/lineage |
+| W | 웹 대시보드 |
+| R | 원격/모바일 |
+| X | 확장 |
+
 ## Docs layout
 - roadmap: `docs/roadmap/`   # kickoff 산출물 (brief/spec/wireframe/adr/ledger)
 - todo:    `docs/todo/`
