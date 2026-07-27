@@ -18,6 +18,17 @@ function maxPriority(todos: TodoItem[]): Priority {
 export function buildState(input: StateInput): ProjectState {
   const specSet = new Set(input.specPresent);
 
+  // 이니셔티브 slug 집합 — todo `initiative:` 가 null 일 때 `related` 경로로 연결 추론(blueprint 스타일).
+  // ledger/blueprint 어느 쪽에서 온 이니셔티브든 여기 포함(load 가 채움).
+  const initSlugs = new Set(input.ledgers.map((l) => l.initiative));
+  const effInitiative = (t: TodoItem): string | null => {
+    if (t.initiative) return t.initiative;
+    for (const r of t.related ?? []) {
+      for (const seg of r.split(/[/\\]/)) if (initSlugs.has(seg)) return seg;
+    }
+    return null;
+  };
+
   // worktree↔initiative: worktree.slug → sprint(slug/worktree 매칭) → todos → initiative
   const wtByInitiative = new Map<string, WorktreeInput>();
   for (const wt of input.worktrees) {
@@ -28,7 +39,7 @@ export function buildState(input: StateInput): ProjectState {
   }
 
   const initiatives: InitiativeState[] = input.ledgers.map((l) => {
-    const todos = input.todos.filter((t) => t.initiative === l.initiative);
+    const todos = input.todos.filter((t) => effInitiative(t) === l.initiative);
     return {
       slug: l.initiative,
       status: l.status,

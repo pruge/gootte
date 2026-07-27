@@ -1,6 +1,7 @@
 import yaml from "js-yaml";
 import { KickoffEvent } from "@gootte/contract";
 import { frontmatter, str } from "./frontmatter";
+import { STATUS_EMOJI } from "./status";
 
 /**
  * initiative `ledger.md` → 상태·트랙·의존 + KickoffEvent(하이브리드) + supersede.
@@ -14,13 +15,6 @@ export interface LedgerInfo {
   events: KickoffEvent[];
   supersedes: string[];
 }
-
-const STATUS_EMOJI: Record<string, string> = {
-  "🔜": "active",
-  "✅": "shipped",
-  "⬜": "planned",
-  "⚫": "superseded",
-};
 
 function sectionBody(content: string, heading: string): string | null {
   // m 플래그 없이 — 있으면 $ 가 매 줄 끝에 매칭돼 섹션이 첫 줄에서 잘린다.

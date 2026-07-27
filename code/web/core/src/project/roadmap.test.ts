@@ -79,3 +79,53 @@ describe("018 buildRoadmap — 완료 포함 roadmap + 할일 재구성", () => 
     expect(trackOrder).toEqual(["A", "B", UNGROUPED]);
   });
 });
+
+describe("019 related 기반 이니셔티브 연결 (initiative:null → related 경로)", () => {
+  const input: StateInput = {
+    ledgers: [
+      { initiative: "web-viz", status: "active", track: null, deps: [], events: [], supersedes: [] },
+    ],
+    todos: [
+      {
+        slug: "016-graph-view",
+        status: "pending",
+        priority: "normal",
+        initiative: null,
+        created: "2026-07-01",
+        related: ["../roadmap/project-manager/web-viz/spec.md", "013-viz-api"],
+      },
+      {
+        slug: "010-done-view",
+        status: "done",
+        priority: "normal",
+        initiative: null,
+        created: "2026-06-01",
+        related: ["../roadmap/project-manager/web-viz/spec.md"],
+      },
+      {
+        slug: "099-other",
+        status: "pending",
+        priority: "low",
+        initiative: null,
+        created: "2026-07-02",
+        related: ["../roadmap/project-manager/unknown-phase/spec.md"],
+      },
+    ],
+    sprints: [],
+    worktrees: [],
+    specPresent: [],
+    indexOrder: ["web-viz"],
+  };
+  const { items } = buildRoadmap(buildState(input));
+
+  it("related 의 phase slug 로 todo 연결 → done/pending 채워짐", () => {
+    const wv = items.find((i) => i.initiative === "web-viz");
+    expect(wv?.pending).toContain("016-graph-view");
+    expect(wv?.done).toContain("010-done-view");
+  });
+
+  it("미지 phase(slug 불일치) related 는 연결 안 됨", () => {
+    const wv = items.find((i) => i.initiative === "web-viz");
+    expect(wv?.pending).not.toContain("099-other");
+  });
+});
