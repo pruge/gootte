@@ -1,5 +1,6 @@
 ---
-status: in_progress
+status: done
+completedAt: 2026-07-27
 priority: normal
 sprint: web-realtime
 initiative: null
