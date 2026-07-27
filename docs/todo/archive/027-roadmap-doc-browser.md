@@ -1,6 +1,7 @@
 ---
 created: 2026-07-27
-status: pending           # pending | in_sprint | in_progress | done | dropped
+status: dropped           # pending | in_sprint | in_progress | done | dropped
+resolvedBy: roadmap-doc-browser/spec.md (kickoff → 028·029 로 분해)
 priority: normal          # critical | high | normal | low
 sprint: null
 initiative: null          # gootte = blueprint 스타일(ledger 미선언) → related 로 연결

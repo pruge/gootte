@@ -56,6 +56,7 @@
 | **2b · web-realtime** ✅ done | W — 웹 대시보드 | WS + watcher(즉시) · 로그인은 3으로 이관(ADR-0001) | CORE·CONTRACT | 2a |
 | **2c · web-viz** 🔜 Next | W — 웹 대시보드 | 칸반·Gantt(시간축)·supersede 시각그래프·worktree·test | CORE·CONTRACT | 2a |
 | **2d · track-grouping** ✅ done | W — 웹 대시보드 | 대분류(track) 그룹핑 — ledger/profile track + blueprint track 열 → 정규화 → 보드 칩·타임라인/리스트/사이드바 그룹 | `Track` seam(external-writer, KickoffEvent 동형)·CORE·CONTRACT | 2c |
+| **2e · roadmap-doc-browser** 🔜 Next | W — 웹 대시보드 | 이니셔티브 인라인 = Unix 디렉토리형 문서 브라우저(cd/ls) — 폴더 파일 + 가상 todo/ → tree 나열 → DocDrawer 재사용 | `TreeNode`·`DocRef`·`TreeResponse` seam·CORE·CONTRACT | 2a |
 | **3 · remote-mobile** ⬜ Later | R — 원격/모바일 | CF 터널 노출 + Android 뷰어(Kotlin codegen) | CONTRACT(codegen) | 2 |
 | **4 · notify** ⬜ Later ⓓ | X — 확장 | worktree 검토/test → slack/push 어댑터 | `Notification`·`PlanItem` | 2 |
 | **5 · report-export** ⬜ Later ⓑ | X — 확장 | 기간 요약 projection + export | `Report`·state | 2 |
