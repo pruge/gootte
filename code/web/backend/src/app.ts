@@ -17,7 +17,7 @@ import {
   type GitSignal,
 } from "@gootte/contract";
 import { buildPlan, buildRoadmap, buildKanban, buildGantt } from "@gootte/core";
-import { loadProjectState, readDoc, type LoadedProject } from "@gootte/core-io";
+import { loadProjectState, readDoc, scanWorktrees, type LoadedProject } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
 /** env `GOOTTE_ROOTS`(콜론 구분) → discover 루트. 기본 `~/Documents`. */
@@ -82,8 +82,14 @@ export function createApp(options: AppOptions = {}): Hono {
   };
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
 
-  // GET /api/projects → ProjectsResponse (discover, W2 캐시)
-  app.get("/api/projects", (c) => c.json(ProjectsResponse.parse({ projects: getProjects(roots) })));
+  // GET /api/projects → ProjectsResponse (discover, W2 캐시). worktrees 수는 요청마다 fresh(INV-3).
+  app.get("/api/projects", (c) => {
+    const projects = getProjects(roots).map((p) => ({
+      ...p,
+      worktrees: scanWorktrees(p.path).length,
+    }));
+    return c.json(ProjectsResponse.parse({ projects }));
+  });
 
   // GET /api/plan/:slug → PlanResponse
   app.get("/api/plan/:slug", zValidator("param", slugParam), (c) => {

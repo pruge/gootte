@@ -33,6 +33,9 @@ describe("GET /api/projects", () => {
     expect(res.status).toBe(200);
     const body = ProjectsResponse.parse(await res.json()); // zod 검증 = throw 시 실패
     expect(body.projects.map((p) => p.slug)).toContain("alpha");
+    // worktrees 수 enrich — worktree 없는 fixture = 0
+    const alpha = body.projects.find((p) => p.slug === "alpha");
+    expect(alpha?.worktrees).toBe(0);
   });
 });
 

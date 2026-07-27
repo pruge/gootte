@@ -47,10 +47,11 @@ describe("useLiveSync (023)", () => {
     vi.useRealTimers();
   });
 
-  it("project 메시지 → 그 프로젝트 쿼리만 invalidate", () => {
+  it("project 메시지 → 그 프로젝트 쿼리 + projects 목록(worktree 카운트) invalidate", () => {
     qc.setQueryData(["plan", "alpha"], 1);
     qc.setQueryData(["doc", "alpha", "todo", "x"], 1);
     qc.setQueryData(["plan", "beta"], 1);
+    qc.setQueryData(["projects"], []);
     render(<Harness qc={qc} />);
     const ws = MockWS.instances[0]!;
     ws.open(); // firstOpen — 전체 invalidate 안 함
@@ -59,6 +60,7 @@ describe("useLiveSync (023)", () => {
     ws.emit({ kind: "project", project: "alpha" });
     expect(invalidated(qc, ["plan", "alpha"])).toBe(true);
     expect(invalidated(qc, ["doc", "alpha", "todo", "x"])).toBe(true);
+    expect(invalidated(qc, ["projects"])).toBe(true); // 목록 worktree 카운트 갱신
     expect(invalidated(qc, ["plan", "beta"])).toBe(false); // 다른 프로젝트 무영향
   });
 

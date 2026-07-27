@@ -50,6 +50,8 @@ export function useLiveSync(qc: QueryClient): void {
           void qc.invalidateQueries({
             predicate: (q) => Array.isArray(q.queryKey) && q.queryKey.includes(ev.project),
           });
+          // projects 목록의 worktree 카운트도 이 프로젝트 변경(worktree 추가/삭제 포함)에 갱신.
+          void qc.invalidateQueries({ queryKey: ["projects"] });
         }
       };
 

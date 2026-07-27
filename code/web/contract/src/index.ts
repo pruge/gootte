@@ -19,6 +19,7 @@ export const Project = z.object({
   slug: z.string(),
   path: z.string(),
   source: z.string().optional(),
+  worktrees: z.number().int().nonnegative().optional(), // 활성 worktree(작업중) 수 — projects 목록 enrich(discover 는 미설정)
 });
 export type Project = z.infer<typeof Project>;
 

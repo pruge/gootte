@@ -39,4 +39,16 @@ describe("Sidebar", () => {
     const active = screen.getByRole("button", { current: true });
     expect(active).toHaveTextContent("tuya");
   });
+
+  it("작업중 worktree 수 배지 — >0 만 표시", () => {
+    renderSeeded(<Sidebar selected={null} onSelect={() => {}} />, [
+      { slug: "jinwooauto", path: "/home/ai/jinwooauto", worktrees: 2 },
+      { slug: "tuya", path: "/home/ai/tuya", worktrees: 0 },
+    ]);
+    // jinwooauto 행에 배지 2, tuya 행엔 배지 없음
+    const jw = screen.getByRole("button", { name: /jinwooauto/ });
+    expect(jw).toHaveTextContent("2");
+    const tuya = screen.getByRole("button", { name: /tuya/ });
+    expect(tuya.querySelector("span[title]")).toBeNull();
+  });
 });

@@ -58,7 +58,15 @@ export function Sidebar({ selected, onSelect }: SidebarProps) {
                 } focus-visible:outline-2 focus-visible:outline-accent`}
               >
                 <Icon size={16} stroke={1.75} className={active ? "text-accent" : ""} />
-                <span className="truncate">{p.slug}</span>
+                <span className="min-w-0 flex-1 truncate">{p.slug}</span>
+                {(p.worktrees ?? 0) > 0 && (
+                  <span
+                    title={`작업중 worktree ${p.worktrees}개`}
+                    className="mono shrink-0 rounded-full bg-accent/15 px-1.5 text-xs font-medium tabular-nums text-accent"
+                  >
+                    {p.worktrees}
+                  </span>
+                )}
               </button>
             </li>
           );
