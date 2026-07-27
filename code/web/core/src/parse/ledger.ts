@@ -25,7 +25,8 @@ function sectionBody(content: string, heading: string): string | null {
 export function parseLedger(initiative: string, content: string): LedgerInfo {
   // frontmatter 있으면 분리(없으면 body===content — 레거시 무회귀).
   const { data, body } = frontmatter(content);
-  const header = body.match(/^-\s*상태:\s*(.+)$/m)?.[1] ?? "";
+  // 볼드 `- **상태**: ✅`(상태**:) · 전각 콜론(：) 관용 — jinwooauto 등 다수 원장이 볼드 표기(트랙 파싱과 동일 부류).
+  const header = body.match(/^-\s*\**\s*상태\**\s*[:：]\s*(.+)$/m)?.[1] ?? "";
   let status = "active";
   for (const [emoji, s] of Object.entries(STATUS_EMOJI)) {
     if (header.includes(emoji)) status = s;

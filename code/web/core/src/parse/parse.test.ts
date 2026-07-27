@@ -99,3 +99,25 @@ describe("parse — ledger 트랙 프로즈 형식 관용 (볼드/전각콜론)"
     expect(l.track).toBe("A");
   });
 });
+
+describe("parse — ledger 상태 형식 관용 (볼드/전각콜론)", () => {
+  const ledger = (statusLine: string) => `# feat — ledger\n${statusLine}\n- **트랙**: C\n`;
+
+  it("볼드 `- **상태**: ✅ 완결` (상태**:) 를 shipped 로 인식", () => {
+    // 회귀: jinwooauto sensor-global-ctx-link 등 볼드 상태 → 옛 `/상태:/` 이 놓쳐 active 로 오탐(완료 안 넘어감).
+    const l = parseLedger("feat", ledger("- **상태**: ✅ 완결·archived 2026-07-25 (T1~T4 done)"));
+    expect(l.status).toBe("shipped");
+  });
+
+  it("볼드 `- **상태**: ⬜ deferred` → planned", () => {
+    expect(parseLedger("feat", ledger("- **상태**: ⬜ **deferred**")).status).toBe("planned");
+  });
+
+  it("비볼드 `- 상태: 🔜 active` 무회귀", () => {
+    expect(parseLedger("feat", ledger("- 상태: 🔜 active · 의존: 없음")).status).toBe("active");
+  });
+
+  it("전각 콜론 `상태：✅` 도 인식", () => {
+    expect(parseLedger("feat", ledger("- **상태**：✅ 완결")).status).toBe("shipped");
+  });
+});
