@@ -1,6 +1,7 @@
 ---
-status: pending
+status: in_sprint
 priority: normal
+sprint: web-realtime
 initiative: null
 area: [web/frontend]
 source: spec-decompose
