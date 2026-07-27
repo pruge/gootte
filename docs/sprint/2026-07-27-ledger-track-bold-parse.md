@@ -33,3 +33,8 @@ related_sprints: []
 ## 완료 기준
 - 026 완료: 볼드 `- **트랙**: F` 케이스 파싱 통과 + 비볼드 무회귀, `pnpm verify` green.
 - 전체 회귀: backend(jinwooauto) `/api/roadmap/jinwooauto` `__ungrouped__` = 9→3.
+
+## 사용자 테스트
+> 검증 완료: `pnpm verify` green(145 tests, 신규 트랙 프로즈 케이스 4 포함) + backend(전용 :8899, GOOTTE_ROOTS=~/Documents) `/api/roadmap/jinwooauto` 미분류 9→3 확인.
+- 대시보드에서 jinwooauto 선택 → plan 로드맵 사이드바에 미분류(대분류 없음) 이니셔티브 수가 9 → 3 으로 감소(gateway-bus-hang-fix·heartbeat-watchdog-margin·physical-registry·sensor-global-ctx-link 이 각자 F/F/B/C 그룹으로 이동).
+- 남는 미분류 3(commandset-universalize·coordinator-authored-fsm·studio-fsm-unify) + 새 `계약` 그룹 2 = 층 2(jinwooauto 원장 트랙 배정)에서 해소.

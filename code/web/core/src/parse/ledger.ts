@@ -35,7 +35,8 @@ export function parseLedger(initiative: string, content: string): LedgerInfo {
 
   // 하이브리드: frontmatter `track:`(카노니컬) 우선, 없으면 프로즈 `트랙:`(레거시). 원문 반환(정규화는 projection).
   // 🔴 프로즈는 body 전체에서 탐색 — jinwooauto 등은 track 을 상태 줄이 아닌 별도 `- 트랙:` 줄에 둔다.
-  const proseTrack = body.match(/트랙:\s*([^·\n]+)/)?.[1]?.trim();
+  // 볼드 `- **트랙**: F`(트랙**:) · 전각 콜론(：)도 허용 — emphasis 마커·콜론 변형을 관용. 값 정규화는 normalizeTrack.
+  const proseTrack = body.match(/트랙[*_]*\s*[:：]\s*([^·\n]+)/)?.[1]?.trim();
   const track = str(data.track) ?? proseTrack ?? null;
   const depsRaw = header.match(/의존:\s*([^·\n]+)/)?.[1]?.trim() ?? "";
   const deps =
