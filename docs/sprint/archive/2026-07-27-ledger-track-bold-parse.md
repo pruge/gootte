@@ -1,12 +1,12 @@
 ---
 created: 2026-07-27
-status: in_progress         # pending | in_progress | done
+status: done                # pending | in_progress | done
 priority: normal
 kind: single
 todos: [026-ledger-track-bold-parse]
 worktree: ledger-track-bold-parse
 startedAt: 2026-07-27
-endedAt: null
+endedAt: 2026-07-27
 related_sprints: []
 ---
 

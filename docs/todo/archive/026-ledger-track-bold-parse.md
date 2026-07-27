@@ -1,11 +1,12 @@
 ---
-status: in_progress
+status: done
 priority: normal
 initiative: null
 area: [web/core]
 source: user-report
 related: [../roadmap/project-manager/track-grouping/ledger.md, ../roadmap/project-manager/web-dashboard/spec.md]
 created: 2026-07-27
+completedAt: 2026-07-27
 ---
 
 # ledger 트랙 프로즈 파서 — 볼드 `**트랙**:` 형식 인식 (미분류 오탐 수리)
