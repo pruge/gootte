@@ -9,7 +9,20 @@ const ACTIVE_TODO = new Set(["pending", "in_sprint", "in_progress"]);
  * slug 날짜접두사 정규화 — cling 규약상 cross-ref(sprint.todos·todo `sprint:`)는 undated 이나
  * 파일유래 slug 는 `YYYY-MM-DD-` 접두사를 가짐. 매칭 전 양쪽을 벗겨 identity↔reference 를 브리지.
  */
-const undate = (slug: string): string => slug.replace(/^\d{4}-\d{2}-\d{2}-/, "");
+export const undate = (slug: string): string => slug.replace(/^\d{4}-\d{2}-\d{2}-/, "");
+
+/**
+ * 활성 worktree 에 해당하는 sprint 를 찾는다 — worktree↔sprint 매칭의 단일 SoT.
+ * ① sprint.worktree 필드가 바인딩됐으면 그걸로, ② 아니면 slug 로 fallback(양쪽 undate).
+ * `worktree:` 미바인딩(pre-entry 커밋 누락)이어도 slug 로 복구 → build/worktreeStatuses 가 공유
+ * (한쪽만 고쳐 재발한 todo 030 의 재발 방지 = 매칭 로직 1곳).
+ */
+export function sprintForWorktree<S extends { slug: string; worktree: string | null }>(
+  sprints: readonly S[],
+  wtSlug: string,
+): S | undefined {
+  return sprints.find((s) => s.worktree === wtSlug || undate(s.slug) === undate(wtSlug));
+}
 
 function maxPriority(todos: TodoItem[]): Priority {
   let best: Priority = "low";
@@ -38,7 +51,7 @@ export function buildState(input: StateInput): ProjectState {
   // worktree↔initiative: worktree.slug → sprint(slug/worktree 매칭) → todos → initiative(effInitiative — related 포함)
   const wtByInitiative = new Map<string, WorktreeInput>();
   for (const wt of input.worktrees) {
-    const sprint = input.sprints.find((s) => s.slug === wt.slug || s.worktree === wt.slug);
+    const sprint = sprintForWorktree(input.sprints, wt.slug);
     if (!sprint) continue;
     const sprintTodos = new Set(sprint.todos.map(undate));
     for (const t of input.todos) {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { GitSignal } from "@gootte/contract";
 import type { StateInput } from "../state/model";
-import { buildState } from "../state/build";
+import { buildState, sprintForWorktree } from "../state/build";
 import { buildPlan } from "./plan";
 
 /** 사용자 샘플 형태: ① active worktree · ② ready-connected · ③ 독립+설계완결 · ④ blocked */
@@ -85,6 +85,39 @@ describe("T3 buildState — worktree 매핑 + DAG", () => {
     );
   });
 
+  it("worktree↔initiative 매핑 — sprint.worktree:null 이어도 dated slug fallback 으로 바인딩 (todo 030)", () => {
+    // 재발 시나리오: /cling:worktree 바인딩이 pre-entry 커밋에 안 실려 sprint.worktree=null.
+    // 활성 worktree(디렉토리명 undated)는 존재 → undate(sprint.slug)===undate(wt.slug) 로 복구해야 함.
+    const unbound = buildState({
+      ledgers: [
+        { initiative: "studio-fsm", status: "active", track: null, deps: [], events: [], supersedes: [] },
+      ],
+      todos: [
+        {
+          slug: "2026-07-27-doc-browser-seam",
+          status: "in_progress",
+          priority: "high",
+          initiative: "studio-fsm",
+          created: "2026-07-27",
+        },
+      ],
+      sprints: [
+        {
+          slug: "2026-07-27-doc-browser",
+          status: "pending",
+          todos: ["doc-browser-seam"],
+          worktree: null, // ← 미바인딩(pre-entry 커밋 누락)
+        },
+      ],
+      worktrees: [{ slug: "doc-browser", branch: "worktree-doc-browser", base: "abc" }],
+      specPresent: [],
+      indexOrder: ["studio-fsm"],
+    });
+    expect(unbound.initiatives.find((i) => i.slug === "studio-fsm")?.worktree?.slug).toBe(
+      "doc-browser",
+    );
+  });
+
   it("lineage DAG dep 엣지", () => {
     expect(state.lineage.edges).toContainEqual({
       from: "protocol-read",
@@ -92,6 +125,25 @@ describe("T3 buildState — worktree 매핑 + DAG", () => {
       kind: "dep",
     });
     expect(state.lineage.nodes).toHaveLength(4);
+  });
+});
+
+describe("sprintForWorktree — worktree↔sprint 매칭 단일 SoT (todo 030)", () => {
+  const sprints = [
+    { slug: "2026-07-27-doc-browser", worktree: null }, // 미바인딩(pre-entry 커밋 누락)
+    { slug: "2026-07-20-other", worktree: "other-wt" }, // 필드 바인딩
+  ];
+
+  it("① worktree 필드 바인딩 시 그걸로 매칭", () => {
+    expect(sprintForWorktree(sprints, "other-wt")?.slug).toBe("2026-07-20-other");
+  });
+
+  it("② worktree:null 이어도 dated slug fallback 으로 매칭 (build·worktreeStatuses 공유 경로)", () => {
+    expect(sprintForWorktree(sprints, "doc-browser")?.slug).toBe("2026-07-27-doc-browser");
+  });
+
+  it("③ 매칭 없으면 undefined", () => {
+    expect(sprintForWorktree(sprints, "nope")).toBeUndefined();
   });
 });
 
