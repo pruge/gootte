@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { RoadmapItem, WorktreeStatus } from "@gootte/contract";
+import type { DocRef, RoadmapItem, WorktreeStatus } from "@gootte/contract";
 import type { TrackGrouped } from "../../lib/track";
 import { RoadmapItemRow } from "./RoadmapItemRow";
 import { WorktreeCard } from "../worktree/WorktreeCard";
@@ -9,10 +9,11 @@ type TabKey = "wip" | "done" | "wt";
 const isDone = (i: RoadmapItem): boolean => i.status === "shipped";
 
 interface RoadmapPanelProps {
+  project: string;
   group: TrackGrouped<RoadmapItem>;
   /** 이 track 의 작업중(활성) worktree — "작업중" 탭이 보여줌(사이드바 카운트와 일치). */
   worktrees: WorktreeStatus[];
-  onOpenDoc: (name: string) => void;
+  onOpen: (ref: DocRef) => void;
   onOpenSprint: (sprint: string, worktree: string) => void;
 }
 
@@ -21,7 +22,13 @@ interface RoadmapPanelProps {
  * 진행·완료 = 그 track 이니셔티브(+할일 체크리스트). 작업중 = 활성 worktree 카드(→ sprint 문서).
  * 탭 본문은 flex-1 + overflow-y-auto → 최대 높이 = 화면 높이(넘치면 자체 스크롤).
  */
-export function RoadmapPanel({ group, worktrees, onOpenDoc, onOpenSprint }: RoadmapPanelProps) {
+export function RoadmapPanel({
+  project,
+  group,
+  worktrees,
+  onOpen,
+  onOpenSprint,
+}: RoadmapPanelProps) {
   const done = group.items.filter(isDone);
   const wip = group.items.filter((i) => !isDone(i));
   const [tab, setTab] = useState<TabKey>(wip.length === 0 && done.length > 0 ? "done" : "wip");
@@ -74,7 +81,7 @@ export function RoadmapPanel({ group, worktrees, onOpenDoc, onOpenSprint }: Road
         ) : (
           <ol className="max-w-3xl space-y-2.5 pr-1">
             {items.map((item) => (
-              <RoadmapItemRow key={item.initiative} item={item} onOpenDoc={onOpenDoc} />
+              <RoadmapItemRow key={item.initiative} project={project} item={item} onOpen={onOpen} />
             ))}
           </ol>
         )}

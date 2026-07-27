@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { IconX, IconFileText } from "@tabler/icons-react";
-import { useDoc } from "../../lib/query";
+import type { DocRef } from "@gootte/contract";
+import { useDocRef } from "../../lib/query";
 import { Loading, ErrorMsg } from "../common/states";
 import { ViewMode, type ViewModeOption } from "../main/ViewMode";
 
@@ -11,9 +12,8 @@ const Markdown = lazy(() =>
 
 interface DocDrawerProps {
   project: string;
-  name: string;
-  kind?: "todo" | "sprint";
-  /** 지정 시 그 worktree 트리에서 읽음 (활성 sprint 의 미커밋 라이브 버전). */
+  docRef: DocRef;
+  /** todo/sprint 소스일 때 그 worktree 트리에서 읽음 (활성 sprint 의 미커밋 라이브 버전). */
   worktree?: string;
   onClose: () => void;
 }
@@ -23,10 +23,13 @@ const MODES: ViewModeOption[] = [
   { id: "raw", label: "raw" },
 ];
 
-/** 할일(todo) 문서 뷰어 — 우측 슬라이드오버. 보기(md+mermaid 렌더) / raw(원문) 토글. ESC·백드롭·X 로 닫음. */
-export function DocDrawer({ project, name, kind = "todo", worktree, onClose }: DocDrawerProps) {
-  const { data, isLoading, isError, error } = useDoc(project, kind, name, worktree);
+const refTitle = (ref: DocRef): string => (ref.source === "roadmap" ? ref.relPath : ref.name);
+
+/** 문서 뷰어 — 우측 슬라이드오버. DocRef(roadmap/todo/sprint) 소스 분기 read. 보기/raw 토글. ESC·백드롭·X 닫음. */
+export function DocDrawer({ project, docRef, worktree, onClose }: DocDrawerProps) {
+  const { data, isLoading, isError, error } = useDocRef(project, docRef, worktree);
   const [mode, setMode] = useState<"view" | "raw">("view");
+  const name = refTitle(docRef);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();

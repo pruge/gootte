@@ -12,7 +12,7 @@ docs/roadmap/<epic>/<init>/ ─┐  buildRoadmap ──▶  resolveInitiativeDir
   brief·spec·adr/…            │  (RoadmapItem       (roadmap depth≤2 스캔·결정적)     ├▶ TreeNode/DocRef                        │ 파일 클릭
 docs/todo/*.md (related) ─────┘   done/pending) ─▶  listInitiativeTree ─────────────┤  TreeResponse                            │
                                    (가상 todo/ 재사용)  (실파일+adr/+가상todo/)        │                                        ▼
-                                                    readDoc(roadmap 소스, realpath 가드) ──────────▶ /api/doc(roadmap) ──────▶ DocDrawer(재사용)
+                                                    readDoc(roadmap 소스, realpath 가드) ──────────▶ /api/roadmap-doc ──────▶ DocDrawer(재사용)
 ```
 - **initiative→폴더 해소**(ADR-0004 §0): `resolveInitiativeDir` 가 유일 소유자 — epic 은 wire 에 안 실음(엔드포인트·DocRef 는 slug 만).
 - **read-path 결정적**(INV-4): fs 열거 + 결정적 정렬 + 경로해소. LLM 0. cd 네비는 프론트가 받은 tree 안에서.
@@ -60,7 +60,7 @@ TreeResponse = { project: string; initiative: string; nodes: TreeNode[] };  // f
 // DocResponse 는 kind:DocKind(이제 roadmap 포함), roadmap 시 name=relPath·archived=false·worktree 없음.
 ```
 - **initiative→폴더 해소**: core-io `resolveInitiativeDir(repoPath, initiative): string|null` — `docs/roadmap/` **depth ≤2** 스캔, basename===initiative + `spec.md|brief.md` 보유 폴더의 roadmap 상대경로. 결정적(정렬·첫 매치). epic 은 wire 에 안 실음.
-- **read 확장**: `/api/doc/:slug/roadmap/:initiative?path=<relPath>` (roadmap 소스). 기존 `/api/doc/:slug/:kind/:name`(todo/sprint) 유지.
+- **read 확장**: `/api/roadmap-doc/:slug/:initiative?path=<relPath>` (roadmap 소스 — generic doc 라우트 충돌 회피 별도 경로). 기존 `/api/doc/:slug/:kind/:name`(todo/sprint) 유지.
 - **traversal 가드**(readDoc roadmap, source 분기): `dir=resolveInitiativeDir` → `resolve(dir, relPath)` 의 **realpath 가 `dir` 로 startsWith** 여야 함(`..`·절대·`.`선행 차단). todo/sprint 는 기존 `basename` 가드 유지(한 함수에 두 모델 혼재 X, source 로 분기).
 - **가상 `todo/`**: `buildRoadmap` 의 그 initiative `RoadmapItem.done[]`/`pending[]`(archive done 포함) 재사용 → `todo/<slug>.md` 노드. `effInitiative` 재구현 금지.
 
@@ -98,7 +98,7 @@ brief §재사용 map 참조. 신규 = tree 나열(core-io) · read 일반화(co
 
 ### T3 — BACKEND 엔드포인트  *(dep: T2)*
 - Files: `code/web/backend/src/app.ts`.
-- 로직: `GET /api/tree/:slug/:initiative` = `buildRoadmap`(재사용)→그 item→`listInitiativeTree` → TreeResponse. `GET /api/doc/:slug/roadmap/:initiative?path=` = `readDoc(roadmap)` → DocResponse.
+- 로직: `GET /api/tree/:slug/:initiative` = `buildRoadmap`(재사용)→그 item→`listInitiativeTree` → TreeResponse. `GET /api/roadmap-doc/:slug/:initiative?path=` = `readDoc(roadmap)` → DocResponse.
 - acceptance: app.test — tree 노드 반환(실파일+adr/+가상todo/) · roadmap content 반환 · **traversal 404** · 미존재 이니셔티브 404 · 기존 todo/sprint doc 무회귀.
 
 ### T4 — FRONTEND FileBrowser + 통합  *(dep: T3)*

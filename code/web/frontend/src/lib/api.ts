@@ -8,6 +8,7 @@ import {
   TimelineResponse,
   WorktreeResponse,
   DocResponse,
+  TreeResponse,
   ApiError,
   type Project,
 } from "@gootte/contract";
@@ -52,3 +53,17 @@ export const fetchDoc = (slug: string, kind: "todo" | "sprint", name: string, wo
     DocResponse,
   );
 };
+
+/** 문서 브라우저(2e) — 이니셔티브 폴더 tree. */
+export const fetchTree = (slug: string, initiative: string) =>
+  get(
+    `/api/tree/${encodeURIComponent(slug)}/${encodeURIComponent(initiative)}`,
+    TreeResponse,
+  );
+
+/** roadmap 폴더 파일 read(별도 경로 — generic doc 라우트와 충돌 회피). path 는 폴더 상대경로. */
+export const fetchRoadmapDoc = (slug: string, initiative: string, path: string) =>
+  get(
+    `/api/roadmap-doc/${encodeURIComponent(slug)}/${encodeURIComponent(initiative)}?path=${encodeURIComponent(path)}`,
+    DocResponse,
+  );

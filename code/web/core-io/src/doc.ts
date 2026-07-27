@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { basename, join, resolve, sep } from "node:path";
+import { resolveInitiativeDir } from "./tree";
 
-export type DocKind = "todo" | "sprint";
+export type DocKind = "todo" | "sprint" | "roadmap";
 
 export interface LoadedDoc {
   kind: DocKind;
@@ -54,4 +55,42 @@ export function readDoc(
     }
   }
   return null;
+}
+
+/**
+ * 이니셔티브 폴더 기준 상대경로(`spec.md`·`adr/0001-x.md`)를 read — 문서 브라우저(2e) roadmap 소스.
+ * 🔴 traversal 가드(source 분기 — todo/sprint basename 과 별개 모델): `resolve(dir, relPath)` 가 폴더 루트
+ * 안이어야 하고(=`..`·절대경로·`.`선행 차단), realpath 도 루트 안이어야 함(심볼릭 링크 이탈 차단). md 만. INV-2.
+ */
+export function readRoadmapDoc(
+  repoPath: string,
+  initiative: string,
+  relPath: string,
+): LoadedDoc | null {
+  const folderRel = resolveInitiativeDir(repoPath, initiative);
+  if (!folderRel) return null;
+  const dirResolved = resolve(repoPath, folderRel);
+  const target = resolve(dirResolved, relPath);
+  // 정규화 후 폴더 밖(절대·`..`·`.`선행) 차단
+  if (target !== dirResolved && !target.startsWith(dirResolved + sep)) return null;
+  if (!target.endsWith(".md") || !existsSync(target)) return null;
+  // realpath — 심볼릭 링크로 루트 밖 이탈 차단
+  let real: string;
+  let realDir: string;
+  try {
+    real = realpathSync(target);
+    realDir = realpathSync(dirResolved);
+  } catch {
+    return null;
+  }
+  if (real !== realDir && !real.startsWith(realDir + sep)) return null;
+
+  const rel = relPath.replace(/^[/\\]+/, "");
+  return {
+    kind: "roadmap",
+    name: rel,
+    path: join(folderRel, rel),
+    archived: false,
+    content: readFileSync(real, "utf8"),
+  };
 }

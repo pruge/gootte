@@ -10,6 +10,7 @@ import {
   TimelineResponse,
   WorktreeResponse,
   DocResponse,
+  TreeResponse,
   ApiError,
   type Project,
 } from "@gootte/contract";
@@ -193,5 +194,55 @@ describe("slug 충돌 (W1)", () => {
     expect(solo.project?.path).toBe("/x/solo");
 
     expect(pickBySlug(projects, "none").project).toBeNull();
+  });
+});
+
+// 문서 브라우저(2e) — fixture alpha 에 docbrowser-fix 이니셔티브 폴더(state 무영향).
+describe("GET /api/tree/:slug/:initiative", () => {
+  test("TreeResponse — 실제 파일 + adr/ + 가상 todo/", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/tree/alpha/docbrowser-fix");
+    expect(res.status).toBe(200);
+    const body = TreeResponse.parse(await res.json());
+    const paths = body.nodes.map((n) => n.path);
+    expect(paths).toContain("spec.md");
+    expect(paths).toContain("adr");
+    expect(paths).toContain("adr/0001-x.md");
+    expect(paths).toContain("todo"); // 가상 폴더 항상
+    const spec = body.nodes.find((n) => n.path === "spec.md");
+    expect(spec?.read).toEqual({ source: "roadmap", initiative: "docbrowser-fix", relPath: "spec.md" });
+  });
+
+  test("미존재 이니셔티브 = 404", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/tree/alpha/nonexistent-xyz");
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /api/doc/:slug/roadmap/:initiative (roadmap 소스)", () => {
+  test("roadmap 파일 content 반환 (라우팅 = generic doc 아님)", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/roadmap-doc/alpha/docbrowser-fix?path=spec.md");
+    expect(res.status).toBe(200); // 400 이면 generic /:kind/:name 이 가로챈 것
+    const body = DocResponse.parse(await res.json());
+    expect(body.kind).toBe("roadmap");
+    expect(body.content).toBe("# spec\n");
+    // 서브폴더
+    const adr = await (await app.request("/api/roadmap-doc/alpha/docbrowser-fix?path=adr/0001-x.md")).json();
+    expect(DocResponse.parse(adr).content).toBe("# ADR-0001\n");
+  });
+
+  test("🔴 traversal (`..`) = 404 (폴더 밖 read 차단)", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/roadmap-doc/alpha/docbrowser-fix?path=../../../../INDEX.md");
+    expect(res.status).toBe(404);
+  });
+
+  test("기존 todo/sprint doc 무회귀", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/doc/alpha/todo/001-x");
+    // alpha todo fixture 유무와 무관하게 라우팅은 generic 으로 (200 또는 404, 400 아님)
+    expect([200, 404]).toContain(res.status);
   });
 });

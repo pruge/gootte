@@ -1,4 +1,5 @@
 import { QueryClient, useQuery } from "@tanstack/react-query";
+import type { DocRef } from "@gootte/contract";
 import {
   fetchProjects,
   fetchPlan,
@@ -8,6 +9,8 @@ import {
   fetchTimeline,
   fetchWorktree,
   fetchDoc,
+  fetchTree,
+  fetchRoadmapDoc,
 } from "./api";
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
@@ -29,7 +32,16 @@ export const qk = {
   worktree: (slug: string) => ["worktree", slug] as const,
   doc: (slug: string, kind: string, name: string, worktree?: string) =>
     ["doc", slug, kind, name, worktree ?? ""] as const,
+  tree: (slug: string, initiative: string) => ["tree", slug, initiative] as const,
 };
+
+/** DocRef → 안정 캐시키(source 별). */
+function docRefKey(slug: string, ref: DocRef | null, worktree?: string) {
+  if (!ref) return ["doc", slug, "none"] as const;
+  return ref.source === "roadmap"
+    ? (["doc", slug, "roadmap", ref.initiative, ref.relPath] as const)
+    : (["doc", slug, ref.source, ref.name, worktree ?? ""] as const);
+}
 
 export function useProjects() {
   return useQuery({ queryKey: qk.projects, queryFn: fetchProjects });
@@ -69,6 +81,27 @@ export function useDoc(
     queryKey: qk.doc(slug, kind, name ?? "", worktree),
     queryFn: () => fetchDoc(slug, kind, name as string, worktree),
     enabled: name !== null,
+  });
+}
+
+/** 이니셔티브 폴더 tree (문서 브라우저 2e). */
+export function useTree(slug: string | null, initiative: string | null) {
+  return useQuery({
+    queryKey: qk.tree(slug ?? "", initiative ?? ""),
+    queryFn: () => fetchTree(slug as string, initiative as string),
+    enabled: slug !== null && initiative !== null,
+  });
+}
+
+/** DocRef(roadmap/todo/sprint) 소스 분기 read — 브라우저 파일 열기. */
+export function useDocRef(slug: string, ref: DocRef | null, worktree?: string) {
+  return useQuery({
+    queryKey: docRefKey(slug, ref, worktree),
+    queryFn: () =>
+      ref!.source === "roadmap"
+        ? fetchRoadmapDoc(slug, ref!.initiative, ref!.relPath)
+        : fetchDoc(slug, ref!.source, ref!.name, worktree),
+    enabled: ref !== null,
   });
 }
 
