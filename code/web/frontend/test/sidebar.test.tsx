@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { ReactElement } from "react";
 import type { Project } from "@gootte/contract";
 import { Sidebar } from "../src/components/sidebar/Sidebar";
+import { ThemeProvider } from "../src/theme/ThemeProvider";
 import { qk } from "../src/lib/query";
 
 const PROJECTS: Project[] = [
@@ -16,7 +17,11 @@ function renderSeeded(ui: ReactElement, projects = PROJECTS) {
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   qc.setQueryData(qk.projects, projects); // fetch 없이 캐시 시드
-  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider>{ui}</ThemeProvider>
+    </QueryClientProvider>,
+  );
 }
 
 describe("Sidebar", () => {

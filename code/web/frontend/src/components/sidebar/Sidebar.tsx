@@ -5,6 +5,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { useProjects } from "../../lib/query";
+import { ThemeToggle } from "../../theme/ThemeToggle";
 
 interface SidebarProps {
   selected: string | null;
@@ -76,9 +77,10 @@ export function Sidebar({ selected, onSelect }: SidebarProps) {
         )}
       </ul>
 
-      <p className="mono border-t border-border px-4 py-2 text-sm text-muted">
-        자동 발견 · {data?.length ?? 0}개
-      </p>
+      <div className="mt-auto flex items-center justify-between gap-2 border-t border-border px-3 py-2.5">
+        <span className="mono truncate text-sm text-muted">자동 발견 · {data?.length ?? 0}개</span>
+        <ThemeToggle />
+      </div>
     </nav>
   );
 }
