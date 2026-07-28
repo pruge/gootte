@@ -17,7 +17,7 @@ export interface Ranked {
 }
 
 /**
- * buildPlan·buildKanban 공유 — actionable 이니셔티브를 버킷 분류 후 정렬(B2 랭킹).
+ * buildPlan 공유 — actionable 이니셔티브를 버킷 분류 후 정렬(B2 랭킹).
  * INV-4: 순수·결정적. 순서 tiebreak = conflictRisk(active) → priority → indexOrder.
  */
 export function partitionInitiatives(

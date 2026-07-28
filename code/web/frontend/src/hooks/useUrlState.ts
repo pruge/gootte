@@ -5,7 +5,7 @@ const TABS: readonly Tab[] = ["plan", "lineage"];
 export interface UrlState {
   project: string | null;
   tab: Tab;
-  /** 탭별 뷰모드(raw) — plan: list|board|timeline · lineage: chain|graph. 소비처가 유효값 해소. */
+  /** 탭별 뷰모드(raw) — plan: list|structure|timeline · lineage: chain|graph. 소비처가 유효값 해소. */
   view: string | null;
 }
 

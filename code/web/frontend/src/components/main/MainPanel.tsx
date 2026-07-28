@@ -1,7 +1,7 @@
 import { IconTelescope } from "@tabler/icons-react";
 import type { Tab } from "../../hooks/useUrlState";
 import { RoadmapView } from "../plan/RoadmapView";
-import { BoardView } from "../board/BoardView";
+import { StructureView } from "../structure/StructureView";
 import { TimelineView } from "../timeline/TimelineView";
 import { LineageView } from "../lineage/LineageView";
 import { Tabs } from "./Tabs";
@@ -17,11 +17,11 @@ interface MainPanelProps {
 
 const PLAN_MODES: ViewModeOption[] = [
   { id: "list", label: "리스트" },
-  { id: "board", label: "보드" },
+  { id: "structure", label: "구조" },
   { id: "timeline", label: "타임라인" },
 ];
-const planMode = (view: string | null): "list" | "board" | "timeline" =>
-  view === "board" || view === "timeline" ? view : "list";
+const planMode = (view: string | null): "list" | "structure" | "timeline" =>
+  view === "structure" || view === "timeline" ? view : "list";
 
 /** 셸의 메인 영역 — 본문 header(브랜드 + 프로젝트 + 탭) + 뷰모드 토글(plan) + 뷰. */
 export function MainPanel({ project, tab, view, onTab, onView }: MainPanelProps) {
@@ -52,8 +52,8 @@ export function MainPanel({ project, tab, view, onTab, onView }: MainPanelProps)
         <div className="flex-1 overflow-hidden pl-4 pr-6 py-5">
           {tab === "lineage" ? (
             <LineageView key={`${project}-lineage`} project={project} />
-          ) : mode === "board" ? (
-            <BoardView key={`${project}-board`} project={project} />
+          ) : mode === "structure" ? (
+            <StructureView key={`${project}-structure`} project={project} />
           ) : mode === "timeline" ? (
             <TimelineView key={`${project}-timeline`} project={project} />
           ) : (

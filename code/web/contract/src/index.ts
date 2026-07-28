@@ -220,12 +220,23 @@ export const LineageResponse = z.object({
 export type LineageResponse = z.infer<typeof LineageResponse>;
 
 // ── 2c viz projection (칸반·Gantt·worktree) — CORE 결정적 산출 ──────────────
-export const KanbanColumn = z.object({
-  key: z.enum(["active", "ready", "blocked"]),
+// ── structure projection (web-structure — 저작 docs/mermaid 렌더) ──────────
+/** 저작 mermaid 다이어그램 1개 — frontmatter + 추출된 ```mermaid 코드 블록. */
+export const StructureDiagram = z.object({
+  id: z.string(), // M-NNNN
   title: z.string(),
-  items: z.array(PlanItem),
+  status: z.enum(["living", "superseded"]),
+  code: z.string(), // 추출된 ```mermaid 블록 (렌더 소스)
+  sources: z.array(z.string()).default([]),
 });
-export type KanbanColumn = z.infer<typeof KanbanColumn>;
+export type StructureDiagram = z.infer<typeof StructureDiagram>;
+
+/** track 그룹 — track=null = 시스템/공통(이니셔티브 소스 없는 횡단 그림, ADR-0002). */
+export const StructureGroup = z.object({
+  track: Track.nullable().default(null),
+  diagrams: z.array(StructureDiagram),
+});
+export type StructureGroup = z.infer<typeof StructureGroup>;
 
 /** Gantt 바 — sprint 기간(날짜). worktree는 날짜 소스 없어 제외(패널이 담당). */
 export const GanttBar = z.object({
@@ -262,11 +273,12 @@ export const WorktreeStatus = z.object({
 export type WorktreeStatus = z.infer<typeof WorktreeStatus>;
 
 // ── viz envelope (backend 생산·frontend 소비) ──────────────────────────────
-export const BoardResponse = z.object({
+/** web-structure — track 그룹 배열(서버가 최종 표시 순서로 정렬: 시스템 first → trackOrder). */
+export const StructureResponse = z.object({
   project: z.string(),
-  columns: z.array(KanbanColumn),
+  groups: z.array(StructureGroup),
 });
-export type BoardResponse = z.infer<typeof BoardResponse>;
+export type StructureResponse = z.infer<typeof StructureResponse>;
 
 export const TimelineResponse = z.object({
   project: z.string(),
