@@ -33,6 +33,11 @@ export function RoadmapPanel({
   const wip = group.items.filter((i) => !isDone(i));
   const [tab, setTab] = useState<TabKey>(wip.length === 0 && done.length > 0 ? "done" : "wip");
 
+  // 지금 worktree 로 도는 이니셔티브 — 그 항목만 "작업중" 레이블 + 파랑 진행바(라이브).
+  const activeInitiatives = new Set(
+    worktrees.map((w) => w.initiative).filter((i): i is string => i !== null),
+  );
+
   const tabs: { key: TabKey; label: string; count: number }[] = [
     { key: "wip", label: "진행", count: wip.length },
     { key: "done", label: "완료", count: done.length },
@@ -81,7 +86,13 @@ export function RoadmapPanel({
         ) : (
           <ol className="max-w-3xl space-y-2.5 pr-1">
             {items.map((item) => (
-              <RoadmapItemRow key={item.initiative} project={project} item={item} onOpen={onOpen} />
+              <RoadmapItemRow
+                key={item.initiative}
+                project={project}
+                item={item}
+                hasWorktree={activeInitiatives.has(item.initiative)}
+                onOpen={onOpen}
+              />
             ))}
           </ol>
         )}

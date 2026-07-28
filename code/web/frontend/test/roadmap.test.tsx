@@ -139,6 +139,19 @@ describe("RoadmapView (018 — 대분류 사이드바 + 진행/완료 탭)", () 
     expect(within(trackB).queryByText(/작업중/)).not.toBeInTheDocument();
   });
 
+  it("진행 탭 — worktree 도는 항목만 '작업중', 나머지 active 는 '진행'", () => {
+    renderRoadmapWithWorktrees();
+    // 기본 = track A 진행 탭. auth-login = worktree 바인딩 → '작업중'
+    const authRow = screen.getByText("auth-login").closest("li")!;
+    expect(within(authRow).getByText("작업중")).toBeInTheDocument();
+    expect(within(authRow).queryByText("진행")).not.toBeInTheDocument();
+    // track B(device-read) = active 지만 worktree 없음 → '진행' 유지
+    fireEvent.click(screen.getByRole("button", { name: /디바이스/ }));
+    const devRow = screen.getByText("device-read").closest("li")!;
+    expect(within(devRow).getByText("진행")).toBeInTheDocument();
+    expect(within(devRow).queryByText("작업중")).not.toBeInTheDocument();
+  });
+
   it("작업중 탭 → 선택 track 의 worktree 만", () => {
     renderRoadmapWithWorktrees();
     // 기본 = track A. 작업중 탭 클릭 → auth 카드 보임

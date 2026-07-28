@@ -13,6 +13,7 @@
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
+  --color-active: var(--active);
   --color-supersede: var(--supersede);
   --color-partial: var(--partial);
   --color-drop: var(--drop);
@@ -34,6 +35,7 @@
   --muted: oklch(52% 0.02 265);
   --accent: oklch(55% 0.2 265);
   --accent-fg: oklch(99% 0 0);
+  --active: oklch(56% 0.17 250); /* 작업중 worktree 신호 — accent(indigo)와 구분되는 순수 파랑 */
   --supersede: oklch(52% 0.02 265);
   --partial: oklch(62% 0.16 55);
   --drop: oklch(58% 0.03 20);
@@ -49,6 +51,7 @@
   --muted: oklch(68% 0.02 260);
   --accent: oklch(72% 0.17 200);
   --accent-fg: oklch(16% 0.02 260);
+  --active: oklch(70% 0.15 245); /* 작업중 worktree 신호 — accent(cyan)와 구분되는 순수 파랑 */
   --supersede: oklch(65% 0.02 260);
   --partial: oklch(78% 0.15 65);
   --drop: oklch(70% 0.09 25);

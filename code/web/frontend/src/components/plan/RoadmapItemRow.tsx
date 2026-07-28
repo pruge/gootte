@@ -22,6 +22,8 @@ const STATUS_META: Record<
 interface RoadmapItemRowProps {
   project: string;
   item: RoadmapItem;
+  /** 이 이니셔티브로 도는 활성 worktree 존재 → "작업중" 레이블 + 파랑 진행바(라이브, worktree 끝나면 원복). */
+  hasWorktree?: boolean;
   /** 브라우저에서 파일 클릭 → DocRef 로 뷰어 열기. */
   onOpen: (ref: DocRef) => void;
 }
@@ -30,10 +32,12 @@ interface RoadmapItemRowProps {
  * roadmap 한 줄 — 상태 배지 + 이니셔티브 + 진척(done/total). 클릭 시 **문서 브라우저** 펼침(2e).
  * 펼침 영역 = Unix 디렉토리형 FileBrowser(기본 = 가상 todo/ 폴더, 상위로 brief/spec/adr). 진척바 = done 비율(INV-4).
  */
-export function RoadmapItemRow({ project, item, onOpen }: RoadmapItemRowProps) {
+export function RoadmapItemRow({ project, item, hasWorktree, onOpen }: RoadmapItemRowProps) {
   const total = item.done.length + item.pending.length;
   const [open, setOpen] = useState(false);
   const meta = STATUS_META[item.status];
+  // worktree 로 지금 도는 항목만 "작업중"(잠시) — 그 외는 상태 레이블 그대로("진행"/"완료"/"예정").
+  const label = hasWorktree ? "작업중" : meta.label;
 
   const card =
     item.status === "active"
@@ -46,9 +50,12 @@ export function RoadmapItemRow({ project, item, onOpen }: RoadmapItemRowProps) {
     <li className={`overflow-hidden rounded-lg border transition-colors ${card}`}>
       <div className="relative">
         {/* 진행바 = 진척(done 비율)만큼 옅게 채운 배경 fill — 콘텐츠 뒤(눈부심 X). */}
+        {/* worktree 로 지금 도는 항목만 파랑(bg-active), 그 외는 accent — 활성 worktree 즉시 구분. */}
         {total > 0 && (
           <div
-            className="pointer-events-none absolute inset-0 origin-left bg-accent/10 transition-transform duration-300"
+            className={`pointer-events-none absolute inset-0 origin-left transition-transform duration-300 ${
+              hasWorktree ? "bg-active/20" : "bg-accent/10"
+            }`}
             style={{ transform: `scaleX(${item.done.length / total})` }}
             aria-hidden
           />
@@ -62,7 +69,7 @@ export function RoadmapItemRow({ project, item, onOpen }: RoadmapItemRowProps) {
           <meta.Icon size={18} className={`shrink-0 ${meta.tone}`} />
           <span className="font-medium tracking-tight">{item.initiative}</span>
           <span className="mono rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-            {meta.label}
+            {label}
           </span>
           {total > 0 && (
             <span className="mono ml-auto text-sm tabular-nums text-muted">
