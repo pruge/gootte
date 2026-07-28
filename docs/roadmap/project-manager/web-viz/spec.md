@@ -1,5 +1,7 @@
 # spec — web-viz · phase 2c 시각화 레이어 (TBD 제로)
 
+> ⚠️ **부분 supersede (2026-07-29 · web-structure ADR-0003)** — **칸반**(`buildKanban`·board 뷰·`/api/board`·`BoardResponse`·`KanbanColumn`)은 [web-structure](../web-structure/spec.md)가 보드 슬롯을 구조 뷰로 교체하며 **제거**. 착수-준비도는 리스트 뷰가 흡수. **생존**: Gantt/타임라인(`buildGantt`)·lineage viz·나머지 viz projection.
+
 > blueprint 종속. 전체·seam·불변식 = [../blueprint.md](../blueprint.md). 구조 = [M-0003](../../../mermaid/INDEX.md#M-0003)(2c, sources: M-0001·M-0002). 레이아웃 = [wireframe.md](wireframe.md).
 
 ## Goal

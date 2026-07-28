@@ -69,6 +69,11 @@ updated: YYYY-MM-DD
   - M-0002 위 문서 탐색(sources: M-0001·M-0002). listInitiativeTree(실제 파일+adr/+가상 todo/) → TreeResponse → 인라인 cd FileBrowser → 파일 클릭 → DocDrawer 재사용. INV-2/4 read-only·결정적.
   - 소유 prose = docs/roadmap/project-manager/roadmap-doc-browser/spec.md
 
+<a id="M-0007"></a>
+- **M-0007** — [web-structure — 저작 docs/mermaid 렌더 (보드=구조 뷰, 칸반 교체)](M-0007-web-structure-render.md) · 🟢 living
+  - M-0002 위 surface(sources: web-structure spec·ADR). core-io readMermaidDocs → core buildStructure(fm 파싱·```mermaid 추출·track=sources→initiative 파생·그룹정렬) → /api/structure → StructureView(track 인덱스→MermaidBlock 포커스). 칸반 완전 교체·web-viz 부분 supersede. INV-2/4.
+  - 소유 prose = docs/roadmap/project-manager/web-structure/spec.md
+
 ## Supersede 체인
 
 > 체인당 한 줄: `M-000X ⚫→ M-000Y — <왜>`. (아직 없음)
@@ -77,4 +82,4 @@ updated: YYYY-MM-DD
 
 > kickoff/신규 시 여기서 다음 번호를 취득하고 즉시 예약(영구). 리넘버 금지.
 
-- **다음 = M-0007**
+- **다음 = M-0008**
