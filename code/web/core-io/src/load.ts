@@ -21,7 +21,10 @@ import { scanWorktrees, computeGitSignal } from "./git";
 /** T8 wiring — IO 오케스트레이션. 파일 read + core-io git + 순수 core(parse/state) 조합. */
 export interface LoadedProject {
   state: ProjectState;
+  /** initiative slug → GitSignal (plan/kanban 리스크 랭킹용 — 이니셔티브당 첫 worktree). */
   gitSignals: Map<string, GitSignal>;
+  /** worktree slug → GitSignal (활성 worktree 본문/activeWorktrees 용 — worktree 별 개별 신호, 033). */
+  worktreeSignals: Map<string, GitSignal>;
 }
 
 function dir(p: string): string[] {
@@ -146,16 +149,21 @@ export function loadProjectState(repoPath: string): LoadedProject {
   };
   const state = buildState(input);
 
-  // active worktree 있는 이니셔티브에만 GitSignal 조립 (state 매핑 사용)
+  // GitSignal 조립 — worktree 바인딩 1:1 순회(state.worktrees). worktree-키(worktreeSignals) = 본문 개별 신호.
+  // initiative-키(gitSignals) = plan/kanban 리스크(이니셔티브당 첫 worktree first-wins — 종전 동작 보존).
   const gitSignals = new Map<string, GitSignal>();
+  const worktreeSignals = new Map<string, GitSignal>();
   const mainTip = rev(repoPath, "main");
   if (mainTip) {
-    for (const i of state.initiatives) {
-      if (!i.worktree || !i.worktree.base) continue;
-      const wtTip = rev(repoPath, i.worktree.branch);
-      if (wtTip) gitSignals.set(i.slug, computeGitSignal(repoPath, i.worktree.base, mainTip, wtTip));
+    for (const b of state.worktrees) {
+      if (!b.worktree.base) continue;
+      const wtTip = rev(repoPath, b.worktree.branch);
+      if (!wtTip) continue;
+      const sig = computeGitSignal(repoPath, b.worktree.base, mainTip, wtTip);
+      worktreeSignals.set(b.worktree.slug, sig);
+      if (b.initiative && !gitSignals.has(b.initiative)) gitSignals.set(b.initiative, sig);
     }
   }
 
-  return { state, gitSignals };
+  return { state, gitSignals, worktreeSignals };
 }

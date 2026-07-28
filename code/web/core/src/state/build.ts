@@ -1,6 +1,12 @@
 import type { TodoItem, LineageNode, LineageEdge } from "@gootte/contract";
 import { PRIORITY_RANK, type Priority } from "../rank";
-import type { StateInput, ProjectState, InitiativeState, WorktreeInput } from "./model";
+import type {
+  StateInput,
+  ProjectState,
+  InitiativeState,
+  WorktreeInput,
+  WorktreeBinding,
+} from "./model";
 import { buildLineage } from "./lineage";
 
 const ACTIVE_TODO = new Set(["pending", "in_sprint", "in_progress"]);
@@ -48,20 +54,31 @@ export function buildState(input: StateInput): ProjectState {
     return null;
   };
 
-  // worktree↔initiative: worktree.slug → sprint(slug/worktree 매칭) → todos → initiative(effInitiative — related 포함)
-  const wtByInitiative = new Map<string, WorktreeInput>();
-  for (const wt of input.worktrees) {
-    const sprint = sprintForWorktree(input.sprints, wt.slug);
-    if (!sprint) continue;
+  // worktree↔initiative: worktree.slug → sprint(slug/worktree 매칭) → todos → initiative(effInitiative — related 포함).
+  // 🔴 스캔된 worktree **1개당 바인딩 1개**(collapse X) — 이니셔티브당 N worktree(병렬 T2/T3) 온전(033).
+  const resolveInitiative = (sprint: (typeof input.sprints)[number]): string | null => {
     const sprintTodos = new Set(sprint.todos.map(undate));
     for (const t of input.todos) {
       if (!sprintTodos.has(undate(t.slug))) continue;
       const init = effInitiative(t);
-      if (init) {
-        wtByInitiative.set(init, wt);
-        break;
-      }
+      if (init) return init;
     }
+    return null;
+  };
+  const worktreeBindings: WorktreeBinding[] = input.worktrees.map((wt) => {
+    const sprint = sprintForWorktree(input.sprints, wt.slug);
+    return {
+      worktree: wt,
+      initiative: sprint ? resolveInitiative(sprint) : null,
+      sprint: sprint?.slug ?? null,
+    };
+  });
+
+  // InitiativeState.worktree(단수) — plan/partition 의 "이 이니셔티브가 작업중인가" 불리언 + load 의 initiative-키
+  // gitSignal 용. 이니셔티브당 첫 바인딩(first-wins). N worktree 완전 목록은 state.worktrees(위 bindings).
+  const wtByInitiative = new Map<string, WorktreeInput>();
+  for (const b of worktreeBindings) {
+    if (b.initiative && !wtByInitiative.has(b.initiative)) wtByInitiative.set(b.initiative, b.worktree);
   }
 
   const initiatives: InitiativeState[] = input.ledgers.map((l) => {
@@ -106,6 +123,7 @@ export function buildState(input: StateInput): ProjectState {
 
   return {
     initiatives,
+    worktrees: worktreeBindings,
     lineage: { nodes, edges },
     indexOrder: input.indexOrder ?? [],
     drops: fill.drops,
