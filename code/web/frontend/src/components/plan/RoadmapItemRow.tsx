@@ -54,7 +54,7 @@ export function RoadmapItemRow({ project, item, hasWorktree, onOpen }: RoadmapIt
         {total > 0 && (
           <div
             className={`pointer-events-none absolute inset-0 origin-left transition-transform duration-300 ${
-              hasWorktree ? "bg-active/20" : "bg-accent/10"
+              hasWorktree ? "bg-active/35" : "bg-accent/5"
             }`}
             style={{ transform: `scaleX(${item.done.length / total})` }}
             aria-hidden
