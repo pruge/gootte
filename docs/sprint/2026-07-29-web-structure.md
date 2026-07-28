@@ -44,7 +44,22 @@ related_sprints: []
 - **전체 회귀**: `pnpm verify`(tsc + vitest 전체) green · `bash scripts/mermaid-refs-check.sh` 무결 · plan 탭 "구조" 모드에서 track 별 그림 인덱스 렌더 + 클릭 포커스 + empty 상태.
 
 ## 사용자 테스트
-> (worktree 개발 완료 시 `/cling:notify --all` 로 채움)
+> 변경 layer = web/frontend + web/backend. 이 worktree 밴드 포트: backend `8909` / frontend `5410`.
+
+```bash
+# worktree 안에서 dev 서버 (user-runs)
+cd .claude/worktrees/web-structure && pnpm dev
+# → frontend http://localhost:5410
+```
+
+- [ ] plan 탭 → 뷰모드에 **"보드" 대신 "구조"** 세그먼트 (리스트 / 구조 / 타임라인)
+- [ ] "구조" 클릭 → 좌측에 **track 별** 다이어그램 인덱스(시스템/공통 → E → W …, 리스트 사이드바와 동축)
+- [ ] 항목 클릭 → 우측에 해당 mermaid **그림 렌더**(테마 반영)
+- [ ] `superseded` 그림 = dimmed·⚫ 표시
+- [ ] 그림 있는 프로젝트(jinwooauto=52장·6그룹, gootte=7장·3그룹) 정상 · 없는 프로젝트 → "저작된 구조 다이어그램이 없습니다" empty
+- [ ] (회귀) 리스트·타임라인·lineage 탭 정상 · "보드"·칸반 완전히 사라짐
+
+> ✅ 자동 검증 완료: `pnpm verify`(tsc -r + vitest **181** green) · mermaid drift-guard 무결 · 실 엔드포인트 스모크(gootte/jinwooauto 200·track 그룹핑 확인).
 
 ## 관련 todo / spec
 - [structure-data-spine](../todo/2026-07-29-structure-data-spine.md) — 순수/IO 척추
