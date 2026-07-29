@@ -52,10 +52,11 @@ export function StructureView({ project }: { project: string }) {
         onSelect={setTrack}
         meta={(g) => <>그림 {g.items.length}</>}
       />
-      <div className="relative min-w-0 flex-1">
+      <div className="min-w-0 flex-1">
         <StructureList group={active} onOpen={setOpen} />
-        {open && <DiagramDrawer diagram={open} onClose={() => setOpen(null)} />}
       </div>
+      {/* 드로어는 뷰 전체(대분류 포함)를 덮는다 — 회색 백드롭이 사이드바까지, viewer 는 본문 폭. */}
+      {open && <DiagramDrawer diagram={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }

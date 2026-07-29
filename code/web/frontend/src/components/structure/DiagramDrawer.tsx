@@ -9,9 +9,10 @@ interface DiagramDrawerProps {
 }
 
 /**
- * 다이어그램 뷰어 — 리스트의 DocDrawer 동형 우측 슬라이드오버.
- * mermaid 렌더. 닫기 = ESC · **회색 백드롭 클릭** · X. 넓은 폭(max-w-4xl) + 좌측 회색 여백 클릭영역.
+ * 다이어그램 뷰어 — 리스트의 DocDrawer 동형. 뷰 전체를 덮되(대분류까지 회색 백드롭),
+ * viewer 는 본문 폭(사이드바 폭만큼 좌측 여백 = 회색 클릭영역). 닫기 = ESC · 회색 백드롭 클릭 · X.
  */
+// 사이드바(w-60=240px) + gap-5(20px) = 260px → 그만큼 좌측을 회색으로 남기고 본문 폭 채움.
 export function DiagramDrawer({ diagram, onClose }: DiagramDrawerProps) {
   const superseded = diagram.status === "superseded";
 
@@ -22,12 +23,12 @@ export function DiagramDrawer({ diagram, onClose }: DiagramDrawerProps) {
   }, [onClose]);
 
   return (
-    <div className="absolute inset-0 z-20 flex justify-end">
+    <div className="absolute inset-0 z-20 flex justify-end pl-[260px]">
       <button aria-label="닫기" className="absolute inset-0 bg-fg/20" onClick={onClose} />
       <aside
         role="dialog"
         aria-label={`다이어그램 ${diagram.id}`}
-        className="relative flex h-full w-full max-w-4xl flex-col border-l border-border bg-surface shadow-2xl"
+        className="relative flex h-full w-full flex-col border-l border-border bg-surface shadow-2xl"
       >
         <header className="flex items-center gap-3 border-b border-border px-4 py-3">
           <span className="mono shrink-0 text-sm font-semibold text-accent">{diagram.id}</span>
