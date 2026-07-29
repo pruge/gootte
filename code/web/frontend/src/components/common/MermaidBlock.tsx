@@ -11,7 +11,7 @@ const isDarkNow = (): boolean =>
  * 저작 다이어그램은 classDef 에 `color:` 를 병기해 두 테마 모두 가독(문법 안전 지침).
  * 문법 오류면 mermaid 에러 그림(bomb) 대신 안내 fallback.
  */
-export function MermaidBlock({ code }: { code: string }) {
+export function MermaidBlock({ code, bare = false }: { code: string; bare?: boolean }) {
   const id = "mmd" + useId().replace(/[^a-zA-Z0-9]/g, "");
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,10 +73,21 @@ export function MermaidBlock({ code }: { code: string }) {
     return <div className="my-3 text-sm text-muted">다이어그램 렌더 중…</div>;
   }
   // mermaid strict 모드 산출 SVG(sanitize 내장) — 안전. 카드 배경 = 테마별(순정 렌더와 짝).
+  // bare = ZoomPan 등 임베드용(여백/스크롤/테두리 없이 svg 밀착 → scrollWidth 정확 측정).
+  const bg = dark ? "#1b1e24" : "#ffffff";
+  if (bare) {
+    return (
+      <div
+        className="doc-mermaid inline-block rounded-lg p-4"
+        style={{ background: bg }}
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+    );
+  }
   return (
     <div
       className="doc-mermaid my-3 overflow-x-auto rounded-lg border border-border p-4"
-      style={{ background: dark ? "#1b1e24" : "#ffffff" }}
+      style={{ background: bg }}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );

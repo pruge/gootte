@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { IconX } from "@tabler/icons-react";
 import type { StructureDiagram } from "@gootte/contract";
 import { MermaidBlock } from "../common/MermaidBlock";
+import { ZoomPan } from "../common/ZoomPan";
 
 interface DiagramDrawerProps {
   diagram: StructureDiagram;
@@ -51,10 +52,13 @@ export function DiagramDrawer({ diagram, onClose }: DiagramDrawerProps) {
             <IconX size={16} />
           </button>
         </header>
-        <div className={`min-h-0 flex-1 overflow-auto p-5 ${superseded ? "opacity-60" : ""}`}>
-          <MermaidBlock code={diagram.code} />
+        <div className={`flex min-h-0 flex-1 flex-col ${superseded ? "opacity-60" : ""}`}>
+          {/* 휠 줌 · 드래그 이동 · +/−/맞춤 버튼 · 열 때 화면 자동 맞춤(작게 나오는 경우 대응). */}
+          <ZoomPan>
+            <MermaidBlock code={diagram.code} bare />
+          </ZoomPan>
           {diagram.sources.length > 0 && (
-            <p className="mono mt-3 truncate text-xs text-muted">
+            <p className="mono shrink-0 truncate border-t border-border px-4 py-2 text-xs text-muted">
               sources: {diagram.sources.join(" · ")}
             </p>
           )}
