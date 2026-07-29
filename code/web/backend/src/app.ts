@@ -14,10 +14,8 @@ import {
   DocResponse,
   TreeResponse,
   type ApiError,
-  type WorktreeStatus,
-  type GitSignal,
 } from "@gootte/contract";
-import { buildPlan, buildRoadmap, buildStructure, buildGantt, sprintForWorktree } from "@gootte/core";
+import { buildPlan, buildRoadmap, buildStructure, buildGantt } from "@gootte/core";
 import {
   loadProjectState,
   readDoc,
@@ -26,6 +24,7 @@ import {
   resolveInitiativeDir,
   scanWorktrees,
   readMermaidDocs,
+  activeWorktrees,
   type LoadedProject,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
@@ -66,27 +65,6 @@ const roadmapDocQuery = z.object({
     .min(1)
     .regex(/^[A-Za-z0-9._/-]+$/), // 서브경로 허용 — 실제 traversal 가드는 readRoadmapDoc realpath
 });
-const NO_SIGNAL: GitSignal = { mainCommitsSince: 0, overlapFiles: [], conflictRisk: "low" };
-
-/** 활성 worktree → WorktreeStatus[] (구조적, ADR-0004 — 산문 파싱 X). */
-function worktreeStatuses(loaded: LoadedProject): WorktreeStatus[] {
-  const { state, gitSignals } = loaded;
-  const out: WorktreeStatus[] = [];
-  for (const i of state.initiatives) {
-    if (!i.worktree) continue;
-    out.push({
-      slug: i.worktree.slug,
-      branch: i.worktree.branch,
-      base: i.worktree.base,
-      initiative: i.slug,
-      // worktree↔sprint 매칭은 core 단일 SoT — sprint.worktree 미바인딩이어도 slug 로 복구(todo 030).
-      sprint: sprintForWorktree(state.sprints, i.worktree.slug)?.slug ?? null,
-      signal: gitSignals.get(i.slug) ?? NO_SIGNAL,
-    });
-  }
-  return out;
-}
-
 export interface AppOptions {
   /** discover 루트 (테스트 주입). 없으면 defaultRoots(). */
   roots?: string[];
@@ -110,6 +88,8 @@ export function createApp(options: AppOptions = {}): Hono {
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
 
   // GET /api/projects → ProjectsResponse (discover, W2 캐시). worktrees 수는 요청마다 fresh(INV-3).
+  // 배지 수 = scanWorktrees(raw) length — activeWorktrees(본문)의 state.worktrees 가 이 스캔과 1:1 이라 항상 동일 소스·동수(033).
+  // (목록 뷰는 프로젝트별 full parse 를 피해 가벼운 raw 스캔 유지 — 바인딩은 개수를 바꾸지 않음.)
   app.get("/api/projects", (c) => {
     const projects = getProjects(roots).map((p) => ({
       ...p,
@@ -217,7 +197,7 @@ export function createApp(options: AppOptions = {}): Hono {
   app.get("/api/worktree/:slug", zValidator("param", slugParam), (c) => {
     const p = load(c.req.valid("param").slug);
     if (!p) return c.json(notFound(c.req.param("slug")), 404);
-    return c.json(WorktreeResponse.parse({ project: p.name, worktrees: worktreeStatuses(p) }));
+    return c.json(WorktreeResponse.parse({ project: p.name, worktrees: activeWorktrees(p) }));
   });
 
   return app;

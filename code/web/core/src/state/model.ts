@@ -18,6 +18,18 @@ export interface WorktreeInput {
   base: string;
 }
 
+/**
+ * 스캔된 worktree 1개 = 바인딩 1개 — 이니셔티브 미해소(sprint/todo 매칭 실패)면 `initiative: null`.
+ * **이니셔티브당 N worktree 를 온전히 표현**(병렬 T2/T3 분할 등). 사이드바 카운트·본문 "작업중"의 단일 소스(033).
+ */
+export interface WorktreeBinding {
+  worktree: WorktreeInput;
+  /** 해소된 이니셔티브 slug — worktree→sprint→todo→initiative(effInitiative). 미해소 null. */
+  initiative: string | null;
+  /** 매칭된 sprint slug(sprintForWorktree) — 미매칭 null. */
+  sprint: string | null;
+}
+
 export interface StateInput {
   ledgers: LedgerInfo[];
   todos: TodoItem[];
@@ -50,6 +62,11 @@ export interface InitiativeState {
 
 export interface ProjectState {
   initiatives: InitiativeState[];
+  /**
+   * 스캔된 worktree 1:1 바인딩 목록 — 활성 worktree("작업중")의 **단일 소스**(033).
+   * 이니셔티브당 N개 온전(collapse X). 길이 = scanWorktrees(repo).length.
+   */
+  worktrees: WorktreeBinding[];
   lineage: { nodes: LineageNode[]; edges: LineageEdge[] };
   indexOrder: string[];
   /** dropped todo → 무엇이 대체/흡수 (verbatim). */
