@@ -74,6 +74,15 @@ describe("StructureView (구조 뷰 — 사이드바 + 목록 + 드로어)", () 
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("회색 백드롭 클릭 → 드로어 닫힘", () => {
+    renderView();
+    fireEvent.click(screen.getByRole("button", { name: /전체 아키텍처/ }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    // 백드롭 = 첫 '닫기' 버튼(회색 오버레이), X 버튼과 구분.
+    fireEvent.click(screen.getAllByRole("button", { name: "닫기" })[0]!);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("빈 그룹 → empty 상태", () => {
     renderView({ project: "alpha", groups: [] });
     expect(screen.getByText(/저작된 구조 다이어그램이 없습니다/)).toBeInTheDocument();

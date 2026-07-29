@@ -9,8 +9,8 @@ interface DiagramDrawerProps {
 }
 
 /**
- * 다이어그램 뷰어 — 목록을 덮는 넓은 오버레이(리스트의 DocDrawer 동형).
- * mermaid 렌더. ESC · 백드롭 · X 닫음. 목록 패널 전체 폭(w-full).
+ * 다이어그램 뷰어 — 리스트의 DocDrawer 동형 우측 슬라이드오버.
+ * mermaid 렌더. 닫기 = ESC · **회색 백드롭 클릭** · X. 넓은 폭(max-w-4xl) + 좌측 회색 여백 클릭영역.
  */
 export function DiagramDrawer({ diagram, onClose }: DiagramDrawerProps) {
   const superseded = diagram.status === "superseded";
@@ -22,12 +22,12 @@ export function DiagramDrawer({ diagram, onClose }: DiagramDrawerProps) {
   }, [onClose]);
 
   return (
-    <div className="absolute inset-0 z-20 flex">
+    <div className="absolute inset-0 z-20 flex justify-end">
       <button aria-label="닫기" className="absolute inset-0 bg-fg/20" onClick={onClose} />
       <aside
         role="dialog"
         aria-label={`다이어그램 ${diagram.id}`}
-        className="relative flex h-full w-full flex-col rounded-lg border border-border bg-surface shadow-2xl"
+        className="relative flex h-full w-full max-w-4xl flex-col border-l border-border bg-surface shadow-2xl"
       >
         <header className="flex items-center gap-3 border-b border-border px-4 py-3">
           <span className="mono shrink-0 text-sm font-semibold text-accent">{diagram.id}</span>
