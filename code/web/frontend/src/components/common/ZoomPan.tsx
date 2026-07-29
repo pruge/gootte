@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { IconZoomIn, IconZoomOut, IconArrowsMaximize } from "@tabler/icons-react";
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-const MIN = 0.2;
-const MAX = 6;
+const MIN = 0.1; // 10% 까지 축소
+const MAX = 20; // 2000% 까지 확대
 
 /**
  * 자식(다이어그램 등)을 확대/축소·이동 뷰포트에 담는다.
