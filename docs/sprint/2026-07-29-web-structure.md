@@ -44,7 +44,24 @@ related_sprints: []
 - **전체 회귀**: `pnpm verify`(tsc + vitest 전체) green · `bash scripts/mermaid-refs-check.sh` 무결 · plan 탭 "구조" 모드에서 track 별 그림 인덱스 렌더 + 클릭 포커스 + empty 상태.
 
 ## 사용자 테스트
-> (worktree 개발 완료 시 `/cling:notify --all` 로 채움)
+> 변경 layer = web/frontend + web/backend. 이 worktree 밴드 포트: backend `8909` / frontend `5410`.
+
+```bash
+# worktree 안에서 dev 서버 (user-runs)
+cd .claude/worktrees/web-structure && pnpm dev
+# → frontend http://localhost:5410
+```
+
+- [ ] plan 탭 → 뷰모드에 **"보드" 대신 "구조"** 세그먼트 (리스트 / 구조 / 타임라인)
+- [ ] "구조" → 좌측에 **리스트와 동일한 track 사이드바**(시스템/공통 → E → W …, "그림 N")
+- [ ] 사이드바 track 클릭 → 본문에 그 track **다이어그램 목록**(행 = id·제목·상태)
+- [ ] 목록 항목 클릭 → **목록을 덮는 넓은 드로어**에 mermaid 렌더(리스트의 md 뷰어 동형)
+- [ ] 드로어 닫기 = **ESC** · 백드롭 클릭 · X 버튼
+- [ ] `superseded` 그림 = dimmed·⚫ 표시
+- [ ] 그림 있는 프로젝트(jinwooauto=52장·6그룹, gootte=7장·3그룹) 정상 · 없는 프로젝트 → empty 안내
+- [ ] (회귀) 리스트 탭 사이드바 정상(공유 컴포넌트) · 타임라인·lineage 정상 · "보드"·칸반 완전히 사라짐
+
+> ✅ 자동 검증 완료: `pnpm verify`(tsc -r + vitest **181** green) · mermaid drift-guard 무결 · 실 엔드포인트 스모크(gootte/jinwooauto 200·track 그룹핑 확인).
 
 ## 관련 todo / spec
 - [structure-data-spine](../todo/2026-07-29-structure-data-spine.md) — 순수/IO 척추

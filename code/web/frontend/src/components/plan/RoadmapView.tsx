@@ -45,7 +45,22 @@ export function RoadmapView({ project }: { project: string }) {
         groups={groups}
         selected={active.key}
         onSelect={setTrack}
-        worktreeCounts={worktreeCounts}
+        meta={(g) => {
+          const done = g.items.filter((i) => i.status === "shipped").length;
+          const wip = g.items.length - done;
+          const wt = worktreeCounts[g.key] ?? 0;
+          return (
+            <>
+              진행 {wip} · 완료 {done}
+              {wt > 0 && (
+                <>
+                  {" · "}
+                  <span className="font-medium text-accent">작업중 {wt}</span>
+                </>
+              )}
+            </>
+          );
+        }}
       />
       <RoadmapPanel
         key={active.key}

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { StateInput } from "../state/model";
 import { buildState } from "../state/build";
-import { buildKanban } from "./kanban";
 import { buildGantt } from "./gantt";
 import { buildPlan } from "./plan";
 
@@ -37,24 +36,8 @@ const input: StateInput = {
 
 const state = buildState(input);
 
-describe("buildKanban — 3 파티션", () => {
-  const cols = buildKanban(state);
-  const byKey = (k: string) => cols.find((c) => c.key === k)!;
-
-  it("active=worktree · ready=충족 · blocked=미충족 dep", () => {
-    expect(byKey("active").items.map((i) => i.initiative)).toEqual(["alpha"]);
-    expect(byKey("ready").items.map((i) => i.initiative)).toEqual(["beta"]);
-    expect(byKey("blocked").items.map((i) => i.initiative)).toEqual(["gamma"]);
-  });
-
-  it("active 카드 = NOW · 카드 형상 = PlanItem", () => {
-    const alpha = byKey("active").items[0]!;
-    expect(alpha.now).toBe(true);
-    expect(alpha.order).toBe(1);
-    expect(alpha.subSteps).toEqual(["t-a"]);
-  });
-
-  it("buildPlan 과 버킷 로직 공유 — 순서 일치(회귀)", () => {
+describe("buildPlan — partition 공유(회귀, 칸반 제거 후 유지)", () => {
+  it("버킷 정렬 순서(active→ready→blocked)", () => {
     const { plan } = buildPlan({ state });
     expect(plan.map((p) => p.initiative)).toEqual(["alpha", "beta", "gamma"]);
   });
