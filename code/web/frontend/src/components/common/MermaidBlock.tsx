@@ -1,37 +1,14 @@
 import { useEffect, useId, useState } from "react";
 import { IconAlertTriangle } from "@tabler/icons-react";
 
-/**
- * 다크모드 mermaid 변수 — 저작 다이어그램은 밝은 classDef fill(#fde 등) + 글자색 미지정 전제.
- * dark 캔버스 + **밝은 노드 · 어두운 노드글자**로 렌더 → 밝은 fill 도 항상 읽힘(밝은 글자 충돌 회피).
- * 엣지·엣지라벨·클러스터 타이틀은 어두운 캔버스 대비 밝게.
- */
-const DARK_VARS = {
-  darkMode: true,
-  background: "#1b1e24",
-  mainBkg: "#e8eaed",
-  primaryColor: "#e8eaed",
-  primaryTextColor: "#17191d",
-  nodeTextColor: "#17191d",
-  primaryBorderColor: "#8a93a3",
-  secondaryColor: "#dfe3ea",
-  tertiaryColor: "#eef0f4",
-  nodeBorder: "#8a93a3",
-  clusterBkg: "transparent",
-  clusterBorder: "#5a6472",
-  lineColor: "#98a2b3",
-  edgeLabelBackground: "#2a2f3a",
-  titleColor: "#e6e9ef",
-  textColor: "#cdd2da",
-} as const;
-
 const isDarkNow = (): boolean =>
   typeof document !== "undefined" &&
   document.documentElement.getAttribute("data-theme") === "dark";
 
 /**
  * mermaid 다이어그램 1개 — dynamic import(lazy, perf). **앱 테마(data-theme)를 감지**해
- * light=default(흰 카드) / dark=밝은 노드·어두운 캔버스로 자동 렌더(토글 시 재렌더).
+ * mermaid 순정 테마로 렌더(light=default / dark=dark, chirpy 방식)하고, 토글 시 재렌더한다.
+ * 저작 다이어그램은 classDef 에 `color:` 를 병기해 두 테마 모두 가독(문법 안전 지침).
  * 문법 오류면 mermaid 에러 그림(bomb) 대신 안내 fallback.
  */
 export function MermaidBlock({ code }: { code: string }) {
@@ -59,7 +36,7 @@ export function MermaidBlock({ code }: { code: string }) {
           startOnLoad: false,
           securityLevel: "strict", // 내장 sanitize — 아래 dangerouslySetInnerHTML 안전
           suppressErrorRendering: true, // 문법 오류 시 mermaid 가 에러 다이어그램을 DOM 에 그리지 않게
-          ...(dark ? { theme: "base", themeVariables: DARK_VARS } : { theme: "default" }),
+          theme: dark ? "dark" : "default", // 순정 테마(chirpy 동형)
         });
         // 선검증 — 실패면 render(에러 그림) 안 하고 우리 fallback. throw = 상세 메시지 확보.
         await mermaid.parse(code);
@@ -95,7 +72,7 @@ export function MermaidBlock({ code }: { code: string }) {
   if (svg === null) {
     return <div className="my-3 text-sm text-muted">다이어그램 렌더 중…</div>;
   }
-  // mermaid strict 모드 산출 SVG(sanitize 내장) — 안전. 카드 배경 = 테마별(light 흰 / dark 어두움).
+  // mermaid strict 모드 산출 SVG(sanitize 내장) — 안전. 카드 배경 = 테마별(순정 렌더와 짝).
   return (
     <div
       className="doc-mermaid my-3 overflow-x-auto rounded-lg border border-border p-4"
