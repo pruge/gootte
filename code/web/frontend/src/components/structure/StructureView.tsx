@@ -1,20 +1,30 @@
 import { useMemo, useState } from "react";
 import { IconChartDots3 } from "@tabler/icons-react";
+import type { StructureDiagram } from "@gootte/contract";
 import { useStructure } from "../../lib/query";
+import { UNGROUPED, type TrackGrouped } from "../../lib/track";
 import { Loading, ErrorMsg } from "../common/states";
-import { StructureIndex } from "./StructureIndex";
-import { DiagramFocus } from "./DiagramFocus";
+import { TrackSidebar } from "../plan/TrackSidebar";
+import { StructureList } from "./StructureList";
+import { DiagramDrawer } from "./DiagramDrawer";
 
 /**
- * plan "구조" 뷰 — 관리대상 프로젝트 저작 docs/mermaid 다이어그램을 track 별로(리스트와 동축).
- * 좌 인덱스 → 클릭 → 우 포커스 렌더(MermaidBlock). 서버 그룹 순서 verbatim(INV-4)·read-only(INV-2).
+ * plan "구조" 뷰 — 리스트 뷰와 동형: 좌측 공유 track 사이드바 + 본문 다이어그램 목록.
+ * 목록 항목 클릭 → 목록을 덮는 넓은 드로어에 mermaid 렌더(ESC·백드롭·X 닫음). read-only(INV-2)·서버 순서 verbatim(INV-4).
  */
 export function StructureView({ project }: { project: string }) {
   const { data, isLoading, isError, error } = useStructure(project);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [track, setTrack] = useState<string | null>(null);
+  const [open, setOpen] = useState<StructureDiagram | null>(null);
 
-  const allIds = useMemo(
-    () => data?.groups.flatMap((g) => g.diagrams.map((d) => d.id)) ?? [],
+  // 서버 그룹(순서 verbatim) → track 사이드바용 TrackGrouped. null track = 시스템/공통(UNGROUPED sentinel).
+  const groups = useMemo<TrackGrouped<StructureDiagram>[]>(
+    () =>
+      data?.groups.map((g) => ({
+        key: g.track?.key ?? UNGROUPED,
+        label: g.track?.label ?? "시스템 / 공통",
+        items: g.diagrams,
+      })) ?? [],
     [data],
   );
 
@@ -22,7 +32,7 @@ export function StructureView({ project }: { project: string }) {
   if (isError) return <ErrorMsg error={error} />;
   if (!data) return null;
 
-  if (allIds.length === 0) {
+  if (groups.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-muted">
         <IconChartDots3 size={40} stroke={1.25} />
@@ -32,14 +42,20 @@ export function StructureView({ project }: { project: string }) {
     );
   }
 
-  // 선택 없거나 그림이 사라졌으면(라이브 갱신) 첫 그림으로.
-  const activeId = selected && allIds.includes(selected) ? selected : allIds[0]!;
-  const active = data.groups.flatMap((g) => g.diagrams).find((d) => d.id === activeId)!;
+  const active = groups.find((g) => g.key === track) ?? groups[0]!;
 
   return (
-    <div className="flex h-full gap-5">
-      <StructureIndex groups={data.groups} selectedId={activeId} onSelect={setSelected} />
-      <DiagramFocus key={active.id} diagram={active} />
+    <div className="relative flex h-full gap-5">
+      <TrackSidebar
+        groups={groups}
+        selected={active.key}
+        onSelect={setTrack}
+        meta={(g) => <>그림 {g.items.length}</>}
+      />
+      <div className="relative min-w-0 flex-1">
+        <StructureList group={active} onOpen={setOpen} />
+        {open && <DiagramDrawer diagram={open} onClose={() => setOpen(null)} />}
+      </div>
     </div>
   );
 }

@@ -9,7 +9,7 @@ const DATA: StructureResponse = {
   project: "alpha",
   groups: [
     {
-      track: null, // 시스템/공통
+      track: null, // 시스템/공통 (groups[0] = 기본 선택)
       diagrams: [
         { id: "M-0001", title: "전체 아키텍처", status: "living", code: "flowchart TB\n a-->b", sources: ["blueprint.md"] },
       ],
@@ -34,31 +34,48 @@ function renderView(data: StructureResponse = DATA) {
   );
 }
 
-describe("StructureView (구조 뷰)", () => {
-  it("track 그룹 헤더 + 다이어그램 항목(리스트와 동축)", () => {
+describe("StructureView (구조 뷰 — 사이드바 + 목록 + 드로어)", () => {
+  it("좌측 공유 track 사이드바 = 그룹 + 그림 수", () => {
     renderView();
-    expect(screen.getByText("시스템 / 공통")).toBeInTheDocument();
-    expect(screen.getByText("웹 대시보드")).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "대분류" });
+    expect(nav).toHaveTextContent("시스템 / 공통");
+    expect(nav).toHaveTextContent("웹 대시보드");
+    expect(nav).toHaveTextContent("그림 2"); // W 그룹 = 2장
+  });
+
+  it("본문 = 선택 track 의 다이어그램 목록(기본 = 첫 그룹)", () => {
+    renderView();
+    expect(screen.getByRole("button", { name: /전체 아키텍처/ })).toBeInTheDocument();
+    // 드로어는 아직 안 열림
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("사이드바 track 전환 → 그 track 목록", () => {
+    renderView();
+    fireEvent.click(screen.getByRole("button", { name: /웹 대시보드/ }));
     expect(screen.getByRole("button", { name: /데이터흐름/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /구 viz/ })).toBeInTheDocument();
   });
 
-  it("기본 포커스 = 첫 그림(헤더 렌더)", () => {
+  it("목록 클릭 → 드로어(뷰어) 오픈", () => {
     renderView();
-    const focus = screen.getByRole("article");
-    expect(focus).toHaveTextContent("M-0001");
-    expect(focus).toHaveTextContent("전체 아키텍처");
-  });
-
-  it("항목 클릭 → 포커스 전환", () => {
-    renderView();
+    fireEvent.click(screen.getByRole("button", { name: /웹 대시보드/ }));
     fireEvent.click(screen.getByRole("button", { name: /구 viz/ }));
-    const focus = screen.getByRole("article");
-    expect(focus).toHaveTextContent("M-0003");
-    expect(focus).toHaveTextContent("superseded"); // 상태 칩
+    const dialog = screen.getByRole("dialog", { name: /M-0003/ });
+    expect(dialog).toHaveTextContent("구 viz");
+    expect(dialog).toHaveTextContent("superseded");
+  });
+
+  it("ESC → 드로어 닫힘", () => {
+    renderView();
+    fireEvent.click(screen.getByRole("button", { name: /전체 아키텍처/ }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("빈 그룹 → empty 상태", () => {
     renderView({ project: "alpha", groups: [] });
-    expect(screen.getByText(/저장된 구조 다이어그램이 없습니다|저작된 구조 다이어그램이 없습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/저작된 구조 다이어그램이 없습니다/)).toBeInTheDocument();
   });
 });

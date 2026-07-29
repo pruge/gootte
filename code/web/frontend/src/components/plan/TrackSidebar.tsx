@@ -1,28 +1,25 @@
-import type { RoadmapItem } from "@gootte/contract";
+import type { ReactNode } from "react";
 import { UNGROUPED, type TrackGrouped } from "../../lib/track";
 
-interface TrackSidebarProps {
-  groups: TrackGrouped<RoadmapItem>[];
+interface TrackSidebarProps<T> {
+  groups: TrackGrouped<T>[];
   selected: string;
   onSelect: (key: string) => void;
-  /** track key → 활성 worktree(작업중) 수 (worktreesByTrack 파생). 없으면 0. */
-  worktreeCounts: Record<string, number>;
+  /** 그룹별 부제(카운트 등) — 소비처가 렌더(리스트=진행/완료/작업중, 구조=그림 수). */
+  meta: (group: TrackGrouped<T>) => ReactNode;
 }
 
-const doneCount = (items: RoadmapItem[]): number =>
-  items.filter((i) => i.status === "shipped").length;
-
-/** 본문 내 대분류(track) 사이드바 — 클릭 시 우측 패널이 그 track 의 진행/완료/작업중 탭을 보여줌. */
-export function TrackSidebar({ groups, selected, onSelect, worktreeCounts }: TrackSidebarProps) {
+/**
+ * 본문 내 대분류(track) 사이드바 — 클릭 시 우측 패널이 그 track 내용을 보여줌.
+ * 아이템 타입 무관(제네릭) — 리스트(이니셔티브)·구조(다이어그램) 공용. 부제는 `meta` 로 주입.
+ */
+export function TrackSidebar<T>({ groups, selected, onSelect, meta }: TrackSidebarProps<T>) {
   return (
     <nav
       aria-label="대분류"
       className="w-60 shrink-0 space-y-1 overflow-y-auto border-r border-border pr-3"
     >
       {groups.map((g) => {
-        const done = doneCount(g.items);
-        const wip = g.items.length - done;
-        const wt = worktreeCounts[g.key] ?? 0;
         const on = g.key === selected;
         return (
           <button
@@ -44,15 +41,7 @@ export function TrackSidebar({ groups, selected, onSelect, worktreeCounts }: Tra
                 {g.label}
               </span>
             </span>
-            <span className="mono whitespace-nowrap text-xs tabular-nums text-muted">
-              진행 {wip} · 완료 {done}
-              {wt > 0 && (
-                <>
-                  {" · "}
-                  <span className="font-medium text-accent">작업중 {wt}</span>
-                </>
-              )}
-            </span>
+            <span className="mono whitespace-nowrap text-xs tabular-nums text-muted">{meta(g)}</span>
           </button>
         );
       })}
