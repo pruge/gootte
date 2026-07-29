@@ -1,11 +1,12 @@
 ---
 created: 2026-07-29
-status: in_progress
+status: done
 priority: normal
 kind: bundle
 todos: [2026-07-29-structure-data-spine, 2026-07-29-structure-view-surface]
 worktree: web-structure
 startedAt: 2026-07-29
+endedAt: 2026-07-29
 related_sprints: []
 ---
 

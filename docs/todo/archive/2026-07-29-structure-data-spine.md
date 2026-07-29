@@ -1,6 +1,7 @@
 ---
 created: 2026-07-29
-status: in_progress
+completedAt: 2026-07-29
+status: done
 priority: normal
 sprint: 2026-07-29-web-structure
 initiative: web-structure
