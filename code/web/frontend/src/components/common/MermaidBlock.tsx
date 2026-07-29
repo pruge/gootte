@@ -15,10 +15,11 @@ export function MermaidBlock({ code }: { code: string }) {
     (async () => {
       try {
         const mermaid = (await import("mermaid")).default;
-        const dark = document.documentElement.getAttribute("data-theme") === "dark";
+        // 저작 다이어그램은 밝은 classDef fill(#fde 등) + 어두운 글자 전제 → 앱 테마와 무관하게
+        // 항상 light 렌더 + 흰 배경 카드(아래)로 고정해 가독성 보장(dark 테마의 밝은 글자 충돌 회피).
         mermaid.initialize({
           startOnLoad: false,
-          theme: dark ? "dark" : "default",
+          theme: "default",
           securityLevel: "strict", // 내장 sanitize — 아래 dangerouslySetInnerHTML 안전
           suppressErrorRendering: true, // 문법 오류 시 mermaid 가 에러 다이어그램을 DOM 에 그리지 않게
         });
@@ -56,8 +57,11 @@ export function MermaidBlock({ code }: { code: string }) {
   if (svg === null) {
     return <div className="my-3 text-sm text-muted">다이어그램 렌더 중…</div>;
   }
-  // mermaid strict 모드 산출 SVG(sanitize 내장) — 안전.
+  // mermaid strict 모드 산출 SVG(sanitize 내장) — 안전. 흰 배경 카드 = light 렌더 고정과 짝(가독).
   return (
-    <div className="doc-mermaid my-3 overflow-x-auto" dangerouslySetInnerHTML={{ __html: svg }} />
+    <div
+      className="doc-mermaid my-3 overflow-x-auto rounded-lg border border-border bg-white p-4"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
   );
 }
