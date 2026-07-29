@@ -28,7 +28,7 @@ flowchart LR
     subgraph core["core · 순수 projection (INV-4)"]
         build["buildStructure(raw, tracks, inits, order)"]
         p1["parseMermaid(fm)<br/>id·title·status·sources"]
-        p2["extractMermaidBlock(body)<br/>첫 ```mermaid (없으면 제외)"]
+        p2["extractMermaidBlock(body)<br/>첫 mermaid 펜스 (없으면 제외)"]
         p3["deriveTrack(sources→initiative→track)<br/>횡단=시스템/공통(null)"]
         p4["group·sort<br/>시스템→trackOrder→미분류 · 내부 M-ID asc"]
         build --- p1 & p2 & p3 & p4
