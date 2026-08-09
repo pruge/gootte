@@ -69,8 +69,8 @@ export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
         </span>
       )}
 
-      {ticket.workedBy.length > 0 && (
-        // 문서에는 없는 값 — 격리 사본이 말해준 것이다. 어느 가지가 붙들고 있는지 verbatim 으로 싣는다.
+      {ticket.status === "in_progress" && (
+        // 처리중은 상태가 정한다(workedBy 존재만으로 그리지 않는다) — 어느 가지가 붙들고 있는지 verbatim 으로 싣는다.
         <span
           className="mono flex shrink-0 items-center gap-1 rounded bg-active/15 px-1.5 py-0.5 text-sm text-active"
           title={`작업 가지: ${ticket.workedBy.join(", ")}`}

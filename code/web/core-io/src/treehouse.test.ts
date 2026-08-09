@@ -234,6 +234,69 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     expect(inProgress.tickets).toBe(2);
   });
 
+  it("🔴 로컬 main 은 뒤처졌고 origin/main 은 최신이다 — origin/main 을 기준으로 삼아, 이미 올라간 커밋을 이 가지의 일로 세지 않는다", () => {
+    // bare origin: base 커밋 하나.
+    const bare = join(tmp, "bare-origin.git");
+    execFileSync("git", ["init", "-q", "--bare", bare], { stdio: "ignore" });
+    git(bare, "symbolic-ref", "HEAD", "refs/heads/main"); // 기본 가지 이름은 git 버전마다 다르다
+    const scratch = join(tmp, "scratch");
+    initRepo(scratch);
+    commit(scratch, { "README.md": "base\n" }, "base");
+    git(scratch, "remote", "add", "origin", bare);
+    git(scratch, "push", "-q", "origin", "main");
+
+    // repo = 격리 사본. bare 를 복제해 local main == origin/main == base.
+    const repo = join(root, POOL, "1", PROJECT);
+    mkdirSync(dirname(repo), { recursive: true });
+    execFileSync("git", ["clone", "-q", bare, repo], { stdio: "ignore" });
+    git(repo, "config", "user.email", "crew@example.com");
+    git(repo, "config", "user.name", "crew");
+    git(repo, "config", "commit.gpgsign", "false");
+
+    // 사본에서 작업 가지를 만들어 티켓 파일을 건드리고, 그 커밋을 origin main 으로 곧장 밀어 넣는다
+    // (다른 경로로 이미 병합됐다고 가정) — 로컬 main 은 여전히 base 를 가리킨다.
+    git(repo, "checkout", "-q", "-b", "fm/x");
+    commit(repo, { "docs/features/auth/issues/01-session.md": ticketFile("01", "세션 발급") }, "work");
+    git(repo, "push", "-q", "origin", "fm/x:main");
+    git(repo, "fetch", "-q", "origin"); // 테스트 셋업만의 fetch — 앱 코드는 fetch 하지 않는다(INV-2)
+
+    const { features, inProgress } = observe();
+    expect(ticketOf(features, "01-session")?.status).toBe("pending");
+    expect(inProgress.tickets).toBe(0);
+  });
+
+  it("🔴 remote 가 없는 저장소는 로컬 main 으로 떨어진다 — 빈 목록이 되지 않는다", () => {
+    makeCopy({
+      slot: "1",
+      branch: "fm/no-remote",
+      work: { "docs/features/auth/issues/01-session.md": ticketFile("01", "세션 발급") },
+    });
+
+    const { features, inProgress } = observe();
+    expect(ticketOf(features, "01-session")?.status).toBe("in_progress");
+    expect(inProgress.tickets).toBe(1);
+  });
+
+  it("🔴 기준 가지 후보가 하나도 없으면 지금처럼 빈 목록이다 — 전체 이력을 훑지 않는다", () => {
+    const repo = join(root, POOL, "1", PROJECT);
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q", repo], { stdio: "ignore" });
+    git(repo, "symbolic-ref", "HEAD", "refs/heads/trunk"); // main/master 어느 쪽도 아니다
+    git(repo, "config", "user.email", "crew@example.com");
+    git(repo, "config", "user.name", "crew");
+    git(repo, "config", "commit.gpgsign", "false");
+    commit(repo, { "README.md": "base\n" }, "base");
+    git(repo, "checkout", "-q", "-b", "fm/orphan");
+    commit(repo, { "docs/features/auth/issues/01-session.md": ticketFile("01", "세션 발급") }, "work");
+
+    const { features, inProgress } = observe();
+    // 이을 근거(기준 가지)가 없으니 이 티켓은 처리중이 아니다 — 전체 이력을 훑어 갖다 붙이지 않는다.
+    expect(ticketOf(features, "01-session")?.status).toBe("pending");
+    expect(inProgress.tickets).toBe(0);
+    // 그렇다고 작업중이라는 사실 자체를 숨기지도 않는다 — 티켓 미상으로 드러난다.
+    expect(inProgress.unknown.map((u) => u.branch)).toEqual(["fm/orphan"]);
+  });
+
   it("🔴 관리대상에도 사본에도 아무것도 쓰지 않는다(INV-2) — 관측 후 워킹트리가 깨끗하다", () => {
     const repo = makeCopy({
       slot: "1",
