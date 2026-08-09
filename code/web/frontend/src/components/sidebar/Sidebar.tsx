@@ -68,6 +68,21 @@ export function Sidebar({ selected, onSelect }: SidebarProps) {
               >
                 <Icon size={16} stroke={1.75} className={active ? "text-accent" : ""} />
                 <span className="min-w-0 flex-1 truncate">{p.slug}</span>
+                {/*
+                  남은 일이 있는 기능 수 — 서버가 센 값을 싣기만 한다(재계산 X, INV-1).
+                  🔴 0 이어도 감추지 않는다. 감추면 "다 끝났다" 와 "안 세어봤다"(필드 미설정)가
+                  같은 화면이 된다. 0 은 조용한 색으로, 있을 때만 눈에 띄게 한다.
+                */}
+                {p.openFeatures !== undefined && (
+                  <span
+                    title={`남은 일이 있는 기능 ${p.openFeatures}개`}
+                    className={`mono shrink-0 rounded-full px-1.5 text-xs font-medium tabular-nums ${
+                      p.openFeatures > 0 ? "bg-accent/15 text-accent" : "bg-surface-2 text-muted"
+                    }`}
+                  >
+                    {p.openFeatures}
+                  </span>
+                )}
               </button>
             </li>
           );

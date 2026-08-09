@@ -1,4 +1,4 @@
-import type { Feature, FeatureDocNode, FeatureTicket } from "@gootte/contract";
+import type { Feature, FeatureDocNode, FeatureTicket, TodoStatus } from "@gootte/contract";
 import type { FeatureSpecDoc, TicketDoc } from "../parse/feature";
 
 /**
@@ -84,6 +84,27 @@ export function buildFeature(docs: FeatureDocs): Feature {
   };
 }
 
+/**
+ * 남은 일이 있다 = **done 도 dropped 도 아닌 티켓이 하나라도 있다**(= 착수할 것이 남았다).
+ * `in_progress` 는 여기 포함된다 — 붙들려 있는 것도 아직 안 끝난 일이다.
+ *
+ * 🔴 이 술어가 **하나뿐이어야 한다.** 카드 정렬과 사이드바의 "남은 일 있는 기능 수" 가 각자
+ * 판정하면 그 순간부터 둘 중 하나가 거짓이 되고, 화면이 서로 다른 말을 한다.
+ * `TicketDoc` 과 `FeatureTicket` 둘 다 `status` 를 가지므로 그 한 칸만 보고 판정한다.
+ */
+function hasOpenWork(tickets: readonly { status: TodoStatus }[]): boolean {
+  return tickets.some((t) => t.status !== "done" && t.status !== "dropped");
+}
+
+/**
+ * 남은 일이 있는 기능의 수 — 목록 뷰가 "이 프로젝트에 할 일이 몇 갈래 남았나" 로 쓴다.
+ * 정렬 맨 앞 무리(`RANK_OPEN`)의 크기와 **정의상 같다**(같은 술어를 쓴다).
+ * 티켓이 0개인 기능은 세지 않는다 — 착수할 것이 없다(그래서 정렬에서도 앞 무리가 아니다).
+ */
+export function countOpenFeatures(features: readonly Feature[]): number {
+  return features.filter((f) => hasOpenWork(f.tickets)).length;
+}
+
 /** 정렬 계층 — 작을수록 위. 세 무리의 순서 자체가 이 상수들의 값이다. */
 const RANK_OPEN = 0; // 착수할 티켓이 남았다
 const RANK_NO_TICKETS = 1; // 티켓이 없다 — 착수할 것도, 끝났다는 증거도 없다
@@ -101,8 +122,7 @@ const RANK_DONE = 2; // 티켓이 전부 done/dropped 다
  */
 function rank(docs: FeatureDocs): number {
   if (docs.tickets.length === 0) return RANK_NO_TICKETS;
-  const open = docs.tickets.some((t) => t.status !== "done" && t.status !== "dropped");
-  return open ? RANK_OPEN : RANK_DONE;
+  return hasOpenWork(docs.tickets) ? RANK_OPEN : RANK_DONE;
 }
 
 /**

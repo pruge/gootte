@@ -18,6 +18,10 @@ export const Project = z.object({
   slug: z.string(),
   path: z.string(),
   source: z.string().optional(),
+  // 남은 일이 있는 기능 수 — projects 목록 enrich(discover 는 미설정이라 optional).
+  // 파생물이라 요청마다 다시 센다(INV-1·INV-3). 0 과 "미설정" 은 다른 값이다 —
+  // 0 은 "다 끝났다", 미설정은 "안 세어봤다" 라서 화면이 둘을 같게 그리면 거짓말이 된다.
+  openFeatures: z.number().int().nonnegative().optional(),
 });
 export type Project = z.infer<typeof Project>;
 
