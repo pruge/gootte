@@ -84,24 +84,37 @@ export function buildFeature(docs: FeatureDocs): Feature {
   };
 }
 
+/** 정렬 계층 — 작을수록 위. 세 무리의 순서 자체가 이 상수들의 값이다. */
+const RANK_OPEN = 0; // 착수할 티켓이 남았다
+const RANK_NO_TICKETS = 1; // 티켓이 없다 — 착수할 것도, 끝났다는 증거도 없다
+const RANK_DONE = 2; // 티켓이 전부 done/dropped 다
+
 /**
- * 남은 일이 있다 = done 도 dropped 도 아닌 티켓이 하나라도 있다.
- * 티켓이 하나도 없는 기능도 "남은 일 있음" 쪽이다 — 끝났다는 증거가 없다.
+ * 기능 하나의 정렬 계층.
+ *
+ * 🔴 **티켓이 0개인 기능은 "남은 일 있음" 이 아니다** — "남은 일" 은 지금 착수할 것이 남았다는
+ * 뜻이고, 티켓이 없으면 착수할 것이 없다. 이것을 맨 위 무리에 끼우면 기능이 늘수록 진짜 남은
+ * 일을 스크롤해 찾아야 한다(캡틴 피드백) — 위로 올리는 이유가 사라진다.
+ *
+ * 그렇다고 완료 무리로 접지도 않는다 — **끝났다는 증거가 없다.** 완료로 접으면 화면이
+ * "이 기능은 끝났다" 고 거짓말한다. 그래서 둘 사이, 자기 무리에 둔다.
  */
-function hasOpenWork(docs: FeatureDocs): boolean {
-  if (docs.tickets.length === 0) return true;
-  return docs.tickets.some((t) => t.status !== "done" && t.status !== "dropped");
+function rank(docs: FeatureDocs): number {
+  if (docs.tickets.length === 0) return RANK_NO_TICKETS;
+  const open = docs.tickets.some((t) => t.status !== "done" && t.status !== "dropped");
+  return open ? RANK_OPEN : RANK_DONE;
 }
 
 /**
- * 기능 목록 → 계약 형태. 남은 일이 있는 기능이 먼저, 다 끝난 기능이 나중 — 각 무리 안은 폴더명 순.
+ * 기능 목록 → 계약 형태. 남은 일이 있는 기능이 먼저, 티켓이 없는 기능이 그다음, 다 끝난 기능이
+ * 마지막 — 각 무리 안은 폴더명 순.
  * 기능 자신의 `status`(spec)는 쓰지 않는다 — 판정은 오직 티켓으로 한다.
  */
 export function buildFeatures(docs: FeatureDocs[]): Feature[] {
   return [...docs]
     .sort((a, b) => {
-      const openDiff = Number(hasOpenWork(b)) - Number(hasOpenWork(a));
-      return openDiff !== 0 ? openDiff : a.slug.localeCompare(b.slug);
+      const rankDiff = rank(a) - rank(b);
+      return rankDiff !== 0 ? rankDiff : a.slug.localeCompare(b.slug);
     })
     .map(buildFeature);
 }
