@@ -1,8 +1,8 @@
-# Triage labels — 정규 `Status:` 여덟 값
+# Triage labels — 정규 `Status:` 아홉 값
 
-스킬들은 다섯 개의 정규 triage 역할로 말한다. 거기에 이 저장소가 실제로 필요로 하는 셋
-(`draft` · `blocked` · `resolved`)을 더해 **여덟 개를 정규 `Status:` 값**으로 삼는다.
-자매 저장소(jinwooauto)와 같은 여덟 값이다 — 저장소를 오가는 작업자가 어휘를 다시 배우지 않게 한다.
+스킬들은 다섯 개의 정규 triage 역할로 말한다. 거기에 이 저장소가 실제로 필요로 하는 넷
+(`draft` · `blocked` · `claimed` · `resolved`)을 더해 **아홉 개를 정규 `Status:` 값**으로 삼는다.
+자매 저장소(jinwooauto)와 같은 아홉 값이다 — 저장소를 오가는 작업자가 어휘를 다시 배우지 않게 한다.
 
 | Status 값 | 출처 | 뜻 |
 |---|---|---|
@@ -12,11 +12,12 @@
 | `ready-for-agent` | mattpocock/skills | 완전히 명세됨, AFK 에이전트가 집어갈 수 있음 |
 | `ready-for-human` | mattpocock/skills | 사람의 구현이 필요 |
 | `blocked` | 저장소 추가 | 착수 가능했지만 외부 요인으로 대기 — 아래 "`blocked` vs `Blocked by:`" 참고 |
+| `claimed` | 저장소 추가(자매 저장소의 조사용 티켓과 같은 이름) | 누군가 이 티켓을 집어갔다(임자 있음). 이 값 자체로는 화면을 처리중으로 만들지 않는다 — 아래 "시작 전이 규칙" 참고 |
 | `resolved` | 저장소 추가 | 완료. **`(YYYY-MM-DD)` 완료일을 반드시 동반.** `done` 은 동의어 오용 — 새로 쓰지 않는다 |
 | `wontfix` | mattpocock/skills | 처리하지 않음 |
 
 일반적인 흐름: `draft → needs-triage → (needs-info ⇄ needs-triage) → ready-for-agent`/`ready-for-human`
-`→ (blocked ⇄ 해제) → resolved`, 또는 언제든 `wontfix` 로 종결.
+`→ claimed → (blocked ⇄ 해제) → resolved`, 또는 언제든 `wontfix` 로 종결.
 
 스킬이 역할을 언급하면(예: "apply the AFK-ready triage label") 이 표의 대응 문자열을 그대로 쓴다.
 
@@ -45,6 +46,20 @@
 
 이 서식을 지키는 이유는 하나다 — 파일을 열지 않고 `grep -rn 'Status:' docs/features` 한 번으로
 전체 트리아지 상태를 훑을 수 있어야 하기 때문이다. 줄이 길어지는 순간 그 grep 이 못 쓰게 된다.
+
+## 시작 전이 규칙 — 작업자가 착수할 때
+
+작업자는 **가지를 만든 직후 첫 행동**으로 맡은 티켓(들)의 `Status:` 줄을 `claimed` 로 바꾸고
+**그것만 담은 커밋**을 만든다. 티켓 여러 장을 한 작업자가 맡으면 시작할 때 전부 표시한다.
+티켓이 없는 일(정찰·조사)에는 해당하지 않는다.
+
+완료 전이 규칙은 그대로다 — 구현 커밋이 같은 줄을 `resolved (YYYY-MM-DD)` 로 뒤집는다
+([`issue-tracker.md`](issue-tracker.md) §상태 전이는 구현 변경의 일부다). 두 규칙은 **서로 다른
+시점**을 가리킨다 — `claimed` 는 착수할 때, `resolved` 는 끝날 때.
+
+🔴 `claimed` 라고 적힌 것만으로 화면이 처리중이 되지 않는다. 처리중은 살아 있는 격리 사본이
+그 티켓을 지금 붙들고 있을 때만 만들어진다 — 문서는 "무슨 일인가" 만 말하고, "누가 지금 하나" 는
+관측이 답한다. 머지됐는데 `resolved` 로 안 바뀐 `claimed` 흔적은 화면이 감추지 않고 따로 드러낸다.
 
 ## `blocked` vs `Blocked by:`
 
@@ -78,4 +93,6 @@
 이 저장소가 만드는 제품은 **관리대상 프로젝트의** 상태 어휘를 따로 갖는다 — 예를 들어
 `TodoStatus`(`pending` `in_sprint` `in_progress` `done` `dropped`)와 `InitiativeStatus` 는
 `code/web/contract/src/index.ts` 에 zod 로 정의돼 있다. 그것은 **관리대상 문서를 파싱한 결과의 어휘**이지
-이 저장소 자신의 티켓 어휘가 아니다. 여기 여덟 값과 서로 번역하거나 통일하려 들지 않는다.
+이 저장소 자신의 티켓 어휘가 아니다. 여기 아홉 값과 서로 번역하거나 통일하려 들지 않는다.
+🔴 `claimed` 를 `in_progress` 로 적지 않는다 — `in_progress` 는 제품 어휘의 이름이고, 문서가 그
+이름을 쓰면 "문서가 진행중이라 했으니 진행중" 이라는 오독이 곧바로 따라온다.

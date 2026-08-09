@@ -15,6 +15,7 @@ const NO_WORK: FeaturesResponse["inProgress"] = {
   tickets: 0,
   unknown: [],
   unreadable: [],
+  unclaimed: [],
 };
 const DATA: FeaturesResponse = {
   project: "alpha",
@@ -282,6 +283,19 @@ describe("FeaturesView — 이어지지 않은 작업(격리 사본 관측)", ()
     expect(screen.getByText(/상태를 읽지 못한 사본 1/)).toBeInTheDocument();
     expect(screen.getByText("git 이 답하지 않음")).toBeInTheDocument();
     expect(screen.getByText("alpha-abc123/3")).toBeInTheDocument();
+  });
+
+  it("🔴 claimed 인데 붙든 사본이 없는 티켓도 사라지지 않는다 — 처리중으로도 그리지 않는다", () => {
+    renderView({
+      ...DATA,
+      inProgress: {
+        ...NO_WORK,
+        unclaimed: [{ feature: "auth-login", ticket: "02-x", title: "무언가" }],
+      },
+    });
+    expect(screen.getByText(/임자 없이 남은 표시 1/)).toBeInTheDocument();
+    expect(screen.getByText("auth-login/02-x")).toBeInTheDocument();
+    expect(screen.getByText("무언가")).toBeInTheDocument();
   });
 
   it("기능이 없으면 빈 목록 안내", () => {

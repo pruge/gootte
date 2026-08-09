@@ -50,6 +50,9 @@ function waitingOn(ticket: TicketDoc, doneNums: ReadonlySet<number>): string[] {
 
 function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>): FeatureTicket {
   const waiting = waitingOn(doc, doneNums);
+  // 임자 있음 = 문서가 claimed 라고 말한다. 처리중을 만들지는 않는다(그건 applyInProgress 의 몫) —
+  // 여기서는 착수 가능 판정에서만 뺀다(work-claims-its-ticket/01 §C).
+  const claimed = doc.sourceStatus === "claimed";
   return {
     num: doc.num,
     slug: doc.slug,
@@ -60,7 +63,8 @@ function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>): FeatureTicket 
     ...(doc.completedAt ? { completedAt: doc.completedAt } : {}),
     blockedBy: doc.blockedBy,
     waitingOn: waiting,
-    startable: waiting.length === 0,
+    // 착수 가능 = 선행이 모두 풀렸다 + 임자가 없다. 판정하는 자리는 여기 하나뿐이다.
+    startable: waiting.length === 0 && !claimed,
     // 문서만으로는 언제나 빈 값 — 처리중은 격리 사본 관측이 얹는다(`applyInProgress`).
     workedBy: [],
   };

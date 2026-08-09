@@ -102,6 +102,52 @@ describe("buildFeature — 막힘 해제는 계산된다(INV-1)", () => {
     expect(f.title).toBe("f");
   });
 
+  it("🔴 claimed 는 정규 값으로 인식된다 — 알 수 없는 상태가 아니다", () => {
+    const f = buildFeature(docs({ file: "01-a.md", body: ticket("claimed") }));
+    expect(f.tickets[0]?.statusKnown).toBe(true);
+    expect(f.tickets[0]?.sourceStatus).toBe("claimed");
+    expect(f.tickets[0]?.status).toBe("pending"); // 화면 다섯 값은 안 늘어난다 — 처리중은 관측의 몫
+  });
+
+  it("🔴 claimed 다(선행 없음) → 착수 가능에서 빠진다", () => {
+    const f = buildFeature(docs({ file: "01-a.md", body: ticket("claimed") }));
+    expect(f.tickets[0]?.startable).toBe(false);
+    expect(f.tickets[0]?.waitingOn).toEqual([]); // 선행 문제가 아니다 — 임자 문제다
+  });
+
+  it("claimed 인데 선행이 안 풀렸다 → 착수 가능이 아니고, 대기 사실도 그대로 보인다", () => {
+    const f = buildFeature(
+      docs(
+        { file: "01-a.md", body: ticket("ready-for-agent") },
+        { file: "02-b.md", body: ticket("claimed", "01") },
+      ),
+    );
+    const b = f.tickets.find((t) => t.num === "02")!;
+    expect(b.startable).toBe(false);
+    expect(b.waitingOn).toEqual(["01"]);
+  });
+
+  it("ready-for-agent 이고 선행이 풀렸다 → 지금처럼 착수 가능이다", () => {
+    const f = buildFeature(docs({ file: "01-a.md", body: ticket("ready-for-agent") }));
+    expect(f.tickets[0]?.startable).toBe(true);
+  });
+
+  it("나머지 여덟 값의 해석은 하나도 안 바뀐다", () => {
+    for (const status of [
+      "draft",
+      "needs-triage",
+      "needs-info",
+      "ready-for-agent",
+      "ready-for-human",
+      "blocked",
+      "resolved (2026-08-01)",
+      "wontfix",
+    ]) {
+      const f = buildFeature(docs({ file: "01-a.md", body: ticket(status) }));
+      expect(f.tickets[0]?.startable).toBe(true); // 선행 없음 + claimed 아님
+    }
+  });
+
   it("완료 판정은 원문 resolved 하나뿐 — 계산이 어디에도 저장되지 않는다(같은 입력 = 같은 출력)", () => {
     const input = docs(
       { file: "01-a.md", body: ticket("resolved (2026-08-01)") },
