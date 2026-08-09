@@ -135,7 +135,7 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     expect(find(features, "auth", "02-screen")?.workedBy).toEqual(["fm/a", "fm/b"]);
   });
 
-  it("끝난 일은 다시 처리중이 되지 않는다 — 붙들고 있는 가지만 실린다", () => {
+  it("끝난 일은 다시 처리중이 되지 않는다 — 상태는 그대로다", () => {
     const features = [feature("auth", [ticket("01", "01-session", { status: "done" })])];
     const marked = applyInProgress(
       features,
@@ -143,9 +143,54 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     );
 
     expect(find(marked.features, "auth", "01-session")?.status).toBe("done");
-    expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual(["fm/a"]);
     expect(marked.inProgress.tickets).toBe(0);
     expect(marked.inProgress.unknown).toEqual([]); // 이어졌으므로 미상이 아니다
+  });
+
+  it("🔴 끝난 티켓의 파일을 그 가지의 커밋이 건드려도 붙들린 가지를 싣지 않는다", () => {
+    const features = [feature("auth", [ticket("01", "01-session", { status: "done" })])];
+    const marked = applyInProgress(
+      features,
+      scan([copy("pool/1", "fm/a", ["docs/features/auth/issues/01-session.md"])]),
+    );
+
+    expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual([]);
+  });
+
+  it("🔴 취소된 티켓도 같다 — 붙들린 가지를 싣지 않는다", () => {
+    const features = [feature("auth", [ticket("01", "01-session", { status: "dropped" })])];
+    const marked = applyInProgress(
+      features,
+      scan([copy("pool/1", "fm/a", ["docs/features/auth/issues/01-session.md"])]),
+    );
+
+    expect(find(marked.features, "auth", "01-session")?.status).toBe("dropped");
+    expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual([]);
+    expect(marked.inProgress.tickets).toBe(0);
+  });
+
+  it("🔴 한 기능에 끝난 티켓과 안 끝난 티켓이 섞여 있으면 머리글 수와 줄 표시 개수가 같다", () => {
+    const features = [
+      feature("auth", [
+        ticket("01", "01-session", { status: "done" }),
+        ticket("02", "02-screen"),
+      ]),
+    ];
+    const marked = applyInProgress(
+      features,
+      scan([
+        copy("pool/1", "fm/a", ["docs/features/auth/issues/01-session.md"]),
+        copy("pool/2", "fm/b", ["docs/features/auth/issues/02-screen.md"]),
+      ]),
+    );
+
+    const inProgressRows = marked.features
+      .flatMap((f) => f.tickets)
+      .filter((t) => t.status === "in_progress");
+    expect(marked.inProgress.tickets).toBe(inProgressRows.length);
+    expect(inProgressRows.map((t) => t.slug)).toEqual(["02-screen"]);
+    expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual([]);
+    expect(find(marked.features, "auth", "02-screen")?.workedBy).toEqual(["fm/b"]);
   });
 
   it("🔴 상태를 못 읽은 사본을 유휴로 접지 않는다 — 따로 세어 드러낸다", () => {

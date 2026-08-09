@@ -56,7 +56,10 @@ function repoIn(slot: string): string | null {
 }
 
 // 기준 가지 후보 — 이 중 첫 번째로 해소되는 것이 "작업 이전"의 지점이다.
-const BASE_REFS = ["main", "master", "origin/main", "origin/master"];
+// remote 를 먼저 본다 — "올라갔다"는 remote 가 정하는 사실이다(사양 §설계 2).
+// remote 가 없는 저장소는 로컬로 떨어진다. fetch 는 하지 않는다(INV-2) — origin 이 뒤처진 경우는
+// 알고 남기는 구멍이다.
+const BASE_REFS = ["origin/main", "origin/master", "main", "master"];
 
 /**
  * 이 가지의 커밋이 건드린 경로. 기준 가지를 못 찾으면 **빈 목록**이다 —

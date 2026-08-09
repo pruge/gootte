@@ -69,8 +69,8 @@ export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
         </span>
       )}
 
-      {ticket.workedBy.length > 0 && (
-        // 문서에는 없는 값 — 격리 사본이 말해준 것이다. 어느 가지가 붙들고 있는지 verbatim 으로 싣는다.
+      {ticket.status === "in_progress" && (
+        // 처리중은 상태가 정한다(workedBy 존재만으로 그리지 않는다) — 어느 가지가 붙들고 있는지 verbatim 으로 싣는다.
         <span
           className="mono flex shrink-0 items-center gap-1 rounded bg-active/15 px-1.5 py-0.5 text-sm text-active"
           title={`작업 가지: ${ticket.workedBy.join(", ")}`}
@@ -80,9 +80,16 @@ export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
         </span>
       )}
 
-      {ticket.completedAt && (
-        <span className="mono shrink-0 text-sm tabular-nums text-muted">{ticket.completedAt}</span>
-      )}
+      {/* 완료일 칸은 값이 없어도 늘 그린다 — 값이 있을 때와 같은 자리표시 문자열을 같은 글꼴로
+          렌더링해 폭을 맞추고(글자 수로 계산하지 않는다), invisible 로 보이지만 않게 한다.
+          `—` 같은 대체 문자는 넣지 않는다 — 이 목록에서 `—` 는 이미 번호 없는 티켓을 뜻한다. */}
+      <span
+        className={`mono shrink-0 text-sm tabular-nums text-muted ${
+          ticket.completedAt ? "" : "invisible"
+        }`}
+      >
+        {ticket.completedAt ?? "0000-00-00"}
+      </span>
 
       {waiting ? (
         // 번호로 해소되지 않은 선행(다른 기능을 가리키는 문구 등)도 그대로 보인다 — verbatim 릴레이(INV-4).

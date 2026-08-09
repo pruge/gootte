@@ -57,13 +57,11 @@ function heldTickets(copy: ObservedCopy, known: ReadonlySet<string>): string[] {
 }
 
 function markTicket(ticket: FeatureTicket, branches: readonly string[]): FeatureTicket {
+  // 끝나거나 취소된 티켓은 상태만 지키는 것으로 부족하다 — 붙들린 가지도 싣지 않는다.
+  // 값이 실려 있으면 줄이 그걸로 처리중을 그린다(사양 §설계 1).
+  if (ticket.status === "done" || ticket.status === "dropped") return ticket;
   if (branches.length === 0) return ticket;
-  return {
-    ...ticket,
-    // 끝난 일은 다시 처리중이 되지 않는다 — 완료/취소는 문서가 말한 그대로 둔다.
-    status: ticket.status === "done" || ticket.status === "dropped" ? ticket.status : "in_progress",
-    workedBy: [...branches],
-  };
+  return { ...ticket, status: "in_progress", workedBy: [...branches] };
 }
 
 /**
