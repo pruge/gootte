@@ -1,5 +1,5 @@
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
+import { defaultProjectRoots } from "@gootte/core-io";
 import { planText, lineageText, writeDigest, discoverText } from "./commands";
 
 function usage(): number {
@@ -29,7 +29,7 @@ function run(argv: string[]): number {
     case "discover": {
       const roots = argv.slice(1);
       const targets =
-        roots.length > 0 ? roots.map((r) => resolve(r)) : [process.cwd(), join(homedir(), "Documents")];
+        roots.length > 0 ? roots.map((r) => resolve(r)) : [process.cwd(), ...defaultProjectRoots()];
       process.stdout.write(discoverText(targets) + "\n");
       return 0;
     }

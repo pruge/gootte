@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import type { Project } from "@gootte/contract";
 
@@ -17,15 +18,39 @@ function children(dir: string): string[] {
   }
 }
 
-/** T6 — 머신 scan: root + 2단계 하위에서 `.cling/profile.md` 가진 디렉토리 = cling 프로젝트. */
+/**
+ * 스캔 뿌리 기본값 — 캡틴의 firstmate 프로젝트 모음.
+ * 덮어쓰기는 호출자 몫(backend `GOOTTE_ROOTS`, cli 인자).
+ */
+export function defaultProjectRoots(): string[] {
+  return [join(homedir(), "Documents", "ai2", "projects")];
+}
+
+/**
+ * firstmate 프로젝트 판정 — 루트 `AGENTS.md` **와** `docs/features/` 가 둘 다 있음.
+ * 둘 다 요구하는 이유는 `docs/features/firstmate-project-source/spec.md` §설계 1.
+ */
+export function isFirstmateProject(dir: string): boolean {
+  return existsSync(join(dir, "AGENTS.md")) && isDir(join(dir, "docs", "features"));
+}
+
+/** cling 프로젝트 판정(은퇴 예정 — 티켓 04 가 지운다). */
+export function isClingProject(dir: string): boolean {
+  return existsSync(join(dir, ".cling", "profile.md"));
+}
+
+/**
+ * 머신 scan: root + 2단계 하위에서 프로젝트를 센다.
+ * 판정은 firstmate 규칙 ‖ cling 규칙 — 둘은 티켓 04 까지 공존한다.
+ */
 export function discoverProjects(roots: string[]): Project[] {
   const found: Project[] = [];
   const seen = new Set<string>();
   const check = (dir: string): void => {
-    if (!seen.has(dir) && existsSync(join(dir, ".cling", "profile.md"))) {
-      seen.add(dir);
-      found.push({ slug: basename(dir), path: dir });
-    }
+    if (seen.has(dir)) return;
+    if (!isFirstmateProject(dir) && !isClingProject(dir)) return;
+    seen.add(dir);
+    found.push({ slug: basename(dir), path: dir });
   };
   for (const root of roots) {
     if (!isDir(root)) continue;

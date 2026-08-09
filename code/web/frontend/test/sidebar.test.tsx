@@ -32,6 +32,17 @@ describe("Sidebar", () => {
     expect(screen.getByText(/자동 발견 · 2개/)).toBeInTheDocument();
   });
 
+  // firstmate-project-source 01 — 발견 규칙이 바뀐 뒤 캡틴이 실제로 보는 목록
+  it("firstmate 프로젝트가 목록에 뜬다 (jinwooauto · gootte)", () => {
+    renderSeeded(<Sidebar selected={null} onSelect={() => {}} />, [
+      { slug: "jinwooauto", path: "/Users/x/Documents/ai2/projects/jinwooauto" },
+      { slug: "gootte", path: "/Users/x/Documents/ai2/projects/gootte" },
+    ]);
+    // "gootte" 는 사이드바 제목에도 있어 역할로 좁힌다 — 목록 항목만 본다
+    expect(screen.getByRole("button", { name: /jinwooauto/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /gootte/ })).toBeInTheDocument();
+  });
+
   it("클릭 시 onSelect(slug) 호출", () => {
     const onSelect = vi.fn();
     renderSeeded(<Sidebar selected={null} onSelect={onSelect} />);

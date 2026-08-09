@@ -1,5 +1,4 @@
-import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename } from "node:path";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -25,15 +24,16 @@ import {
   scanWorktrees,
   readMermaidDocs,
   activeWorktrees,
+  defaultProjectRoots,
   type LoadedProject,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
-/** env `GOOTTE_ROOTS`(콜론 구분) → discover 루트. 기본 `~/Documents`. */
+/** env `GOOTTE_ROOTS`(콜론 구분) → discover 루트. 기본 `~/Documents/ai2/projects`. */
 export function defaultRoots(): string[] {
   const env = process.env.GOOTTE_ROOTS?.trim();
   if (env) return env.split(":").filter(Boolean);
-  return [join(homedir(), "Documents")];
+  return defaultProjectRoots();
 }
 
 const slugParam = z.object({ slug: z.string().min(1) });
