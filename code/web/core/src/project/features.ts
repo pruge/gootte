@@ -84,7 +84,24 @@ export function buildFeature(docs: FeatureDocs): Feature {
   };
 }
 
-/** 기능 목록 → 계약 형태. 폴더명 순(화면 그룹 순서). */
+/**
+ * 남은 일이 있다 = done 도 dropped 도 아닌 티켓이 하나라도 있다.
+ * 티켓이 하나도 없는 기능도 "남은 일 있음" 쪽이다 — 끝났다는 증거가 없다.
+ */
+function hasOpenWork(docs: FeatureDocs): boolean {
+  if (docs.tickets.length === 0) return true;
+  return docs.tickets.some((t) => t.status !== "done" && t.status !== "dropped");
+}
+
+/**
+ * 기능 목록 → 계약 형태. 남은 일이 있는 기능이 먼저, 다 끝난 기능이 나중 — 각 무리 안은 폴더명 순.
+ * 기능 자신의 `status`(spec)는 쓰지 않는다 — 판정은 오직 티켓으로 한다.
+ */
 export function buildFeatures(docs: FeatureDocs[]): Feature[] {
-  return [...docs].sort((a, b) => a.slug.localeCompare(b.slug)).map(buildFeature);
+  return [...docs]
+    .sort((a, b) => {
+      const openDiff = Number(hasOpenWork(b)) - Number(hasOpenWork(a));
+      return openDiff !== 0 ? openDiff : a.slug.localeCompare(b.slug);
+    })
+    .map(buildFeature);
 }
