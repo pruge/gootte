@@ -4,12 +4,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { watchProjects, type Change, type ProjectWatcher } from "./watch";
 
+const TICKET = join("docs", "features", "f", "issues", "01-x.md");
+
 function makeProject(root: string, slug: string): void {
   const p = join(root, slug);
-  mkdirSync(join(p, ".cling"), { recursive: true });
-  writeFileSync(join(p, ".cling", "profile.md"), "# profile\n");
-  mkdirSync(join(p, "docs", "todo"), { recursive: true });
-  writeFileSync(join(p, "docs", "todo", "001-x.md"), "---\nstatus: pending\n---\n");
+  mkdirSync(join(p, "docs", "features", "f", "issues"), { recursive: true });
+  writeFileSync(join(p, "AGENTS.md"), "# AGENTS\n");
+  writeFileSync(join(p, TICKET), "# 01 — x\n\n**Status:** ready-for-agent\n");
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -40,7 +41,7 @@ describe("watchProjects (022)", () => {
     await sleep(500); // chokidar ready
 
     // 1) 문서 변경 → {project: alpha}
-    writeFileSync(join(root, "alpha", "docs", "todo", "001-x.md"), "---\nstatus: done\n---\n");
+    writeFileSync(join(root, "alpha", TICKET), "# 01 — x\n\n**Status:** resolved (2026-08-09)\n");
     await waitFor(() => events.some((e) => e.kind === "project" && e.project === "alpha"));
 
     // 2) 새 프로젝트(beta) 추가 → {projects}
@@ -49,7 +50,7 @@ describe("watchProjects (022)", () => {
 
     // 3) beta 문서 변경 → {project: beta} (재동기된 감시)
     const before = events.length;
-    writeFileSync(join(root, "beta", "docs", "todo", "001-x.md"), "x");
+    writeFileSync(join(root, "beta", TICKET), "x");
     await waitFor(() => events.slice(before).some((e) => e.kind === "project" && e.project === "beta"));
   });
 
@@ -62,7 +63,7 @@ describe("watchProjects (022)", () => {
     await w.close();
     w = null;
     const n = events.length;
-    writeFileSync(join(root, "alpha", "docs", "todo", "001-x.md"), "changed");
+    writeFileSync(join(root, "alpha", TICKET), "changed");
     await sleep(300);
     expect(events.length).toBe(n);
   });

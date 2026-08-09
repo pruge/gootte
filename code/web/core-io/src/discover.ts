@@ -34,21 +34,13 @@ export function isFirstmateProject(dir: string): boolean {
   return existsSync(join(dir, "AGENTS.md")) && isDir(join(dir, "docs", "features"));
 }
 
-/** cling 프로젝트 판정(은퇴 예정 — 티켓 04 가 지운다). */
-export function isClingProject(dir: string): boolean {
-  return existsSync(join(dir, ".cling", "profile.md"));
-}
-
-/**
- * 머신 scan: root + 2단계 하위에서 프로젝트를 센다.
- * 판정은 firstmate 규칙 ‖ cling 규칙 — 둘은 티켓 04 까지 공존한다.
- */
+/** 머신 scan: root + 2단계 하위에서 프로젝트를 센다. 판정은 firstmate 규칙 하나뿐이다. */
 export function discoverProjects(roots: string[]): Project[] {
   const found: Project[] = [];
   const seen = new Set<string>();
   const check = (dir: string): void => {
     if (seen.has(dir)) return;
-    if (!isFirstmateProject(dir) && !isClingProject(dir)) return;
+    if (!isFirstmateProject(dir)) return;
     seen.add(dir);
     found.push({ slug: basename(dir), path: dir });
   };

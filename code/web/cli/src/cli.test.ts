@@ -18,7 +18,8 @@ describe("cli — 프로젝트 로드 → plan (T8·T10 wiring)", () => {
   let proj: string;
   beforeAll(() => {
     proj = mkdtempSync(join(tmpdir(), "gootte-proj-"));
-    w(proj, ".cling/profile.md", "# profile\n");
+    w(proj, "AGENTS.md", "# AGENTS\n");
+    w(proj, "docs/features/f/issues/01-x.md", "# 01 — x\n\n**Status:** ready-for-agent\n");
     w(
       proj,
       "docs/roadmap/INDEX.md",
@@ -60,7 +61,7 @@ describe("cli — 프로젝트 로드 → plan (T8·T10 wiring)", () => {
     expect(planText(proj)).toMatch(/blocked.*gamma/);
   });
 
-  it("discover — .cling/profile.md 탐지", () => {
+  it("discover — AGENTS.md + docs/features/ 탐지", () => {
     expect(discoverProjects([proj]).map((p) => p.slug)).toContain(basename(proj));
     expect(discoverText([proj])).toContain(basename(proj));
   });

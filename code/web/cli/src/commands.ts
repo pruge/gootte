@@ -22,6 +22,6 @@ export function writeDigest(repoPath: string): string {
 
 export function discoverText(roots: string[]): string {
   const found = discoverProjects(roots);
-  if (found.length === 0) return "(cling 프로젝트 없음)";
+  if (found.length === 0) return "(프로젝트 없음)";
   return found.map((p) => `${p.slug}\t${p.path}`).join("\n");
 }

@@ -26,8 +26,8 @@ const heavy = (p: string): boolean => p.split(sep).some((s) => HEAVY.has(s));
 
 /**
  * 관리대상 프로젝트 문서/worktree 변경 감시 → coarse Change 콜백. INV-2(감시=read only, write 없음).
- * - 콘텐츠: 각 프로젝트 `docs`·`.cling/profile.md`·`.git/worktrees`·`.claude/worktrees` → {project}(경로→slug 매핑).
- * - 목록: roots 얕은(depth 3) 감시로 `.cling` 추가/삭제 → 재발견 → 집합 변하면 {projects} + 콘텐츠 감시 재동기.
+ * - 콘텐츠: 각 프로젝트 `docs`·`.git/worktrees`·`.claude/worktrees` → {project}(경로→slug 매핑).
+ * - 목록: roots 얕은(depth 3) 감시로 발견 표식 추가/삭제 → 재발견 → 집합 변하면 {projects} + 콘텐츠 감시 재동기.
  * 프로젝트/목록 단위로 debounce 뭉침(git 대량 touch 흡수).
  */
 export function watchProjects(
@@ -55,7 +55,6 @@ export function watchProjects(
   const contentPaths = (ps: typeof projects): string[] =>
     ps.flatMap((p) => [
       join(p.path, "docs"),
-      join(p.path, ".cling", "profile.md"),
       join(p.path, ".git", "worktrees"),
       join(p.path, ".claude", "worktrees"),
     ]);
@@ -80,7 +79,14 @@ export function watchProjects(
     if (slug) fire({ kind: "project", project: slug });
   });
 
-  // 목록 감시 — roots 얕게, `.cling` 관련 이벤트만 재발견 트리거.
+  // 목록 감시 — roots 얕게, 발견 표식(`AGENTS.md` · `docs/features/`) 이벤트만 재발견 트리거.
+  // 표식은 discoverProjects(isFirstmateProject)와 같은 두 가지다 — 판정이 바뀌면 여기도 같이 바뀐다.
+  const isDiscoveryMark = (abs: string): boolean => {
+    const segs = abs.split(sep);
+    if (segs[segs.length - 1] === "AGENTS.md") return true;
+    const i = segs.lastIndexOf("docs");
+    return i >= 0 && segs[i + 1] === "features";
+  };
   let rd: ReturnType<typeof setTimeout> | null = null;
   const rediscover = (): void => {
     const next = discoverProjects(roots);
@@ -99,7 +105,7 @@ export function watchProjects(
     ignored: (p) => heavy(p),
   });
   rootsW.on("all", (_ev, abs) => {
-    if (!hasSeg(abs, ".cling")) return;
+    if (!isDiscoveryMark(abs)) return;
     if (rd) clearTimeout(rd);
     rd = setTimeout(rediscover, debounceMs);
   });
