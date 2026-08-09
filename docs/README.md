@@ -1,82 +1,50 @@
-# docs — 문서 구조 안내 (IA 맵)
+# docs — 이 저장소의 문서 지도
 
-> 이 프로젝트의 모든 문서가 어디에·왜 있는지의 지도. 새 문서를 만들기 전에 여기서 위치를 정한다.
-> 구조는 cling 표준 레이아웃 — 새 cling 프로젝트는 모두 같은 모양으로 시작한다.
->
-> _(cling:init이 복사한 템플릿. `z_*` 헌장 등 프로젝트 고유 부분은 채워 넣는다.)_
+> 이 저장소 문서가 어디에·왜 있는지의 지도. 새 문서를 만들기 전에 여기서 위치를 정한다.
+> 여기 있는 것은 **작업 표면 하나**(`features/`)와 **작업자용 관례 하나**(`agents/`)뿐이다.
 
-## 한눈에 — 3 그룹 (prefix = 시각 그룹)
+저장소 전체에 걸리는 지침은 문서가 아니라 루트 [`AGENTS.md`](../AGENTS.md) 가 갖는다
+(`CLAUDE.md` 는 그 심링크). 제품 불변식·verify gate·실행 명령을 찾는다면 거기가 먼저다.
 
-폴더는 **접두사(prefix)로 3 그룹**으로 나뉜다. 탐색기에서 그룹이 뭉쳐 보이고, 폴더가 늘어도 안 흐트러진다.
+## 두 폴더
 
-| 그룹 | prefix | 정렬 | 무엇 |
-|---|---|---|---|
-| **gitignore** | `_` | 맨 위 (회색) | scratch·비밀·원본 자료. 추적 안 함 |
-| **cling 표준** | (없음, bare) | 가운데 | `cling:init`이 만드는 고정 폴더. 모든 cling 프로젝트 공통 |
-| **프로젝트 지식** | `z_` | 맨 아래 | 이 프로젝트만의 추가 지식 |
-
-## 생애주기 — 시작 → 생성 → 추가 (출처 축)
-
-prefix가 *소유/추적*을 가른다면, 문서의 **출처(생애주기)** 는 다음 3종이다. 이 구분이 "어디서 시작했나 / 무엇이 자동 생성됐나 / 무엇이 쌓였나"를 항상 또렷하게 한다.
-
-| 생애주기 | 무엇 | 위치 |
+| 폴더 | 무엇 | 성질 |
 |---|---|---|
-| **① 시작 (seed)** | 프로젝트·기능의 출발점 — kickoff brief·비전·초기 조사 | **`roadmap/`** (맨 위 brief = genesis) |
-| **② 생성 (generated)** | 도구가 자동 생산 — 손편집 X | **`todo/` `sprint/`** |
-| **③ 추가 (accreted)** | 개발하며 쌓는 정의·지식 | **`spec/`** + **`z_*`** |
+| [`features/`](features/) | **작업 표면** — 기능별 사양(`spec.md`)과 티켓(`issues/NN-*.md`)과 결정(`adr/`) | 살아 있음 — 상태가 여기서 바뀐다 |
+| [`agents/`](agents/) | **작업자용 관례** — 티켓 서식·`Status:` 어휘·탐색 순서, 그리고 한국어 개념어 → 영문 코드 앵커 사전 | 살아 있음 — 규약의 SoT |
 
-**인박스 → 승격**: 첫 brain dump·미정제 메모는 `_memo/`(인박스, gitignore)에서 출발한다. `/cling:kickoff`이 그것을 `roadmap/`의 첫 brief로 *승격*시킨다. 정제되면 `spec/`(정의)·`z_*`(프로젝트 지식)로 올라간다. **raw 덤프가 추가-지식과 같은 레벨에 섞이지 않게 하는 것이 핵심.**
+### `features/<기능-slug>/`
 
 ```
-brain dump (첫 파일)  →  _memo/  (인박스, gitignore)
-                          │  /cling:kickoff 로 정제·승격
-                          ▼
-                       roadmap/ 첫 brief (공식 출발점, 추적)
-                          │  개발 진행
-                          ▼
-   생성: todo/ sprint/                추가: spec/ · z_*
+docs/features/<기능-slug>/
+├── spec.md              ← spec 1개 = 파일 1개
+├── issues/NN-<slug>.md  ← 티켓당 파일 1개. 의존 순서로 01 부터
+└── adr/NNNN-<slug>.md   ← 그 기능에 속한 결정 기록
 ```
 
-## 폴더별 헌장
+**별도 원장은 없다.** 상태는 티켓의 `Status:` 줄이, 순서는 `Blocked by:` 줄이 소유하고,
+다음 할 일(frontier)은 적어 두는 것이 아니라 그 두 줄에서 계산된다 —
+규약 전문은 [`agents/issue-tracker.md`](agents/issue-tracker.md).
 
-### cling 표준 (bare — rename 금지, 스크립트가 이름 의존)
+### `agents/`
 
-| 폴더 | 생애주기 | 헌장 |
-|---|---|---|
-| **`roadmap/`** | 시작 | 기능 기획 (빌드 *전* brief/비전). 맨 위 문서 = 프로젝트 출발점. done 기획서는 `roadmap/_archive/`로 격리 |
-| **`spec/`** | 추가 | 운영 *개념*의 SoT — 시스템의 권위 정의 (상태 모델·계약·불변식 등) |
-| **`todo/`** | 생성 | `/cling:todo` 산출물. done은 `todo/archive/` |
-| **`sprint/`** | 생성 | `/cling:sprint` 산출물. todo 묶음. done은 `sprint/archive/` |
-
-### 프로젝트 지식 (z_ — 필요할 때 생성, 빈 폴더 X)
-
-> 첫 문서가 생길 때 만든다. 흔한 슬롯 (프로젝트에 맞게 채움):
-
-| 폴더 | 헌장 (예시 — 프로젝트에 맞게 수정) |
+| 파일 | 답하는 질문 |
 |---|---|
-| **`z_reference/`** | 우리가 *안 만든* 외부 사실 — 벤더 스펙·하드웨어 결선·외부 API. 도메인별 하위폴더 |
-| **`z_knowledge/`** | sprint/버그에 안 묶이는 재사용 패턴·함정·해결. "왜 그렇게 했는지" |
-| **`z_setup/`** | 운영 런북 — 배포·설치·환경 셋업 |
-
-### gitignore (_)
-
-| 폴더 | 헌장 |
-|---|---|
-| **`_memo/`** | scratch 인박스 + 비밀(`env/`) + 원본 자료. 추적 안 함. 정제되면 위 그룹으로 승격 |
+| [`domain.md`](agents/domain.md) | 이 저장소를 탐색하기 전에 무엇을 어떤 순서로 읽나 · 여섯 컨텍스트 |
+| [`issue-tracker.md`](agents/issue-tracker.md) | spec·티켓을 어떤 레이아웃으로 쓰나 · `Blocked by:` 의 의미 |
+| [`triage-labels.md`](agents/triage-labels.md) | 정규 `Status:` 여덟 값과 서식 |
+| [`codegraph/`](agents/codegraph/) | 한국어 개념어에서 출발할 때 어떤 영문 심볼을 찾나 |
 
 ## 새 문서는 어디에?
 
-1. **아직 거친 메모·덤프** → `_memo/` (나중에 승격)
-2. **새 기능을 시작하는 기획/brief** → `roadmap/`
-3. **시스템 개념의 권위 정의** → `spec/`
-4. **외부/벤더 사실** → `z_reference/<도메인>/`
-5. **다음에 또 쓸 패턴·함정** → `z_knowledge/`
-6. **운영 절차** → `z_setup/`
-7. **todo·sprint** → 도구가 생성 (수동 X)
+**기능에 속하면 그 기능 폴더(`features/<기능-slug>/`)에, 작업 방식에 대한 것이면 `agents/` 에,
+저장소 전체에 걸리는 지침이면 문서가 아니라 [`AGENTS.md`](../AGENTS.md) 에 쓴다** —
+어느 것도 아니라면 아직 문서가 아니라 티켓이다.
 
-## 규칙
+세부 배치 규칙(어느 기능 폴더인지, ADR 을 새로 쓸지 옛 파일을 고칠지)은
+[`agents/domain.md`](agents/domain.md) §쓰기 규칙이 SoT 다.
 
-- **접두사 = 그룹** — `_`(ignore) / bare(cling 표준) / `z_`(프로젝트). 숫자 접두 안 씀 (읽는 순서는 이 맵에 적는다).
-- **cling 표준은 고정 4** (`roadmap spec todo sprint`) — rename 금지. 확장 지식은 `z_`로.
-- **파일명** — 공백 대신 하이픈 권장 (`state-model.md` / `상태-모델.md`).
-- **`_archive/`** — done/폐기 문서는 같은 폴더의 `_archive/` 하위로 (이력 보존, 활성 목록 정리).
+---
+
+`mermaid/` 는 은퇴한 표면이다 — 제품 표면과 함께 걷어내는 중이며
+(`features/firstmate-migration/issues/04-remove-mermaid.md`), 새로 쓰지 않는다.
