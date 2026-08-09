@@ -5,7 +5,7 @@
 
 **Blocked by:** 03, 04, 05, 그리고 **자매 기능 `firstmate-project-source` 의 티켓 01**
 
-**Status:** ready-for-agent
+**Status:** resolved (2026-08-09)
 
 ## 완료 시 시연 가능한 것
 

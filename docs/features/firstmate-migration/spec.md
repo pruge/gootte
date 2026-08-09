@@ -1,6 +1,6 @@
 # firstmate-migration — cling 관례 제거와 firstmate 관리 전환
 
-Status: ready-for-agent (2026-08-09) · 열린 결정 전부 캡틴이 닫음 · 티켓 6장 `issues/` 에 있음
+Status: resolved (2026-08-09) · 열린 결정 전부 캡틴이 닫음 · 티켓 6장 전부 `resolved`
 
 이 사양은 **저장소 층**만 다룬다. 제품이 무엇을 읽을 것인가는 자매 사양
 [`../firstmate-project-source/spec.md`](../firstmate-project-source/spec.md) 가 갖는다. 둘의 순서 요구는 §순서.
