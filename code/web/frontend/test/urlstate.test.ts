@@ -47,6 +47,15 @@ describe("useUrlState", () => {
     expect(new URLSearchParams(window.location.search).get("view")).toBe("board");
   });
 
+  it("setView(null) → `?view=` 제거(드로어를 ESC/닫기로 닫을 때)", () => {
+    window.history.pushState({}, "", "/?p=x&tab=features&view=auth-login%2Fspec.md");
+    const { result } = renderHook(() => useUrlState());
+    expect(result.current.view).toBe("auth-login/spec.md");
+    act(() => result.current.setView(null));
+    expect(result.current.view).toBeNull();
+    expect(new URLSearchParams(window.location.search).get("view")).toBeNull();
+  });
+
   it("setTab 은 view 초기화(다른 탭 모드 안 샘)", () => {
     window.history.pushState({}, "", "/?p=x&tab=features&view=board");
     const { result } = renderHook(() => useUrlState());

@@ -1,5 +1,11 @@
 import { z, type ZodTypeAny } from "zod";
-import { ProjectsResponse, FeaturesResponse, ApiError, type Project } from "@gootte/contract";
+import {
+  ProjectsResponse,
+  FeaturesResponse,
+  FeatureDocResponse,
+  ApiError,
+  type Project,
+} from "@gootte/contract";
 
 /** same-origin(prod = backend가 정적 서빙) · dev = vite 프록시가 /api → backend. */
 const BASE = "";
@@ -19,3 +25,14 @@ export const fetchProjects = (): Promise<Project[]> =>
 /** 기능별 할일 목록(docs/features/) — 막힘 해제는 서버가 계산해 보낸다(INV-1: 화면 재계산 X). */
 export const fetchFeatures = (slug: string) =>
   get(`/api/features/${encodeURIComponent(slug)}`, FeaturesResponse);
+
+/** 기능 폴더 문서 본문(read-only) — 경로 판정은 서버 몫이다(티켓 01 §설계 4). */
+export const fetchFeatureDoc = (
+  project: string,
+  feature: string,
+  path: string,
+): Promise<FeatureDocResponse> =>
+  get(
+    `/api/features/${encodeURIComponent(project)}/${encodeURIComponent(feature)}/doc?path=${encodeURIComponent(path)}`,
+    FeatureDocResponse,
+  );

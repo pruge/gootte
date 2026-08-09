@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
-import { ProjectsResponse, FeaturesResponse, ApiError, type Project } from "@gootte/contract";
+import { ProjectsResponse, FeaturesResponse, FeatureDocResponse, ApiError, type Project } from "@gootte/contract";
 import { createApp } from "../src/app";
 import {
   clearDiscoverCache,
@@ -140,6 +140,74 @@ describe("GET /api/features/:slug", () => {
     const res = await app.request("/api/features/does-not-exist");
     expect(res.status).toBe(404);
     expect(ApiError.parse(await res.json()).error).toContain("does-not-exist");
+  });
+
+  // fixture alpha 의 docs/features/doc-tree — spec.md + architecture.md + adr/0001-x.md + issues/
+  test("기능 응답에 문서 트리가 실린다 — adr 있으면 뜨고, issues 는 트리에서 빠진다(티켓 목록이 따로 싣는다)", async () => {
+    const app = createApp(APP);
+    const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
+    const f = body.features.find((x) => x.slug === "doc-tree");
+    expect(f?.docs).toEqual([
+      {
+        kind: "dir",
+        name: "adr",
+        path: "adr",
+        children: [{ kind: "file", name: "0001-x.md", path: "adr/0001-x.md" }],
+      },
+      { kind: "file", name: "architecture.md", path: "architecture.md" },
+      { kind: "file", name: "spec.md", path: "spec.md" },
+    ]);
+    // auth-login 픽스처엔 adr/ 가 없다 — 빈 칸으로도 뜨지 않는다(INV-4)
+    const auth = body.features.find((x) => x.slug === "auth-login");
+    expect(auth?.docs.map((d) => d.name)).toEqual(["spec.md"]);
+  });
+});
+
+describe("GET /api/features/:slug/:feature/doc — 문서 본문(read-only, INV-2)", () => {
+  test("기능 폴더 안의 문서를 내준다", async () => {
+    const app = createApp(APP);
+    const res = await app.request("/api/features/alpha/doc-tree/doc?path=spec.md");
+    expect(res.status).toBe(200);
+    const body = FeatureDocResponse.parse(await res.json());
+    expect(body.path).toBe("spec.md");
+    expect(body.content).toContain("# doc-tree — 문서 트리 픽스처");
+  });
+
+  test("하위 경로(adr/*.md)도 내준다", async () => {
+    const app = createApp(APP);
+    const res = await app.request("/api/features/alpha/doc-tree/doc?path=adr/0001-x.md");
+    expect(res.status).toBe(200);
+    expect(FeatureDocResponse.parse(await res.json()).content).toContain("ADR 0001");
+  });
+
+  test("🔴 기능 폴더 밖으로 나가는 경로는 거절한다 — 형제 기능 폴더도 내주지 않는다", async () => {
+    const app = createApp(APP);
+    const res = await app.request(
+      `/api/features/alpha/doc-tree/doc?path=${encodeURIComponent("../auth-login/spec.md")}`,
+    );
+    expect(res.status).toBe(400);
+    expect(ApiError.parse(await res.json()).error).toContain("기능 폴더 밖");
+  });
+
+  test("🔴 저장소 밖 상위 경로 탈출도 거절한다", async () => {
+    const app = createApp(APP);
+    const res = await app.request(
+      `/api/features/alpha/doc-tree/doc?path=${encodeURIComponent("../../../../../../etc/passwd")}`,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  test("없는 문서는 404 — 무엇을 못 읽었는지 말한다", async () => {
+    const app = createApp(APP);
+    const res = await app.request("/api/features/alpha/doc-tree/doc?path=nope.md");
+    expect(res.status).toBe(404);
+    expect(ApiError.parse(await res.json()).error).toContain("nope.md");
+  });
+
+  test("미해소 프로젝트 slug → 404 ApiError", async () => {
+    const app = createApp(APP);
+    const res = await app.request("/api/features/does-not-exist/doc-tree/doc?path=spec.md");
+    expect(res.status).toBe(404);
   });
 });
 

@@ -24,6 +24,7 @@ const feature = (slug: string, tickets: FeatureTicket[]): Feature => ({
   sourceStatus: "ready-for-agent",
   statusKnown: true,
   tickets,
+  docs: [],
 });
 
 const copy = (slug: string, branch: string, touched: string[] = []): ObservedCopy => ({
