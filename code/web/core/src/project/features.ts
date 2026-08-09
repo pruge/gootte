@@ -58,6 +58,8 @@ function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>): FeatureTicket 
     blockedBy: doc.blockedBy,
     waitingOn: waiting,
     startable: waiting.length === 0,
+    // 문서만으로는 언제나 빈 값 — 처리중은 격리 사본 관측이 얹는다(`applyInProgress`).
+    workedBy: [],
   };
 }
 

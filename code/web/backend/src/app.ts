@@ -14,7 +14,7 @@ import {
   TreeResponse,
   type ApiError,
 } from "@gootte/contract";
-import { buildPlan, buildRoadmap, buildGantt } from "@gootte/core";
+import { buildPlan, buildRoadmap, buildGantt, applyInProgress } from "@gootte/core";
 import {
   loadProjectState,
   readDoc,
@@ -23,8 +23,10 @@ import {
   readFeatures,
   resolveInitiativeDir,
   scanWorktrees,
+  scanWorkingCopies,
   activeWorktrees,
   defaultProjectRoots,
+  defaultTreehouseRoot,
   type LoadedProject,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
@@ -34,6 +36,11 @@ export function defaultRoots(): string[] {
   const env = process.env.GOOTTE_ROOTS?.trim();
   if (env) return env.split(":").filter(Boolean);
   return defaultProjectRoots();
+}
+
+/** env `GOOTTE_TREEHOUSE` → 격리 사본 뿌리. 기본 `~/.treehouse`. 기계마다 다를 수 있다. */
+export function treehouseRoot(): string {
+  return process.env.GOOTTE_TREEHOUSE?.trim() || defaultTreehouseRoot();
 }
 
 const slugParam = z.object({ slug: z.string().min(1) });
@@ -68,6 +75,8 @@ const roadmapDocQuery = z.object({
 export interface AppOptions {
   /** discover 루트 (테스트 주입). 없으면 defaultRoots(). */
   roots?: string[];
+  /** 격리 사본 뿌리 (테스트 주입). 없으면 treehouseRoot(). */
+  treehouse?: string;
 }
 
 /**
@@ -76,6 +85,7 @@ export interface AppOptions {
  */
 export function createApp(options: AppOptions = {}): Hono {
   const roots = options.roots ?? defaultRoots();
+  const treehouse = options.treehouse ?? treehouseRoot();
   const app = new Hono();
 
   // slug → {name, state, gitSignals} 해소(미해소 null). 5 라우트 공유(DRY).
@@ -117,13 +127,18 @@ export function createApp(options: AppOptions = {}): Hono {
   // GET /api/features/:slug → FeaturesResponse (docs/features/ 기능별 할일, INV-2 read-only)
   // 🔴 loadProjectState(cling 경로)를 타지 않는다 — 이 목록은 firstmate 문서만 입력으로 쓴다.
   //    막힘 해제는 요청마다 다시 계산된다(INV-1·INV-3).
+  // 처리중은 **입력이 다르다** — 문서가 아니라 격리 사본 관측이다. 요청마다 다시 관측하고
+  // 어디에도 저장하지 않는다. 티켓에 잇지 못한 작업은 `inProgress.unknown` 으로 드러난다.
   app.get("/api/features/:slug", zValidator("param", slugParam), (c) => {
     const { slug } = c.req.valid("param");
     const proj = resolveSlug(roots, slug);
     if (!proj) return c.json(notFound(slug), 404);
-    return c.json(
-      FeaturesResponse.parse({ project: basename(proj.path), features: readFeatures(proj.path) }),
+    const project = basename(proj.path);
+    const observed = applyInProgress(
+      readFeatures(proj.path),
+      scanWorkingCopies(treehouse, project),
     );
+    return c.json(FeaturesResponse.parse({ project, ...observed }));
   });
 
   // GET /api/doc/:slug/:kind/:name[?worktree=] → DocResponse (관리대상 todo/sprint raw md, INV-2 read-only)
