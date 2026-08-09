@@ -5,13 +5,13 @@ interface TrackSidebarProps<T> {
   groups: TrackGrouped<T>[];
   selected: string;
   onSelect: (key: string) => void;
-  /** 그룹별 부제(카운트 등) — 소비처가 렌더(리스트=진행/완료/작업중, 구조=그림 수). */
+  /** 그룹별 부제(카운트 등) — 소비처가 렌더(리스트=진행/완료/작업중). */
   meta: (group: TrackGrouped<T>) => ReactNode;
 }
 
 /**
  * 본문 내 대분류(track) 사이드바 — 클릭 시 우측 패널이 그 track 내용을 보여줌.
- * 아이템 타입 무관(제네릭) — 리스트(이니셔티브)·구조(다이어그램) 공용. 부제는 `meta` 로 주입.
+ * 아이템 타입 무관(제네릭) — 리스트(이니셔티브)가 소비. 부제는 `meta` 로 주입.
  */
 export function TrackSidebar<T>({ groups, selected, onSelect, meta }: TrackSidebarProps<T>) {
   return (

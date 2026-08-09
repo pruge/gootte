@@ -4,7 +4,6 @@ import {
   PlanResponse,
   RoadmapResponse,
   LineageResponse,
-  StructureResponse,
   TimelineResponse,
   WorktreeResponse,
   DocResponse,
@@ -36,9 +35,6 @@ export const fetchRoadmap = (slug: string) =>
 
 export const fetchLineage = (slug: string) =>
   get(`/api/lineage/${encodeURIComponent(slug)}`, LineageResponse);
-
-export const fetchStructure = (slug: string) =>
-  get(`/api/structure/${encodeURIComponent(slug)}`, StructureResponse);
 
 export const fetchTimeline = (slug: string) =>
   get(`/api/timeline/${encodeURIComponent(slug)}`, TimelineResponse);

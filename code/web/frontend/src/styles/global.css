@@ -211,11 +211,3 @@
   background: var(--color-surface-2);
   font-weight: 600;
 }
-.doc-md .doc-mermaid {
-  display: flex;
-  justify-content: center;
-}
-.doc-md .doc-mermaid svg {
-  max-width: 100%;
-  height: auto;
-}

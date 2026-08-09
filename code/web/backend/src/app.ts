@@ -7,14 +7,13 @@ import {
   PlanResponse,
   RoadmapResponse,
   LineageResponse,
-  StructureResponse,
   TimelineResponse,
   WorktreeResponse,
   DocResponse,
   TreeResponse,
   type ApiError,
 } from "@gootte/contract";
-import { buildPlan, buildRoadmap, buildStructure, buildGantt } from "@gootte/core";
+import { buildPlan, buildRoadmap, buildGantt } from "@gootte/core";
 import {
   loadProjectState,
   readDoc,
@@ -22,7 +21,6 @@ import {
   listInitiativeTree,
   resolveInitiativeDir,
   scanWorktrees,
-  readMermaidDocs,
   activeWorktrees,
   defaultProjectRoots,
   type LoadedProject,
@@ -174,15 +172,6 @@ export function createApp(options: AppOptions = {}): Hono {
         drops: p.state.drops,
       }),
     );
-  });
-
-  // GET /api/structure/:slug → StructureResponse (저작 docs/mermaid 렌더 — web-structure)
-  app.get("/api/structure/:slug", zValidator("param", slugParam), (c) => {
-    const p = load(c.req.valid("param").slug);
-    if (!p) return c.json(notFound(c.req.param("slug")), 404);
-    // INV-2 read-only · INV-3 매요청 재read · INV-4 buildStructure 순수.
-    const groups = buildStructure(readMermaidDocs(p.repoPath), p.state);
-    return c.json(StructureResponse.parse({ project: p.name, groups }));
   });
 
   // GET /api/timeline/:slug → TimelineResponse (buildGantt — sprint 바 날짜축)

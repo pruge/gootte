@@ -5,7 +5,6 @@ import {
   fetchPlan,
   fetchRoadmap,
   fetchLineage,
-  fetchStructure,
   fetchTimeline,
   fetchWorktree,
   fetchDoc,
@@ -27,7 +26,6 @@ export const qk = {
   plan: (slug: string) => ["plan", slug] as const,
   roadmap: (slug: string) => ["roadmap", slug] as const,
   lineage: (slug: string) => ["lineage", slug] as const,
-  structure: (slug: string) => ["structure", slug] as const,
   timeline: (slug: string) => ["timeline", slug] as const,
   worktree: (slug: string) => ["worktree", slug] as const,
   doc: (slug: string, kind: string, name: string, worktree?: string) =>
@@ -109,14 +107,6 @@ export function useLineage(slug: string | null) {
   return useQuery({
     queryKey: qk.lineage(slug ?? ""),
     queryFn: () => fetchLineage(slug as string),
-    enabled: slug !== null,
-  });
-}
-
-export function useStructure(slug: string | null) {
-  return useQuery({
-    queryKey: qk.structure(slug ?? ""),
-    queryFn: () => fetchStructure(slug as string),
     enabled: slug !== null,
   });
 }
