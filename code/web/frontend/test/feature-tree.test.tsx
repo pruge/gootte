@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import type { Feature } from "@gootte/contract";
 import { FeatureCard } from "../src/components/features/FeatureCard";
@@ -154,5 +154,125 @@ describe("FeatureTree — check 는 파싱된 현황판, 나머지는 폴더에 
     renderCard(feature);
     open();
     expect(screen.getByText("티켓이 없습니다.")).toBeInTheDocument();
+  });
+});
+
+describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/03)", () => {
+  it("🔴 완료된 티켓도 단계 칸이 그려진다 — 자리가 사라지지 않는다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [],
+      tickets: [{ ...BASE.tickets[0]!, status: "done", sourceStatus: "resolved", startable: true }],
+    };
+    renderCard(feature);
+    open();
+    const row = screen.getByText("세션 발급").closest("li")!;
+    // 세 후보 라벨이 전부 DOM 에 있다(폭 계산용) — 그러나 셋 다 비어 보인다. 대체 문자는 없다.
+    for (const label of ["착수 가능", "진행중", "대기"]) {
+      expect(within(row).getByText(label)).toHaveClass("invisible");
+    }
+  });
+
+  it("🔴 같은 상황(취소) — 그 칸이 비어 있다. 대체 문자도, 지어낸 값도 없다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [],
+      tickets: [{ ...BASE.tickets[0]!, status: "dropped", sourceStatus: "wontfix", startable: true }],
+    };
+    renderCard(feature);
+    open();
+    const row = screen.getByText("세션 발급").closest("li")!;
+    for (const label of ["착수 가능", "진행중", "대기"]) {
+      expect(within(row).getByText(label)).toHaveClass("invisible");
+    }
+  });
+
+  it("선행이 다 풀렸고 임자가 없는 티켓 → 착수 가능", () => {
+    const feature: Feature = { ...BASE, docs: [] };
+    renderCard(feature);
+    open();
+    const row = screen.getByText("세션 발급").closest("li")!;
+    expect(within(row).getByText("착수 가능")).not.toHaveClass("invisible");
+  });
+
+  it("살아 있는 사본이 붙든 티켓 → 진행중, 그리고 가지 이름이 계속 보인다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [],
+      tickets: [{ ...BASE.tickets[0]!, status: "in_progress", workedBy: ["fm/session-work"] }],
+    };
+    renderCard(feature);
+    open();
+    const row = screen.getByText("세션 발급").closest("li")!;
+    expect(within(row).getByText("진행중")).not.toHaveClass("invisible");
+    expect(within(row).getByText("fm/session-work")).toBeInTheDocument();
+  });
+
+  it("선행이 남은 티켓 → 대기, 그리고 기다리는 대상이 계속 보인다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [],
+      tickets: [
+        { ...BASE.tickets[0]!, startable: false, blockedBy: ["02"], waitingOn: ["02"] },
+      ],
+    };
+    renderCard(feature);
+    open();
+    const row = screen.getByText("세션 발급").closest("li")!;
+    expect(within(row).getByText("대기")).not.toHaveClass("invisible");
+    expect(within(row).getByText("→ 02")).toBeInTheDocument();
+  });
+
+  it("🔴 네 상태가 한 목록에 섞여 있어도 네 줄의 단계 칸이 모두 그려진다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [],
+      tickets: [
+        { ...BASE.tickets[0]!, num: "01", slug: "01-a", title: "완료", status: "done" },
+        {
+          ...BASE.tickets[0]!,
+          num: "02",
+          slug: "02-b",
+          title: "진행중인 것",
+          status: "in_progress",
+          workedBy: ["fm/x"],
+        },
+        {
+          ...BASE.tickets[0]!,
+          num: "03",
+          slug: "03-c",
+          title: "대기중인 것",
+          startable: false,
+          blockedBy: ["02"],
+          waitingOn: ["02"],
+        },
+        { ...BASE.tickets[0]!, num: "04", slug: "04-d", title: "착수 가능한 것" },
+      ],
+    };
+    renderCard(feature);
+    open();
+    for (const title of ["완료", "진행중인 것", "대기중인 것", "착수 가능한 것"]) {
+      const row = screen.getByText(title).closest("li")!;
+      // 세 후보 모두 DOM 에 있다 — 칸의 존재 자체는 상태와 무관하게 늘 그려진다.
+      for (const label of ["착수 가능", "진행중", "대기"]) {
+        expect(within(row).getByText(label)).toBeInTheDocument();
+      }
+    }
+  });
+
+  it("임자만 있고 붙든 사본이 없는 티켓은 단계 칸에 끌어들이지 않는다 — 셋 다 비어 보인다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [],
+      tickets: [
+        { ...BASE.tickets[0]!, sourceStatus: "claimed", startable: false, waitingOn: [] },
+      ],
+    };
+    renderCard(feature);
+    open();
+    const row = screen.getByText("세션 발급").closest("li")!;
+    for (const label of ["착수 가능", "진행중", "대기"]) {
+      expect(within(row).getByText(label)).toHaveClass("invisible");
+    }
   });
 });

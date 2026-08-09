@@ -183,7 +183,8 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
     renderFeatures();
     openCard("auth-login — 로그인");
     const blocked = screen.getByText("소셜 로그인").closest("li")!;
-    expect(within(blocked).getByText("대기 → 02")).toBeInTheDocument();
+    expect(within(blocked).getByText("대기")).toBeInTheDocument();
+    expect(within(blocked).getByText("→ 02")).toBeInTheDocument();
     const ready = screen.getByText("로그인 화면").closest("li")!;
     expect(within(ready).getByText("착수 가능")).toBeInTheDocument();
   });
@@ -203,14 +204,15 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
     expect(screen.getByText(/알 수 없는 상태: 진행중/)).toBeInTheDocument();
   });
 
-  it("지금 붙들려 있는 티켓에만 처리중 표시가 붙는다 — 어느 가지가 붙들었는지까지", () => {
+  it("지금 붙들려 있는 티켓에만 진행중 단계가 붙는다 — 어느 가지가 붙들었는지까지", () => {
     renderFeatures();
     openCard("auth-login — 로그인");
     const working = screen.getByText("OAuth 교환").closest("li")!;
-    expect(within(working).getByText(/처리중 · fm\/alpha-oauth/)).toBeInTheDocument();
-    // 아무도 안 붙든 티켓에는 안 붙는다.
+    expect(within(working).getByText("진행중")).toBeInTheDocument();
+    expect(within(working).getByText("fm/alpha-oauth")).toBeInTheDocument();
+    // 아무도 안 붙든 티켓에는 가지 이름이 안 붙는다.
     const idle = screen.getByText("로그인 화면").closest("li")!;
-    expect(within(idle).queryByText(/처리중/)).toBeNull();
+    expect(within(idle).queryByText("fm/alpha-oauth")).toBeNull();
   });
 });
 
