@@ -2,6 +2,7 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import type { Feature } from "@gootte/contract";
 import { FeatureCard } from "../src/components/features/FeatureCard";
+import { TICKET_LIST_DEPTH, treeIndentStyle } from "../src/lib/tree-indent";
 
 const BASE: Omit<Feature, "docs"> = {
   slug: "auth-login",
@@ -154,6 +155,55 @@ describe("FeatureTree — check 는 파싱된 현황판, 나머지는 폴더에 
     renderCard(feature);
     open();
     expect(screen.getByText("티켓이 없습니다.")).toBeInTheDocument();
+  });
+});
+
+describe("check 목록이 issues 목록과 같은 자리에서 시작한다(feature-doc-browser/02)", () => {
+  it("issues 를 편 파일 줄과 check 아래 티켓 줄의 왼쪽 값이 같다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [
+        {
+          kind: "dir",
+          name: "issues",
+          path: "issues",
+          children: [{ kind: "file", name: "01-session.md", path: "issues/01-session.md" }],
+        },
+      ],
+    };
+    renderCard(feature);
+    open();
+    fireEvent.click(screen.getByText("issues")); // 기본 접힘 — 눌러 편다
+
+    const fileButton = screen.getByText("01-session.md").closest("button")!;
+    const ticketRow = screen.getByText("세션 발급").closest("li")!;
+    const expected = treeIndentStyle(TICKET_LIST_DEPTH).paddingLeft;
+
+    expect(fileButton.style.paddingLeft).toBe(expected);
+    expect(ticketRow.style.paddingLeft).toBe(expected);
+  });
+
+  it("티켓이 없는 기능의 빈 문구도 같은 왼쪽 값에서 시작한다", () => {
+    const feature: Feature = { ...BASE, tickets: [], docs: [] };
+    renderCard(feature);
+    open();
+    const empty = screen.getByText("티켓이 없습니다.");
+    expect(empty.style.paddingLeft).toBe(treeIndentStyle(TICKET_LIST_DEPTH).paddingLeft);
+  });
+
+  it("🔴 머리글(check·issues)은 서로 같은 깊이(0)로 남는다 — 손대지 않는다(F17)", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [{ kind: "dir", name: "issues", path: "issues", children: [] }],
+    };
+    renderCard(feature);
+    open();
+    const issuesHeader = screen.getByText("issues").closest("button")!;
+    const checkHeader = screen.getByText("check").closest("button")!;
+    const expected = treeIndentStyle(0).paddingLeft;
+
+    expect(issuesHeader.style.paddingLeft).toBe(expected);
+    expect(checkHeader.style.paddingLeft).toBe(""); // check 버튼은 트리 들여쓰기를 쓰지 않는다(px-4 그대로)
   });
 });
 

@@ -7,6 +7,10 @@ import {
   IconProgress,
 } from "@tabler/icons-react";
 import type { FeatureTicket } from "@gootte/contract";
+import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
+
+/** 트리 나머지가 쓰는 문서 아이콘 폭(15px) — 상태 아이콘도 여기 맞춘다(F20). 뜻·색은 그대로다. */
+const STATE_ICON_SIZE = 15;
 
 /**
  * 상태 아이콘 — semantic(장식 아님). 처리중 = active(작업중 신호), 착수 가능 = accent, 기다리는 중 = muted.
@@ -14,14 +18,15 @@ import type { FeatureTicket } from "@gootte/contract";
  */
 function StateIcon({ ticket }: { ticket: FeatureTicket }) {
   if (ticket.status === "done")
-    return <IconCircleCheckFilled size={17} className="shrink-0 text-accent" />;
-  if (ticket.status === "dropped") return <IconCircleX size={17} className="shrink-0 text-muted" />;
+    return <IconCircleCheckFilled size={STATE_ICON_SIZE} className="shrink-0 text-accent" />;
+  if (ticket.status === "dropped")
+    return <IconCircleX size={STATE_ICON_SIZE} className="shrink-0 text-muted" />;
   if (ticket.status === "in_progress")
-    return <IconProgress size={17} className="shrink-0 text-active" />;
+    return <IconProgress size={STATE_ICON_SIZE} className="shrink-0 text-active" />;
   return ticket.startable ? (
-    <IconCircleDashed size={17} className="shrink-0 text-accent" />
+    <IconCircleDashed size={STATE_ICON_SIZE} className="shrink-0 text-accent" />
   ) : (
-    <IconLock size={17} className="shrink-0 text-muted" />
+    <IconLock size={STATE_ICON_SIZE} className="shrink-0 text-muted" />
   );
 }
 
@@ -90,7 +95,8 @@ export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
 
   return (
     <li
-      className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 py-2.5 ${
+      style={treeIndentStyle(TICKET_LIST_DEPTH)}
+      className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 pr-4 py-2.5 ${
         ticket.status === "done" || ticket.status === "dropped" ? "text-muted" : ""
       }`}
     >

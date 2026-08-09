@@ -2,6 +2,7 @@ import { useState } from "react";
 import { IconChevronRight, IconFolder, IconFile, IconListCheck } from "@tabler/icons-react";
 import type { Feature, FeatureDocNode } from "@gootte/contract";
 import { TicketRow } from "./TicketRow";
+import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
 
 export type OpenDocFn = (featureSlug: string, path: string, trigger: HTMLElement) => void;
 
@@ -52,7 +53,12 @@ export function FeatureTree({ feature, onOpenDoc }: FeatureTreeProps) {
         </button>
         {checkOpen &&
           (feature.tickets.length === 0 ? (
-            <p className="px-4 py-3 pl-9 text-base text-muted">티켓이 없습니다.</p>
+            <p
+              style={treeIndentStyle(TICKET_LIST_DEPTH)}
+              className="py-3 pr-4 text-base text-muted"
+            >
+              티켓이 없습니다.
+            </p>
           ) : (
             <ul className="divide-y divide-border border-t border-border/60">
               {feature.tickets.map((t) => (
@@ -86,7 +92,7 @@ function DocTreeNode({
   onOpenDoc: OpenDocFn;
 }) {
   const [open, setOpen] = useState(false);
-  const indent = { paddingLeft: `${1 + depth * 1.25}rem` };
+  const indent = treeIndentStyle(depth);
 
   if (node.kind === "dir") {
     return (
