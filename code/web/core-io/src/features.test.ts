@@ -123,7 +123,7 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
   });
 
   describe("문서 트리 — 폴더에 실제로 있는 것만(티켓 01 §설계 3)", () => {
-    it("adr/ 있으면 뜨고, spec.md·architecture.md 같은 낱장도 그대로 뜬다. issues 는 빠진다", () => {
+    it("adr/ 있으면 뜨고, spec.md·architecture.md 같은 낱장도 그대로 뜬다. issues/ 도 실제 파일 목록으로 뜬다", () => {
       spec("f", "# f\n\nStatus: draft\n");
       issue("f", "01-a.md", ticket("01 — a", "draft"));
       writeFileSync(join(repo, "docs", "features", "f", "architecture.md"), "# 구조\n");
@@ -134,6 +134,7 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
       expect(f?.docs).toEqual([
         { kind: "dir", name: "adr", path: "adr", children: [{ kind: "file", name: "0001-x.md", path: "adr/0001-x.md" }] },
         { kind: "file", name: "architecture.md", path: "architecture.md" },
+        { kind: "dir", name: "issues", path: "issues", children: [{ kind: "file", name: "01-a.md", path: "issues/01-a.md" }] },
         { kind: "file", name: "spec.md", path: "spec.md" },
       ]);
     });
@@ -144,7 +145,7 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
 
       const [f] = readFeatures(repo);
       expect(f?.docs.map((d) => d.name)).not.toContain("adr");
-      expect(f?.docs.map((d) => d.name)).toEqual(["spec.md"]);
+      expect(f?.docs.map((d) => d.name)).toEqual(["issues", "spec.md"]);
     });
   });
 

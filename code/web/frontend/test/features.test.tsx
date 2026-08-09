@@ -142,7 +142,7 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
     expect(button).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("머리글을 누르면 열리고, issues 가 이미 펼쳐진 채로 티켓이 다 보인다 — 한 번 더 누르지 않는다", () => {
+  it("머리글을 누르면 열리고, check 가 이미 펼쳐진 채로 티켓이 다 보인다 — 한 번 더 누르지 않는다", () => {
     renderFeatures();
     openCard("auth-login — 로그인");
     const button = screen.getByRole("heading", { name: "auth-login — 로그인" }).closest("button")!;

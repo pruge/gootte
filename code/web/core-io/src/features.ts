@@ -36,12 +36,12 @@ function read(p: string): string | null {
 /**
  * 기능 폴더 문서 트리 — 폴더에 **실제로 있는 것만**(INV-4, 티켓 01 §설계 3). 내용은 파싱하지
  * 않는다(listing 만) — `adr/` 안 문서를 구조로 만드는 일은 여전히 범위 밖(티켓 02 §하지 않는 것).
- * `issues/` 는 티켓 목록이 따로 싣기 때문에 최상위에서 뺀다.
+ * `issues/` 도 다른 폴더와 똑같이 실제 파일 목록으로 뜬다 — 티켓 본문을 원문 그대로 읽을 수 있어야
+ * 한다(캡틴 피드백). 파싱된 제목·상태·처리중 요약은 화면이 따로 "check" 로 보여준다(`feature.tickets`).
  */
 function buildDocTree(dir: string, relBase: string): FeatureDocNode[] {
   return entries(dir)
     .filter((name) => !name.startsWith("."))
-    .filter((name) => !(relBase === "" && name === "issues"))
     .sort((a, b) => a.localeCompare(b))
     .map((name) => {
       const abs = join(dir, name);

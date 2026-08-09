@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { IconChevronRight, IconFolder, IconFile } from "@tabler/icons-react";
+import { IconChevronRight, IconFolder, IconFile, IconListCheck } from "@tabler/icons-react";
 import type { Feature, FeatureDocNode } from "@gootte/contract";
 import { TicketRow } from "./TicketRow";
 
@@ -11,31 +11,34 @@ interface FeatureTreeProps {
 }
 
 /**
- * 기능 카드 안의 폴더 트리 — `issues` 는 진입점으로 고정, 기본 펼침(티켓 01 §설계 2·3).
- * 그 아래는 폴더에 **실제로 있는 것만**(INV-4) — `adr/` 가 있으면 뜨고 없으면 안 뜬다.
- * 티켓 줄은 기존 화면(원문 상태·처리중·대기 → 선행·착수 가능)을 그대로 잃지 않는다 — 파일 이름만
- * 남기지 않는다.
+ * 기능 카드 안의 폴더 트리. `check` 는 실제 폴더가 아니라 화면이 만든 현황판 —
+ * 파싱된 제목·원문 상태·처리중·대기 선행을 보여준다(예전 화면이 보여주던 것을 잃지 않는다).
+ * 진입점으로 고정, 기본 펼침(캡틴 피드백 — issues 자리는 실제 파일 목록으로 남기고, 요약은
+ * 여기로 옮겼다).
+ *
+ * 그 아래는 `feature.docs` — 기능 폴더에 **실제로 있는 것만**(INV-4), `issues/` 도 포함해서
+ * 진짜 파일 이름으로 뜬다. 눌러서 원문을 그대로 읽을 수 있다.
  */
 export function FeatureTree({ feature, onOpenDoc }: FeatureTreeProps) {
-  const [issuesOpen, setIssuesOpen] = useState(true);
+  const [checkOpen, setCheckOpen] = useState(true);
 
   return (
     <ul className="divide-y divide-border">
       <li>
         <button
           type="button"
-          aria-expanded={issuesOpen}
-          onClick={() => setIssuesOpen((v) => !v)}
+          aria-expanded={checkOpen}
+          onClick={() => setCheckOpen((v) => !v)}
           className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-sm font-medium text-muted hover:bg-surface-2/60"
         >
           <IconChevronRight
             size={14}
-            className={`shrink-0 transition-transform ${issuesOpen ? "rotate-90" : ""}`}
+            className={`shrink-0 transition-transform ${checkOpen ? "rotate-90" : ""}`}
           />
-          <IconFolder size={15} className="shrink-0" />
-          issues
+          <IconListCheck size={15} className="shrink-0" />
+          check
         </button>
-        {issuesOpen &&
+        {checkOpen &&
           (feature.tickets.length === 0 ? (
             <p className="px-4 py-3 pl-9 text-base text-muted">티켓이 없습니다.</p>
           ) : (

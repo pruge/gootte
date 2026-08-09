@@ -143,7 +143,7 @@ describe("GET /api/features/:slug", () => {
   });
 
   // fixture alpha 의 docs/features/doc-tree — spec.md + architecture.md + adr/0001-x.md + issues/
-  test("기능 응답에 문서 트리가 실린다 — adr 있으면 뜨고, issues 는 트리에서 빠진다(티켓 목록이 따로 싣는다)", async () => {
+  test("기능 응답에 문서 트리가 실린다 — adr 있으면 뜨고, issues/ 도 실제 파일 목록으로 뜬다(캡틴 피드백)", async () => {
     const app = createApp(APP);
     const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
     const f = body.features.find((x) => x.slug === "doc-tree");
@@ -155,11 +155,17 @@ describe("GET /api/features/:slug", () => {
         children: [{ kind: "file", name: "0001-x.md", path: "adr/0001-x.md" }],
       },
       { kind: "file", name: "architecture.md", path: "architecture.md" },
+      {
+        kind: "dir",
+        name: "issues",
+        path: "issues",
+        children: [{ kind: "file", name: "01-a.md", path: "issues/01-a.md" }],
+      },
       { kind: "file", name: "spec.md", path: "spec.md" },
     ]);
     // auth-login 픽스처엔 adr/ 가 없다 — 빈 칸으로도 뜨지 않는다(INV-4)
     const auth = body.features.find((x) => x.slug === "auth-login");
-    expect(auth?.docs.map((d) => d.name)).toEqual(["spec.md"]);
+    expect(auth?.docs.map((d) => d.name)).toEqual(["issues", "spec.md"]);
   });
 });
 
@@ -178,6 +184,13 @@ describe("GET /api/features/:slug/:feature/doc — 문서 본문(read-only, INV-
     const res = await app.request("/api/features/alpha/doc-tree/doc?path=adr/0001-x.md");
     expect(res.status).toBe(200);
     expect(FeatureDocResponse.parse(await res.json()).content).toContain("ADR 0001");
+  });
+
+  test("이슈 파일 원문도 내준다(캡틴 피드백 — issues 도 읽을 수 있어야 한다)", async () => {
+    const app = createApp(APP);
+    const res = await app.request("/api/features/alpha/doc-tree/doc?path=issues/01-a.md");
+    expect(res.status).toBe(200);
+    expect(FeatureDocResponse.parse(await res.json()).content).toContain("01 — 예시 티켓");
   });
 
   test("🔴 기능 폴더 밖으로 나가는 경로는 거절한다 — 형제 기능 폴더도 내주지 않는다", async () => {

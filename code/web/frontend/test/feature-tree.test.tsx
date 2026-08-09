@@ -34,20 +34,48 @@ function open() {
   fireEvent.click(screen.getByRole("heading", { name: "auth-login — 로그인" }).closest("button")!);
 }
 
-describe("FeatureTree — 폴더에 실제로 있는 것만 뜬다(티켓 01 §설계 3, INV-4)", () => {
-  it("spec.md + issues + adr/ 이 있으면 셋 다 트리에 뜬다", () => {
+describe("FeatureTree — check 는 파싱된 현황판, 나머지는 폴더에 실제로 있는 것만(INV-4)", () => {
+  it("check 는 진입점으로 고정, 기본 펼침 — 파싱된 제목·상태로 뜬다(파일명이 아니다)", () => {
+    const feature: Feature = { ...BASE, docs: [] };
+    renderCard(feature);
+    open();
+    expect(screen.getByText("check")).toBeInTheDocument();
+    expect(screen.getByText("세션 발급")).toBeInTheDocument(); // 파싱된 제목 — 파일명("01-session.md")이 아니다
+  });
+
+  it("issues/ 는 실제 파일 목록으로 뜬다 — 파일을 누르면 원문을 읽을 수 있다(캡틴 피드백)", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [
+        {
+          kind: "dir",
+          name: "issues",
+          path: "issues",
+          children: [{ kind: "file", name: "01-session.md", path: "issues/01-session.md" }],
+        },
+      ],
+    };
+    const { onOpenDoc } = renderCard(feature);
+    open();
+    expect(screen.getByText("issues")).toBeInTheDocument(); // check 와 별개로 실제 폴더도 뜬다
+    fireEvent.click(screen.getByText("issues")); // 기본 접힘 — 눌러 편다
+    fireEvent.click(screen.getByText("01-session.md"));
+    expect(onOpenDoc).toHaveBeenCalledWith("auth-login", "issues/01-session.md", expect.any(HTMLElement));
+  });
+
+  it("spec.md + issues/ + adr/ 이 있으면 셋 다 트리에 뜬다", () => {
     const feature: Feature = {
       ...BASE,
       docs: [
         { kind: "dir", name: "adr", path: "adr", children: [{ kind: "file", name: "0001-x.md", path: "adr/0001-x.md" }] },
+        { kind: "dir", name: "issues", path: "issues", children: [{ kind: "file", name: "01-session.md", path: "issues/01-session.md" }] },
         { kind: "file", name: "spec.md", path: "spec.md" },
       ],
     };
     renderCard(feature);
     open();
-    expect(screen.getByText("issues")).toBeInTheDocument();
-    expect(screen.getByText("세션 발급")).toBeInTheDocument(); // issues 가 이미 펼쳐진 채로 시작
     expect(screen.getByText("adr")).toBeInTheDocument();
+    expect(screen.getByText("issues")).toBeInTheDocument();
     expect(screen.getByText("spec.md")).toBeInTheDocument();
   });
 
@@ -99,7 +127,7 @@ describe("FeatureTree — 폴더에 실제로 있는 것만 뜬다(티켓 01 §�
     expect(onOpenDoc).toHaveBeenCalledWith("auth-login", "spec.md", expect.any(HTMLElement));
   });
 
-  it("티켓이 없는 기능도 issues 칸엔 '티켓이 없습니다' 가 뜬다 — 파일 이름만 남기지 않는다", () => {
+  it("티켓이 없는 기능도 check 칸엔 '티켓이 없습니다' 가 뜬다", () => {
     const feature: Feature = { ...BASE, tickets: [], docs: [] };
     renderCard(feature);
     open();

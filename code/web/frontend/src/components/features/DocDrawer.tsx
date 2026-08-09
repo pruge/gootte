@@ -104,7 +104,7 @@ export function DocDrawer({ project, featureSlug, path, onClose }: DocDrawerProp
         aria-modal="true"
         aria-label={path ?? "문서"}
         tabIndex={-1}
-        className="relative flex h-full w-[560px] max-w-[92vw] flex-col border-l border-border bg-surface shadow-xl outline-none"
+        className="relative flex h-full w-[min(920px,60vw)] max-w-[96vw] flex-col border-l border-border bg-surface shadow-xl outline-none"
       >
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5">
           <span
