@@ -41,8 +41,9 @@
 | `cli` | `code/web/cli/` | `tsc --noEmit` + `vitest` |
 | `backend` | `code/web/backend/` | `tsc --noEmit` + `vitest` (단위 + 계약) |
 | `frontend` | `code/web/frontend/` | `tsc --noEmit` + `vitest` (단위 + 계약). e2e = `pnpm e2e`(playwright, 별도) |
+| `scripts` | `scripts/` | `pnpm test:ports` (= `scripts/tests/ports.test.sh`, 임시 디렉토리 픽스처) |
 
-전체 회귀는 루트에서 **`pnpm verify`** (= `tsc --noEmit` 전 패키지 + `vitest run`) 한 방이다.
+전체 회귀는 루트에서 **`pnpm verify`** (= `pnpm test:ports` + `tsc --noEmit` 전 패키지 + `vitest run`) 한 방이다.
 후속 컴포넌트가 붙으면(계획된 것 = Kotlin/Android 뷰어) 그 컴포넌트의 verify 도 **컴파일 + 테스트** 두 축을
 같이 갖춰야 하며, 갖춰지는 시점에 이 표에 한 줄을 더한다.
 테스트는 **이 저장소 자신의 `docs/` 를 픽스처로 쓰지 않는다** — 전부 임시 디렉토리에 픽스처를 합성한다
@@ -96,21 +97,36 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 | 명령 | 목적 | 누가 |
 |---|---|---|
 | `pnpm setup` | 최초 1회 의존 설치 (`pnpm -C code/web install`) | 에이전트 가능 |
-| `pnpm verify` | **전체 회귀 — tsc + vitest** | 에이전트 가능 |
+| `pnpm verify` | **전체 회귀 — 포트 테스트 + tsc + vitest** | 에이전트 가능 |
 | `pnpm test` | vitest 만 | 에이전트 가능 |
+| `pnpm test:ports` | 포트 해석기 테스트만 (`scripts/tests/ports.test.sh`) | 에이전트 가능 |
 | `pnpm plan <project>` | 순서(full) + 왜 출력 · 읽기 전용 | 에이전트 가능 |
 | `pnpm lineage <project>` | supersede lineage 출력 · 읽기 전용 | 에이전트 가능 |
 | `pnpm digest <project>` | `<project>/.gootte/PLAN.md` emit — **타깃 폴더**에 생성 | 에이전트 가능 |
 | `pnpm discover <root>` | 로컬 관리대상 프로젝트 발견 · 읽기 전용 | 에이전트 가능 |
 | `pnpm gootte <…>` | CLI 직접 호출 (위 네 개의 상위 명령) | 에이전트 가능 |
-| `pnpm dev:backend` | Hono API dev 서버 (`tsx watch`) | **사용자가 띄운다** |
-| `pnpm dev:frontend` | Vite dev 서버 (`/api` → backend 프록시) | **사용자가 띄운다** |
-| `pnpm dev` | backend + frontend 동시 | **사용자가 띄운다** |
+| `pnpm dev:backend` | Hono API dev 서버 (`scripts/dev-backend.sh` → `tsx watch`) | **사용자가 띄운다** |
+| `pnpm dev:frontend` | Vite dev 서버 (`scripts/dev-frontend.sh`, `/api` → backend 프록시) | **사용자가 띄운다** |
+| `pnpm dev` | backend + frontend 동시 (`scripts/dev.sh`) | **사용자가 띄운다** |
 | `pnpm dev:stop` | dev 서버 정리 (`scripts/dev-stop.sh`) | **사용자가 띄운다** |
 | `pnpm e2e` | frontend playwright | **사용자가 띄운다** |
 
 `plan`·`lineage`·`digest`·`discover` 가 어디를 뒤질지는 env `GOOTTE_ROOTS`(콜론 구분, 기본 `~/Documents`)가
 정한다 — `code/web/backend/src/app.ts` 가 SoT.
+
+### dev 포트 — `scripts/ports.sh` 가 유일한 판정자
+
+세 dev 명령은 포트를 소스 기본값이 아니라 **`scripts/ports.sh`** 에서 받는다. 규칙은
+**`code/web/.ports.worktree` 가 있으면 그 값, 없으면 `code/web/.ports.main` 값** — 판정은
+**파일 존재 여부만** 보고 작업 사본 경로를 캐묻지 않는다.
+
+- `.ports.main` = tracked, 메인 사본 배정값(backend `8804` / frontend `5304`). 이 파일이 dev 포트의 SoT다.
+  `vite.config.ts` · `server.ts` 안의 같은 숫자는 그 사본일 뿐이니 **포트를 바꿀 땐 `.ports.main` 을 고친다.**
+- `.ports.worktree` = gitignore. **쓰는 주체는 firstmate**(격리 사본 생성 시). 이 저장소는 읽기만 한다 —
+  에이전트가 이 파일을 만들거나 고치지 않는다.
+- 🔴 **둘 다 없거나 값이 비었거나 숫자가 아니면 조용히 기본값으로 넘어가지 않고 오류로 멈춘다.**
+  조용한 폴백 = 두 사본이 같은 포트를 쥔 채 아무도 모르는 상태. 그 거절이 설계의 요점이므로
+  기본값 폴백을 되살리지 않는다(`pnpm test:ports` 가 이 거절을 지킨다).
 
 격리 사본(worktree)에서는 진입 후 `pnpm setup` 을 한 번 돌린다(멱등). 복사해야 할 untracked dev secret 은 없다.
 dev 서버는 사용자가 직접 띄운다 — 에이전트가 kill·재시작·포트 점검을 하지 않는다.
