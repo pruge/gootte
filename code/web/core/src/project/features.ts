@@ -1,14 +1,17 @@
-import type { Feature, FeatureTicket } from "@gootte/contract";
+import type { Feature, FeatureDocNode, FeatureTicket } from "@gootte/contract";
 import type { FeatureSpecDoc, TicketDoc } from "../parse/feature";
 
 /**
  * 기능 폴더 하나에서 읽어온 문서들 — core-io 가 read 하고 core 파서가 구조로 만든 결과.
  * `spec` 이 없는 폴더도 온다(티켓만 있는 폴더). 그때 표제는 폴더명이다.
+ * `tree` 는 폴더에 실제로 있는 것의 목록(issues 제외) — core-io 가 readdir 로 만든 그대로
+ * 통과시킨다(계산 없음, 티켓 01 §설계 3).
  */
 export interface FeatureDocs {
   slug: string;
   spec: FeatureSpecDoc | null;
   tickets: TicketDoc[];
+  tree: FeatureDocNode[];
 }
 
 /**
@@ -77,6 +80,7 @@ export function buildFeature(docs: FeatureDocs): Feature {
     sourceStatus: docs.spec?.sourceStatus ?? null,
     statusKnown: docs.spec?.statusKnown ?? false,
     tickets: [...docs.tickets].sort(byNum).map((t) => toTicket(t, doneNums)),
+    docs: docs.tree,
   };
 }
 

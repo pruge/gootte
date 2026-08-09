@@ -51,6 +51,6 @@ export function useUrlState() {
     setProject: useCallback((p: string) => update({ project: p }), [update]),
     // 탭 전환 시 view 초기화(다른 탭의 모드가 새지 않게)
     setTab: useCallback((t: Tab) => update({ tab: t, view: null }), [update]),
-    setView: useCallback((v: string) => update({ view: v }), [update]),
+    setView: useCallback((v: string | null) => update({ view: v }), [update]),
   };
 }

@@ -1,18 +1,11 @@
+import { useRef } from "react";
 import { IconAlertTriangle, IconProgressAlert } from "@tabler/icons-react";
-import type { Feature, InProgressSummary } from "@gootte/contract";
+import type { InProgressSummary } from "@gootte/contract";
 import { useFeatures } from "../../lib/query";
 import { Loading, ErrorMsg, Empty } from "../common/states";
-import { TicketRow } from "./TicketRow";
-
-/** 남은 일 / 완료 / 처리중 세기 — 서버가 준 값을 세기만 한다(재계산 X, INV-1). */
-function counts(f: Feature) {
-  const done = f.tickets.filter((t) => t.status === "done").length;
-  const dropped = f.tickets.filter((t) => t.status === "dropped").length;
-  const working = f.tickets.filter((t) => t.status === "in_progress").length;
-  const open = f.tickets.length - done - dropped;
-  const startable = f.tickets.filter((t) => t.status === "pending" && t.startable).length;
-  return { done, open, startable, working };
-}
+import { FeatureCard } from "./FeatureCard";
+import { DocDrawer } from "./DocDrawer";
+import { decodeDocView, encodeDocView } from "./docView";
 
 const UNREADABLE_REASON: Record<InProgressSummary["unreadable"][number]["reason"], string> = {
   "no-repo": "저장소를 찾지 못함",
@@ -90,60 +83,36 @@ function UnresolvedWork({ inProgress }: { inProgress: InProgressSummary }) {
   );
 }
 
-function FeatureGroup({ feature }: { feature: Feature }) {
-  const { done, open, startable, working } = counts(feature);
-
-  return (
-    <section className="overflow-hidden rounded-lg border border-border bg-surface">
-      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border bg-surface-2/40 px-4 py-3">
-        <h2 className="font-medium tracking-tight">{feature.title}</h2>
-        <span className="mono text-sm text-muted">{feature.slug}</span>
-        {feature.sourceStatus && (
-          <span
-            className={`mono rounded px-1.5 py-0.5 text-sm ${
-              feature.statusKnown ? "bg-surface-2 text-muted" : "bg-drop/15 text-drop"
-            }`}
-          >
-            {feature.sourceStatus}
-          </span>
-        )}
-        <span className="mono ml-auto text-sm tabular-nums text-muted">
-          남은 일 {open} · 완료 {done}
-          {working > 0 && (
-            <>
-              {" · "}
-              <span className="font-medium text-active">처리중 {working}</span>
-            </>
-          )}
-          {startable > 0 && (
-            <>
-              {" · "}
-              <span className="font-medium text-accent">착수 가능 {startable}</span>
-            </>
-          )}
-        </span>
-      </header>
-
-      {feature.tickets.length === 0 ? (
-        <p className="px-4 py-3 text-base text-muted">티켓이 없습니다.</p>
-      ) : (
-        <ul className="divide-y divide-border">
-          {feature.tickets.map((t) => (
-            <TicketRow key={t.slug} ticket={t} />
-          ))}
-        </ul>
-      )}
-    </section>
-  );
+interface FeaturesViewProps {
+  project: string;
+  /** 드로어에 열린 문서 — URL `view` 파라미터(F8). null 이면 드로어가 닫혀 있다. */
+  view: string | null;
+  onView: (v: string | null) => void;
 }
 
 /**
- * 기능별 할일 — `docs/features/<기능>/{spec.md,issues/}` 파생(INV-2 read-only).
+ * 기능별 할일 — `docs/features/<기능>/{spec.md,issues/,adr/,…}` 파생(INV-2 read-only).
  * 막힘 해제·착수 가능은 **서버가 매 read 재계산**한 값을 그대로 싣는다(INV-1·INV-4 — 여기서 다시 세지 않는다).
  * 처리중은 문서가 아니라 **격리 사본 관측**이 준다 — 이어지지 않은 작업도 같이 뜬다.
+ *
+ * 카드 목록은 이 컴포넌트가 스크롤을 갖는다(`overflow-y-auto`) — 각 카드는 `shrink-0` 이라
+ * 내용만큼 자라고 눌리지 않는다(F1 회귀 고정, 티켓 01 §설계 1).
  */
-export function FeaturesView({ project }: { project: string }) {
+export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
   const { data, isLoading, isError, error } = useFeatures(project);
+  // 문서를 연 트리거 요소 — 드로어를 닫을 때 포커스를 여기로 돌려준다(티켓 01 §설계 4).
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const docView = decodeDocView(view);
+
+  const openDoc = (featureSlug: string, path: string, trigger: HTMLElement) => {
+    triggerRef.current = trigger;
+    onView(encodeDocView(featureSlug, path));
+  };
+  const closeDoc = () => {
+    onView(null);
+    triggerRef.current?.focus();
+    triggerRef.current = null;
+  };
 
   if (isLoading) return <Loading label="기능 문서 읽는 중…" />;
   if (isError) return <ErrorMsg error={error} />;
@@ -154,11 +123,19 @@ export function FeaturesView({ project }: { project: string }) {
     return <Empty>docs/features/ 아래 기능이 없습니다.</Empty>;
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto pb-2">
-      <UnresolvedWork inProgress={data.inProgress} />
-      {data.features.map((f) => (
-        <FeatureGroup key={f.slug} feature={f} />
-      ))}
-    </div>
+    <>
+      <div className="flex h-full flex-col gap-4 overflow-y-auto pb-2">
+        <UnresolvedWork inProgress={data.inProgress} />
+        {data.features.map((f) => (
+          <FeatureCard key={f.slug} feature={f} onOpenDoc={openDoc} />
+        ))}
+      </div>
+      <DocDrawer
+        project={project}
+        featureSlug={docView?.featureSlug ?? null}
+        path={docView?.path ?? null}
+        onClose={closeDoc}
+      />
+    </>
   );
 }

@@ -17,6 +17,7 @@ describe("buildFeature — 막힘 해제는 계산된다(INV-1)", () => {
     slug: "f",
     spec: null,
     tickets: tickets.map((t) => parseTicket(t.file, t.body)),
+    tree: [],
   });
 
   it("선행이 전부 완료면 착수 가능 — 파일에 그렇게 적혀 있지 않아도", () => {
@@ -119,6 +120,7 @@ describe("buildFeatures — 기능 목록", () => {
     slug,
     spec: null,
     tickets: [parseTicket("01-a.md", ticket("draft"))],
+    tree: [],
   });
 
   it("폴더명 순으로 정렬한다 — 화면 그룹 순서", () => {

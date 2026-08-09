@@ -2,10 +2,11 @@ import { basename } from "node:path";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { ProjectsResponse, FeaturesResponse, type ApiError } from "@gootte/contract";
+import { ProjectsResponse, FeaturesResponse, FeatureDocResponse, type ApiError } from "@gootte/contract";
 import { applyInProgress } from "@gootte/core";
 import {
   readFeatures,
+  readFeatureDoc,
   scanWorktrees,
   scanWorkingCopies,
   defaultProjectRoots,
@@ -26,6 +27,8 @@ export function treehouseRoot(): string {
 }
 
 const slugParam = z.object({ slug: z.string().min(1) });
+const featureDocParam = z.object({ slug: z.string().min(1), feature: z.string().min(1) });
+const featureDocQuery = z.object({ path: z.string().min(1) });
 export interface AppOptions {
   /** discover 루트 (테스트 주입). 없으면 defaultRoots(). */
   roots?: string[];
@@ -70,6 +73,30 @@ export function createApp(options: AppOptions = {}): Hono {
     );
     return c.json(FeaturesResponse.parse({ project, ...observed }));
   });
+
+  // GET /api/features/:slug/:feature/doc?path= → FeatureDocResponse (기능 문서 본문, INV-2 read-only)
+  // 🔴 요청받은 path 는 readFeatureDoc 이 그 기능 폴더 안으로 해소되는지 판정한 뒤에야 읽는다 —
+  // 벗어나면 400 으로 거절한다(티켓 01 §설계 4). 관리대상엔 아무것도 쓰지 않는다.
+  app.get(
+    "/api/features/:slug/:feature/doc",
+    zValidator("param", featureDocParam),
+    zValidator("query", featureDocQuery),
+    (c) => {
+      const { slug, feature } = c.req.valid("param");
+      const { path } = c.req.valid("query");
+      const proj = resolveSlug(roots, slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      const result = readFeatureDoc(proj.path, feature, path);
+      if (!result.ok) {
+        const error: ApiError =
+          result.reason === "outside"
+            ? { error: "기능 폴더 밖의 경로는 읽을 수 없습니다" }
+            : { error: `문서를 찾을 수 없습니다: ${path}` };
+        return c.json(error, result.reason === "outside" ? 400 : 404);
+      }
+      return c.json(FeatureDocResponse.parse({ path, content: result.content }));
+    },
+  );
 
   return app;
 }

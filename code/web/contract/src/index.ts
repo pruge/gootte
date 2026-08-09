@@ -66,7 +66,27 @@ export const FeatureTicket = z.object({
 });
 export type FeatureTicket = z.infer<typeof FeatureTicket>;
 
-/** `docs/features/<기능>/` 한 폴더 = spec 1장 + 티켓 N장. */
+/**
+ * 기능 폴더 문서 트리 노드 — 폴더에 **실제로 있는 것만**(INV-4, 티켓 01 §설계 3).
+ * `issues/` 는 티켓 목록이 따로 싣기 때문에 여기서 빠진다(`core-io/src/features.ts`).
+ * 재귀 구조라 `z.lazy` — 순환 타입을 끊으려면 인터페이스를 먼저 선언해야 한다.
+ */
+export interface FeatureDocNode {
+  kind: "file" | "dir";
+  name: string; // 파일/폴더명
+  path: string; // 기능 폴더 기준 상대 경로("adr/0001-x.md") — 문서 읽기 API 의 `path` 로 그대로 쓴다
+  children?: FeatureDocNode[]; // kind: "dir" 일 때만
+}
+export const FeatureDocNode: z.ZodType<FeatureDocNode> = z.lazy(() =>
+  z.object({
+    kind: z.enum(["file", "dir"]),
+    name: z.string(),
+    path: z.string(),
+    children: z.array(FeatureDocNode).optional(),
+  }),
+);
+
+/** `docs/features/<기능>/` 한 폴더 = spec 1장 + 티켓 N장 + 문서 트리. */
 export const Feature = z.object({
   slug: z.string(), // 폴더명
   title: z.string(), // spec.md 표제(없으면 slug)
@@ -74,6 +94,7 @@ export const Feature = z.object({
   sourceStatus: z.string().nullable().default(null),
   statusKnown: z.boolean(),
   tickets: z.array(FeatureTicket).default([]),
+  docs: z.array(FeatureDocNode).default([]), // 폴더 트리(issues 제외) — 티켓 01 §설계 3
 });
 export type Feature = z.infer<typeof Feature>;
 
@@ -133,6 +154,16 @@ export const FeaturesResponse = z.object({
   inProgress: InProgressSummary,
 });
 export type FeaturesResponse = z.infer<typeof FeaturesResponse>;
+
+/**
+ * 기능 폴더 문서 본문 하나 — read-only(INV-2). `path` 는 기능 폴더 기준 상대 경로이고,
+ * 서버는 이 경로가 그 폴더 밖으로 벗어나면 거절한다(티켓 01 §설계 4 🔴).
+ */
+export const FeatureDocResponse = z.object({
+  path: z.string(),
+  content: z.string(),
+});
+export type FeatureDocResponse = z.infer<typeof FeatureDocResponse>;
 
 // ── 실시간(2b) — WS 메시지 seam (backend watcher 생산 · frontend 소비, 단일 방향) ──────
 /**

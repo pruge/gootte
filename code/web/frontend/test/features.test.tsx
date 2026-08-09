@@ -1,7 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { useState } from "react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect } from "vitest";
-import type { FeaturesResponse } from "@gootte/contract";
+import type { FeaturesResponse, FeatureTicket } from "@gootte/contract";
 import { FeaturesView } from "../src/components/features/FeaturesView";
 import { qk } from "../src/lib/query";
 
@@ -25,6 +26,7 @@ const DATA: FeaturesResponse = {
       status: "pending",
       sourceStatus: "ready-for-agent",
       statusKnown: true,
+      docs: [],
       tickets: [
         {
           num: "01",
@@ -93,28 +95,92 @@ const DATA: FeaturesResponse = {
   ],
 };
 
-function renderView(data: FeaturesResponse) {
+/** view 상태를 실제로 URL 훅처럼 들고 있는 최소 하네스 — DocDrawer/열림 상태 왕복을 실제로 검증한다. */
+function Harness({ project, initialView = null }: { project: string; initialView?: string | null }) {
+  const [view, setView] = useState<string | null>(initialView);
+  return <FeaturesView project={project} view={view} onView={setView} />;
+}
+
+function renderView(data: FeaturesResponse, initialView: string | null = null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-  qc.setQueryData(qk.features("alpha"), data);
+  qc.setQueryData(qk.features(data.project), data);
   return render(
     <QueryClientProvider client={qc}>
-      <FeaturesView project="alpha" />
+      <Harness project={data.project} initialView={initialView} />
     </QueryClientProvider>,
   );
 }
 const renderFeatures = () => renderView(DATA);
 
-describe("FeaturesView — 기능별 할일 목록", () => {
-  it("기능 제목과 티켓 목록이 뜬다", () => {
+/** 기능 카드 머리글(제목이 든 `<h2>`)의 조상 `<button>` 을 눌러 연다. */
+function openCard(title: string): void {
+  const button = screen.getByRole("heading", { name: title }).closest("button")!;
+  fireEvent.click(button);
+}
+
+function manyTickets(n: number): FeatureTicket[] {
+  return Array.from({ length: n }, (_, i) => ({
+    num: String(i + 1).padStart(2, "0"),
+    slug: `${String(i + 1).padStart(2, "0")}-t`,
+    title: `티켓 ${i + 1}`,
+    status: "pending",
+    sourceStatus: "ready-for-agent",
+    statusKnown: true,
+    blockedBy: [],
+    waitingOn: [],
+    startable: true,
+    workedBy: [],
+  }));
+}
+
+describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티켓 01 §설계 2)", () => {
+  it("기본 상태 — 머리글만 보이고 티켓은 안 보인다", () => {
     renderFeatures();
     expect(screen.getByRole("heading", { name: "auth-login — 로그인" })).toBeInTheDocument();
+    expect(screen.queryByText("세션 발급")).toBeNull();
+    const button = screen.getByRole("heading", { name: "auth-login — 로그인" }).closest("button")!;
+    expect(button).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("머리글을 누르면 열리고, check 가 이미 펼쳐진 채로 티켓이 다 보인다 — 한 번 더 누르지 않는다", () => {
+    renderFeatures();
+    openCard("auth-login — 로그인");
+    const button = screen.getByRole("heading", { name: "auth-login — 로그인" }).closest("button")!;
+    expect(button).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("세션 발급")).toBeInTheDocument();
     expect(screen.getByText("로그인 화면")).toBeInTheDocument();
     expect(screen.getByText("소셜 로그인")).toBeInTheDocument();
   });
 
+  it("🔴 화면보다 긴 카드를 열어도 티켓이 전부 렌더된다 — 잘리거나 사라지지 않는다(F1 회귀)", () => {
+    const data: FeaturesResponse = {
+      project: "alpha",
+      inProgress: NO_WORK,
+      features: [
+        {
+          slug: "big",
+          title: "big — 많음",
+          status: "pending",
+          sourceStatus: "ready-for-agent",
+          statusKnown: true,
+          docs: [],
+          tickets: manyTickets(20),
+        },
+      ],
+    };
+    renderView(data);
+    openCard("big — 많음");
+    for (let i = 1; i <= 20; i++) {
+      expect(screen.getByText(`티켓 ${i}`)).toBeInTheDocument();
+    }
+    // 카드가 flex 부모 안에서 눌리지 않게 하는 클래스 — 없으면 F1 이 재현된다.
+    const card = screen.getByRole("heading", { name: "big — 많음" }).closest("section")!;
+    expect(card.className).toContain("shrink-0");
+  });
+
   it("선행이 남은 티켓은 무엇을 기다리는지 보이고, 풀린 티켓은 착수 가능으로 보인다", () => {
     renderFeatures();
+    openCard("auth-login — 로그인");
     const blocked = screen.getByText("소셜 로그인").closest("li")!;
     expect(within(blocked).getByText("대기 → 02")).toBeInTheDocument();
     const ready = screen.getByText("로그인 화면").closest("li")!;
@@ -123,6 +189,7 @@ describe("FeaturesView — 기능별 할일 목록", () => {
 
   it("원문 상태가 뭉개지지 않고 그대로 뜬다 — needs-info 와 blocked 를 구분할 수 있다", () => {
     renderFeatures();
+    openCard("auth-login — 로그인");
     expect(screen.getByText("needs-info")).toBeInTheDocument();
     expect(screen.getByText("resolved")).toBeInTheDocument();
     expect(screen.getByText("2026-08-08")).toBeInTheDocument();
@@ -130,20 +197,64 @@ describe("FeaturesView — 기능별 할일 목록", () => {
 
   it("🔴 알 수 없는 상태의 티켓이 사라지지 않고, 무엇이 이상한지 드러난다", () => {
     renderFeatures();
+    openCard("auth-login — 로그인");
     expect(screen.getByText("정체불명")).toBeInTheDocument();
     expect(screen.getByText(/알 수 없는 상태: 진행중/)).toBeInTheDocument();
   });
 
   it("지금 붙들려 있는 티켓에만 처리중 표시가 붙는다 — 어느 가지가 붙들었는지까지", () => {
     renderFeatures();
+    openCard("auth-login — 로그인");
     const working = screen.getByText("OAuth 교환").closest("li")!;
     expect(within(working).getByText(/처리중 · fm\/alpha-oauth/)).toBeInTheDocument();
     // 아무도 안 붙든 티켓에는 안 붙는다.
     const idle = screen.getByText("로그인 화면").closest("li")!;
     expect(within(idle).queryByText(/처리중/)).toBeNull();
-    expect(screen.getByText(/처리중 1/)).toBeInTheDocument(); // 기능 머리말 집계
+  });
+});
+
+describe("FeaturesView — 머리글 네 수는 항상 뜬다(티켓 01 §설계 5 🔴)", () => {
+  it("착수 가능·처리중이 0 이어도 칸이 사라지지 않는다", () => {
+    const data: FeaturesResponse = {
+      project: "alpha",
+      inProgress: NO_WORK,
+      features: [
+        {
+          slug: "idle",
+          title: "idle — 쉬는 중",
+          status: "pending",
+          sourceStatus: "ready-for-agent",
+          statusKnown: true,
+          docs: [],
+          tickets: [
+            {
+              num: "01",
+              slug: "01-a",
+              title: "완료된 것 하나",
+              status: "done",
+              sourceStatus: "resolved",
+              statusKnown: true,
+              blockedBy: [],
+              waitingOn: [],
+              startable: true,
+              workedBy: [],
+            },
+          ],
+        },
+      ],
+    };
+    renderView(data);
+    expect(screen.getByText(/착수 가능 0/)).toBeInTheDocument();
+    expect(screen.getByText(/처리중 0/)).toBeInTheDocument();
   });
 
+  it("처리중인 티켓이 있으면 머리글에 그 수가 색과 함께 보인다", () => {
+    renderFeatures();
+    expect(screen.getByText(/처리중 1/)).toBeInTheDocument();
+  });
+});
+
+describe("FeaturesView — 이어지지 않은 작업(격리 사본 관측)", () => {
   it("🔴 티켓에 잇지 못한 작업중 사본이 화면에서 사라지지 않는다", () => {
     renderView({
       ...DATA,
