@@ -151,6 +151,7 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     expect(features[0]?.tickets).toHaveLength(2); // 할일 목록은 그대로 산다
     expect(inProgress).toMatchObject({ rootExists: false, copies: 0, working: 0, tickets: 0 });
     expect(inProgress.unknown).toEqual([]);
+    expect(inProgress.unreadable).toEqual([]);
   });
 
   it("한 티켓을 두 사본이 붙들고 있어도 중복으로 두 번 세지 않는다", () => {
@@ -162,6 +163,28 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     expect(inProgress.tickets).toBe(1); // 티켓 하나
     expect(inProgress.working).toBe(2); // 사본 둘 — 둘 다 보인다
     expect(ticketOf(features, "02-screen")?.workedBy).toEqual(["fm/a", "fm/b"]);
+  });
+
+  it("🔴 저장소를 못 찾은 슬롯은 건너뛰지 않고 `못 읽음` 으로 센다", () => {
+    mkdirSync(join(root, POOL, "1", PROJECT), { recursive: true }); // `.git` 없음(복제 중 등)
+
+    const { inProgress } = observe();
+    expect(inProgress.copies).toBe(1); // 사본 수에서도 사라지지 않는다
+    expect(inProgress.unreadable).toEqual([
+      { slug: `${POOL}/1`, path: join(root, POOL, "1"), reason: "no-repo" },
+    ]);
+  });
+
+  it("🔴 git 이 답하지 않는 사본을 유휴로 접지 않는다 — 실제로 돌고 있을 수 있다", () => {
+    const repo = join(root, POOL, "1", PROJECT);
+    mkdirSync(repo, { recursive: true });
+    writeFileSync(join(repo, ".git"), "gitdir: /없는/경로\n"); // 깨진 worktree 포인터
+
+    const { inProgress } = observe();
+    expect(inProgress.working).toBe(0);
+    expect(inProgress.unreadable).toEqual([
+      { slug: `${POOL}/1`, path: repo, reason: "git-failed" },
+    ]);
   });
 
   it("비 ASCII 슬러그의 티켓도 이어진다 — git 의 경로 이스케이프에 걸려 미상으로 흘리지 않는다", () => {

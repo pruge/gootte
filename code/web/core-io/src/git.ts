@@ -6,7 +6,11 @@ import type { GitSignal } from "@gootte/contract";
 /** IO 층 — git CLI 위임. 전부 읽기 전용(INV-2). */
 
 function git(repo: string, args: string[]): string {
-  return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" }).trim();
+  // stderr 를 물려받지 않고 잡는다 — 못 읽는 사본의 `fatal:` 이 우리 출력에 섞이지 않게.
+  return execFileSync("git", ["-C", repo, ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
 }
 function gitSafe(repo: string, args: string[]): string | null {
   try {
@@ -20,9 +24,14 @@ export function mergeBase(repo: string, a: string, b: string): string | null {
   return gitSafe(repo, ["merge-base", a, b]);
 }
 
-/** HEAD 가 올라가 있는 브랜치. **detached HEAD 면 빈 문자열** — 그 구분이 작업중/유휴 판정이다(F7). */
-export function currentBranch(repo: string): string {
-  return gitSafe(repo, ["branch", "--show-current"]) ?? "";
+/**
+ * HEAD 가 올라가 있는 브랜치. **detached HEAD 면 빈 문자열**, git 이 답하지 못하면 **null**.
+ *
+ * 🔴 실패를 빈 문자열로 접지 않는다. 접으면 "읽지 못했다" 가 "유휴다" 로 둔갑해
+ * 실제로 돌고 있는 작업이 화면에서 조용히 사라진다 — 호출자가 그 둘을 구분해 다뤄야 한다.
+ */
+export function currentBranch(repo: string): string | null {
+  return gitSafe(repo, ["branch", "--show-current"]);
 }
 
 /** 그 ref 가 이 저장소에서 해소되는가. */

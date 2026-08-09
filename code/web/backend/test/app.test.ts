@@ -170,6 +170,7 @@ describe("GET /api/features/:slug", () => {
       tickets: 0,
     });
     expect(body.inProgress.unknown).toEqual([]);
+    expect(body.inProgress.unreadable).toEqual([]);
   });
 
   test("작업중 사본이 있으면 처리중이 실리고, 못 이은 작업은 unknown 으로 실린다", async () => {

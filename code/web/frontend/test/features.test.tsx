@@ -13,6 +13,7 @@ const NO_WORK: FeaturesResponse["inProgress"] = {
   working: 0,
   tickets: 0,
   unknown: [],
+  unreadable: [],
 };
 const DATA: FeaturesResponse = {
   project: "alpha",
@@ -156,6 +157,20 @@ describe("FeaturesView — 기능별 할일 목록", () => {
     expect(screen.getByText(/티켓 미상 · 작업중 1/)).toBeInTheDocument();
     expect(screen.getByText("fm/mystery")).toBeInTheDocument();
     expect(screen.getByText("alpha-abc123/2")).toBeInTheDocument();
+  });
+
+  it("🔴 상태를 읽지 못한 사본도 유휴로 접히지 않고 화면에 남는다", () => {
+    renderView({
+      ...DATA,
+      inProgress: {
+        ...NO_WORK,
+        copies: 1,
+        unreadable: [{ slug: "alpha-abc123/3", path: "/tmp/th/alpha-abc123/3", reason: "git-failed" }],
+      },
+    });
+    expect(screen.getByText(/상태를 읽지 못한 사본 1/)).toBeInTheDocument();
+    expect(screen.getByText("git 이 답하지 않음")).toBeInTheDocument();
+    expect(screen.getByText("alpha-abc123/3")).toBeInTheDocument();
   });
 
   it("기능이 없으면 빈 목록 안내", () => {

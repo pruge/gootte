@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { WorkingCopy, WorkingCopyScan } from "@gootte/core";
+import type { CopyScan, ObservedCopy } from "@gootte/core";
 import { commitTouchedFiles, currentBranch, revExists } from "./git";
 
 /**
@@ -42,7 +42,10 @@ function poolPattern(project: string): RegExp {
   return new RegExp(`^${project.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-[0-9a-f]{6}$`);
 }
 
-/** 슬롯 안의 저장소 — 슬롯 자신이거나 그 바로 아래 한 칸. worktree 의 `.git` 은 파일이라 존재만 본다. */
+/**
+ * 슬롯 안의 저장소 — 슬롯 자신이거나 그 바로 아래 한 칸(F6 의 배치). `.git` 은 worktree 에선 파일이라 존재만 본다.
+ * 못 찾으면 null — **조용히 버리지 말고** 호출자가 "못 읽음" 으로 세어야 한다.
+ */
 function repoIn(slot: string): string | null {
   if (existsSync(join(slot, ".git"))) return slot;
   for (const name of children(slot)) {
@@ -68,22 +71,35 @@ function touchedOnBranch(repo: string): string[] {
  * 한 프로젝트의 격리 사본 전부를 관측한다.
  * 뿌리가 없으면 **빈 결과**를 돌려준다 — 예외로 죽지 않는다(사본을 안 쓰는 기계도 있다).
  */
-export function scanWorkingCopies(root: string, project: string): WorkingCopyScan {
+export function scanWorkingCopies(root: string, project: string): CopyScan {
   if (!isDir(root)) return { root, rootExists: false, copies: [] };
 
   const pool = poolPattern(project);
-  const copies: WorkingCopy[] = [];
+  const copies: ObservedCopy[] = [];
   for (const poolName of children(root)) {
     if (!pool.test(poolName) || !isDir(join(root, poolName))) continue;
     for (const slotName of children(join(root, poolName))) {
       const slot = join(root, poolName, slotName);
       if (!isDir(slot)) continue;
+      const slug = `${poolName}/${slotName}`;
+
+      // 🔴 아래 두 갈래는 **빠뜨리지 않고 못 읽었다고 센다.** 슬롯을 건너뛰면 사본 수에서도
+      //    사라져, 진짜로 돌고 있는 작업이 아무 데도 안 남는다(유휴로 접는 것보다 더 조용하다).
       const repo = repoIn(slot);
-      if (!repo) continue;
-      const branch = currentBranch(repo);
+      if (!repo) {
+        copies.push({ slug, path: slot, state: "no-repo", branch: "", touched: [] });
+        continue;
+      }
+      const branch = currentBranch(repo); // null = git 이 답하지 않음, "" = detached
+      if (branch === null) {
+        copies.push({ slug, path: repo, state: "git-failed", branch: "", touched: [] });
+        continue;
+      }
+
       copies.push({
-        slug: `${poolName}/${slotName}`,
+        slug,
         path: repo,
+        state: branch ? "working" : "idle",
         branch,
         touched: branch ? touchedOnBranch(repo) : [],
       });

@@ -253,16 +253,29 @@ export const UnmappedWork = z.object({
 export type UnmappedWork = z.infer<typeof UnmappedWork>;
 
 /**
+ * 상태를 **읽지 못한** 사본 — 유휴인지 작업중인지 말할 수 없다.
+ * 🔴 이것을 유휴로 접어 넣지 않는다. 읽기 실패를 "아무도 안 붙들었다" 로 바꾸는 순간
+ * `unknown` 을 감추는 것과 똑같은 거짓말이 된다. 모른다는 사실 그대로 센다.
+ */
+export const UnreadableCopy = z.object({
+  slug: z.string(),
+  path: z.string(),
+  reason: z.enum(["no-repo", "git-failed"]), // 저장소를 못 찾음 / git 이 답하지 않음
+});
+export type UnreadableCopy = z.infer<typeof UnreadableCopy>;
+
+/**
  * "지금 누가 무엇을 붙들고 있나" — 격리 사본 관측 파생.
  * 🔴 어디에도 저장하지 않는다(INV-1). 볼 때마다 사본들을 다시 관측한다(INV-3).
  */
 export const InProgressSummary = z.object({
   root: z.string(), // 스캔한 격리 사본 뿌리
   rootExists: z.boolean(), // 뿌리가 없으면 false — 빈 결과지 오류가 아니다
-  copies: z.number().int().nonnegative(), // 이 프로젝트의 사본 수
-  working: z.number().int().nonnegative(), // 그중 작업 가지에 올라가 있는 수(나머지는 유휴)
+  copies: z.number().int().nonnegative(), // 이 프로젝트의 사본 수 — 못 읽은 것까지 전부
+  working: z.number().int().nonnegative(), // 그중 작업 가지에 올라가 있음이 **확인된** 수
   tickets: z.number().int().nonnegative(), // 처리중으로 계산된 **티켓** 수 — 사본 수가 아니다(중복 제거)
   unknown: z.array(UnmappedWork).default([]), // 🔴 작업중인데 티켓 미상
+  unreadable: z.array(UnreadableCopy).default([]), // 🔴 상태를 못 읽은 사본 — 유휴로 접지 않는다
 });
 export type InProgressSummary = z.infer<typeof InProgressSummary>;
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Feature, FeatureTicket } from "@gootte/contract";
 import { parseTicketPath } from "../parse/ticket-path";
-import { applyInProgress, type WorkingCopy } from "./in-progress";
+import { applyInProgress, type CopyState, type ObservedCopy } from "./in-progress";
 
 const ticket = (num: string, slug: string, over: Partial<FeatureTicket> = {}): FeatureTicket => ({
   num,
@@ -26,14 +26,22 @@ const feature = (slug: string, tickets: FeatureTicket[]): Feature => ({
   tickets,
 });
 
-const copy = (slug: string, branch: string, touched: string[] = []): WorkingCopy => ({
+const copy = (slug: string, branch: string, touched: string[] = []): ObservedCopy => ({
   slug,
   path: `/tmp/${slug}`,
+  state: branch ? "working" : "idle",
   branch,
   touched,
 });
+const broken = (slug: string, state: CopyState): ObservedCopy => ({
+  slug,
+  path: `/tmp/${slug}`,
+  state,
+  branch: "",
+  touched: [],
+});
 
-const scan = (copies: WorkingCopy[]) => ({ root: "/tmp/th", rootExists: true, copies });
+const scan = (copies: ObservedCopy[]) => ({ root: "/tmp/th", rootExists: true, copies });
 
 const FEATURES = [
   feature("auth", [ticket("01", "01-session"), ticket("02", "02-screen")]),
@@ -137,6 +145,22 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual(["fm/a"]);
     expect(marked.inProgress.tickets).toBe(0);
     expect(marked.inProgress.unknown).toEqual([]); // 이어졌으므로 미상이 아니다
+  });
+
+  it("🔴 상태를 못 읽은 사본을 유휴로 접지 않는다 — 따로 세어 드러낸다", () => {
+    const { inProgress } = applyInProgress(
+      FEATURES,
+      scan([broken("pool/1", "git-failed"), broken("pool/2", "no-repo"), copy("pool/3", "")]),
+    );
+
+    // 유휴로 접으면 `working` 도 `unknown` 도 아닌 곳으로 사라져 아무 데도 안 남는다.
+    expect(inProgress.unreadable).toEqual([
+      { slug: "pool/1", path: "/tmp/pool/1", reason: "git-failed" },
+      { slug: "pool/2", path: "/tmp/pool/2", reason: "no-repo" },
+    ]);
+    expect(inProgress.copies).toBe(3); // 못 읽은 것까지 사본 수에 든다
+    expect(inProgress.working).toBe(0); // 작업중이라고 단정하지도 않는다
+    expect(inProgress.unknown).toEqual([]);
   });
 
   it("입력을 고치지 않는다 — 파생물은 새 객체다(INV-1)", () => {
