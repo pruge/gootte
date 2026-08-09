@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseTicket } from "../parse/feature";
-import { buildFeature, buildFeatures } from "./features";
+import { buildFeature, buildFeatures, countOpenFeatures } from "./features";
 
 /** 티켓 파일 한 장 합성 — 상단 두 줄이 서식의 전부다(triage-labels). */
 function ticket(status: string, blockedBy?: string): string {
@@ -207,6 +207,31 @@ describe("buildFeatures — 기능 목록", () => {
         docsWithStatus("bravo-done", "resolved (2026-08-01)"),
       ]).map((f) => f.slug),
     ).toEqual(["alpha-open", "zeta-open", "bravo-done", "delta-done"]);
+  });
+
+  /**
+   * 🔴 세기와 정렬은 **같은 판정**이어야 한다 — 갈리는 순간 사이드바 수와 카드 순서가
+   * 서로 다른 말을 한다. 그래서 세기를 따로 검증하지 않고 **맨 앞 무리의 크기와 같은지**로 못박는다.
+   */
+  it("남은 일 있는 기능 수 = 정렬 맨 앞 무리의 크기", () => {
+    const docs = [
+      docsWithStatus("alpha-open", "ready-for-agent"),
+      docsWithStatus("bravo-done", "resolved (2026-08-01)"),
+      docsWithNoTickets("delta-empty"),
+      docsWithStatus("echo-open", "resolved (2026-08-01)", "blocked"),
+      docsWithStatus("foxtrot-dropped", "wontfix"),
+    ];
+    const sorted = buildFeatures(docs);
+    expect(countOpenFeatures(sorted)).toBe(2); // alpha-open · echo-open
+    expect(sorted.slice(0, 2).map((f) => f.slug)).toEqual(["alpha-open", "echo-open"]);
+  });
+
+  it("티켓이 0개인 기능은 세지 않는다 — 착수할 것이 없다", () => {
+    expect(countOpenFeatures(buildFeatures([docsWithNoTickets("empty")]))).toBe(0);
+  });
+
+  it("입력이 비면 0", () => {
+    expect(countOpenFeatures([])).toBe(0);
   });
 
   it("dropped(wontfix) 는 done 과 똑같이 끝남으로 취급된다", () => {

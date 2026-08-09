@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { ProjectsResponse, FeaturesResponse, FeatureDocResponse, type ApiError } from "@gootte/contract";
-import { applyInProgress } from "@gootte/core";
+import { applyInProgress, countOpenFeatures } from "@gootte/core";
 import {
   readFeatures,
   readFeatureDoc,
@@ -47,8 +47,14 @@ export function createApp(options: AppOptions = {}): Hono {
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
 
   // GET /api/projects → ProjectsResponse (discover, W2 캐시).
+  // 🔴 남은 일이 있는 기능 수는 **캐시하지 않는다** — 발견 결과와 달리 문서가 바뀔 때마다 변하는
+  // 파생물이라 요청마다 다시 읽고 다시 센다(INV-1·INV-3). 문서 read 뿐이라 git 을 부르지 않는다.
   app.get("/api/projects", (c) => {
-    return c.json(ProjectsResponse.parse({ projects: getProjects(roots) }));
+    const projects = getProjects(roots).map((p) => ({
+      ...p,
+      openFeatures: countOpenFeatures(readFeatures(p.path)),
+    }));
+    return c.json(ProjectsResponse.parse({ projects }));
   });
 
   // GET /api/features/:slug → FeaturesResponse (docs/features/ 기능별 할일, INV-2 read-only)

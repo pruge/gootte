@@ -60,6 +60,14 @@ describe("GET /api/projects", () => {
     const body = ProjectsResponse.parse(await res.json()); // zod 검증 = throw 시 실패
     expect(body.projects.map((p) => p.slug)).toContain("alpha");
   });
+
+  // 세는 규칙 자체는 core 가 덮는다(`features.test.ts`). 여기서 보는 것은 **라우트가 그것을 싣는가**다.
+  // fixture alpha = auth-login(01 resolved · 02 ready · 03 알 수 없음) + doc-tree(01 ready) → 둘 다 남은 일 있음.
+  test("남은 일이 있는 기능 수를 싣는다 — 요청마다 다시 센다(INV-1)", async () => {
+    const app = createApp(APP);
+    const body = ProjectsResponse.parse(await (await app.request("/api/projects")).json());
+    expect(body.projects.find((p) => p.slug === "alpha")?.openFeatures).toBe(2);
+  });
 });
 
 // fixture alpha 의 docs/features/auth-login — 01 resolved · 02 blocked by 01 · 03 알 수 없는 상태

@@ -55,4 +55,22 @@ describe("Sidebar", () => {
     const active = screen.getByRole("button", { current: true });
     expect(active).toHaveTextContent("tuya");
   });
+
+  /**
+   * 🔴 0 을 감추지 않는다 — 감추면 "다 끝났다"(0)와 "안 세어봤다"(필드 미설정)가 같은 화면이 된다.
+   * 서버가 안 실어준 프로젝트에만 배지가 없어야 한다.
+   */
+  it("남은 일 있는 기능 수 배지 — 0 도 표시하고, 미설정만 감춘다", () => {
+    renderSeeded(<Sidebar selected={null} onSelect={() => {}} />, [
+      { slug: "jinwooauto", path: "/home/ai/jinwooauto", openFeatures: 3 },
+      { slug: "tuya", path: "/home/ai/tuya", openFeatures: 0 },
+      { slug: "unknown", path: "/home/ai/unknown" },
+    ]);
+    expect(screen.getByRole("button", { name: /jinwooauto/ })).toHaveTextContent("3");
+    const tuya = screen.getByRole("button", { name: /tuya/ });
+    expect(tuya.querySelector("span[title]")?.textContent).toBe("0");
+    expect(
+      screen.getByRole("button", { name: /unknown/ }).querySelector("span[title]"),
+    ).toBeNull();
+  });
 });
