@@ -20,6 +20,28 @@ export function mergeBase(repo: string, a: string, b: string): string | null {
   return gitSafe(repo, ["merge-base", a, b]);
 }
 
+/** HEAD 가 올라가 있는 브랜치. **detached HEAD 면 빈 문자열** — 그 구분이 작업중/유휴 판정이다(F7). */
+export function currentBranch(repo: string): string {
+  return gitSafe(repo, ["branch", "--show-current"]) ?? "";
+}
+
+/** 그 ref 가 이 저장소에서 해소되는가. */
+export function revExists(repo: string, ref: string): boolean {
+  return gitSafe(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]) !== null;
+}
+
+/**
+ * `<range>` 안의 커밋들이 건드린 경로 — 저장소 루트 기준, 중복 제거.
+ * 순 diff 가 아니라 **커밋마다의 변경**이라 중간에 고쳤다 되돌린 파일도 잡힌다.
+ */
+export function commitTouchedFiles(repo: string, range: string): string[] {
+  // `core.quotepath=false` — 끄지 않으면 비 ASCII 경로가 `\355\225\234` 로 이스케이프돼 나와
+  // 경로 규칙이 그 파일을 못 알아본다(= 이을 수 있는 작업을 미상으로 흘린다).
+  const out = gitSafe(repo, ["-c", "core.quotepath=false", "log", "--name-only", "--format=", range]);
+  if (!out) return [];
+  return [...new Set(out.split("\n").map((l) => l.trim()).filter(Boolean))];
+}
+
 export function mainCommitsSince(repo: string, base: string, mainTip: string): number {
   const out = gitSafe(repo, ["rev-list", "--count", `${base}..${mainTip}`]);
   return out ? Number.parseInt(out, 10) || 0 : 0;

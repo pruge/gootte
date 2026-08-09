@@ -5,6 +5,7 @@ export * from "./adr";
 export * from "./ledger";
 export * from "./blueprint";
 export * from "./feature";
+export * from "./ticket-path";
 export * from "./status";
 export * from "./index-doc";
 export * from "./track";

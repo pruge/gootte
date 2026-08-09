@@ -1,0 +1,108 @@
+import type { Feature, FeatureTicket, InProgressSummary, UnmappedWork } from "@gootte/contract";
+import { parseTicketPath } from "../parse/ticket-path";
+
+/**
+ * "지금 붙들려 있는 일" 계산 — 순수(INV-4). 입력은 **격리 사본 관측 결과**지 문서가 아니다.
+ * 정규 여덟 값에 처리중이 없는 것은 결함이 아니라 설계다 — 그 사실은 파일에 적을 것이 아니라
+ * 관측할 것이고, 관측한 것을 파일에 되쓰지도 않는다(INV-1·INV-2).
+ */
+
+/** 격리 사본 하나에서 관측한 날것. core-io 가 채우고 해석은 여기서 한다(계층 경계). */
+export interface WorkingCopy {
+  /** `<풀>/<슬롯>` — 사람이 찾아갈 수 있는 식별자. */
+  slug: string;
+  path: string;
+  /** HEAD 가 올라가 있는 브랜치. **빈 문자열 = detached = 유휴.** */
+  branch: string;
+  /** 그 브랜치의 커밋이 건드린 경로(저장소 루트 기준). 유휴 사본은 빈 배열. */
+  touched: string[];
+}
+
+/** 사본 뿌리 한 번의 스캔 결과. 뿌리가 없어도 예외가 아니라 `rootExists:false` 다. */
+export interface WorkingCopyScan {
+  root: string;
+  rootExists: boolean;
+  copies: WorkingCopy[];
+}
+
+const key = (feature: string, slug: string): string => `${feature}/${slug}`;
+
+/** 이 사본이 붙들고 있는 티켓 키 — **목록에 실제로 있는 티켓만**. 중복은 한 번. */
+function heldTickets(copy: WorkingCopy, known: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  for (const path of copy.touched) {
+    const ref = parseTicketPath(path);
+    if (!ref) continue;
+    const k = key(ref.feature, ref.slug);
+    if (known.has(k) && !out.includes(k)) out.push(k);
+  }
+  return out;
+}
+
+function markTicket(ticket: FeatureTicket, branches: readonly string[]): FeatureTicket {
+  if (branches.length === 0) return ticket;
+  return {
+    ...ticket,
+    // 끝난 일은 다시 처리중이 되지 않는다 — 완료/취소는 문서가 말한 그대로 둔다.
+    status: ticket.status === "done" || ticket.status === "dropped" ? ticket.status : "in_progress",
+    workedBy: [...branches],
+  };
+}
+
+/**
+ * 할일 목록 + 사본 관측 → 처리중이 표시된 목록과 요약.
+ *
+ * - 사본이 **작업 가지 위에 있으면** 작업중, detached 면 유휴(F7).
+ * - 그 작업이 어느 티켓인지는 **그 가지의 커밋이 건드린 티켓 파일**로만 잇는다(결정 Q1 = 안 B).
+ * - 🔴 **이어지지 않은 작업중 사본은 감추지 않는다** — `unknown` 에 그대로 실어 "티켓 미상 · 작업중"
+ *   으로 세어진다. 조용히 삼키면 화면이 "아무도 아무것도 안 하는 중" 이라고 거짓말한다.
+ * - 한 티켓을 두 사본이 붙들어도 **티켓은 하나로 센다**. 두 브랜치는 `workedBy` 에 나란히 실린다.
+ */
+export function applyInProgress(
+  features: readonly Feature[],
+  scan: WorkingCopyScan,
+): { features: Feature[]; inProgress: InProgressSummary } {
+  const known = new Set<string>();
+  for (const f of features) for (const t of f.tickets) known.add(key(f.slug, t.slug));
+
+  const branchesByTicket = new Map<string, string[]>();
+  const unknown: UnmappedWork[] = [];
+  let working = 0;
+
+  for (const copy of scan.copies) {
+    if (!copy.branch) continue; // detached = 유휴
+    working += 1;
+    const held = heldTickets(copy, known);
+    if (held.length === 0) {
+      unknown.push({ slug: copy.slug, branch: copy.branch, path: copy.path });
+      continue;
+    }
+    for (const k of held) {
+      const branches = branchesByTicket.get(k) ?? [];
+      if (!branches.includes(copy.branch)) branches.push(copy.branch);
+      branchesByTicket.set(k, branches);
+    }
+  }
+
+  let tickets = 0;
+  const marked = features.map((f) => ({
+    ...f,
+    tickets: f.tickets.map((t) => {
+      const next = markTicket(t, branchesByTicket.get(key(f.slug, t.slug)) ?? []);
+      if (next.status === "in_progress") tickets += 1;
+      return next;
+    }),
+  }));
+
+  return {
+    features: marked,
+    inProgress: {
+      root: scan.root,
+      rootExists: scan.rootExists,
+      copies: scan.copies.length,
+      working,
+      tickets,
+      unknown,
+    },
+  };
+}

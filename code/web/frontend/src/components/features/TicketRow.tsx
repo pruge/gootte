@@ -4,17 +4,20 @@ import {
   IconCircleDashed,
   IconCircleX,
   IconLock,
+  IconProgress,
 } from "@tabler/icons-react";
 import type { FeatureTicket } from "@gootte/contract";
 
 /**
- * 상태 아이콘 — semantic(장식 아님). 착수 가능 = accent, 기다리는 중 = muted.
+ * 상태 아이콘 — semantic(장식 아님). 처리중 = active(작업중 신호), 착수 가능 = accent, 기다리는 중 = muted.
  * 원문 상태(`sourceStatus`)는 아이콘으로 뭉개지 않고 옆에 그대로 띄운다(결정 Q3).
  */
 function StateIcon({ ticket }: { ticket: FeatureTicket }) {
   if (ticket.status === "done")
     return <IconCircleCheckFilled size={17} className="shrink-0 text-accent" />;
   if (ticket.status === "dropped") return <IconCircleX size={17} className="shrink-0 text-muted" />;
+  if (ticket.status === "in_progress")
+    return <IconProgress size={17} className="shrink-0 text-active" />;
   return ticket.startable ? (
     <IconCircleDashed size={17} className="shrink-0 text-accent" />
   ) : (
@@ -23,13 +26,16 @@ function StateIcon({ ticket }: { ticket: FeatureTicket }) {
 }
 
 /**
- * 티켓 한 줄 — 번호 · 제목 · **원문 상태** · 막힘/착수 가능(계산).
+ * 티켓 한 줄 — 번호 · 제목 · **원문 상태** · 막힘/착수 가능(계산) · 처리중(격리 사본 관측).
  *
  * 🔴 상태를 못 읽은 티켓을 숨기지 않는다. 숨기면 화면이 "할 일이 없다" 고 거짓말한다 —
  * 대신 무엇이 이상한지(원문 문자열)를 드러낸다.
+ * 처리중은 문서에 없는 값이라 원문 상태 옆에 **따로** 붙는다(뭉개지 않는다).
  */
 export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
-  const waiting = !ticket.startable && ticket.status === "pending";
+  // 처리중이어도 선행이 남아 있으면 그 사실은 계속 보인다 — 관측이 계산을 덮어쓰지 않는다.
+  const open = ticket.status === "pending" || ticket.status === "in_progress";
+  const waiting = !ticket.startable && open;
 
   return (
     <li
@@ -39,7 +45,9 @@ export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
     >
       <StateIcon ticket={ticket} />
       <span className="mono shrink-0 text-sm tabular-nums text-muted">{ticket.num || "—"}</span>
-      <span className={`min-w-0 flex-1 truncate ${waiting ? "text-muted" : ""}`}>
+      <span
+        className={`min-w-0 flex-1 truncate ${waiting && ticket.status === "pending" ? "text-muted" : ""}`}
+      >
         {ticket.title}
       </span>
 
@@ -58,6 +66,17 @@ export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
           {ticket.sourceStatus === null
             ? "상태 줄 없음"
             : `알 수 없는 상태: ${ticket.sourceStatus}`}
+        </span>
+      )}
+
+      {ticket.workedBy.length > 0 && (
+        // 문서에는 없는 값 — 격리 사본이 말해준 것이다. 어느 가지가 붙들고 있는지 verbatim 으로 싣는다.
+        <span
+          className="mono flex shrink-0 items-center gap-1 rounded bg-active/15 px-1.5 py-0.5 text-sm text-active"
+          title={`작업 가지: ${ticket.workedBy.join(", ")}`}
+        >
+          <IconProgress size={13} />
+          처리중 · {ticket.workedBy.join(", ")}
         </span>
       )}
 

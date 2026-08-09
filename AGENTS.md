@@ -113,8 +113,10 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 | `pnpm dev:stop` | dev 서버 정리 (`scripts/dev-stop.sh`) | **사용자가 띄운다** |
 | `pnpm e2e` | frontend playwright | **사용자가 띄운다** |
 
-`plan`·`lineage`·`digest`·`discover` 가 어디를 뒤질지는 env `GOOTTE_ROOTS`(콜론 구분, 기본 `~/Documents`)가
-정한다 — `code/web/backend/src/app.ts` 가 SoT.
+`plan`·`lineage`·`digest`·`discover` 가 어디를 뒤질지는 env `GOOTTE_ROOTS`(콜론 구분, 기본
+`~/Documents/ai2/projects`)가 정한다. **"지금 누가 무엇을 붙들고 있나"** 를 관측할 격리 사본 뿌리는 env
+`GOOTTE_TREEHOUSE`(기본 `~/.treehouse`) 다 — 기계마다 다르니 경로를 코드에 못 박지 않는다.
+둘 다 `code/web/backend/src/app.ts` 가 SoT.
 
 ### dev 포트 — `scripts/ports.sh` 가 유일한 판정자
 

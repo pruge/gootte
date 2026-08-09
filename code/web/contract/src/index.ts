@@ -223,6 +223,9 @@ export const FeatureTicket = z.object({
   blockedBy: z.array(z.string()).default([]),
   waitingOn: z.array(z.string()).default([]), // 그중 아직 완료가 아닌 것 — 계산
   startable: z.boolean(), // waitingOn 이 비면 true — 계산이지 파일에 적힌 값이 아니다(INV-1)
+  // 이 티켓을 지금 붙들고 있는 격리 사본의 브랜치 이름(verbatim). 관측 파생이라 파일에 없다.
+  // 한 티켓을 두 사본이 붙들면 원소 둘 — 그래도 티켓은 하나로 센다.
+  workedBy: z.array(z.string()).default([]),
 });
 export type FeatureTicket = z.infer<typeof FeatureTicket>;
 
@@ -236,6 +239,32 @@ export const Feature = z.object({
   tickets: z.array(FeatureTicket).default([]),
 });
 export type Feature = z.infer<typeof Feature>;
+
+/**
+ * 작업중이지만 티켓에 잇지 못한 격리 사본 하나 — **감추지 않는다**.
+ * 조용히 빠뜨리면 화면이 "아무도 아무것도 안 하는 중" 이라고 거짓말하고,
+ * 캡틴은 이미 진행 중인 일을 다시 배정한다.
+ */
+export const UnmappedWork = z.object({
+  slug: z.string(), // `<풀>/<슬롯>` — 사람이 찾아갈 수 있는 식별자
+  branch: z.string(), // 작업 브랜치 이름 verbatim (요약·추론 없음, INV-4)
+  path: z.string(), // 사본 경로
+});
+export type UnmappedWork = z.infer<typeof UnmappedWork>;
+
+/**
+ * "지금 누가 무엇을 붙들고 있나" — 격리 사본 관측 파생.
+ * 🔴 어디에도 저장하지 않는다(INV-1). 볼 때마다 사본들을 다시 관측한다(INV-3).
+ */
+export const InProgressSummary = z.object({
+  root: z.string(), // 스캔한 격리 사본 뿌리
+  rootExists: z.boolean(), // 뿌리가 없으면 false — 빈 결과지 오류가 아니다
+  copies: z.number().int().nonnegative(), // 이 프로젝트의 사본 수
+  working: z.number().int().nonnegative(), // 그중 작업 가지에 올라가 있는 수(나머지는 유휴)
+  tickets: z.number().int().nonnegative(), // 처리중으로 계산된 **티켓** 수 — 사본 수가 아니다(중복 제거)
+  unknown: z.array(UnmappedWork).default([]), // 🔴 작업중인데 티켓 미상
+});
+export type InProgressSummary = z.infer<typeof InProgressSummary>;
 
 /** AUTO-GENERATED digest (AI floor). */
 export const Digest = z.object({
@@ -261,10 +290,14 @@ export const PlanResponse = z.object({
 });
 export type PlanResponse = z.infer<typeof PlanResponse>;
 
-/** 기능별 할일 목록 — `docs/features/` 파생(INV-2 read-only, INV-1 매 read 재계산). */
+/**
+ * 기능별 할일 목록 — `docs/features/` 파생(INV-2 read-only, INV-1 매 read 재계산).
+ * `inProgress` 는 격리 사본 관측 파생이라 입력이 다르다 — 문서에는 처리중이 적혀 있지 않다.
+ */
 export const FeaturesResponse = z.object({
   project: z.string(),
   features: z.array(Feature).default([]),
+  inProgress: InProgressSummary,
 });
 export type FeaturesResponse = z.infer<typeof FeaturesResponse>;
 

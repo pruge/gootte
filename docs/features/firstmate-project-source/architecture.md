@@ -25,6 +25,7 @@
 | `load.ts` | 프로젝트 하나를 통째로 읽어 `ProjectState` 를 만든다(IO 오케스트레이션) |
 | `doc.ts` · `tree.ts` | 문서 브라우저가 **파일 한 장**을 읽는다(traversal 가드 포함) |
 | `git.ts` · `worktree.ts` | git 이 말해주는 것 — 신호, 격리 사본 목록 |
+| `treehouse.ts` | **누가 지금 무엇을 붙들고 있나** — `~/.treehouse` 슬롯의 브랜치/detached 와 그 가지가 건드린 경로(티켓 03) |
 | `watch.ts` | 변경 감시 → 이벤트(INV-3 의 stale 금지가 여기 붙는다) |
 
 ## 지금 발견 규칙 (티켓 01 이후)
@@ -83,3 +84,20 @@
   처리중 표시를 티켓 파일에 적어 넣는 것도 여기 포함된다.
 - 파생값을 저장해 두 번째 SoT 를 만드는 것 — **INV-1**. 볼 때마다 다시 계산한다.
 - 이름이 비슷하니 아마 이것이겠거니 하는 추정 — **INV-4**. read-path 는 결정적이다.
+- 이을 수 없는 것을 조용히 빠뜨리는 것. 매핑 실패는 **세어서 드러낸다**(티켓 03 §미상).
+  빠진 목록은 화면에서 "아무도 아무것도 안 하는 중" 이라는 거짓말이 된다.
+
+## 문서가 아닌 입력 — 격리 사본 관측 (티켓 03 이후)
+
+같은 계층 규율이 git 입력에도 그대로 적용된다. 문서 절차의 2·4번이 이렇게 대응된다.
+
+| 계층 | 무엇 |
+|---|---|
+| `contract/` | `InProgressSummary` · `UnmappedWork` · `FeatureTicket.workedBy` |
+| `core/parse/ticket-path.ts` | 경로 문자열 → 티켓 참조. **어느 작업이 어느 티켓인가의 유일한 규칙**(안 B) |
+| `core/project/in-progress.ts` | 사본 관측 + 할일 목록 → 처리중 표시·미상 집계(순수) |
+| `core-io/treehouse.ts` | 사본이 어디 있고 브랜치 위인지, 그 가지가 어떤 경로를 건드렸는지(날것만) |
+| `backend/app.ts` | 뿌리 해소(`GOOTTE_TREEHOUSE`) + 두 입력을 봉투에 실어 서빙 |
+
+뿌리 기본값은 `defaultTreehouseRoot()` 한 곳에서만 정한다 — `~/.treehouse`. 덮어쓰기는 호출자 몫이다
+(backend `GOOTTE_TREEHOUSE`). **기계마다 다르므로 경로를 다시 하드코딩하지 않는다.**
