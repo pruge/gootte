@@ -1,6 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 
 /** IO 층 — git CLI 위임. 전부 읽기 전용(INV-2). */
 
@@ -17,10 +15,6 @@ function gitSafe(repo: string, args: string[]): string | null {
   } catch {
     return null;
   }
-}
-
-export function mergeBase(repo: string, a: string, b: string): string | null {
-  return gitSafe(repo, ["merge-base", a, b]);
 }
 
 /**
@@ -48,24 +42,4 @@ export function commitTouchedFiles(repo: string, range: string): string[] {
   const out = gitSafe(repo, ["-c", "core.quotepath=false", "log", "--name-only", "--format=", range]);
   if (!out) return [];
   return [...new Set(out.split("\n").map((l) => l.trim()).filter(Boolean))];
-}
-
-/** `.claude/worktrees/` 스캔 → 원시 worktree(slug/branch/base). 목록 뷰의 worktree 배지 수 소스. */
-export interface RawWorktree {
-  slug: string;
-  branch: string;
-  base: string;
-}
-
-export function scanWorktrees(repo: string, mainRef = "main"): RawWorktree[] {
-  const dir = join(repo, ".claude", "worktrees");
-  if (!existsSync(dir)) return [];
-  const out: RawWorktree[] = [];
-  for (const slug of readdirSync(dir)) {
-    const wt = join(dir, slug);
-    const branch = gitSafe(wt, ["branch", "--show-current"]) ?? "";
-    const base = branch ? (mergeBase(repo, mainRef, branch) ?? "") : "";
-    out.push({ slug, branch, base });
-  }
-  return out;
 }

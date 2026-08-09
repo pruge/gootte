@@ -7,7 +7,6 @@ import { applyInProgress } from "@gootte/core";
 import {
   readFeatures,
   readFeatureDoc,
-  scanWorktrees,
   scanWorkingCopies,
   defaultProjectRoots,
   defaultTreehouseRoot,
@@ -47,14 +46,9 @@ export function createApp(options: AppOptions = {}): Hono {
 
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
 
-  // GET /api/projects → ProjectsResponse (discover, W2 캐시). worktrees 수는 요청마다 fresh(INV-3).
-  // 배지 수 = scanWorktrees(raw) length — 목록 뷰가 쓰는 가벼운 스캔이다.
+  // GET /api/projects → ProjectsResponse (discover, W2 캐시).
   app.get("/api/projects", (c) => {
-    const projects = getProjects(roots).map((p) => ({
-      ...p,
-      worktrees: scanWorktrees(p.path).length,
-    }));
-    return c.json(ProjectsResponse.parse({ projects }));
+    return c.json(ProjectsResponse.parse({ projects: getProjects(roots) }));
   });
 
   // GET /api/features/:slug → FeaturesResponse (docs/features/ 기능별 할일, INV-2 read-only)
