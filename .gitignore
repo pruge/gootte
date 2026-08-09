@@ -9,3 +9,5 @@ playwright-report/
 playwright/.cache/
 .gstack/
 .codegraph/
+# 격리 사본 전용 dev 포트 — firstmate 가 사본을 만들 때 써 넣는다(.ports.main 은 tracked).
+code/web/.ports.worktree

@@ -3,7 +3,9 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 /** frontend dev = vite(:5304), backend(:8804) 프록시. prod = backend가 정적 서빙(same-origin). */
-// 포트 = cling 글로벌 레지스트리 배정(main 밴드). worktree 는 /cling:worktree 가 매니페스트로 밴드 격리 주입.
+// 🔴 dev 포트의 SoT 는 code/web/.ports.* + scripts/ports.sh 다 — scripts/dev-frontend.sh 가
+// CLI --port 와 VITE_BACKEND_URL 로 아래 값을 덮어쓴다. 여기 리터럴은 그 파일이 담은 main 값의
+// 사본일 뿐이니, 포트를 바꿀 때는 code/web/.ports.main 을 고친다.
 const BACKEND = process.env.VITE_BACKEND_URL ?? "http://localhost:8804";
 
 export default defineConfig({
