@@ -5,6 +5,7 @@ import {
   ProjectsResponse,
   PlanResponse,
   RoadmapResponse,
+  FeaturesResponse,
   LineageResponse,
   TimelineResponse,
   WorktreeResponse,
@@ -79,6 +80,48 @@ describe("GET /api/roadmap/:slug", () => {
   test("미해소 slug → 404 ApiError", async () => {
     const app = createApp({ roots });
     const res = await app.request("/api/roadmap/does-not-exist");
+    expect(res.status).toBe(404);
+    expect(ApiError.parse(await res.json()).error).toContain("does-not-exist");
+  });
+});
+
+// fixture alpha 의 docs/features/auth-login — 01 resolved · 02 blocked by 01 · 03 알 수 없는 상태
+describe("GET /api/features/:slug", () => {
+  test("FeaturesResponse envelope — 기능별 티켓 + 계산된 막힘 해제", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/features/alpha");
+    expect(res.status).toBe(200);
+    const body = FeaturesResponse.parse(await res.json());
+    expect(body.project).toBe("alpha");
+    const f = body.features.find((x) => x.slug === "auth-login");
+    expect(f?.title).toBe("auth-login — 로그인");
+    expect(f?.tickets.map((t) => t.num)).toEqual(["01", "02", "03"]);
+    // 01 완료 → 02 착수 가능(계산). 02 미완 → 03 은 02 를 기다린다.
+    expect(f?.tickets[0]?.completedAt).toBe("2026-08-08");
+    expect(f?.tickets[1]?.startable).toBe(true);
+    expect(f?.tickets[2]?.startable).toBe(false);
+    expect(f?.tickets[2]?.waitingOn).toEqual(["02"]);
+  });
+
+  test("🔴 알 수 없는 상태의 티켓도 응답에 남고 원문이 실려 나온다", async () => {
+    const app = createApp({ roots });
+    const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
+    const t = body.features.find((f) => f.slug === "auth-login")?.tickets[2];
+    expect(t?.statusKnown).toBe(false);
+    expect(t?.sourceStatus).toBe("진행중");
+    expect(t?.status).toBe("pending");
+  });
+
+  test("🔴 어떤 티켓도 in_progress 로 오지 않는다 — 관측(티켓 03)의 몫", async () => {
+    const app = createApp({ roots });
+    const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
+    for (const f of body.features)
+      for (const t of f.tickets) expect(t.status).not.toBe("in_progress");
+  });
+
+  test("미해소 slug → 404 ApiError", async () => {
+    const app = createApp({ roots });
+    const res = await app.request("/api/features/does-not-exist");
     expect(res.status).toBe(404);
     expect(ApiError.parse(await res.json()).error).toContain("does-not-exist");
   });

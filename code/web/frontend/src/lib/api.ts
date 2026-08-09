@@ -3,6 +3,7 @@ import {
   ProjectsResponse,
   PlanResponse,
   RoadmapResponse,
+  FeaturesResponse,
   LineageResponse,
   TimelineResponse,
   WorktreeResponse,
@@ -32,6 +33,10 @@ export const fetchPlan = (slug: string) =>
 
 export const fetchRoadmap = (slug: string) =>
   get(`/api/roadmap/${encodeURIComponent(slug)}`, RoadmapResponse);
+
+/** 기능별 할일 목록(docs/features/) — 막힘 해제는 서버가 계산해 보낸다(INV-1: 화면 재계산 X). */
+export const fetchFeatures = (slug: string) =>
+  get(`/api/features/${encodeURIComponent(slug)}`, FeaturesResponse);
 
 export const fetchLineage = (slug: string) =>
   get(`/api/lineage/${encodeURIComponent(slug)}`, LineageResponse);
