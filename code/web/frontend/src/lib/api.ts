@@ -1,17 +1,5 @@
 import { z, type ZodTypeAny } from "zod";
-import {
-  ProjectsResponse,
-  PlanResponse,
-  RoadmapResponse,
-  FeaturesResponse,
-  LineageResponse,
-  TimelineResponse,
-  WorktreeResponse,
-  DocResponse,
-  TreeResponse,
-  ApiError,
-  type Project,
-} from "@gootte/contract";
+import { ProjectsResponse, FeaturesResponse, ApiError, type Project } from "@gootte/contract";
 
 /** same-origin(prod = backend가 정적 서빙) · dev = vite 프록시가 /api → backend. */
 const BASE = "";
@@ -28,43 +16,6 @@ async function get<S extends ZodTypeAny>(path: string, schema: S): Promise<z.out
 export const fetchProjects = (): Promise<Project[]> =>
   get("/api/projects", ProjectsResponse).then((r) => r.projects);
 
-export const fetchPlan = (slug: string) =>
-  get(`/api/plan/${encodeURIComponent(slug)}`, PlanResponse);
-
-export const fetchRoadmap = (slug: string) =>
-  get(`/api/roadmap/${encodeURIComponent(slug)}`, RoadmapResponse);
-
 /** 기능별 할일 목록(docs/features/) — 막힘 해제는 서버가 계산해 보낸다(INV-1: 화면 재계산 X). */
 export const fetchFeatures = (slug: string) =>
   get(`/api/features/${encodeURIComponent(slug)}`, FeaturesResponse);
-
-export const fetchLineage = (slug: string) =>
-  get(`/api/lineage/${encodeURIComponent(slug)}`, LineageResponse);
-
-export const fetchTimeline = (slug: string) =>
-  get(`/api/timeline/${encodeURIComponent(slug)}`, TimelineResponse);
-
-export const fetchWorktree = (slug: string) =>
-  get(`/api/worktree/${encodeURIComponent(slug)}`, WorktreeResponse);
-
-export const fetchDoc = (slug: string, kind: "todo" | "sprint", name: string, worktree?: string) => {
-  const q = worktree ? `?worktree=${encodeURIComponent(worktree)}` : "";
-  return get(
-    `/api/doc/${encodeURIComponent(slug)}/${kind}/${encodeURIComponent(name)}${q}`,
-    DocResponse,
-  );
-};
-
-/** 문서 브라우저(2e) — 이니셔티브 폴더 tree. */
-export const fetchTree = (slug: string, initiative: string) =>
-  get(
-    `/api/tree/${encodeURIComponent(slug)}/${encodeURIComponent(initiative)}`,
-    TreeResponse,
-  );
-
-/** roadmap 폴더 파일 read(별도 경로 — generic doc 라우트와 충돌 회피). path 는 폴더 상대경로. */
-export const fetchRoadmapDoc = (slug: string, initiative: string, path: string) =>
-  get(
-    `/api/roadmap-doc/${encodeURIComponent(slug)}/${encodeURIComponent(initiative)}?path=${encodeURIComponent(path)}`,
-    DocResponse,
-  );

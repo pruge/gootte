@@ -7,4 +7,5 @@
 
 | 한국어 개념어 | 영문 앵커 | 종류 | 위치 | 확인일 | 비고 |
 |---|---|---|---|---|---|
-| 리니지 계산 | `buildLineage` | function | `code/web/core/src/state/lineage.ts` | 2026-08-09 | `(input: { supersessions, adrs, todos }) => LineageFill`. 처음엔 `LineageGraph`/`computeLineage`/`LineageBuilder` 로 짐작하기 쉽다 |
+| 막힘 해제 계산 | `buildFeatures` | function | `code/web/core/src/project/features.ts` | 2026-08-09 | `(docs: FeatureDocs[]) => Feature[]`. `Blocked by:` 가 전부 resolved 면 `startable` — 파일엔 없는 계산값(INV-1). 처음엔 `computeFeatures`/`FeatureBuilder` 로 짐작하기 쉽다 |
+| 처리중 표시 부착 | `applyInProgress` | function | `code/web/core/src/project/in-progress.ts` | 2026-08-09 | `(features, scan) => { features, inProgress }`. 입력이 문서가 아니라 격리 사본 관측이다 |

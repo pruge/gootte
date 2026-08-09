@@ -20,7 +20,7 @@
    "건드릴 영역 → 관련 기능 → 그 폴더의 `adr/`" 로 좁혀 읽는다.
 
 4. **계약 코드** — `code/web/contract/src/index.ts`. 이 저장소의 **어휘 SoT** 다.
-   상태 모델·digest 스키마·CLI 출력 타입이 전부 여기 zod 로 있다.
+   프로젝트·기능·티켓·처리중 관측 타입이 전부 여기 zod 로 있다.
    🔴 **문서와 계약 코드가 어긋나면 계약 코드가 이긴다.**
 
 5. **코드 구조** — grep 이 아니라 codegraph 로 묻는다:
@@ -30,7 +30,8 @@
 ## ⚠️ 옛 문서에서 어휘를 줍지 않는다
 
 은퇴한 워크플로우가 남긴 문서(`docs/roadmap` `docs/todo` `docs/sprint` `docs/mermaid/` ·
-`.cling/profile.md`)는 **작업 트리에서 모두 삭제됐다** — 이제 git 히스토리와 옛 브랜치에만 있다.
+`.cling/profile.md`)는 **작업 트리에서 모두 삭제됐고, 그것을 읽던 제품 코드도 사라졌다** —
+이제 git 히스토리와 옛 브랜치에만 있다.
 거기서 끌어온 문서는 동결된 역사로만 읽는다: **단서지 권위가 아니다** — "accepted" 라고 적혀 있어도
 지금 유효하다는 뜻이 아니다. 신선도 판정은 위 2·4번(티켓 frontier, 계약 코드)이 한다.
 
@@ -39,16 +40,16 @@
 | 컨텍스트 | 경로 | 무엇 | 성질 |
 |---|---|---|---|
 | `contract` | `code/web/contract/` | zod 공유 타입 SoT (`@gootte/contract`) | 의존 없음(zod 만) |
-| `core` | `code/web/core/` | 문서 파싱(`parse/`) · 상태(`state/`) · projection(`project/`) | 🔴 **순수 — 부수효과 0** |
-| `core-io` | `code/web/core-io/` | fs read · discover · git · watch · emit | 🔴 **IO 전담** |
-| `cli` | `code/web/cli/` | `gootte` CLI + agent-skill (`src/skill/SKILL.md`) | core + core-io 조립 |
+| `core` | `code/web/core/` | 문서 파싱(`parse/`) · projection(`project/`) | 🔴 **순수 — 부수효과 0** |
+| `core-io` | `code/web/core-io/` | fs read · discover · git · watch | 🔴 **IO 전담** |
+| `cli` | `code/web/cli/` | `gootte discover` CLI | core-io 조립 |
 | `backend` | `code/web/backend/` | Hono API + 실시간(`live.ts`) | core-io 를 통해서만 fs 접근 |
 | `frontend` | `code/web/frontend/` | React + Vite 대시보드 | contract 만 import(서버 경유) |
 
 ### 🔴 `core` 와 `core-io` 가 갈려 있는 이유
 
 **`core` 는 순수하다 — 파일을 읽지 않고 시계를 보지 않는다.** 문자열과 데이터를 받아 데이터를 낸다.
-**`core-io` 가 바깥 세상 전부**를 맡는다 — 파일 읽기, 프로젝트 발견, git, 파일 감시, `.gootte/` 산출물 emit.
+**`core-io` 가 바깥 세상 전부**를 맡는다 — 파일 읽기, 프로젝트 발견, git, 파일 감시, 격리 사본 관측.
 
 이 분리는 편의가 아니라 **INV-4(read-path 는 결정적·LLM-free)를 컴파일 시점에 강제하는 장치**다.
 `core` 안에서 `node:fs` 를 import 하고 싶어지면 그건 그 로직이 `core-io` 쪽이라는 신호다 — 경계를 넘기지
@@ -73,11 +74,12 @@
 ## 이 저장소가 쓰는 용어를 쓴다
 
 출력이 도메인 개념을 지칭할 때(티켓 제목, 리팩터 제안, 가설, 테스트 이름) 이 저장소가 실제로 쓰는 용어를 쓴다.
-어휘의 SoT 는 `code/web/contract/src/index.ts` 다 — `initiative` · `lineage` · `supersede` · `digest` ·
-`track` · `frontier` 같은 말이 거기서 정의된 대로 쓰인다.
+어휘의 SoT 는 `code/web/contract/src/index.ts` 다 — `feature` · `ticket` · `startable` · `waitingOn` ·
+`workedBy` · `inProgress` 같은 말이 거기서 정의된 대로 쓰인다.
 
-주의할 이름 겹침이 하나 있다: **`track`** 은 (1) 제품이 관리대상 문서에서 파싱하는 대분류이자
-(2) 이 저장소 자신의 통제 어휘(E/W/R/X, `AGENTS.md` §Track)이다. 어느 쪽을 말하는지 문맥에서 분명히 한다.
+🔴 **은퇴한 어휘를 되살려 쓰지 않는다.** `initiative` · `lineage` · `supersede` · `digest` · `track` 은
+은퇴한 워크플로우의 문서 형식에서 왔고 그 읽기 경로와 함께 계약에서 사라졌다
+(`firstmate-project-source` 티켓 04). 옛 문서에서 그 말을 주웠다면 그것은 동결된 역사다.
 
 필요한 개념이 어디에도 정의돼 있지 않다면 그건 신호다 — 이 프로젝트가 쓰지 않는 언어를 지어내고 있거나,
 진짜 공백이거나(그렇다면 티켓으로 기록).

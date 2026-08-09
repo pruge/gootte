@@ -7,4 +7,4 @@
 
 | 한국어 개념어 | 영문 앵커 | 종류 | 위치 | 확인일 | 비고 |
 |---|---|---|---|---|---|
-| 다이어그램 확대/축소 | `ZoomPan` | function | `code/web/frontend/src/components/common/ZoomPan.tsx` | 2026-08-09 | `structure/DiagramDrawer.tsx` 가 사용. 처음엔 `PanZoom`/`DiagramViewer` 로 짐작하기 쉽다 |
+| 네비 상태(프로젝트·탭) | `useUrlState` | function | `code/web/frontend/src/hooks/useUrlState.ts` | 2026-08-09 | URL search param 이 SoT(별 스토어 없음). 탭은 `features` 하나뿐이다. 처음엔 `useNavState`/`useRouter` 로 짐작하기 쉽다 |

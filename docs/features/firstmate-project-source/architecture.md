@@ -11,30 +11,34 @@
 | 패키지 | 무엇이 산다 | 무엇이 살면 안 된다 |
 |---|---|---|
 | `contract/` | zod 스키마 = 공유 타입 SoT. 여기서 파생되지 않은 API 형태는 없다 | 로직 |
-| `core/` | **순수**. `parse/`(문자열 → 구조), `state/`(구조 → ProjectState), `project/`, `rank.ts` | `node:fs`·`node:child_process`·`Date.now()` 같은 환경 접촉. 지금 `core/` 에 fs import 는 **0개**이고 그대로 유지한다 |
+| `core/` | **순수**. `parse/`(문자열 → 구조), `project/`(구조 → 화면이 쓸 값) | `node:fs`·`node:child_process`·`Date.now()` 같은 환경 접촉. 지금 `core/` 에 fs import 는 **0개**이고 그대로 유지한다 |
 | `core-io/` | **파일시스템·git**. 어떤 디렉토리가 프로젝트인지, 어떤 파일을 읽는지, git 이 뭐라고 하는지 | 파싱 규칙. 읽어온 문자열은 `core/` 파서에 넘긴다 |
 | `backend/` | Hono 라우트 = CORE 산출물을 CONTRACT 봉투에 실어 서빙. `discover-cache.ts` 는 discover TTL 캐시 + slug 해소 | 계산·파싱 |
 | `frontend/` | TanStack Query(서버상태 SoT) + 뷰 | 파생값 재계산·중복 스토어(INV-1) |
-| `cli/` | 같은 core/core-io 를 텍스트로 뽑는 얇은 표면 | 자체 로직 |
+| `cli/` | `gootte discover` 하나를 텍스트로 뽑는 얇은 표면 | 자체 로직 |
+
+> 티켓 04 이후 `core/state/`(ProjectState) · `core/rank.ts` · `core-io/{load,emit,doc,tree,worktree}.ts` 는
+> **없다.** 은퇴한 문서 형식(roadmap·todo·sprint)만을 위한 계층이었다.
 
 `core-io/` 안의 역할 분담 — **읽는 이유가 다르면 파일이 다르다**:
 
 | 파일 | 답하는 질문 |
 |---|---|
 | `discover.ts` | **이 디렉토리가 프로젝트인가**, 그리고 어디를 훑는가 |
-| `load.ts` | 프로젝트 하나를 통째로 읽어 `ProjectState` 를 만든다(IO 오케스트레이션) |
-| `doc.ts` · `tree.ts` | 문서 브라우저가 **파일 한 장**을 읽는다(traversal 가드 포함) |
-| `git.ts` · `worktree.ts` | git 이 말해주는 것 — 신호, 격리 사본 목록 |
+| `features.ts` | 기능 폴더(`docs/features/`)를 읽어 `core` 파서·계산에 넘긴다(IO 오케스트레이션) |
+| `git.ts` | git 이 말해주는 것 — 브랜치, 커밋이 건드린 경로, worktree 목록 |
 | `treehouse.ts` | **누가 지금 무엇을 붙들고 있나** — `~/.treehouse` 슬롯의 브랜치/detached 와 그 가지가 건드린 경로(티켓 03) |
 | `watch.ts` | 변경 감시 → 이벤트(INV-3 의 stale 금지가 여기 붙는다) |
 
-## 지금 발견 규칙 (티켓 01 이후)
+## 지금 발견 규칙 (티켓 01 · 04 이후)
 
-`discover.ts` 가 **뿌리 + 2단계 하위**를 훑고, 디렉토리마다 두 판정을 OR 로 건다.
+`discover.ts` 가 **뿌리 + 2단계 하위**를 훑고, 디렉토리마다 판정을 건다.
 
-- `isFirstmateProject(dir)` — 루트 `AGENTS.md` **와** `docs/features/` 가 둘 다 있음.
-- `isClingProject(dir)` — `.cling/profile.md` 가 있음. **은퇴 예정** — 티켓 04 가 이 갈래와
-  그에 매달린 파싱 경로를 함께 지운다. 그때까지는 공존한다.
+- `isFirstmateProject(dir)` — 루트 `AGENTS.md` **와** `docs/features/` 가 둘 다 있음. **이것 하나뿐이다**
+  (티켓 04 가 은퇴한 워크플로우의 설정 파일 갈래를 지웠다).
+
+같은 표식을 `watch.ts` 의 목록 감시도 재발견 트리거로 쓴다 — **판정이 바뀌면 두 곳을 같이 바꾼다.**
+어긋나면 새 프로젝트가 생겨도 화면이 영영 모른다(INV-3).
 
 **둘 다 요구하는 이유**(사양 §설계 1 과 같은 말):
 `AGENTS.md` 만 보면 firstmate 저장소 자신과 `~/.treehouse` 아래 격리 사본이 전부 딸려 들어오고,
@@ -54,14 +58,13 @@
 2. **`core/src/parse/<새문서>.ts`** — 문자열 → 구조. **순수 함수**로 쓰고
    `core/src/parse/index.ts` 에 export 를 한 줄 더한다. 단위 테스트는 옆에 두고
    fs 없이 인라인 문자열로 먹인다(`parse.test.ts` 형태).
-3. **`core/src/state/`** — 그 문서가 `ProjectState` 에 실려야 할 때만. `StateInput` 을 늘리고
-   `buildState` 에서 조립한다. **막힘 해제 같은 파생값은 저장하지 말고 여기서 계산한다**(INV-1).
+3. **`core/src/project/`** — 그 구조에서 화면이 쓸 값을 계산한다.
+   **막힘 해제·처리중 같은 파생값은 저장하지 말고 여기서 계산한다**(INV-1).
 4. **`core-io/`** — 읽는 이유에 맞는 파일을 고른다.
-   - 판정이 바뀐다(무엇이 프로젝트인가) → `discover.ts`
-   - 프로젝트 로드에 같이 실린다 → `load.ts` 에서 read 하고 2번 파서에 넘긴다
-   - 브라우저가 한 장씩 연다 → `doc.ts` / `tree.ts` (**traversal 가드 필수**)
-   - git 이 입력이다 → `git.ts` / `worktree.ts`
-   테스트는 임시 디렉토리 픽스처로 같은 폴더에 둔다(`discover.test.ts` · `tree.test.ts` 형태).
+   - 판정이 바뀐다(무엇이 프로젝트인가) → `discover.ts` (+ `watch.ts` 의 트리거를 같이 맞춘다)
+   - 기능 폴더에서 읽는다 → `features.ts` 에서 read 하고 2번 파서에 넘긴다
+   - git 이 입력이다 → `git.ts` / `treehouse.ts`
+   테스트는 임시 디렉토리 픽스처로 같은 폴더에 둔다(`discover.test.ts` · `features.test.ts` 형태).
 5. **`backend/src/app.ts`** — 화면이 새 라우트를 필요로 할 때만 라우트 + 봉투 `parse` 를 더한다.
    `discover-cache.ts` 는 **발견 의미가 바뀔 때만** 건드린다(캐시 키는 roots 문자열이다).
 6. **`frontend/src/lib/api.ts` + `lib/query.ts`** — fetch 함수와 쿼리 키를 더하고 뷰에서 쓴다.
@@ -71,7 +74,7 @@
 
 | 무엇 | 어디 | 왜 |
 |---|---|---|
-| 파싱·상태·계산 규칙 | `core/**/*.test.ts` (순수) | 규칙 자체가 순수 함수다. 여기서 깨지면 위 어디서도 못 산다 |
+| 파싱·계산 규칙 | `core/**/*.test.ts` (순수) | 규칙 자체가 순수 함수다. 여기서 깨지면 위 어디서도 못 산다 |
 | 발견·파일 판정·git 상태 | `core-io/**/*.test.ts` (임시 디렉토리·임시 repo) | 파일시스템이 입력이다 |
 | 라우트 응답 형태 | `backend/test/app.test.ts` | 봉투가 계약대로인지 |
 | 화면 | `frontend/test/*.tsx` 최소 1개 | 목록이 뜨는지까지. 그 이상은 깨지기 쉽다 |
