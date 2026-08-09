@@ -7,4 +7,4 @@
 
 | 한국어 개념어 | 영문 앵커 | 종류 | 위치 | 확인일 | 비고 |
 |---|---|---|---|---|---|
-| 다이제스트 쓰기 | `writeDigest` | function | `code/web/cli/src/commands.ts` | 2026-08-09 | `(repoPath) => string`. 내부에서 core-io 의 `emitDigest` 호출 → [`core-io.md`](core-io.md). 처음엔 `runCli`/`cliMain`/`DigestWriter` 로 짐작하기 쉽다 |
+| 발견 결과 텍스트 | `discoverText` | function | `code/web/cli/src/commands.ts` | 2026-08-09 | `(roots: string[]) => string`. CLI 에 남은 유일한 명령(`gootte discover`). 처음엔 `runCli`/`cliMain` 으로 짐작하기 쉽다 |

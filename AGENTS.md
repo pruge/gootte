@@ -1,31 +1,36 @@
 # gootte — 프로젝트 지침
 
-> **firstmate 프로젝트들을 프로젝트별로 실시간 관리하는 대시보드.** 각 프로젝트 문서를 자동 read →
-> 칸반/달력/supersede 그래프(사람) + digest(AI). 핵심 = **연쇄 re-kickoff lineage 가시화** —
-> 사람도 AI 도 "현재 / 왜 / 다음" 을 한 번에 잡게 한다.
+> **firstmate 프로젝트들을 프로젝트별로 실시간 관리하는 대시보드.** 각 프로젝트의
+> `docs/features/` 를 자동 read → **기능별 할일 목록**, 그리고 `~/.treehouse` 격리 사본을 관측해
+> **지금 누가 무엇을 붙들고 있는지**를 그 목록 위에 표시한다. 핵심 = **"다음 무엇 / 지금 누가"** 를
+> 한 화면에서 잡게 하는 것 — 어느 쪽도 파일에 손으로 적히지 않고 볼 때마다 계산된다.
 > TS 모노레포(`code/web/`, pnpm workspace) · Hono backend · React+Vite frontend · zod contract.
 
 이 파일이 이 저장소 지침의 **유일한 실파일**이다. `CLAUDE.md` 는 이 파일을 가리키는 심볼릭 링크다.
 문서 관례(티켓 서식·`Status:` 어휘·탐색 순서)는 [`docs/agents/`](docs/agents/) 가 갖는다.
 
-> 이 저장소는 cling 워크플로우로 지어졌고 지금 **firstmate 관리로 전환 중**이다
-> (`docs/features/firstmate-migration/`). `.cling/` 은 **이미 삭제됐다** — 그 안에 있던
-> 지식의 후계자가 이 파일이므로, 지침의 근거는 언제나 여기다. 제품 코드에는 옛 발견·파싱
-> 경로가 아직 남아 있고(자매 사양 `firstmate-project-source` 가 걷어낸다), 전환의 남은
-> 범위는 위 두 사양이 갖는다.
+> 이 저장소는 cling 워크플로우로 지어졌고 **firstmate 관리로 전환을 마쳤다**
+> (`docs/features/firstmate-migration/` · `docs/features/firstmate-project-source/`).
+> `.cling/` 도, 그것을 읽던 제품 코드도 **모두 삭제됐다** — 그 안에 있던 지식의 후계자가
+> 이 파일이므로, 지침의 근거는 언제나 여기다. 관리대상 문서를 읽는 경로는 이제
+> `docs/features/` 하나뿐이다.
 
 ## 🔴 제품 불변식 (모든 기능 개발 시 의무 점검)
 
 기능을 짓기 직전에 아래가 해당하는지 점검하고, 해당하면 설계에 반영하고 spec·티켓에 명시한다.
 
-- **INV-1 — 파생물만.** projection(digest · render-data)은 **관리대상 프로젝트의 md SoT 에서 재생성**되는
-  파생물이다. 손으로 유지되는 2차 SoT 금지 — desync = 틀린 다음-할일 = 이 제품이 없애려는 통증의 재발.
-- **INV-2 — 관리대상은 읽기 전용.** gootte 는 관리대상 프로젝트 문서를 **읽기만** 한다. 쓰는 것은 자기
-  **`.gootte/` 네임스페이스뿐**(AUTO-GENERATED) + `.gitignore` 한 줄 append. 관리대상의 SoT 문서
-  (ledger/spec/adr/todo)는 **절대 mutate 하지 않는다.**
-- **INV-3 — stale 뷰 금지.** 뷰·digest 는 **항상 현재 SoT 를 반영**한다(실시간 체크·재생성).
-- **INV-4 — read-path 는 결정적·LLM-free.** plan/lineage/digest 생성은 계산이다. 산문 "왜" 는 요약하지 말고
-  **verbatim 릴레이** — 지능(왜 판단)은 write-time 에 캡처되고, read-time 은 계산과 릴레이만 한다.
+- **INV-1 — 파생물만.** projection(막힘 해제 · 처리중 · render-data)은 **관리대상의 md SoT 와 격리 사본
+  관측에서 재생성**되는 파생물이다. 손으로 유지되는 2차 SoT 금지 — desync = 틀린 다음-할일 =
+  이 제품이 없애려는 통증의 재발.
+- **INV-2 — 관리대상은 읽기 전용.** gootte 는 관리대상 프로젝트 문서를 **읽기만** 한다.
+  관리대상의 SoT 문서(`docs/features/` 의 spec·티켓·adr)는 **절대 mutate 하지 않는다** —
+  처리중 표시를 티켓 파일에 적어 넣는 것도 여기 포함된다.
+  (지금 gootte 는 관리대상에 **아무것도 쓰지 않는다.** 쓰기가 생긴다면 자기 `.gootte/` 네임스페이스
+  안이어야 하고, 그때 그 산출물은 AUTO-GENERATED 헤더를 단다.)
+- **INV-3 — stale 뷰 금지.** 뷰는 **항상 현재 SoT 를 반영**한다(실시간 체크·재계산).
+- **INV-4 — read-path 는 결정적·LLM-free.** 할일 목록·막힘 해제·처리중 판정은 전부 계산이다.
+  산문 "왜" 는 요약하지 말고 **verbatim 릴레이** — 지능(왜 판단)은 write-time 에 캡처되고,
+  read-time 은 계산과 릴레이만 한다.
 
 빠른 판단: 새 파일을 쓰려 한다 → INV-1·INV-2 / 캐시·스냅샷을 두려 한다 → INV-1·INV-3 /
 요약·추론을 넣으려 한다 → INV-4.
@@ -49,18 +54,17 @@
 후속 컴포넌트가 붙으면(계획된 것 = Kotlin/Android 뷰어) 그 컴포넌트의 verify 도 **컴파일 + 테스트** 두 축을
 같이 갖춰야 하며, 갖춰지는 시점에 이 표에 한 줄을 더한다.
 테스트는 **이 저장소 자신의 `docs/` 를 픽스처로 쓰지 않는다** — 전부 임시 디렉토리에 픽스처를 합성한다
-(`cli/src/cli.test.ts` · `core-io/src/tree.test.ts` · `backend/test/app.test.ts`).
+(`cli/src/cli.test.ts` · `core-io/src/features.test.ts` · `backend/test/app.test.ts`).
 따라서 이 저장소의 문서를 옮기거나 지워도 `pnpm verify` 는 영향받지 않는다(다르면 예측이 틀린 것이니 멈추고 보고).
 
 ## Contract — 공유 SoT 와 drift-guard
 
-경계를 넘는 공유 타입(프로젝트 상태 모델 · digest 스키마 · CLI 출력 · 실시간 메시지)은
+경계를 넘는 공유 타입(프로젝트 · 기능/티켓 · 처리중 관측 · 실시간 메시지)은
 **`code/web/contract/src/index.ts` 의 zod 정의 한 곳**에서만 정의하고 소비처가 파생한다.
 TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 를 workspace 로 직접 import 한다.
 
 - 🔴 **codegen 산출물은 SoT 가 아니다 — 손편집 금지.** 생성물은 헤더에
   `AUTO-GENERATED — DO NOT EDIT` 를 달고, 고칠 곳은 언제나 zod 정의 쪽이다.
-  (같은 규율이 제품 산출물에도 적용된다 — `.gootte/PLAN.md` 헤더 = `code/web/core-io/src/emit.ts`.)
 - 🔴 **drift-guard = codegen 재실행 후 `git diff` 0.** contract 를 건드린 변경은 이 검사를 verify 에 포함한다.
   생성물이 커밋과 어긋나 있으면 그 자체가 실패다.
 - mode 는 **codegen(schema-first)** 이다. TS 소비처는 zod 를 직접 import 하고, 언어중립 소비처는
@@ -78,18 +82,15 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 - **아이콘 = Tabler 전용.** `@tabler/icons-react` 외 **다른 아이콘 라이브러리 금지.**
 - **폰트 = Pretendard.** (`code/web/frontend/index.html` 로드 · `src/styles/global.css` 의 `--font-sans`)
 
-## Track 통제 어휘 (E / W / R / X)
+## Track 통제 어휘 — 은퇴했다
 
-대분류(track) 통제 어휘. blueprint `## phases` 표의 `track` 열이 이 key 를 쓰고, 대시보드의 그룹 순서가 곧
-이 순서다. label 의 SoT 는 이 표이며, 파서(`normalizeTrack`, `code/web/core/src/parse/track.ts`)가
-어휘에 있으면 canonical label 을, 없으면 프로즈에서 파생한 label 을 쓴다.
+**이 저장소에 track 어휘는 더 이상 없다.** 대분류(E/W/R/X)는 은퇴한 워크플로우의 blueprint
+`## phases` 표에서 오던 값이고, 그것을 읽던 파서·정규화·그룹 순서가 전부
+`firstmate-project-source` 티켓 04 에서 사라졌다. 지금 작업의 묶음 단위는 **기능 폴더**
+(`docs/features/<기능>/`) 하나뿐이고, 순서는 티켓의 `Blocked by:` 가 소유한다
+([`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)).
 
-| key | label |
-|---|---|
-| E | 엔진/lineage |
-| W | 웹 대시보드 |
-| R | 원격/모바일 |
-| X | 확장 |
+옛 문서에서 `track: E` 같은 줄을 보더라도 되살려 쓰지 않는다 — 동결된 역사다.
 
 ## 실행 명령 — 루트에서 실행, 루트 `package.json` 이 `code/web` 으로 위임
 
@@ -102,18 +103,15 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 | `pnpm verify` | **전체 회귀 — 포트 테스트 + tsc + vitest** | 에이전트 가능 |
 | `pnpm test` | vitest 만 | 에이전트 가능 |
 | `pnpm test:ports` | 포트 해석기 테스트만 (`scripts/tests/ports.test.sh`) | 에이전트 가능 |
-| `pnpm plan <project>` | 순서(full) + 왜 출력 · 읽기 전용 | 에이전트 가능 |
-| `pnpm lineage <project>` | supersede lineage 출력 · 읽기 전용 | 에이전트 가능 |
-| `pnpm digest <project>` | `<project>/.gootte/PLAN.md` emit — **타깃 폴더**에 생성 | 에이전트 가능 |
 | `pnpm discover <root>` | 로컬 관리대상 프로젝트 발견 · 읽기 전용 | 에이전트 가능 |
-| `pnpm gootte <…>` | CLI 직접 호출 (위 네 개의 상위 명령) | 에이전트 가능 |
+| `pnpm gootte discover <…>` | 같은 것을 CLI 로 직접 호출 | 에이전트 가능 |
 | `pnpm dev:backend` | Hono API dev 서버 (`scripts/dev-backend.sh` → `tsx watch`) | **사용자가 띄운다** |
 | `pnpm dev:frontend` | Vite dev 서버 (`scripts/dev-frontend.sh`, `/api` → backend 프록시) | **사용자가 띄운다** |
 | `pnpm dev` | backend + frontend 동시 (`scripts/dev.sh`) | **사용자가 띄운다** |
 | `pnpm dev:stop` | dev 서버 정리 (`scripts/dev-stop.sh`) | **사용자가 띄운다** |
 | `pnpm e2e` | frontend playwright | **사용자가 띄운다** |
 
-`plan`·`lineage`·`digest`·`discover` 가 어디를 뒤질지는 env `GOOTTE_ROOTS`(콜론 구분, 기본
+`discover` 와 backend 가 어디를 뒤질지는 env `GOOTTE_ROOTS`(콜론 구분, 기본
 `~/Documents/ai2/projects`)가 정한다. **"지금 누가 무엇을 붙들고 있나"** 를 관측할 격리 사본 뿌리는 env
 `GOOTTE_TREEHOUSE`(기본 `~/.treehouse`) 다 — 기계마다 다르니 경로를 코드에 못 박지 않는다.
 둘 다 `code/web/backend/src/app.ts` 가 SoT.
@@ -181,7 +179,7 @@ dev 서버는 사용자가 직접 띄운다 — 에이전트가 kill·재시작�
 | Verify gate | 무엇이 "완료" 인가 | 컴포넌트별 검증 수단. 개별 테스트 작성법은 코드가 SoT |
 | Contract | 공유 타입은 어디서 오는가 | SoT 위치와 drift-guard. 타입 목록 자체는 코드가 SoT |
 | 프론트엔드 하드룰 | 무엇을 임의로 못 고르는가 | 선택 금지 항목만. 컴포넌트 관례는 코드가 SoT |
-| Track 어휘 | 통제 어휘가 무엇인가 | key→label 표. 파서 동작은 코드가 SoT |
+| Track 어휘 | 그 어휘가 왜 없는가 | 은퇴 사실과 대체물(기능 폴더 · `Blocked by:`)만. 되살릴 일이 생기면 새 결정이다 |
 | 실행 명령 | 어떻게 돌리는가 | 루트 명령과 누가 돌리는지. 세부 인자는 `package.json` 이 SoT |
 | 구조 파악 | 코드를 어떻게 찾는가 | 도구와 그 함정 |
 | 문서 관례 | 문서를 어디에 쓰는가 | `docs/agents/` 로 가는 포인터만. 규약 본문은 그쪽이 SoT |

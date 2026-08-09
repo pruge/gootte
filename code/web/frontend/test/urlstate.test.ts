@@ -7,10 +7,10 @@ beforeEach(() => {
 });
 
 describe("useUrlState", () => {
-  it("초기 = project null · tab plan", () => {
+  it("초기 = project null · tab features", () => {
     const { result } = renderHook(() => useUrlState());
     expect(result.current.project).toBeNull();
-    expect(result.current.tab).toBe("plan");
+    expect(result.current.tab).toBe("features");
   });
 
   it("setProject → URL `?p=` 반영", () => {
@@ -20,18 +20,24 @@ describe("useUrlState", () => {
     expect(new URLSearchParams(window.location.search).get("p")).toBe("jinwooauto");
   });
 
-  it("setTab lineage → URL `?tab=lineage`", () => {
+  it("setTab features → URL `?tab=features`", () => {
     const { result } = renderHook(() => useUrlState());
-    act(() => result.current.setTab("lineage"));
-    expect(result.current.tab).toBe("lineage");
-    expect(new URLSearchParams(window.location.search).get("tab")).toBe("lineage");
+    act(() => result.current.setTab("features"));
+    expect(result.current.tab).toBe("features");
+    expect(new URLSearchParams(window.location.search).get("tab")).toBe("features");
   });
 
   it("초기값을 URL 에서 읽음", () => {
-    window.history.pushState({}, "", "/?p=tuya&tab=lineage");
+    window.history.pushState({}, "", "/?p=tuya&tab=features");
     const { result } = renderHook(() => useUrlState());
     expect(result.current.project).toBe("tuya");
-    expect(result.current.tab).toBe("lineage");
+    expect(result.current.tab).toBe("features");
+  });
+
+  it("🔴 없어진 탭을 가리키는 옛 링크는 features 로 떨어진다 — 빈 화면이 아니다", () => {
+    window.history.pushState({}, "", "/?p=tuya&tab=lineage");
+    const { result } = renderHook(() => useUrlState());
+    expect(result.current.tab).toBe("features");
   });
 
   it("setView → `?view=` 반영", () => {
@@ -42,10 +48,10 @@ describe("useUrlState", () => {
   });
 
   it("setTab 은 view 초기화(다른 탭 모드 안 샘)", () => {
-    window.history.pushState({}, "", "/?p=x&tab=plan&view=board");
+    window.history.pushState({}, "", "/?p=x&tab=features&view=board");
     const { result } = renderHook(() => useUrlState());
     expect(result.current.view).toBe("board");
-    act(() => result.current.setTab("lineage"));
+    act(() => result.current.setTab("features"));
     expect(result.current.view).toBeNull();
     expect(new URLSearchParams(window.location.search).get("view")).toBeNull();
   });

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type Tab = "plan" | "features" | "lineage";
-const TABS: readonly Tab[] = ["plan", "features", "lineage"];
+export type Tab = "features";
+const TABS: readonly Tab[] = ["features"];
 export interface UrlState {
   project: string | null;
   tab: Tab;
-  /** 탭별 뷰모드(raw) — plan: list|structure|timeline · lineage: chain|graph. 소비처가 유효값 해소. */
+  /** 탭별 뷰모드(raw) — 소비처가 유효값 해소. */
   view: string | null;
 }
 
@@ -14,7 +14,7 @@ function read(): UrlState {
   const rawTab = sp.get("tab");
   return {
     project: sp.get("p"),
-    tab: (TABS as readonly string[]).includes(rawTab ?? "") ? (rawTab as Tab) : "plan",
+    tab: (TABS as readonly string[]).includes(rawTab ?? "") ? (rawTab as Tab) : "features",
     view: sp.get("view"),
   };
 }

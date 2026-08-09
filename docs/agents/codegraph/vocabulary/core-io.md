@@ -8,4 +8,4 @@
 | 한국어 개념어 | 영문 앵커 | 종류 | 위치 | 확인일 | 비고 |
 |---|---|---|---|---|---|
 | 프로젝트 발견 | `discoverProjects` | function | `code/web/core-io/src/discover.ts` | 2026-08-09 | `(roots: string[]) => Project[]`. 처음엔 `findProjects`/`scanProjects`/`ProjectDiscovery` 로 짐작하기 쉽다 |
-| 다이제스트 방출 | `emitDigest` | function | `code/web/core-io/src/emit.ts` | 2026-08-09 | `(repoPath, body) => string`. cli 의 `writeDigest` 가 이걸 감싼다 → [`cli.md`](cli.md) |
+| 격리 사본 관측 | `scanWorkingCopies` | function | `code/web/core-io/src/treehouse.ts` | 2026-08-09 | `(root, project) => CopyScan`. "지금 누가 무엇을 붙들고 있나" 의 날것. 처음엔 `scanWorktrees`(그건 `.claude/worktrees` 용, `git.ts`)와 헷갈리기 쉽다 |

@@ -7,18 +7,11 @@ import { discoverProjects, defaultProjectRoots } from "./discover";
 let root: string;
 
 /** 뿌리 아래 프로젝트 후보 하나를 만든다. 어떤 표식을 놓을지는 호출자가 고른다. */
-function candidate(
-  name: string,
-  marks: { agents?: boolean; features?: boolean; cling?: boolean },
-): string {
+function candidate(name: string, marks: { agents?: boolean; features?: boolean }): string {
   const dir = join(root, name);
   mkdirSync(dir, { recursive: true });
   if (marks.agents) writeFileSync(join(dir, "AGENTS.md"), "# AGENTS\n");
   if (marks.features) mkdirSync(join(dir, "docs", "features"), { recursive: true });
-  if (marks.cling) {
-    mkdirSync(join(dir, ".cling"), { recursive: true });
-    writeFileSync(join(dir, ".cling", "profile.md"), "# profile\n");
-  }
   return dir;
 }
 
@@ -62,18 +55,6 @@ describe("discoverProjects — firstmate 판정(루트 AGENTS.md + docs/features
     mkdirSync(join(nested, "docs", "features"), { recursive: true });
     writeFileSync(join(nested, "AGENTS.md"), "# AGENTS\n");
     expect(slugs([root, root])).toEqual(["deep-proj"]);
-  });
-});
-
-describe("discoverProjects — 옛 cling 규칙과의 공존(제거는 티켓 04)", () => {
-  it("cling 프로젝트도 계속 잡힌다", () => {
-    candidate("legacy", { cling: true });
-    expect(slugs([root])).toEqual(["legacy"]);
-  });
-
-  it("두 규칙에 모두 맞아도 한 번만 센다", () => {
-    candidate("both", { agents: true, features: true, cling: true });
-    expect(slugs([root])).toEqual(["both"]);
   });
 });
 

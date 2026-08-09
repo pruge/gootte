@@ -2,32 +2,14 @@ import { basename } from "node:path";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
+import { ProjectsResponse, FeaturesResponse, type ApiError } from "@gootte/contract";
+import { applyInProgress } from "@gootte/core";
 import {
-  ProjectsResponse,
-  PlanResponse,
-  RoadmapResponse,
-  FeaturesResponse,
-  LineageResponse,
-  TimelineResponse,
-  WorktreeResponse,
-  DocResponse,
-  TreeResponse,
-  type ApiError,
-} from "@gootte/contract";
-import { buildPlan, buildRoadmap, buildGantt, applyInProgress } from "@gootte/core";
-import {
-  loadProjectState,
-  readDoc,
-  readRoadmapDoc,
-  listInitiativeTree,
   readFeatures,
-  resolveInitiativeDir,
   scanWorktrees,
   scanWorkingCopies,
-  activeWorktrees,
   defaultProjectRoots,
   defaultTreehouseRoot,
-  type LoadedProject,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
@@ -44,34 +26,6 @@ export function treehouseRoot(): string {
 }
 
 const slugParam = z.object({ slug: z.string().min(1) });
-const docParam = z.object({
-  slug: z.string().min(1),
-  kind: z.enum(["todo", "sprint"]),
-  name: z
-    .string()
-    .min(1)
-    .regex(/^[A-Za-z0-9._-]+$/), // slug 만 — 경로 traversal 차단
-});
-const docQuery = z.object({
-  worktree: z
-    .string()
-    .regex(/^[A-Za-z0-9._-]+$/)
-    .optional(), // worktree 트리에서 읽기 (활성 sprint 라이브 버전)
-});
-// 문서 브라우저(2e) — initiative slug 만(traversal 차단). relPath 는 서브폴더 허용(charset 검증 + readRoadmapDoc realpath 가드).
-const treeParam = z.object({
-  slug: z.string().min(1),
-  initiative: z
-    .string()
-    .min(1)
-    .regex(/^[A-Za-z0-9._-]+$/),
-});
-const roadmapDocQuery = z.object({
-  path: z
-    .string()
-    .min(1)
-    .regex(/^[A-Za-z0-9._/-]+$/), // 서브경로 허용 — 실제 traversal 가드는 readRoadmapDoc realpath
-});
 export interface AppOptions {
   /** discover 루트 (테스트 주입). 없으면 defaultRoots(). */
   roots?: string[];
@@ -88,18 +42,10 @@ export function createApp(options: AppOptions = {}): Hono {
   const treehouse = options.treehouse ?? treehouseRoot();
   const app = new Hono();
 
-  // slug → {name, state, gitSignals} 해소(미해소 null). 5 라우트 공유(DRY).
-  const load = (slug: string): (LoadedProject & { name: string; repoPath: string }) | null => {
-    const proj = resolveSlug(roots, slug);
-    return proj
-      ? { name: basename(proj.path), repoPath: proj.path, ...loadProjectState(proj.path) }
-      : null;
-  };
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
 
   // GET /api/projects → ProjectsResponse (discover, W2 캐시). worktrees 수는 요청마다 fresh(INV-3).
-  // 배지 수 = scanWorktrees(raw) length — activeWorktrees(본문)의 state.worktrees 가 이 스캔과 1:1 이라 항상 동일 소스·동수(033).
-  // (목록 뷰는 프로젝트별 full parse 를 피해 가벼운 raw 스캔 유지 — 바인딩은 개수를 바꾸지 않음.)
+  // 배지 수 = scanWorktrees(raw) length — 목록 뷰가 쓰는 가벼운 스캔이다.
   app.get("/api/projects", (c) => {
     const projects = getProjects(roots).map((p) => ({
       ...p,
@@ -108,25 +54,9 @@ export function createApp(options: AppOptions = {}): Hono {
     return c.json(ProjectsResponse.parse({ projects }));
   });
 
-  // GET /api/plan/:slug → PlanResponse
-  app.get("/api/plan/:slug", zValidator("param", slugParam), (c) => {
-    const p = load(c.req.valid("param").slug);
-    if (!p) return c.json(notFound(c.req.param("slug")), 404);
-    const { plan, rationale, trackOrder } = buildPlan({ state: p.state, gitSignals: p.gitSignals });
-    return c.json(PlanResponse.parse({ project: p.name, plan, rationale, trackOrder }));
-  });
-
-  // GET /api/roadmap/:slug → RoadmapResponse (완료 포함 roadmap + 할일 체크리스트, 018)
-  app.get("/api/roadmap/:slug", zValidator("param", slugParam), (c) => {
-    const p = load(c.req.valid("param").slug);
-    if (!p) return c.json(notFound(c.req.param("slug")), 404);
-    const { items, trackOrder } = buildRoadmap(p.state);
-    return c.json(RoadmapResponse.parse({ project: p.name, items, trackOrder }));
-  });
-
   // GET /api/features/:slug → FeaturesResponse (docs/features/ 기능별 할일, INV-2 read-only)
-  // 🔴 loadProjectState(cling 경로)를 타지 않는다 — 이 목록은 firstmate 문서만 입력으로 쓴다.
-  //    막힘 해제는 요청마다 다시 계산된다(INV-1·INV-3).
+  // 관리대상 문서를 읽는 경로는 이제 이것 하나뿐이다.
+  // 막힘 해제는 요청마다 다시 계산된다(INV-1·INV-3).
   // 처리중은 **입력이 다르다** — 문서가 아니라 격리 사본 관측이다. 요청마다 다시 관측하고
   // 어디에도 저장하지 않는다. 티켓에 잇지 못한 작업은 `inProgress.unknown` 으로 드러난다.
   app.get("/api/features/:slug", zValidator("param", slugParam), (c) => {
@@ -139,83 +69,6 @@ export function createApp(options: AppOptions = {}): Hono {
       scanWorkingCopies(treehouse, project),
     );
     return c.json(FeaturesResponse.parse({ project, ...observed }));
-  });
-
-  // GET /api/doc/:slug/:kind/:name[?worktree=] → DocResponse (관리대상 todo/sprint raw md, INV-2 read-only)
-  // worktree 지정 시 그 worktree 트리 우선(활성 sprint 의 미커밋 라이브 버전 — `## 사용자 테스트` 등).
-  app.get(
-    "/api/doc/:slug/:kind/:name",
-    zValidator("param", docParam),
-    zValidator("query", docQuery),
-    (c) => {
-      const { slug, kind, name } = c.req.valid("param");
-      const { worktree } = c.req.valid("query");
-      const proj = resolveSlug(roots, slug);
-      if (!proj) return c.json(notFound(slug), 404);
-      const doc = readDoc(proj.path, kind, name, worktree);
-      if (!doc) return c.json({ error: `문서 없음: ${kind}/${name}` } satisfies ApiError, 404);
-      return c.json(DocResponse.parse({ project: basename(proj.path), ...doc }));
-    },
-  );
-
-  // GET /api/tree/:slug/:initiative → TreeResponse (이니셔티브 폴더 파일 + 가상 todo/, 문서 브라우저 2e). INV-2/4.
-  app.get("/api/tree/:slug/:initiative", zValidator("param", treeParam), (c) => {
-    const { slug, initiative } = c.req.valid("param");
-    const proj = resolveSlug(roots, slug);
-    if (!proj) return c.json(notFound(slug), 404);
-    const { state } = loadProjectState(proj.path);
-    const item = buildRoadmap(state).items.find((i) => i.initiative === initiative) ?? null;
-    // 폴더도 없고 roadmap item 도 없으면 미존재 이니셔티브.
-    if (!item && !resolveInitiativeDir(proj.path, initiative))
-      return c.json({ error: `이니셔티브 없음: ${initiative}` } satisfies ApiError, 404);
-    const nodes = listInitiativeTree(proj.path, initiative, item);
-    return c.json(TreeResponse.parse({ project: basename(proj.path), initiative, nodes }));
-  });
-
-  // GET /api/roadmap-doc/:slug/:initiative?path=<relPath> → DocResponse (roadmap 폴더 파일, realpath 가드). INV-2.
-  // 🔴 별도 경로(`/api/doc/...` 아님) — generic doc 라우트(:kind enum)와의 충돌 회피.
-  app.get(
-    "/api/roadmap-doc/:slug/:initiative",
-    zValidator("param", treeParam),
-    zValidator("query", roadmapDocQuery),
-    (c) => {
-      const { slug, initiative } = c.req.valid("param");
-      const { path } = c.req.valid("query");
-      const proj = resolveSlug(roots, slug);
-      if (!proj) return c.json(notFound(slug), 404);
-      const doc = readRoadmapDoc(proj.path, initiative, path);
-      if (!doc) return c.json({ error: `문서 없음: ${initiative}/${path}` } satisfies ApiError, 404);
-      return c.json(DocResponse.parse({ project: basename(proj.path), ...doc }));
-    },
-  );
-
-  // GET /api/lineage/:slug → LineageResponse (nodes + edges = CORE 해소, drops verbatim)
-  app.get("/api/lineage/:slug", zValidator("param", slugParam), (c) => {
-    const p = load(c.req.valid("param").slug);
-    if (!p) return c.json(notFound(c.req.param("slug")), 404);
-    return c.json(
-      LineageResponse.parse({
-        project: p.name,
-        nodes: p.state.lineage.nodes,
-        edges: p.state.lineage.edges,
-        drops: p.state.drops,
-      }),
-    );
-  });
-
-  // GET /api/timeline/:slug → TimelineResponse (buildGantt — sprint 바 날짜축)
-  app.get("/api/timeline/:slug", zValidator("param", slugParam), (c) => {
-    const p = load(c.req.valid("param").slug);
-    if (!p) return c.json(notFound(c.req.param("slug")), 404);
-    const { rows, from, to, trackOrder } = buildGantt(p.state);
-    return c.json(TimelineResponse.parse({ project: p.name, from, to, rows, trackOrder }));
-  });
-
-  // GET /api/worktree/:slug → WorktreeResponse (구조적 상태, ADR-0004)
-  app.get("/api/worktree/:slug", zValidator("param", slugParam), (c) => {
-    const p = load(c.req.valid("param").slug);
-    if (!p) return c.json(notFound(c.req.param("slug")), 404);
-    return c.json(WorktreeResponse.parse({ project: p.name, worktrees: activeWorktrees(p) }));
   });
 
   return app;

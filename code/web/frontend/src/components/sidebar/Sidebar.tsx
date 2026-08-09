@@ -13,7 +13,7 @@ interface SidebarProps {
   onSelect: (slug: string) => void;
 }
 
-/** 자동발견 cling 프로젝트 목록. 선택 = URL `?p=<slug>`. Tabler 아이콘 전용. */
+/** 자동발견 관리대상 프로젝트 목록. 선택 = URL `?p=<slug>`. Tabler 아이콘 전용. */
 export function Sidebar({ selected, onSelect }: SidebarProps) {
   const { data, isLoading, isError, error } = useProjects();
 
