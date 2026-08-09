@@ -7,7 +7,7 @@
 
 **Blocked by:** 없음 — **즉시 착수 가능**
 
-**Status:** ready-for-agent
+**Status:** resolved (2026-08-09)
 
 ## 완료 시 시연 가능한 것
 

@@ -1,6 +1,6 @@
 # firstmate-project-source — 관리 대상을 firstmate 프로젝트로 전환
 
-Status: ready-for-agent (2026-08-09) · 열린 결정 전부 캡틴이 닫음 (§결정) · 티켓 4장 `issues/` 에 있음
+Status: resolved (2026-08-09) · 열린 결정 전부 캡틴이 닫음 (§결정) · 티켓 4장 전부 `resolved`
 
 자매 사양 [`../firstmate-migration/spec.md`](../firstmate-migration/spec.md) 은 **저장소**를 정리한다.
 이 사양은 **제품이 무엇을 읽는가**를 바꾼다. 둘의 순서 요구는 자매 사양 §순서.

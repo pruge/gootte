@@ -6,7 +6,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved (2026-08-09)
 
 ## 완료 시 시연 가능한 것
 
