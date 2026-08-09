@@ -1,0 +1,10 @@
+# core — 질의어
+
+`code/web/core` (순수 함수 — 문서 파싱 + 상태 계산, IO 없음).
+
+> 위치는 **파일 경로만** 적는다. 줄번호는 적지 않는다 — 이유는 [`../README.md`](../README.md)
+> §왜 줄번호를 안 적나. 줄이 필요하면 `grep -n "<앵커>" <경로>` 로 그때 뽑는다.
+
+| 한국어 개념어 | 영문 앵커 | 종류 | 위치 | 확인일 | 비고 |
+|---|---|---|---|---|---|
+| 리니지 계산 | `buildLineage` | function | `code/web/core/src/state/lineage.ts` | 2026-08-09 | `(input: { supersessions, adrs, todos }) => LineageFill`. 처음엔 `LineageGraph`/`computeLineage`/`LineageBuilder` 로 짐작하기 쉽다 |
