@@ -133,4 +133,56 @@ describe("buildFeatures — 기능 목록", () => {
   it("입력이 없으면 빈 목록", () => {
     expect(buildFeatures([])).toEqual([]);
   });
+
+  const docsWithStatus = (slug: string, ...statuses: string[]) => ({
+    slug,
+    spec: null,
+    tickets: statuses.map((s, i) => parseTicket(`0${i + 1}-x.md`, ticket(s))),
+    tree: [],
+  });
+
+  const docsWithNoTickets = (slug: string) => ({
+    slug,
+    spec: null,
+    tickets: [],
+    tree: [],
+  });
+
+  it("남은 일(done/dropped 아닌 티켓)이 있는 기능이 전부 끝난 기능보다 앞에 온다", () => {
+    expect(
+      buildFeatures([
+        docsWithStatus("alpha-done", "resolved (2026-08-01)"),
+        docsWithStatus("zeta-open", "ready-for-agent"),
+      ]).map((f) => f.slug),
+    ).toEqual(["zeta-open", "alpha-done"]);
+  });
+
+  it("티켓이 0개인 기능은 앞쪽(남은 일 있음) 무리에 들어간다", () => {
+    expect(
+      buildFeatures([
+        docsWithStatus("alpha-done", "resolved (2026-08-01)"),
+        docsWithNoTickets("zeta-empty"),
+      ]).map((f) => f.slug),
+    ).toEqual(["zeta-empty", "alpha-done"]);
+  });
+
+  it("같은 무리 안에서는 폴더명 순서가 유지된다", () => {
+    expect(
+      buildFeatures([
+        docsWithStatus("zeta-open", "ready-for-agent"),
+        docsWithStatus("alpha-open", "ready-for-agent"),
+        docsWithStatus("delta-done", "resolved (2026-08-01)"),
+        docsWithStatus("bravo-done", "resolved (2026-08-01)"),
+      ]).map((f) => f.slug),
+    ).toEqual(["alpha-open", "zeta-open", "bravo-done", "delta-done"]);
+  });
+
+  it("dropped(wontfix) 는 done 과 똑같이 끝남으로 취급된다", () => {
+    expect(
+      buildFeatures([
+        docsWithStatus("alpha-dropped", "wontfix"),
+        docsWithStatus("zeta-open", "ready-for-agent"),
+      ]).map((f) => f.slug),
+    ).toEqual(["zeta-open", "alpha-dropped"]);
+  });
 });
