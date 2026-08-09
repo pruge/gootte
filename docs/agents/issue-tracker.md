@@ -47,6 +47,8 @@ docs/features/<기능-slug>/
 
 **별도 원장 문서가 없다.** 상태는 티켓의 `Status:` 줄이, 순서는 `Blocked by:` 줄이 소유한다.
 다음 할 일 = **frontier** — `issues/` 에서 `open` · unblocked · 미점유인 파일 중 번호가 빠른 것.
+**미점유** = `Status:` 줄이 [`claimed`](triage-labels.md)가 아니다 — 작업자가 착수할 때 그 줄을
+`claimed` 로 바꾸는 것이 곧 "이 티켓엔 임자가 있다" 는 표시다(triage-labels.md §시작 전이 규칙).
 티켓을 고치는 것이 곧 상태 갱신이라 따로 갱신할 원장이 없고, 그래서 stale 해질 원장도 없다.
 (이 저장소가 만드는 제품이 정확히 이 계산을 자동화한다 — INV-1·INV-4.)
 

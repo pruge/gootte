@@ -209,6 +209,46 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     expect(inProgress.unknown).toEqual([]);
   });
 
+  it("🔴 claimed 인데 붙든 사본이 없으면 처리중이 아니고, 임자 없는 표시로 세어진다", () => {
+    const features = [
+      feature("auth", [ticket("01", "01-session", { sourceStatus: "claimed" })]),
+    ];
+    const marked = applyInProgress(features, scan([]));
+
+    expect(find(marked.features, "auth", "01-session")?.status).toBe("pending");
+    expect(marked.inProgress.tickets).toBe(0);
+    expect(marked.inProgress.unclaimed).toEqual([
+      { feature: "auth", ticket: "01-session", title: "01-session" },
+    ]);
+  });
+
+  it("claimed 이고 살아 있는 사본이 붙들고 있으면 처리중이다 — 임자 없는 표시로는 안 센다", () => {
+    const features = [
+      feature("auth", [ticket("01", "01-session", { sourceStatus: "claimed" })]),
+    ];
+    const marked = applyInProgress(
+      features,
+      scan([copy("pool/1", "fm/a", ["docs/features/auth/issues/01-session.md"])]),
+    );
+
+    expect(find(marked.features, "auth", "01-session")?.status).toBe("in_progress");
+    expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual(["fm/a"]);
+    expect(marked.inProgress.unclaimed).toEqual([]);
+  });
+
+  it("resolved 인데 사본이 붙들고 있어도 완료다 — 임자 없는 표시가 아니다", () => {
+    const features = [
+      feature("auth", [ticket("01", "01-session", { status: "done", sourceStatus: "resolved" })]),
+    ];
+    const marked = applyInProgress(
+      features,
+      scan([copy("pool/1", "fm/a", ["docs/features/auth/issues/01-session.md"])]),
+    );
+
+    expect(find(marked.features, "auth", "01-session")?.status).toBe("done");
+    expect(marked.inProgress.unclaimed).toEqual([]);
+  });
+
   it("입력을 고치지 않는다 — 파생물은 새 객체다(INV-1)", () => {
     applyInProgress(
       FEATURES,

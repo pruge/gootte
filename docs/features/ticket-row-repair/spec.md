@@ -1,6 +1,6 @@
 # ticket-row-repair — 할일 목록 한 줄이 거짓말하지 않고, 자리가 흔들리지 않는다
 
-Status: ready-for-agent (2026-08-09) · 01·02 착지(PR #17) · 캡틴 지시로 03 추가, 지금 착수 가능
+Status: ready-for-agent (2026-08-09) · 01·02·03 착지
 
 ## 캡틴 지시 (원문)
 
@@ -143,7 +143,7 @@ Status: ready-for-agent (2026-08-09) · 01·02 착지(PR #17) · 캡틴 지시�
 |---|---|---|---|
 | [01](issues/01-in-progress-means-now.md) | 처리중은 **지금** 붙들려 있는 것에만 붙는다 | 없음 | 착지 (PR #17) |
 | [02](issues/02-date-keeps-its-place.md) | 날짜가 없어도 자리가 흔들리지 않는다 | 없음 | 착지 (PR #17) |
-| [03](issues/03-state-column-keeps-its-place.md) | 단계 칸도 자리를 지킨다 — **착수 가능 · 진행중 · 대기** | 없음 | 착수 가능 |
+| [03](issues/03-state-column-keeps-its-place.md) | 단계 칸도 자리를 지킨다 — **착수 가능 · 진행중 · 대기** | 없음 | 착지 |
 
 🟢 **01·02 는 서로를 기다리지 않았다.** 같은 줄을 건드려 한 작업으로 묶여 함께 착지했고,
 커밋은 티켓당 하나로 갈렸다.

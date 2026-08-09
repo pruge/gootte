@@ -2,6 +2,7 @@ import type {
   Feature,
   FeatureTicket,
   InProgressSummary,
+  UnclaimedTicket,
   UnmappedWork,
   UnreadableCopy,
 } from "@gootte/contract";
@@ -74,6 +75,8 @@ function markTicket(ticket: FeatureTicket, branches: readonly string[]): Feature
  * - 🔴 **상태를 못 읽은 사본도 감추지 않는다** — `unreadable` 로 센다. 읽기 실패를 유휴로 접으면
  *   같은 거짓말이 되고, 그쪽은 `unknown` 과 달리 세어지지도 않아 더 조용히 사라진다.
  * - 한 티켓을 두 사본이 붙들어도 **티켓은 하나로 센다**. 두 브랜치는 `workedBy` 에 나란히 실린다.
+ * - 🔴 **문서가 `claimed` 라고 말하는데 붙든 사본이 없으면** 처리중으로 그리지 않고, 대신 `unclaimed`
+ *   에 실어 감추지 않는다 — 지우다 만 흔적이지 진행 중이 아니다(work-claims-its-ticket/01 §D).
  */
 export function applyInProgress(
   features: readonly Feature[],
@@ -107,11 +110,15 @@ export function applyInProgress(
   }
 
   let tickets = 0;
+  const unclaimed: UnclaimedTicket[] = [];
   const marked = features.map((f) => ({
     ...f,
     tickets: f.tickets.map((t) => {
       const next = markTicket(t, branchesByTicket.get(key(f.slug, t.slug)) ?? []);
       if (next.status === "in_progress") tickets += 1;
+      else if (t.sourceStatus === "claimed") {
+        unclaimed.push({ feature: f.slug, ticket: t.slug, title: t.title });
+      }
       return next;
     }),
   }));
@@ -126,6 +133,7 @@ export function applyInProgress(
       tickets,
       unknown,
       unreadable,
+      unclaimed,
     },
   };
 }

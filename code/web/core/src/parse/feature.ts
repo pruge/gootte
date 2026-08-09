@@ -7,14 +7,14 @@ import { FirstmateStatus, type TodoStatus } from "@gootte/contract";
 
 type Status = FirstmateStatus;
 
-/** 정규 여덟 값 — 사상표의 왼쪽 열. */
+/** 정규 아홉 값 — 사상표의 왼쪽 열. */
 export const FIRSTMATE_STATUSES: readonly Status[] = FirstmateStatus.options;
 
 /** `**Status:** <값>` 한 줄에서 읽어낸 것. 값을 못 알아봐도 원문은 버리지 않는다. */
 export interface StatusLine {
   /** 원문 verbatim(값 토큰만). `Status:` 줄이 아예 없으면 null. */
   raw: string | null;
-  /** 여덟 값 중 하나면 그 값, 아니면 null. */
+  /** 아홉 값 중 하나면 그 값, 아니면 null. */
   value: Status | null;
   /** `resolved` 에 동반된 완료일(YYYY-MM-DD). 다른 상태의 괄호 날짜는 읽지 않는다. */
   completedAt: string | null;
@@ -55,7 +55,7 @@ export function parseStatusLine(content: string): StatusLine {
 export function mapFirstmateStatus(value: Status | null): TodoStatus {
   if (value === "resolved") return "done";
   if (value === "wontfix") return "dropped";
-  return "pending"; // 나머지 여섯 + 알 수 없는 값
+  return "pending"; // 나머지 일곱(claimed 포함) + 알 수 없는 값
 }
 
 // "선행 없음" 선언 — 관례가 명시를 요구한다(issue-tracker §Blocked by: "빈칸으로 두지 않는다").

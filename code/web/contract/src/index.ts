@@ -27,9 +27,11 @@ export type Project = z.infer<typeof Project>;
 
 // ── firstmate 문서 파생 (docs/features/) ─────────────────
 /**
- * 관리대상 firstmate 티켓의 정규 `Status:` 여덟 값 — external-reader seam.
+ * 관리대상 firstmate 티켓의 정규 `Status:` 아홉 값 — external-reader seam.
  * SoT 는 관리대상의 `docs/agents/triage-labels.md`. 이 저장소 자신의 티켓 어휘와 동형이지만
  * 여기 실리는 것은 **관리대상 문서를 파싱한 결과**다.
+ * 🔴 `claimed` = 누군가 이 티켓을 집어갔다(임자 있음). 이 값 자체로는 처리중을 만들지 않는다 —
+ * 처리중은 여전히 살아 있는 격리 사본 관측만이 만든다(work-claims-its-ticket/01 §B).
  */
 export const FirstmateStatus = z.enum([
   "draft",
@@ -38,6 +40,7 @@ export const FirstmateStatus = z.enum([
   "ready-for-agent",
   "ready-for-human",
   "blocked",
+  "claimed",
   "resolved",
   "wontfix",
 ]);
@@ -62,7 +65,9 @@ export const FeatureTicket = z.object({
   // `Blocked by:` 한 항목 = 한 원소. 번호("01") 아니면 번호로 특정되지 않은 문구(verbatim).
   blockedBy: z.array(z.string()).default([]),
   waitingOn: z.array(z.string()).default([]), // 그중 아직 완료가 아닌 것 — 계산
-  startable: z.boolean(), // waitingOn 이 비면 true — 계산이지 파일에 적힌 값이 아니다(INV-1)
+  // 착수 가능 = waitingOn 이 비었고 + 임자(claimed)가 없다 — 계산이지 파일에 적힌 값이 아니다(INV-1).
+  // 판정하는 자리는 여기 하나뿐이다 — 머리글 집계와 줄 표시가 이 값을 그대로 센다(같은 결함을 반복하지 않는다).
+  startable: z.boolean(),
   // 이 티켓을 지금 붙들고 있는 격리 사본의 브랜치 이름(verbatim). 관측 파생이라 파일에 없다.
   // 한 티켓을 두 사본이 붙들면 원소 둘 — 그래도 티켓은 하나로 센다.
   workedBy: z.array(z.string()).default([]),
@@ -126,6 +131,20 @@ export const UnreadableCopy = z.object({
 export type UnreadableCopy = z.infer<typeof UnreadableCopy>;
 
 /**
+ * 문서는 `claimed` 라고 말하는데 지금 그 티켓을 붙들고 있는 살아 있는 사본이 없는 티켓 —
+ * **지우다 만 흔적.** 정상 경로에서는 안 생긴다(임자 표시는 작업자 가지에만 있고 끝나면 `resolved`
+ * 로 덮인다) — 머지됐는데 완료로 안 바뀐 경우에만 남는다. `unknown`·`unreadable` 과 같은 원리로
+ * 감추지 않는다(work-claims-its-ticket/01 §D). 처리중으로도 그리지 않는다 — 임자가 있다는 주장과
+ * 실제로 돌고 있다는 사실은 다른 것이다.
+ */
+export const UnclaimedTicket = z.object({
+  feature: z.string(), // 기능 slug
+  ticket: z.string(), // 티켓 slug("01-claimed-means-taken")
+  title: z.string(),
+});
+export type UnclaimedTicket = z.infer<typeof UnclaimedTicket>;
+
+/**
  * "지금 누가 무엇을 붙들고 있나" — 격리 사본 관측 파생.
  * 🔴 어디에도 저장하지 않는다(INV-1). 볼 때마다 사본들을 다시 관측한다(INV-3).
  */
@@ -137,6 +156,7 @@ export const InProgressSummary = z.object({
   tickets: z.number().int().nonnegative(), // 처리중으로 계산된 **티켓** 수 — 사본 수가 아니다(중복 제거)
   unknown: z.array(UnmappedWork).default([]), // 🔴 작업중인데 티켓 미상
   unreadable: z.array(UnreadableCopy).default([]), // 🔴 상태를 못 읽은 사본 — 유휴로 접지 않는다
+  unclaimed: z.array(UnclaimedTicket).default([]), // 🔴 claimed 인데 붙든 사본이 없는 티켓 — 감추지 않는다
 });
 export type InProgressSummary = z.infer<typeof InProgressSummary>;
 

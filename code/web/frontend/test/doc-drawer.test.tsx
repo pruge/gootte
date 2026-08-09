@@ -107,7 +107,16 @@ describe("DocDrawer — 읽지 못한 문서는 조용히 빈 드로어가 되�
 
 const FEATURES_DATA: FeaturesResponse = {
   project: "alpha",
-  inProgress: { root: "/tmp/th", rootExists: true, copies: 0, working: 0, tickets: 0, unknown: [], unreadable: [] },
+  inProgress: {
+    root: "/tmp/th",
+    rootExists: true,
+    copies: 0,
+    working: 0,
+    tickets: 0,
+    unknown: [],
+    unreadable: [],
+    unclaimed: [],
+  },
   features: [
     {
       slug: "auth-login",

@@ -20,16 +20,22 @@ function ticket(status: string, blockedBy?: string): string {
   ].join("\n");
 }
 
-describe("parseStatusLine — 여덟 값이 그대로 살아 돌아온다", () => {
+describe("parseStatusLine — 아홉 값이 그대로 살아 돌아온다", () => {
   it.each(FIRSTMATE_STATUSES)("정규 값 %s 을 알아본다", (s) => {
     const line = parseStatusLine(ticket(s));
     expect(line.value).toBe(s);
     expect(line.raw).toBe(s); // 원문 보존
   });
 
+  it("🔴 claimed 는 정규 값으로 인식된다 — 알 수 없는 상태가 아니다", () => {
+    const line = parseStatusLine(ticket("claimed"));
+    expect(line.value).toBe("claimed");
+    expect(line.raw).toBe("claimed");
+  });
+
   it("🔴 알 수 없는 상태 문자열을 조용히 버리지 않는다 — 원문이 그대로 실려 나온다", () => {
     const line = parseStatusLine(ticket("진행중"));
-    expect(line.value).toBeNull(); // 여덟 값이 아니다
+    expect(line.value).toBeNull(); // 아홉 값이 아니다
     expect(line.raw).toBe("진행중"); // 무엇이 이상한지 드러난다
   });
 
@@ -77,18 +83,25 @@ describe("parseStatusLine — 값 뒤에 붙는 것에 넘어가지 않는다", 
   });
 });
 
-describe("mapFirstmateStatus — 여덟 값 → 다섯 값(결정 Q3)", () => {
+describe("mapFirstmateStatus — 아홉 값 → 다섯 값(결정 Q3)", () => {
   it("resolved → done · wontfix → dropped", () => {
     expect(mapFirstmateStatus("resolved")).toBe("done");
     expect(mapFirstmateStatus("wontfix")).toBe("dropped");
   });
 
-  it.each(["draft", "needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "blocked"] as const)(
-    "나머지 여섯 중 %s → pending",
-    (s) => {
-      expect(mapFirstmateStatus(s)).toBe("pending");
-    },
-  );
+  it.each(
+    [
+      "draft",
+      "needs-triage",
+      "needs-info",
+      "ready-for-agent",
+      "ready-for-human",
+      "blocked",
+      "claimed",
+    ] as const,
+  )("나머지 일곱 중 %s → pending", (s) => {
+    expect(mapFirstmateStatus(s)).toBe("pending");
+  });
 
   it("알 수 없는 값도 pending — 목록에서 사라지지 않는다", () => {
     expect(mapFirstmateStatus(null)).toBe("pending");

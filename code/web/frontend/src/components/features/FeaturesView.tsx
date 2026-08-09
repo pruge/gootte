@@ -29,8 +29,8 @@ function CopyRow({ slug, detail, title }: { slug: string; detail: string; title:
  * 진행 중인 일을 다시 배정한다. 어느 사본의 어느 가지인지 원문 그대로 보여준다(INV-4 릴레이).
  */
 function UnresolvedWork({ inProgress }: { inProgress: InProgressSummary }) {
-  const { unknown, unreadable } = inProgress;
-  if (unknown.length === 0 && unreadable.length === 0) return null;
+  const { unknown, unreadable, unclaimed } = inProgress;
+  if (unknown.length === 0 && unreadable.length === 0 && unclaimed.length === 0) return null;
 
   return (
     <section
@@ -79,6 +79,31 @@ function UnresolvedWork({ inProgress }: { inProgress: InProgressSummary }) {
           </ul>
         </>
       )}
+
+      {unclaimed.length > 0 && (
+        <>
+          <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-partial/25 px-4 py-3">
+            <IconAlertTriangle size={17} className="shrink-0 self-center text-partial" />
+            <h2 className="font-medium tracking-tight text-partial">
+              임자 없이 남은 표시 {unclaimed.length}
+            </h2>
+            <span className="text-sm text-muted">
+              문서는 claimed 라고 말하지만 지금 붙들고 있는 사본이 없습니다 — 지우다 만 흔적일 수
+              있습니다.
+            </span>
+          </header>
+          <ul className="divide-y divide-border/60 border-t border-partial/25">
+            {unclaimed.map((t) => (
+              <CopyRow
+                key={`${t.feature}/${t.ticket}`}
+                slug={`${t.feature}/${t.ticket}`}
+                detail={t.title}
+                title={t.title}
+              />
+            ))}
+          </ul>
+        </>
+      )}
     </section>
   );
 }
@@ -118,7 +143,10 @@ export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
   if (isError) return <ErrorMsg error={error} />;
   if (!data) return null;
   // 🔴 기능이 하나도 없어도 미해소 사본이 있으면 그것만은 보여준다 — 빈 화면이 거짓말하지 않게.
-  const unresolved = data.inProgress.unknown.length + data.inProgress.unreadable.length;
+  const unresolved =
+    data.inProgress.unknown.length +
+    data.inProgress.unreadable.length +
+    data.inProgress.unclaimed.length;
   if (data.features.length === 0 && unresolved === 0)
     return <Empty>docs/features/ 아래 기능이 없습니다.</Empty>;
 

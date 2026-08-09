@@ -15,6 +15,7 @@ const NO_WORK: FeaturesResponse["inProgress"] = {
   tickets: 0,
   unknown: [],
   unreadable: [],
+  unclaimed: [],
 };
 const DATA: FeaturesResponse = {
   project: "alpha",
@@ -182,7 +183,8 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
     renderFeatures();
     openCard("auth-login — 로그인");
     const blocked = screen.getByText("소셜 로그인").closest("li")!;
-    expect(within(blocked).getByText("대기 → 02")).toBeInTheDocument();
+    expect(within(blocked).getByText("대기")).toBeInTheDocument();
+    expect(within(blocked).getByText("→ 02")).toBeInTheDocument();
     const ready = screen.getByText("로그인 화면").closest("li")!;
     expect(within(ready).getByText("착수 가능")).toBeInTheDocument();
   });
@@ -202,14 +204,15 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
     expect(screen.getByText(/알 수 없는 상태: 진행중/)).toBeInTheDocument();
   });
 
-  it("지금 붙들려 있는 티켓에만 처리중 표시가 붙는다 — 어느 가지가 붙들었는지까지", () => {
+  it("지금 붙들려 있는 티켓에만 진행중 단계가 붙는다 — 어느 가지가 붙들었는지까지", () => {
     renderFeatures();
     openCard("auth-login — 로그인");
     const working = screen.getByText("OAuth 교환").closest("li")!;
-    expect(within(working).getByText(/처리중 · fm\/alpha-oauth/)).toBeInTheDocument();
-    // 아무도 안 붙든 티켓에는 안 붙는다.
+    expect(within(working).getByText("진행중")).toBeInTheDocument();
+    expect(within(working).getByText("fm/alpha-oauth")).toBeInTheDocument();
+    // 아무도 안 붙든 티켓에는 가지 이름이 안 붙는다.
     const idle = screen.getByText("로그인 화면").closest("li")!;
-    expect(within(idle).queryByText(/처리중/)).toBeNull();
+    expect(within(idle).queryByText("fm/alpha-oauth")).toBeNull();
   });
 });
 
@@ -282,6 +285,19 @@ describe("FeaturesView — 이어지지 않은 작업(격리 사본 관측)", ()
     expect(screen.getByText(/상태를 읽지 못한 사본 1/)).toBeInTheDocument();
     expect(screen.getByText("git 이 답하지 않음")).toBeInTheDocument();
     expect(screen.getByText("alpha-abc123/3")).toBeInTheDocument();
+  });
+
+  it("🔴 claimed 인데 붙든 사본이 없는 티켓도 사라지지 않는다 — 처리중으로도 그리지 않는다", () => {
+    renderView({
+      ...DATA,
+      inProgress: {
+        ...NO_WORK,
+        unclaimed: [{ feature: "auth-login", ticket: "02-x", title: "무언가" }],
+      },
+    });
+    expect(screen.getByText(/임자 없이 남은 표시 1/)).toBeInTheDocument();
+    expect(screen.getByText("auth-login/02-x")).toBeInTheDocument();
+    expect(screen.getByText("무언가")).toBeInTheDocument();
   });
 
   it("기능이 없으면 빈 목록 안내", () => {

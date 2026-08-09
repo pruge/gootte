@@ -5,7 +5,7 @@
 
 **Blocked by:** `ticket-row-repair/01` — 처리중 판정을 상태 한 칸으로 모으는 토대가 먼저다
 
-**Status:** ready-for-agent
+**Status:** resolved (2026-08-09)
 
 ## 왜 값을 하나 더 두나 (사양 §실측)
 

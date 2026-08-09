@@ -26,16 +26,67 @@ function StateIcon({ ticket }: { ticket: FeatureTicket }) {
 }
 
 /**
- * 티켓 한 줄 — 번호 · 제목 · **원문 상태** · 막힘/착수 가능(계산) · 처리중(격리 사본 관측).
+ * 단계 칸의 값 — 셋 중 하나거나(착수 가능·진행중·대기) 아예 없다(끝났거나 취소됐다).
+ * 🔴 "임자만 있고 실제로는 안 도는" 티켓(claimed 인데 붙든 사본이 없음)은 여기 넷째 값으로
+ * 끼워 넣지 않는다 — `waitingOn` 이 비었는데도 `startable` 이 false 인 경우가 바로 그 경우고,
+ * 그건 이 칸이 아니라 "임자 없이 남은 표시"(FeaturesView)가 따로 드러낸다
+ * (ticket-row-repair/03 §🟢 넷째 값은 필요 없다).
+ */
+type Stage = "startable" | "in_progress" | "waiting" | null;
+
+function stageOf(ticket: FeatureTicket): Stage {
+  if (ticket.status === "done" || ticket.status === "dropped") return null;
+  if (ticket.status === "in_progress") return "in_progress";
+  if (ticket.waitingOn.length > 0) return "waiting";
+  return ticket.startable ? "startable" : null;
+}
+
+const STAGE_LABEL: Record<Exclude<Stage, null>, string> = {
+  startable: "착수 가능",
+  in_progress: "진행중",
+  waiting: "대기",
+};
+
+const STAGE_CLASS: Record<Exclude<Stage, null>, string> = {
+  startable: "text-accent",
+  in_progress: "text-active",
+  waiting: "text-muted",
+};
+
+/**
+ * 단계 칸 — 값이 없어도 늘 그린다. 세 후보를 **같은 칸에 겹쳐** 렌더링해 안 보이는 것까지
+ * 폭 계산에 넣는다 — 글자 수로 셈하지 않고 실제로 그려지는 폭 중 가장 넓은 것을 칸이 갖는다
+ * (완료일 칸과 같은 원리, 다만 셋의 글자 수가 서로 달라 같은 트릭을 그대로는 못 써 grid 로 겹친다).
+ * 값이 없으면(끝남·취소) 셋 다 안 보이는 채로 칸만 남는다 — 대체 문자를 넣지 않는다.
+ */
+function StageCell({ stage }: { stage: Stage }) {
+  return (
+    <span className="mono grid shrink-0 text-sm">
+      {(Object.keys(STAGE_LABEL) as Exclude<Stage, null>[]).map((key) => (
+        <span
+          key={key}
+          className={`col-start-1 row-start-1 ${STAGE_CLASS[key]} ${stage === key ? "" : "invisible"}`}
+        >
+          {STAGE_LABEL[key]}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * 티켓 한 줄 — 번호 · 제목 · **원문 상태** · 단계(계산) · 완료일 · 딸린 상세.
  *
  * 🔴 상태를 못 읽은 티켓을 숨기지 않는다. 숨기면 화면이 "할 일이 없다" 고 거짓말한다 —
  * 대신 무엇이 이상한지(원문 문자열)를 드러낸다.
  * 처리중은 문서에 없는 값이라 원문 상태 옆에 **따로** 붙는다(뭉개지 않는다).
+ *
+ * 단계 칸과 완료일 칸은 값이 없어도 자리를 지킨다(같은 너비의 빈 칸) — 그 뒤에 오는
+ * **가지 이름 · 기다리는 대상**(딸린 상세)만 줄마다 폭이 다르고, 맨 끝에 있어 고정 칸을 밀지 않는다
+ * (ticket-row-repair/03).
  */
 export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
-  // 처리중이어도 선행이 남아 있으면 그 사실은 계속 보인다 — 관측이 계산을 덮어쓰지 않는다.
-  const open = ticket.status === "pending" || ticket.status === "in_progress";
-  const waiting = !ticket.startable && open;
+  const stage = stageOf(ticket);
 
   return (
     <li
@@ -45,9 +96,7 @@ export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
     >
       <StateIcon ticket={ticket} />
       <span className="mono shrink-0 text-sm tabular-nums text-muted">{ticket.num || "—"}</span>
-      <span
-        className={`min-w-0 flex-1 truncate ${waiting && ticket.status === "pending" ? "text-muted" : ""}`}
-      >
+      <span className={`min-w-0 flex-1 truncate ${stage === "waiting" ? "text-muted" : ""}`}>
         {ticket.title}
       </span>
 
@@ -60,7 +109,7 @@ export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
         <span
           role="status"
           className="mono flex shrink-0 items-center gap-1 rounded bg-drop/15 px-1.5 py-0.5 text-sm text-drop"
-          title="정규 여덟 값이 아닙니다"
+          title="정규 아홉 값이 아닙니다"
         >
           <IconAlertTriangle size={13} />
           {ticket.sourceStatus === null
@@ -69,16 +118,7 @@ export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
         </span>
       )}
 
-      {ticket.status === "in_progress" && (
-        // 처리중은 상태가 정한다(workedBy 존재만으로 그리지 않는다) — 어느 가지가 붙들고 있는지 verbatim 으로 싣는다.
-        <span
-          className="mono flex shrink-0 items-center gap-1 rounded bg-active/15 px-1.5 py-0.5 text-sm text-active"
-          title={`작업 가지: ${ticket.workedBy.join(", ")}`}
-        >
-          <IconProgress size={13} />
-          처리중 · {ticket.workedBy.join(", ")}
-        </span>
-      )}
+      <StageCell stage={stage} />
 
       {/* 완료일 칸은 값이 없어도 늘 그린다 — 값이 있을 때와 같은 자리표시 문자열을 같은 글꼴로
           렌더링해 폭을 맞추고(글자 수로 계산하지 않는다), invisible 로 보이지만 않게 한다.
@@ -91,18 +131,24 @@ export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
         {ticket.completedAt ?? "0000-00-00"}
       </span>
 
-      {waiting ? (
+      {stage === "in_progress" && (
+        // 어느 가지가 붙들고 있는지 verbatim 으로 싣는다 — 감추지 않는다.
+        <span
+          className="mono max-w-full truncate text-sm text-active"
+          title={`작업 가지: ${ticket.workedBy.join(", ")}`}
+        >
+          {ticket.workedBy.join(", ")}
+        </span>
+      )}
+
+      {stage === "waiting" && (
         // 번호로 해소되지 않은 선행(다른 기능을 가리키는 문구 등)도 그대로 보인다 — verbatim 릴레이(INV-4).
         <span
           className="mono max-w-full truncate text-sm text-muted"
           title={ticket.waitingOn.join(", ")}
         >
-          대기 → {ticket.waitingOn.join(", ")}
+          → {ticket.waitingOn.join(", ")}
         </span>
-      ) : (
-        ticket.status === "pending" && (
-          <span className="mono shrink-0 text-sm text-accent">착수 가능</span>
-        )
       )}
     </li>
   );

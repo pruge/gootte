@@ -1,6 +1,6 @@
 # work-claims-its-ticket — 일이 시작될 때 자기 티켓을 밝힌다
 
-Status: ready-for-agent (2026-08-09) · 티켓 1장 · 선행 = `ticket-row-repair/01`
+Status: ready-for-agent (2026-08-09) · 티켓 1장 · 01 착지
 
 ## 캡틴 지시 (원문)
 
