@@ -1,4 +1,5 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -26,9 +27,12 @@ async function waitFor(pred: () => boolean, timeoutMs = 4000): Promise<void> {
 describe("watchProjects (022)", () => {
   let w: ProjectWatcher | null = null;
   let root = "";
+  let sock: Server | null = null;
   afterEach(async () => {
     await w?.close();
     w = null;
+    if (sock) await new Promise<void>((r) => sock!.close(() => r()));
+    sock = null;
     if (root) rmSync(root, { recursive: true, force: true });
     root = "";
   });
@@ -52,6 +56,89 @@ describe("watchProjects (022)", () => {
     const before = events.length;
     writeFileSync(join(root, "beta", TICKET), "x");
     await waitFor(() => events.slice(before).some((e) => e.kind === "project" && e.project === "beta"));
+  });
+
+  /**
+   * 🔴 회귀 고정 — 실측 크래시: 저장소 루트의 `.codegraph/daemon.sock`(유닉스 소켓)을 watch 하려다
+   * macOS 가 UNKNOWN 을 냈고, chokidar 의 `error` 를 아무도 듣지 않아 uncaught 로 다시 던져져
+   * 백엔드가 통째로 내려갔다. 색인 디렉토리는 애초에 걷지 않고, 그래도 못 붙는 경로가 있으면
+   * 서버는 살아 있어야 한다 — 감시가 죽는 것과 서버가 죽는 것은 다른 사건이다.
+   */
+  it("색인 디렉토리의 유닉스 소켓이 있어도 감시가 죽지 않는다", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-watch-"));
+    makeProject(root, "alpha");
+    const codegraph = join(root, "alpha", ".codegraph");
+    mkdirSync(codegraph, { recursive: true });
+    sock = createServer();
+    await new Promise<void>((r) => sock!.listen(join(codegraph, "daemon.sock"), r));
+
+    const events: Change[] = [];
+    w = watchProjects([root], (c) => events.push(c), { debounceMs: 40 });
+    await sleep(500); // chokidar ready — 고치기 전이라면 여기서 프로세스가 죽었다
+
+    // 살아 있을 뿐 아니라 계속 일한다 — 소켓 하나 때문에 감시가 조용히 멎으면 뷰가 stale 해진다(INV-3).
+    writeFileSync(join(root, "alpha", TICKET), "# 01 — x\n\n**Status:** resolved (2026-08-09)\n");
+    await waitFor(() => events.some((e) => e.kind === "project" && e.project === "alpha"));
+  });
+
+  /**
+   * 감시 범위는 `docs/features/` 다 — `docs/` 아래 다른 것은 제품이 읽지 않으므로(그 경로 하나뿐)
+   * 감시해도 다시 계산될 뷰가 없다. 넓게 걸면 무관한 문서 저장마다 전 클라이언트에 push 가 나간다.
+   */
+  it("docs/features 밖의 docs 변경은 이벤트를 내지 않는다", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-watch-"));
+    makeProject(root, "alpha");
+    mkdirSync(join(root, "alpha", "docs", "agents"), { recursive: true });
+    const events: Change[] = [];
+    w = watchProjects([root], (c) => events.push(c), { debounceMs: 40 });
+    // 🔴 정착까지 기다린 뒤 기준선을 0 으로 — 픽스처가 감시 직전에 쓴 파일이 awaitWriteFinish 에
+    // 걸려 뒤늦게 change 로 올라온다. 그것을 세면 "무엇이 이벤트를 내는가" 가 아니라 픽스처를 재게 된다.
+    await sleep(700);
+    events.length = 0;
+
+    writeFileSync(join(root, "alpha", "docs", "agents", "note.md"), "관례 문서 — 제품이 읽지 않는다\n");
+    await sleep(400);
+    expect(events).toEqual([]);
+
+    // 같은 프로젝트의 티켓은 여전히 잡힌다 — 좁힌 것이지 끈 것이 아니다.
+    writeFileSync(join(root, "alpha", TICKET), "# 01 — x\n\n**Status:** resolved (2026-08-09)\n");
+    await waitFor(() => events.some((e) => e.kind === "project" && e.project === "alpha"));
+  });
+
+  /**
+   * 목록 감시는 뿌리 아래 **두 칸까지**의 프로젝트를 본다(`discoverProjects` 와 같은 범위).
+   * 얕은 쪽만 맞추고 끝내면 컨테이너 아래 프로젝트가 조용히 안 뜬다.
+   */
+  it("컨테이너 한 칸 아래(<root>/<container>/<proj>)의 새 프로젝트도 자동 추가된다", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-watch-"));
+    makeProject(root, "seed");
+    const events: Change[] = [];
+    w = watchProjects([root], (c) => events.push(c), { debounceMs: 40 });
+    await sleep(500);
+
+    makeProject(root, join("container", "deep"));
+    await waitFor(() => events.some((e) => e.kind === "projects"));
+  });
+
+  /**
+   * 🔴 목록 감시는 **프로젝트 내부로 들어가지 않는다** — 발견 표식의 부모만 보면 되기 때문이다.
+   * 들어가면 감시 대상이 프로젝트 크기에 비례해 늘고(fd 한계), 그 walk 이 `.codegraph/daemon.sock`
+   * 같은 지뢰를 밟는다. 내부 파일 변경으로 목록 재조회가 나가지 않는 것으로 그 사실을 고정한다.
+   */
+  it("프로젝트 내부 깊은 곳의 변경은 목록 재조회를 부르지 않는다", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-watch-"));
+    makeProject(root, "alpha");
+    mkdirSync(join(root, "alpha", "code", "web", "src"), { recursive: true });
+    const events: Change[] = [];
+    w = watchProjects([root], (c) => events.push(c), { debounceMs: 40 });
+    // 정착까지 기다린 뒤 기준선을 0 으로 — 픽스처가 감시 직전에 쓴 파일이 awaitWriteFinish 에
+    // 걸려 뒤늦게 올라온다. 그것을 세면 감시 범위가 아니라 픽스처를 재게 된다.
+    await sleep(700);
+    events.length = 0;
+
+    writeFileSync(join(root, "alpha", "code", "web", "src", "app.ts"), "export const x = 1;\n");
+    await sleep(400);
+    expect(events).toEqual([]);
   });
 
   it("close 후 이벤트 무발화", async () => {
