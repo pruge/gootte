@@ -79,6 +79,28 @@ describe("FeatureTree — check 는 파싱된 현황판, 나머지는 폴더에 
     expect(screen.getByText("spec.md")).toBeInTheDocument();
   });
 
+  it("순서는 adr → issues → check → 나머지 낱장 문서로 고정된다(캡틴 지시)", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [
+        // 뒤섞어 넣어도 렌더 순서는 고정이어야 한다.
+        { kind: "file", name: "architecture.md", path: "architecture.md" },
+        { kind: "file", name: "spec.md", path: "spec.md" },
+        { kind: "dir", name: "issues", path: "issues", children: [] },
+        { kind: "dir", name: "adr", path: "adr", children: [] },
+      ],
+    };
+    renderCard(feature);
+    open();
+    const labels = ["adr", "issues", "check", "architecture.md", "spec.md"];
+    for (let i = 0; i < labels.length - 1; i++) {
+      const a = screen.getByText(labels[i]!);
+      const b = screen.getByText(labels[i + 1]!);
+      // a 가 b 보다 문서상 앞선다(DOCUMENT_POSITION_FOLLOWING = b 가 a 뒤에 옴).
+      expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
   it("🔴 adr/ 가 없으면 트리에 adr 칸이 없다 — 빈 칸으로도 안 뜬다", () => {
     const feature: Feature = { ...BASE, docs: [{ kind: "file", name: "spec.md", path: "spec.md" }] };
     renderCard(feature);

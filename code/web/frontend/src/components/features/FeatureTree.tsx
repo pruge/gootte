@@ -10,20 +10,32 @@ interface FeatureTreeProps {
   onOpenDoc: OpenDocFn;
 }
 
+/** `adr` → `issues` → 나머지(spec.md 등 낱장) 순으로 고정한다(캡틴 지시). 없으면 그 자리가 빈다. */
+function splitDocs(docs: Feature["docs"]) {
+  const pick = (name: string) => docs.find((d) => d.kind === "dir" && d.name === name) ?? null;
+  const adr = pick("adr");
+  const issues = pick("issues");
+  const rest = docs.filter((d) => d !== adr && d !== issues);
+  return { adr, issues, rest };
+}
+
 /**
  * 기능 카드 안의 폴더 트리. `check` 는 실제 폴더가 아니라 화면이 만든 현황판 —
  * 파싱된 제목·원문 상태·처리중·대기 선행을 보여준다(예전 화면이 보여주던 것을 잃지 않는다).
- * 진입점으로 고정, 기본 펼침(캡틴 피드백 — issues 자리는 실제 파일 목록으로 남기고, 요약은
- * 여기로 옮겼다).
+ * 기본 펼침(캡틴 피드백 — issues 자리는 실제 파일 목록으로 남기고, 요약은 여기로 옮겼다).
  *
- * 그 아래는 `feature.docs` — 기능 폴더에 **실제로 있는 것만**(INV-4), `issues/` 도 포함해서
- * 진짜 파일 이름으로 뜬다. 눌러서 원문을 그대로 읽을 수 있다.
+ * 순서는 **adr → issues → check → 나머지 낱장 문서**(spec.md 등) 로 고정한다(캡틴 지시) —
+ * 없는 칸은 그 자리가 빈다(INV-4, 폴더에 없는 걸 그려 넣지 않는다).
+ * `issues/` 도 `feature.docs` 에 포함돼 있어서 진짜 파일 이름으로 뜬다. 눌러서 원문을 읽는다.
  */
 export function FeatureTree({ feature, onOpenDoc }: FeatureTreeProps) {
   const [checkOpen, setCheckOpen] = useState(true);
+  const { adr, issues, rest } = splitDocs(feature.docs);
 
   return (
     <ul className="divide-y divide-border">
+      {adr && <DocTreeNode node={adr} depth={0} featureSlug={feature.slug} onOpenDoc={onOpenDoc} />}
+      {issues && <DocTreeNode node={issues} depth={0} featureSlug={feature.slug} onOpenDoc={onOpenDoc} />}
       <li>
         <button
           type="button"
@@ -49,7 +61,7 @@ export function FeatureTree({ feature, onOpenDoc }: FeatureTreeProps) {
             </ul>
           ))}
       </li>
-      {feature.docs.map((node) => (
+      {rest.map((node) => (
         <DocTreeNode
           key={node.path}
           node={node}
