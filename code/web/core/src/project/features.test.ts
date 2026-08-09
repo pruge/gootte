@@ -157,13 +157,45 @@ describe("buildFeatures — 기능 목록", () => {
     ).toEqual(["zeta-open", "alpha-done"]);
   });
 
-  it("티켓이 0개인 기능은 앞쪽(남은 일 있음) 무리에 들어간다", () => {
+  // 🔴 "남은 일" = 착수할 것이 남았다. 티켓이 없으면 착수할 것이 없으므로 맨 위 무리를 막지 않는다 —
+  // 기능이 늘수록 진짜 남은 일을 스크롤해 찾게 되는 것이 이 규칙이 막는 통증이다.
+  it("티켓이 0개인 기능은 남은 일 있는 기능보다 뒤로 간다 — 착수할 것이 없다", () => {
+    expect(
+      buildFeatures([
+        docsWithNoTickets("alpha-empty"),
+        docsWithStatus("zeta-open", "ready-for-agent"),
+      ]).map((f) => f.slug),
+    ).toEqual(["zeta-open", "alpha-empty"]);
+  });
+
+  // …그렇다고 완료로 접지도 않는다. 끝났다는 증거가 없는 것과 끝난 것은 다른 값이다.
+  it("티켓이 0개인 기능은 전부 끝난 기능보다는 앞이다 — 끝났다는 증거가 없다", () => {
     expect(
       buildFeatures([
         docsWithStatus("alpha-done", "resolved (2026-08-01)"),
         docsWithNoTickets("zeta-empty"),
       ]).map((f) => f.slug),
     ).toEqual(["zeta-empty", "alpha-done"]);
+  });
+
+  it("세 무리가 남은 일 → 티켓 없음 → 끝남 순으로 온다 — 각 무리 안은 폴더명 순", () => {
+    expect(
+      buildFeatures([
+        docsWithStatus("zeta-done", "resolved (2026-08-01)"),
+        docsWithNoTickets("mike-empty"),
+        docsWithStatus("alpha-open", "ready-for-agent"),
+        docsWithStatus("bravo-done", "resolved (2026-08-01)"),
+        docsWithNoTickets("delta-empty"),
+        docsWithStatus("yankee-open", "blocked"),
+      ]).map((f) => f.slug),
+    ).toEqual([
+      "alpha-open",
+      "yankee-open",
+      "delta-empty",
+      "mike-empty",
+      "bravo-done",
+      "zeta-done",
+    ]);
   });
 
   it("같은 무리 안에서는 폴더명 순서가 유지된다", () => {
