@@ -1,6 +1,6 @@
 # gootte — 프로젝트 지침
 
-> **cling 프로젝트들을 프로젝트별로 실시간 관리하는 대시보드.** 각 프로젝트 문서를 자동 read →
+> **firstmate 프로젝트들을 프로젝트별로 실시간 관리하는 대시보드.** 각 프로젝트 문서를 자동 read →
 > 칸반/달력/supersede 그래프(사람) + digest(AI). 핵심 = **연쇄 re-kickoff lineage 가시화** —
 > 사람도 AI 도 "현재 / 왜 / 다음" 을 한 번에 잡게 한다.
 > TS 모노레포(`code/web/`, pnpm workspace) · Hono backend · React+Vite frontend · zod contract.
@@ -9,8 +9,10 @@
 문서 관례(티켓 서식·`Status:` 어휘·탐색 순서)는 [`docs/agents/`](docs/agents/) 가 갖는다.
 
 > 이 저장소는 cling 워크플로우로 지어졌고 지금 **firstmate 관리로 전환 중**이다
-> (`docs/features/firstmate-migration/`). 전환이 끝나면 `.cling/` 은 사라진다 —
-> 여기 적힌 지식이 그 파일들의 후계자이므로, `.cling/profile.md` 를 근거로 삼지 않는다.
+> (`docs/features/firstmate-migration/`). `.cling/` 은 **이미 삭제됐다** — 그 안에 있던
+> 지식의 후계자가 이 파일이므로, 지침의 근거는 언제나 여기다. 제품 코드에는 옛 발견·파싱
+> 경로가 아직 남아 있고(자매 사양 `firstmate-project-source` 가 걷어낸다), 전환의 남은
+> 범위는 위 두 사양이 갖는다.
 
 ## 🔴 제품 불변식 (모든 기능 개발 시 의무 점검)
 
