@@ -7,6 +7,7 @@ import { z } from "zod";
 
 // ── enums ────────────────────────────────────────────────
 export const TodoStatus = z.enum(["pending", "in_sprint", "in_progress", "done", "dropped"]);
+export type TodoStatus = z.infer<typeof TodoStatus>;
 export const Priority = z.enum(["critical", "high", "normal", "low"]);
 export const InitiativeStatus = z.enum(["active", "shipped", "planned", "superseded"]);
 export const ConflictRisk = z.enum(["low", "med", "high"]);
@@ -184,6 +185,58 @@ export const RoadmapResponse = z.object({
 });
 export type RoadmapResponse = z.infer<typeof RoadmapResponse>;
 
+// ── firstmate 문서 파생 (docs/features/) ─────────────────
+/**
+ * 관리대상 firstmate 티켓의 정규 `Status:` 여덟 값 — external-reader seam.
+ * SoT 는 관리대상의 `docs/agents/triage-labels.md`. 이 저장소 자신의 티켓 어휘와 동형이지만
+ * 여기 실리는 것은 **관리대상 문서를 파싱한 결과**다.
+ */
+export const FirstmateStatus = z.enum([
+  "draft",
+  "needs-triage",
+  "needs-info",
+  "ready-for-agent",
+  "ready-for-human",
+  "blocked",
+  "resolved",
+  "wontfix",
+]);
+export type FirstmateStatus = z.infer<typeof FirstmateStatus>;
+
+/**
+ * `docs/features/<기능>/issues/<NN>-<슬러그>.md` 티켓 1장.
+ *
+ * 🔴 상태는 **두 칸**이다(결정 Q3) — `status` 는 화면이 오늘 쓰는 다섯 값,
+ * `sourceStatus` 는 firstmate 원문 여덟 값 verbatim. 뭉개는 쪽이 아니라 함께 싣는 쪽이라
+ * 화면이 `blocked`(외부 대기)와 `needs-info`(정보 부족)를 구분해 보여줄 수 있다.
+ * `in_progress` 는 여기서 나오지 않는다 — 그것은 문서가 아니라 격리 사본 관측의 몫이다.
+ */
+export const FeatureTicket = z.object({
+  num: z.string(), // 파일명 앞 번호("01"). 번호 없는 파일이면 빈 문자열
+  slug: z.string(), // 파일 basename(확장자 제거) — "01-discover-firstmate"
+  title: z.string(),
+  status: TodoStatus, // 사상된 다섯 값 (resolved→done · wontfix→dropped · 나머지→pending)
+  sourceStatus: z.string().nullable().default(null), // 원문 verbatim. `Status:` 줄이 없으면 null
+  statusKnown: z.boolean(), // 원문이 여덟 값에 없거나 줄이 없으면 false — 🔴 조용히 버리지 않는다
+  completedAt: z.string().optional(), // `resolved (YYYY-MM-DD)` 의 완료일
+  // `Blocked by:` 한 항목 = 한 원소. 번호("01") 아니면 번호로 특정되지 않은 문구(verbatim).
+  blockedBy: z.array(z.string()).default([]),
+  waitingOn: z.array(z.string()).default([]), // 그중 아직 완료가 아닌 것 — 계산
+  startable: z.boolean(), // waitingOn 이 비면 true — 계산이지 파일에 적힌 값이 아니다(INV-1)
+});
+export type FeatureTicket = z.infer<typeof FeatureTicket>;
+
+/** `docs/features/<기능>/` 한 폴더 = spec 1장 + 티켓 N장. */
+export const Feature = z.object({
+  slug: z.string(), // 폴더명
+  title: z.string(), // spec.md 표제(없으면 slug)
+  status: TodoStatus,
+  sourceStatus: z.string().nullable().default(null),
+  statusKnown: z.boolean(),
+  tickets: z.array(FeatureTicket).default([]),
+});
+export type Feature = z.infer<typeof Feature>;
+
 /** AUTO-GENERATED digest (AI floor). */
 export const Digest = z.object({
   generatedAt: z.string(),
@@ -207,6 +260,13 @@ export const PlanResponse = z.object({
   trackOrder: z.array(z.string()).default([]), // 대분류 그룹 순서 (019 populate) — 미분류 = "__ungrouped__" last
 });
 export type PlanResponse = z.infer<typeof PlanResponse>;
+
+/** 기능별 할일 목록 — `docs/features/` 파생(INV-2 read-only, INV-1 매 read 재계산). */
+export const FeaturesResponse = z.object({
+  project: z.string(),
+  features: z.array(Feature).default([]),
+});
+export type FeaturesResponse = z.infer<typeof FeaturesResponse>;
 
 export const LineageResponse = z.object({
   project: z.string(),

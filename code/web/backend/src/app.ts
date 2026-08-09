@@ -6,6 +6,7 @@ import {
   ProjectsResponse,
   PlanResponse,
   RoadmapResponse,
+  FeaturesResponse,
   LineageResponse,
   TimelineResponse,
   WorktreeResponse,
@@ -19,6 +20,7 @@ import {
   readDoc,
   readRoadmapDoc,
   listInitiativeTree,
+  readFeatures,
   resolveInitiativeDir,
   scanWorktrees,
   activeWorktrees,
@@ -110,6 +112,18 @@ export function createApp(options: AppOptions = {}): Hono {
     if (!p) return c.json(notFound(c.req.param("slug")), 404);
     const { items, trackOrder } = buildRoadmap(p.state);
     return c.json(RoadmapResponse.parse({ project: p.name, items, trackOrder }));
+  });
+
+  // GET /api/features/:slug → FeaturesResponse (docs/features/ 기능별 할일, INV-2 read-only)
+  // 🔴 loadProjectState(cling 경로)를 타지 않는다 — 이 목록은 firstmate 문서만 입력으로 쓴다.
+  //    막힘 해제는 요청마다 다시 계산된다(INV-1·INV-3).
+  app.get("/api/features/:slug", zValidator("param", slugParam), (c) => {
+    const { slug } = c.req.valid("param");
+    const proj = resolveSlug(roots, slug);
+    if (!proj) return c.json(notFound(slug), 404);
+    return c.json(
+      FeaturesResponse.parse({ project: basename(proj.path), features: readFeatures(proj.path) }),
+    );
   });
 
   // GET /api/doc/:slug/:kind/:name[?worktree=] → DocResponse (관리대상 todo/sprint raw md, INV-2 read-only)

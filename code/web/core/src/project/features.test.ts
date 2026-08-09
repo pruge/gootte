@@ -1,0 +1,134 @@
+import { describe, expect, it } from "vitest";
+import { parseTicket } from "../parse/feature";
+import { buildFeature, buildFeatures } from "./features";
+
+/** 티켓 파일 한 장 합성 — 상단 두 줄이 서식의 전부다(triage-labels). */
+function ticket(status: string, blockedBy?: string): string {
+  return [
+    "# 02 — 할일 목록을 기능 문서에서 읽는다",
+    "",
+    ...(blockedBy ? [`**Blocked by:** ${blockedBy}`] : []),
+    `**Status:** ${status}`,
+  ].join("\n");
+}
+
+describe("buildFeature — 막힘 해제는 계산된다(INV-1)", () => {
+  const docs = (...tickets: { file: string; body: string }[]) => ({
+    slug: "f",
+    spec: null,
+    tickets: tickets.map((t) => parseTicket(t.file, t.body)),
+  });
+
+  it("선행이 전부 완료면 착수 가능 — 파일에 그렇게 적혀 있지 않아도", () => {
+    const f = buildFeature(
+      docs(
+        { file: "01-a.md", body: ticket("resolved (2026-08-01)") },
+        { file: "02-b.md", body: ticket("resolved (2026-08-02)") },
+        { file: "03-c.md", body: ticket("ready-for-agent", "01, 02") },
+      ),
+    );
+    const c = f.tickets.find((t) => t.num === "03")!;
+    expect(c.startable).toBe(true);
+    expect(c.waitingOn).toEqual([]);
+    expect(c.blockedBy).toEqual(["01", "02"]); // 적힌 것은 그대로 남는다
+  });
+
+  it("선행 중 하나가 미완이면 막힘 — 무엇을 기다리는지 보인다", () => {
+    const f = buildFeature(
+      docs(
+        { file: "01-a.md", body: ticket("resolved (2026-08-01)") },
+        { file: "02-b.md", body: ticket("ready-for-agent") },
+        { file: "03-c.md", body: ticket("ready-for-agent", "01, 02") },
+      ),
+    );
+    const c = f.tickets.find((t) => t.num === "03")!;
+    expect(c.startable).toBe(false);
+    expect(c.waitingOn).toEqual(["02"]);
+  });
+
+  it("선행 줄이 없으면 즉시 착수 가능", () => {
+    const f = buildFeature(docs({ file: "01-a.md", body: ticket("ready-for-agent") }));
+    expect(f.tickets[0]?.startable).toBe(true);
+  });
+
+  it("`01` 과 `1` 은 같은 티켓 — 번호 비교는 숫자로", () => {
+    const f = buildFeature(
+      docs(
+        { file: "01-a.md", body: ticket("resolved (2026-08-01)") },
+        { file: "02-b.md", body: ticket("ready-for-agent", "1") },
+      ),
+    );
+    expect(f.tickets.find((t) => t.num === "02")?.startable).toBe(true);
+  });
+
+  it("wontfix 선행은 해제하지 않는다 — 관례가 `전부 resolved` 라고 못박는다", () => {
+    const f = buildFeature(
+      docs(
+        { file: "01-a.md", body: ticket("wontfix") },
+        { file: "02-b.md", body: ticket("ready-for-agent", "01") },
+      ),
+    );
+    expect(f.tickets.find((t) => t.num === "02")?.waitingOn).toEqual(["01"]);
+  });
+
+  it("🔴 산문 선행은 이 기능의 같은 번호가 끝나도 해제되지 않는다 — 다른 기능 얘기일 수 있다(INV-4)", () => {
+    const f = buildFeature(
+      docs(
+        { file: "01-a.md", body: ticket("resolved (2026-08-01)") },
+        { file: "02-b.md", body: ticket("ready-for-agent", "자매 기능 `other` 의 티켓 01") },
+      ),
+    );
+    const b = f.tickets.find((t) => t.num === "02")!;
+    expect(b.waitingOn).toEqual(["자매 기능 `other` 의 티켓 01"]); // 문구 그대로 보인다
+    expect(b.startable).toBe(false);
+  });
+
+  it("존재하지 않는 선행 번호는 해제하지 않고 그대로 드러낸다(INV-4)", () => {
+    const f = buildFeature(docs({ file: "02-b.md", body: ticket("ready-for-agent", "99") }));
+    expect(f.tickets[0]?.startable).toBe(false);
+    expect(f.tickets[0]?.waitingOn).toEqual(["99"]);
+  });
+
+  it("티켓은 번호순, spec 없으면 표제 = 폴더명", () => {
+    const f = buildFeature(
+      docs(
+        { file: "03-c.md", body: ticket("draft") },
+        { file: "01-a.md", body: ticket("draft") },
+        { file: "02-b.md", body: ticket("draft") },
+      ),
+    );
+    expect(f.tickets.map((t) => t.num)).toEqual(["01", "02", "03"]);
+    expect(f.title).toBe("f");
+  });
+
+  it("완료 판정은 원문 resolved 하나뿐 — 계산이 어디에도 저장되지 않는다(같은 입력 = 같은 출력)", () => {
+    const input = docs(
+      { file: "01-a.md", body: ticket("resolved (2026-08-01)") },
+      { file: "02-b.md", body: ticket("blocked — 외부 대기", "01") },
+    );
+    expect(buildFeature(input)).toEqual(buildFeature(input));
+    const b = buildFeature(input).tickets.find((t) => t.num === "02")!;
+    expect(b.startable).toBe(true); // 선행은 풀렸다
+    expect(b.sourceStatus).toBe("blocked"); // 그래도 외부 대기라는 사실은 살아 있다
+    expect(b.status).toBe("pending");
+  });
+});
+
+describe("buildFeatures — 기능 목록", () => {
+  const docs = (slug: string) => ({
+    slug,
+    spec: null,
+    tickets: [parseTicket("01-a.md", ticket("draft"))],
+  });
+
+  it("폴더명 순으로 정렬한다 — 화면 그룹 순서", () => {
+    expect(buildFeatures([docs("zeta"), docs("alpha")]).map((f) => f.slug)).toEqual([
+      "alpha",
+      "zeta",
+    ]);
+  });
+
+  it("입력이 없으면 빈 목록", () => {
+    expect(buildFeatures([])).toEqual([]);
+  });
+});

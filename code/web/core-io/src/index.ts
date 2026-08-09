@@ -2,6 +2,7 @@ export * from "./git";
 export * from "./discover";
 export * from "./emit";
 export * from "./load";
+export * from "./features";
 export * from "./worktree";
 export * from "./doc";
 export * from "./tree";

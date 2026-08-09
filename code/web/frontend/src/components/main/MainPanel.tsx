@@ -3,6 +3,7 @@ import type { Tab } from "../../hooks/useUrlState";
 import { RoadmapView } from "../plan/RoadmapView";
 import { TimelineView } from "../timeline/TimelineView";
 import { LineageView } from "../lineage/LineageView";
+import { FeaturesView } from "../features/FeaturesView";
 import { Tabs } from "./Tabs";
 import { ViewMode, type ViewModeOption } from "./ViewMode";
 
@@ -50,6 +51,8 @@ export function MainPanel({ project, tab, view, onTab, onView }: MainPanelProps)
         <div className="flex-1 overflow-hidden pl-4 pr-6 py-5">
           {tab === "lineage" ? (
             <LineageView key={`${project}-lineage`} project={project} />
+          ) : tab === "features" ? (
+            <FeaturesView key={`${project}-features`} project={project} />
           ) : mode === "timeline" ? (
             <TimelineView key={`${project}-timeline`} project={project} />
           ) : (

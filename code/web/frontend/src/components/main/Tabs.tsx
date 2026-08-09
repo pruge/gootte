@@ -2,6 +2,7 @@ import type { Tab } from "../../hooks/useUrlState";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "plan", label: "plan" },
+  { id: "features", label: "features" },
   { id: "lineage", label: "lineage" },
 ];
 

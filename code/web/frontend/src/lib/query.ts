@@ -4,6 +4,7 @@ import {
   fetchProjects,
   fetchPlan,
   fetchRoadmap,
+  fetchFeatures,
   fetchLineage,
   fetchTimeline,
   fetchWorktree,
@@ -25,6 +26,7 @@ export const qk = {
   projects: ["projects"] as const,
   plan: (slug: string) => ["plan", slug] as const,
   roadmap: (slug: string) => ["roadmap", slug] as const,
+  features: (slug: string) => ["features", slug] as const,
   lineage: (slug: string) => ["lineage", slug] as const,
   timeline: (slug: string) => ["timeline", slug] as const,
   worktree: (slug: string) => ["worktree", slug] as const,
@@ -57,6 +59,15 @@ export function useRoadmap(slug: string | null) {
   return useQuery({
     queryKey: qk.roadmap(slug ?? ""),
     queryFn: () => fetchRoadmap(slug as string),
+    enabled: slug !== null,
+  });
+}
+
+/** 기능별 할일(docs/features/) — 서버가 매 요청 재계산(INV-3). */
+export function useFeatures(slug: string | null) {
+  return useQuery({
+    queryKey: qk.features(slug ?? ""),
+    queryFn: () => fetchFeatures(slug as string),
     enabled: slug !== null,
   });
 }
