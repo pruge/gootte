@@ -6,4 +6,3 @@ export * from "./worktree";
 export * from "./doc";
 export * from "./tree";
 export * from "./watch";
-export * from "./mermaid";

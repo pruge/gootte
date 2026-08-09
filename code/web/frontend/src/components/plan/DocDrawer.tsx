@@ -5,7 +5,7 @@ import { useDocRef } from "../../lib/query";
 import { Loading, ErrorMsg } from "../common/states";
 import { ViewMode, type ViewModeOption } from "../main/ViewMode";
 
-// 무거운 md/mermaid 라이브러리는 뷰 모드 진입 시에만 로드(코드 스플릿, perf).
+// 무거운 md 라이브러리는 뷰 모드 진입 시에만 로드(코드 스플릿, perf).
 const Markdown = lazy(() =>
   import("../common/Markdown").then((m) => ({ default: m.Markdown })),
 );

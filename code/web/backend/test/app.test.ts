@@ -6,7 +6,6 @@ import {
   PlanResponse,
   RoadmapResponse,
   LineageResponse,
-  StructureResponse,
   TimelineResponse,
   WorktreeResponse,
   DocResponse,
@@ -129,19 +128,6 @@ describe("GET /api/lineage/:slug", () => {
 });
 
 describe("2c viz endpoints (013)", () => {
-  test("GET /api/structure — StructureResponse (저작 docs/mermaid 렌더)", async () => {
-    const app = createApp({ roots });
-    const res = await app.request("/api/structure/alpha");
-    expect(res.status).toBe(200);
-    const body = StructureResponse.parse(await res.json()); // zod 검증
-    expect(body.project).toBe("alpha");
-    // 이니셔티브 track 없음 → 전부 시스템/공통(null) 그룹, M-ID asc, 코드없는 M-0003 제외.
-    expect(body.groups.map((g) => g.track)).toEqual([null]);
-    expect(body.groups[0]?.diagrams.map((d) => d.id)).toEqual(["M-0001", "M-0002"]);
-    expect(body.groups[0]?.diagrams.find((d) => d.id === "M-0002")?.status).toBe("superseded");
-    expect(body.groups[0]?.diagrams[0]?.code).toContain("flowchart");
-  });
-
   test("GET /api/timeline — TimelineResponse envelope(rows·bounds)", async () => {
     const app = createApp({ roots });
     const res = await app.request("/api/timeline/alpha");
@@ -161,13 +147,6 @@ describe("2c viz endpoints (013)", () => {
     const body = WorktreeResponse.parse(await res.json());
     expect(body.project).toBe("alpha");
     expect(Array.isArray(body.worktrees)).toBe(true);
-  });
-
-  test("미해소 slug → 404 ApiError (structure)", async () => {
-    const app = createApp({ roots });
-    const res = await app.request("/api/structure/nope-xyz");
-    expect(res.status).toBe(404);
-    expect(ApiError.parse(await res.json()).error).toContain("nope-xyz");
   });
 });
 

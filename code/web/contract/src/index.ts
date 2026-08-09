@@ -11,7 +11,7 @@ export const Priority = z.enum(["critical", "high", "normal", "low"]);
 export const InitiativeStatus = z.enum(["active", "shipped", "planned", "superseded"]);
 export const ConflictRisk = z.enum(["low", "med", "high"]);
 export const KickoffKind = z.enum(["kickoff", "re-kickoff"]);
-export const LineageNodeKind = z.enum(["initiative", "adr", "mermaid"]);
+export const LineageNodeKind = z.enum(["initiative", "adr"]);
 export const LineageEdgeKind = z.enum(["supersede", "supersede-partial", "spawn", "dep", "reference"]);
 
 // ── 관리대상 프로젝트 (ⓐ source = machine, 예약) ──────────
@@ -220,24 +220,6 @@ export const LineageResponse = z.object({
 export type LineageResponse = z.infer<typeof LineageResponse>;
 
 // ── 2c viz projection (칸반·Gantt·worktree) — CORE 결정적 산출 ──────────────
-// ── structure projection (web-structure — 저작 docs/mermaid 렌더) ──────────
-/** 저작 mermaid 다이어그램 1개 — frontmatter + 추출된 ```mermaid 코드 블록. */
-export const StructureDiagram = z.object({
-  id: z.string(), // M-NNNN
-  title: z.string(),
-  status: z.enum(["living", "superseded"]),
-  code: z.string(), // 추출된 ```mermaid 블록 (렌더 소스)
-  sources: z.array(z.string()).default([]),
-});
-export type StructureDiagram = z.infer<typeof StructureDiagram>;
-
-/** track 그룹 — track=null = 시스템/공통(이니셔티브 소스 없는 횡단 그림, ADR-0002). */
-export const StructureGroup = z.object({
-  track: Track.nullable().default(null),
-  diagrams: z.array(StructureDiagram),
-});
-export type StructureGroup = z.infer<typeof StructureGroup>;
-
 /** Gantt 바 — sprint 기간(날짜). worktree는 날짜 소스 없어 제외(패널이 담당). */
 export const GanttBar = z.object({
   kind: z.literal("sprint"),
@@ -273,13 +255,6 @@ export const WorktreeStatus = z.object({
 export type WorktreeStatus = z.infer<typeof WorktreeStatus>;
 
 // ── viz envelope (backend 생산·frontend 소비) ──────────────────────────────
-/** web-structure — track 그룹 배열(서버가 최종 표시 순서로 정렬: 시스템 first → trackOrder). */
-export const StructureResponse = z.object({
-  project: z.string(),
-  groups: z.array(StructureGroup),
-});
-export type StructureResponse = z.infer<typeof StructureResponse>;
-
 export const TimelineResponse = z.object({
   project: z.string(),
   from: z.string().nullable(),
