@@ -3,9 +3,6 @@
 이 저장소의 spec·티켓은 **`docs/features/` 아래 마크다운 파일**로 산다. GitHub Issues 는 쓰지 않는다 —
 외부 기여자 유입이 없고, 이 저장소는 md 를 단일 SoT 로 삼는 규율(INV-1 — 손으로 유지되는 2차 SoT 금지)을 따른다.
 
-> **구 cling 문서 트리(`docs/roadmap/` · `docs/todo/` · `docs/sprint/`)는 은퇴했다.** 남아 있는 동안은
-> 과거 이력으로만 읽고 새로 쓰지 않는다. 새 작업 표면은 `docs/features/` 다.
-
 ## 레이아웃
 
 ```
