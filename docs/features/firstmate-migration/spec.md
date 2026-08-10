@@ -54,12 +54,17 @@ firstmate 로 관리하려면 저장소가 firstmate 가 읽는 모양 — 루�
 | F14 | **jinwooauto 의 포트 격리 방식** — `scripts/ports.sh` 단일 해석기가 `code/web/.ports.worktree`(있으면) → `code/web/.ports.main`(없으면) 순으로 읽는다. 판정은 파일 존재 여부만 본다. 값이 없거나 숫자가 아니면 기본값으로 넘어가지 않고 오류로 멈춘다. 테스트는 `scripts/tests/ports.test.sh` | `jinwooauto/scripts/ports.sh` |
 | F14b | **jinwooauto 의 codegraph 관례** = `docs/agents/codegraph/` 아래 크루 진입 파일 `README.md`, 유지보수 근거 `PLAN.md`, 컨텍스트별 `vocabulary/<컨텍스트>.md`. 사전은 **한국어 개념어 → 영문 앵커 + 파일 경로** 표이고 줄번호는 적지 않는다(하루 만에 12줄 중 7줄이 낡은 실측 때문) | `jinwooauto/docs/agents/codegraph/` |
 | F14c | 🔴 **그 README 의 첫 절은 "`No results found` 는 코드에 없다는 뜻이 아니다"** 경고다. 낡은 색인도 `status` 는 "up to date" 라고 답한다 — 실제로 실재하는 심볼 둘을 "없다" 고 기록한 사고가 있었다. 없다고 판정하기 전에 grep 교차확인 → 재색인 → 재질의 | 같은 파일 |
-| F14d | gootte 의 색인은 살아 있다 — 113파일·916노드·2,263엣지. 컨텍스트는 여섯(`contract` `core` `core-io` `cli` `backend` `frontend`) | `codegraph status` · `code/web/` |
+| F14d | gootte 의 색인은 살아 있다 — 113파일·916노드·2,263엣지. 컨텍스트는 여섯(`contract` `core` `core-io` `cli` `backend` `frontend`) | `codegraph status`. 🔴 **근거 칸이 원래 `code/web/` 이었다 — 2026-08-10 정정.** 그 경로로 읽었으나 답한 것은 **뿌리 색인**이다. gootte 에 `code/web/.codegraph/` 는 존재한 적이 없다([`docs/agents/codegraph/README.md`](../../agents/codegraph/README.md) §이 저장소의 색인 위치). 숫자 자체는 실측일의 값 그대로 둔다 |
 | F14e | jinwooauto 루트 `AGENTS.md` 에는 아직 codegraph 지시가 **없다.** 탐색 순서는 `docs/agents/domain.md` 가 규정한다 | 두 파일 grep |
 | F15 | **포트를 정하는 주체는 firstmate 다.** 크루 격리 사본 생성 시 firstmate 가 `code/web/.ports.worktree` 를 써 넣고, 이미 쓰이는 포트나 main 값과 겹치면 거부한다. `.ports.main` 은 tracked, `.ports.worktree` 는 gitignore | `firstmate/bin/fm-worktree-runtime-lib.sh` · `jinwooauto/.gitignore` 9–10행 |
 
 미검증으로 남긴 것: `docs/roadmap` 52문서 각각의 현재 코드 일치 여부는 세지 않았다. D2 가 "삭제" 로
 닫혔으므로 이 대조는 더 이상 필요하지 않다.
+
+🟢 **F14d 의 숫자는 지금 보면 낡았고, 그것이 이 사양이 통했다는 증거다.** 2026-08-10 에 다시 재니
+67파일·534노드·1,492엣지다. 줄어든 만큼이 이 사양의 티켓들이 걷어낸 표면(mermaid 제품 경로 F13,
+은퇴한 문서 형식을 읽던 read-path)이다. 🔴 **그러니 위 표의 숫자를 오늘 값으로 덮어쓰지 마라** —
+실측일의 값이라야 전후 대조가 성립한다.
 
 ## 닫힌 결정
 
