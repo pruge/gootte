@@ -135,13 +135,24 @@ dev 서버는 사용자가 직접 띄운다 — 에이전트가 kill·재시작�
 
 ## 구조 파악 — codegraph 로 한다
 
-코드 구조·호출 경로·blast radius 는 grep 이 아니라 **codegraph** 로 묻는다
-(`codegraph explore "<심볼 또는 질문>" -p code/web`). 색인은 `code/web/.codegraph/`(gitignore, 머신 로컬)에
-있고 없으면 `codegraph init code/web` 로 만든다. **한국어 개념어 → 영문 앵커 사전은
-[`docs/agents/codegraph/`](docs/agents/codegraph/) 에 있다** — 개념어에서 코드로 갈 때 먼저 거기를 본다.
+코드 구조·호출 경로·blast radius 는 grep 이 아니라 **codegraph** 로 묻는다.
+색인은 저장소 뿌리가 아니라 `code/web/.codegraph/`(gitignore, 머신 로컬)에 있으므로 **모든 명령에
+`-p code/web`**(또는 위치 인자 `code/web`)을 준다. 없으면 `codegraph init code/web` 로 만든다.
+
+🔴 **`explore` 만 쓰지 마라** — 질문이 정해져 있으면 그 질문의 명령이 따로 있다:
+`impact`(바꾸면 어디가 깨지나 — **편집 전**) · `callers`(누가 부르나) · `callees`(무엇에 기대나) ·
+`affected`(어느 테스트를 돌리나 — **편집 후**) · `node`(심볼 하나 + 현재 줄번호). 문법은 `codegraph --help`.
+🔴 **편집한 뒤에는 `codegraph sync code/web`** — 색인은 편집을 자동으로 안 따라와 낡은 답을 자신 있게 준다.
+남이 건드린 것, `git pull`·브랜치 전환도 sync 하면 반영된다(변경분만, 초 단위).
+🔴 **개수만 보고 판단하지 마라 — `kind` 열을 봐라.** caller 줄번호는 **그 심볼의 정의 줄**이지 호출 줄이
+아니고, `file … :1` 은 잘린 값이 아니라 함수 밖 호출이며, `callees` 는 타입 참조까지 센다.
 
 🔴 codegraph 의 `No results found` 는 "코드에 없다" 가 **아니다.** 색인은 조용히 낡는다 — 없다고 판정하기
 전에 grep 교차확인 → 재색인 → 재질의 순으로 확인한다.
+`codegraph status` 의 "up to date" 는 신선도 근거가 못 된다.
+
+**한국어 개념어 → 영문 앵커 사전은 [`docs/agents/codegraph/`](docs/agents/codegraph/) 에 있다** —
+개념어에서 코드로 갈 때 먼저 거기를 본다.
 
 ## 문서 관례 (`docs/agents/`)
 
