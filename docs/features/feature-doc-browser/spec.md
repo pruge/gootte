@@ -195,6 +195,10 @@ mermaid 는 제품에서 의도적으로 걷어냈다(F5). **되살리지 않는
 |---|---|---|---|
 | [01](issues/01-browse-feature-docs.md) | 기능 카드를 열어 문서를 읽는다 | `resolved` | — |
 | [02](issues/02-check-list-lines-up.md) | check 목록도 issues 목록과 같은 자리에서 시작한다 | `ready-for-agent` | 없음 — 지금 착수 가능 |
+| [03](issues/03-work-in-progress-rises.md) | 지금 돌고 있는 기능이 위로 올라온다(정렬 단계 하나 추가) | `ready-for-agent` | 없음 — 지금 착수 가능 |
+
+🔴 **03 은 정렬 규칙의 첫 기록이기도 하다.** 지금 목록 순서(무리 → 폴더명)는 코드 주석에만 있고
+사양 어디에도 없다 — 03 이 단계를 더하면서 세 단계 전부를 여기 남긴다.
 
 ## 열린 결정
 
