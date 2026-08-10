@@ -93,7 +93,11 @@ export function readFeatureDoc(
   return content === null ? { ok: false, reason: "not-found" } : { ok: true, content };
 }
 
-/** 프로젝트 하나의 기능별 할일 목록. `docs/features/` 가 없으면 빈 목록(예외로 죽지 않는다). */
+/**
+ * 프로젝트 하나의 기능별 할일 목록. `docs/features/` 가 없으면 빈 목록(예외로 죽지 않는다).
+ * 🔴 **정렬돼 있지 않다** — 화면 순서(무리 → 처리중 → 폴더명, 티켓 03)는 처리중이 얹힌 뒤에야
+ * 정해진다. 정렬된 목록이 필요하면 `applyInProgress` 를 거친 결과를 쓴다.
+ */
 export function readFeatures(repoPath: string): Feature[] {
   const base = join(repoPath, "docs", "features");
   if (!isDir(base)) return [];

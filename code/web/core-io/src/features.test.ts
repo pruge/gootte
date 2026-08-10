@@ -74,15 +74,21 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
     expect(f?.tickets[0]?.sourceStatus).toBe("진행중");
   });
 
-  it("기능 여러 개를 폴더명 순으로, 티켓은 번호순으로", () => {
+  // 🔴 `readFeatures` 는 기능 순서를 정렬하지 않는다(티켓 03) — 화면 순서(무리 → 처리중 →
+  // 폴더명)는 처리중이 얹힌 뒤 `sortFeatures` 가 정한다. 여기서는 둘 다 실리는지, 그리고
+  // 기능 안 티켓은 여전히 번호순인지만 본다.
+  it("기능 여러 개를 다 싣는다 — 티켓은 번호순으로", () => {
     spec("zeta", "# zeta\n\nStatus: draft\n");
     spec("alpha", "# alpha\n\nStatus: draft\n");
     issue("alpha", "10-j.md", ticket("10 — j", "draft"));
     issue("alpha", "02-b.md", ticket("02 — b", "draft"));
 
     const features = readFeatures(repo);
-    expect(features.map((f) => f.slug)).toEqual(["alpha", "zeta"]);
-    expect(features[0]?.tickets.map((t) => t.num)).toEqual(["02", "10"]);
+    expect(features.map((f) => f.slug).sort()).toEqual(["alpha", "zeta"]);
+    expect(features.find((f) => f.slug === "alpha")?.tickets.map((t) => t.num)).toEqual([
+      "02",
+      "10",
+    ]);
   });
 
   it("spec.md 없는 기능 폴더도 티켓을 싣는다(표제 = 폴더명)", () => {
