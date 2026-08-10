@@ -6,10 +6,17 @@
 
 ## 왜 필요한가
 
-gootte 의 `code/web/` 에는 `.codegraph/` 색인이 있지만(이 작업 중 `codegraph init code/web` 로
+gootte 에는 `.codegraph/` 색인이 있지만(이 작업 중 `codegraph init code/web` 로
 직접 만들어 확인: 113 파일·916 노드·2,263 엣지 — spec F14d 의 실측과 일치), **노드 종류가 전부
 코드다** — `import`·`function`·`interface`·`constant`·`type_alias` 등. 문서 의미 노드가 없다.
 즉 codegraph 는 **영문 식별자로만 말한다.**
+
+🔴 **위 `codegraph init code/web` 은 따라 하지 마라 — 이 문서가 퍼뜨린 오류의 출처다.**
+그 명령은 이 사전을 처음 만들던 격리 사본에서 한 번 실행된 기록일 뿐인데, 그 사본의 배치가
+"gootte 의 색인은 `code/web/` 에 있다" 는 문장으로 굳어 README·AGENTS·domain 으로 옮겨 다녔다.
+**캡틴 사본의 색인은 저장소 뿌리에 있고**(자매 저장소 jinwooauto 와 같다), 하위에 하나 더 만들면
+색인이 둘로 갈라진다. 2026-08-10 에 바로잡았다 — [`README.md`](README.md) §이 저장소의 색인 위치.
+아래 §미리 채운 첫 항목의 같은 명령도 같은 기록이지 지시가 아니다.
 
 크루는 티켓·스펙의 한국어 개념어("실시간 저장소", "프로젝트 발견")는 알아도 그것이 코드에서
 `LiveHub`/`discoverProjects` 로 불린다는 것은 모른다 — 그 사이를 잇는 사전이 없는 게 문제다.
@@ -102,12 +109,12 @@ docs/agents/codegraph/
 ## 신선도 유지
 
 - `.codegraph/` 는 머신-로컬(`.gitignore` 대상, 티켓 01 이 처리)이고 **자동 재빌드 훅이 없다.**
-  크루가 `codegraph sync code/web` 을 세션 시작 시 스스로 돌려야 색인이 최신이다.
+  크루가 `codegraph sync` 를 세션 시작 시 스스로 돌려야 색인이 최신이다.
 - 🔴 **`codegraph status` 로는 그것을 확인할 수 없다.** jinwooauto 에서 부분적으로 낡은 색인에도
   "up to date" 라고 답한 실측이 있었다(README §먼저). **색인 신선도의 유일한 근거는 코드 자체와의
-  교차확인**이고, 어긋나면 `codegraph index code/web` 으로 재색인한다.
+  교차확인**이고, 어긋나면 `codegraph index` 로 재색인한다.
 - 사전 항목은 **검증 가능한 형태로 적으므로**(영문 앵커 + 위치) 심볼이 바뀌면
-  `codegraph query "<영문 앵커>" -p code/web` 이 즉시 `No results found` 로 알려준다 — 그 항목은
+  `codegraph query "<영문 앵커>"` 가 즉시 `No results found` 로 알려준다 — 그 항목은
   발견한 사람이 삭제하거나 새 이름으로 갱신한다. 별도 만료 주기는 두지 않는다 — 기계적으로
   검증 가능한 것에 시간 기반 규율을 얹는 것은 낭비다.
 

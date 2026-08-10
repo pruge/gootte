@@ -12,19 +12,29 @@
 
 ## 이 저장소의 색인 위치
 
-색인은 저장소 뿌리가 아니라 **`code/web/.codegraph/`** 에 있다(gitignore, 머신 로컬).
-그래서 모든 명령에 그 경로를 준다 — `query`/`explore`/`node` 류는 `-p code/web`,
-`status`/`init`/`index`/`sync` 는 위치 인자로 `code/web`.
-
-격리 작업 사본에는 색인이 아예 없을 수 있다. 질의하기 전에 확인한다:
+색인은 **저장소 뿌리**의 `.codegraph/` 에 있다(gitignore, 머신 로컬).
+자매 저장소 jinwooauto 와 같다. **명령에 경로를 줄 필요가 없다** — 뿌리에서 그냥 쓴다.
 
 ```
-codegraph status code/web
+codegraph status
 ```
 
-없다고 나오면 `codegraph init code/web` 로 만든다.
+격리 작업 사본에는 색인이 아예 없을 수 있다. 없다고 나오면 **저장소 뿌리에서**
+`codegraph init` 으로 만든다.
+
+🔴 **`init code/web` 처럼 하위 경로에 만들지 마라.** 뿌리 색인이 이미 `code/web/` 아래를
+전부 담고 있어서, 하위에 하나 더 만들면 **색인이 둘로 갈라지고** 좁은 쪽이 뿌리 쪽 답을
+못 낸다. 명령에 하위 경로를 줘도 codegraph 는 **위로 올라가며 가장 가까운 `.codegraph/` 를**
+찾으므로, 색인이 뿌리 하나뿐이면 경로를 줘도 같은 답이 나온다 — 그래서 경로는 붙일 이유가 없고,
+`init` 만이 진짜 해를 끼친다.
+
 🔴 **색인 없이 질의하면 전부 "없음" 으로 나온다** — 그 결과를 사전에 적으면
 이 사전이 오판을 기록하는 장치가 된다.
+
+> **2026-08-10 정정.** 이 절은 첫 커밋(#1·#2)부터 색인이 `code/web/.codegraph/` 에 있다고 적어
+> 왔고, 그 문장이 그대로 옮겨 다녔다. **그런 자리는 존재한 적이 없다** — 캡틴 사본에서 직접 확인했다.
+> 다행히 경로를 줘도 위로 올라가 뿌리 색인을 찾았기에 답이 틀리지는 않았다. **`init code/web`
+> 한 줄만이 실제 위험이었다.**
 
 ## 순서
 
@@ -34,7 +44,7 @@ codegraph status code/web
    grep -rn "실시간" docs/agents/codegraph/vocabulary/
    ```
 
-2. 없으면 `codegraph query "<짐작한 영문 이름>" -p code/web` 로 시도한다.
+2. 없으면 `codegraph query "<짐작한 영문 이름>"` 으로 시도한다.
    **영문 식별자로 질의해야 걸린다** — 자연어 한국어 질문은 앵커 추출이 불안정하다.
 3. 결과가 나오면 그 앵커로 필요한 명령을 쓴다.
 4. `No results found` 는 **"코드에 없다" 가 아니다.** 아래 §없다고 말하기 전에 를 밟아라.
@@ -46,7 +56,6 @@ codegraph status code/web
 특히 **고치기 전 `impact`**(무엇이 깨지나)와 **고친 뒤 `affected`**(무슨 테스트를 돌리나)다.
 어느 명령이 어느 질문에 답하는지와 출력 읽는 법은 [`AGENTS.md`](../../../AGENTS.md) §구조 파악이
 소유하고, 문법은 `codegraph --help` 가 소유한다. 이 파일은 **사전**만 소유한다.
-이 저장소에서는 전부 `-p code/web` 을 붙인다.
 
 ## 없다고 말하기 전에
 
@@ -56,7 +65,7 @@ codegraph status code/web
 없다고 판단하기 전에 반드시 이 순서를 밟는다:
 
 1. `grep -rn "<이름>" code/` 또는 파일을 직접 읽어 **교차확인한다.**
-2. 그래도 없으면 `codegraph index code/web` 으로 **재색인한 뒤 다시 묻는다.**
+2. 그래도 없으면 `codegraph index` 로 **재색인한 뒤 다시 묻는다.**
 3. 그 다음에야 "없다" 고 말할 수 있다.
 
 건너뛰면 **이미 있는 것을 없는 줄 알고 다시 구현하게 된다.**
@@ -70,11 +79,11 @@ codegraph status code/web
 **무엇.** 심볼 이름과 **파일 경로만** 적는다.
 🔴 **줄번호는 적지 마라** — 가장 빨리 썩는 값이고, 줄번호가 밀린 사전은 없는 것보다 나쁘다.
 심볼 이름과 파일 경로는 PR 몇 개가 착지해도 견딘다.
-줄은 필요할 때 `codegraph node "<심볼>" -p code/web` 으로 즉시 나온다.
+줄은 필요할 때 `codegraph node "<심볼>"` 으로 즉시 나온다.
 
 **어떻게.**
 
-1. `codegraph query "<앵커>" -p code/web` 로 결과가 나오는지 확인한다.
+1. `codegraph query "<앵커>"` 로 결과가 나오는지 확인한다.
    안 나오면 위 §없다고 말하기 전에 를 밟는다. 그래도 없으면 적지 않는다.
 2. **경로가 파일을 정한다.** `code/web/backend/...` 면 `vocabulary/backend.md`,
    `code/web/contract/...` 면 `vocabulary/contract.md`. 해당 파일이 없으면 새로 만든다
