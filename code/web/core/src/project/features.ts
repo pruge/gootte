@@ -109,13 +109,22 @@ export function countOpenFeatures(features: readonly Feature[]): number {
   return features.filter((f) => hasOpenWork(f.tickets)).length;
 }
 
+/**
+ * 기능 목록 → 계약 형태. **정렬하지 않는다** — 정렬은 처리중이 얹힌 뒤,
+ * `sortFeatures`(아래) 한 곳에서만 일어난다(§sortFeatures 참조).
+ * 기능 자신의 `status`(spec)는 쓰지 않는다 — 판정은 오직 티켓으로 한다.
+ */
+export function buildFeatures(docs: FeatureDocs[]): Feature[] {
+  return docs.map(buildFeature);
+}
+
 /** 정렬 계층 — 작을수록 위. 세 무리의 순서 자체가 이 상수들의 값이다. */
 const RANK_OPEN = 0; // 착수할 티켓이 남았다
 const RANK_NO_TICKETS = 1; // 티켓이 없다 — 착수할 것도, 끝났다는 증거도 없다
 const RANK_DONE = 2; // 티켓이 전부 done/dropped 다
 
 /**
- * 기능 하나의 정렬 계층.
+ * 기능 하나의 무리(1단계).
  *
  * 🔴 **티켓이 0개인 기능은 "남은 일 있음" 이 아니다** — "남은 일" 은 지금 착수할 것이 남았다는
  * 뜻이고, 티켓이 없으면 착수할 것이 없다. 이것을 맨 위 무리에 끼우면 기능이 늘수록 진짜 남은
@@ -124,21 +133,38 @@ const RANK_DONE = 2; // 티켓이 전부 done/dropped 다
  * 그렇다고 완료 무리로 접지도 않는다 — **끝났다는 증거가 없다.** 완료로 접으면 화면이
  * "이 기능은 끝났다" 고 거짓말한다. 그래서 둘 사이, 자기 무리에 둔다.
  */
-function rank(docs: FeatureDocs): number {
-  if (docs.tickets.length === 0) return RANK_NO_TICKETS;
-  return hasOpenWork(docs.tickets) ? RANK_OPEN : RANK_DONE;
+function rank(tickets: readonly { status: TodoStatus }[]): number {
+  if (tickets.length === 0) return RANK_NO_TICKETS;
+  return hasOpenWork(tickets) ? RANK_OPEN : RANK_DONE;
 }
 
 /**
- * 기능 목록 → 계약 형태. 남은 일이 있는 기능이 먼저, 티켓이 없는 기능이 그다음, 다 끝난 기능이
- * 마지막 — 각 무리 안은 폴더명 순.
- * 기능 자신의 `status`(spec)는 쓰지 않는다 — 판정은 오직 티켓으로 한다.
+ * 처리중인 티켓이 하나라도 있는가(2단계, 티켓 03).
+ * `in_progress` 는 격리 사본 관측(`applyInProgress`)만 붙인다 — 여기서는 이미 계산된 값을
+ * 읽기만 한다(INV-1). done/dropped 티켓엔 절대 안 붙으므로, 이 값이 참이면 그 기능은
+ * 반드시 `RANK_OPEN` 무리다(그래서 무리를 건드리지 않고 무리 "안" 에서만 앞세울 수 있다).
  */
-export function buildFeatures(docs: FeatureDocs[]): Feature[] {
-  return [...docs]
-    .sort((a, b) => {
-      const rankDiff = rank(a) - rank(b);
-      return rankDiff !== 0 ? rankDiff : a.slug.localeCompare(b.slug);
-    })
-    .map(buildFeature);
+function hasInProgress(tickets: readonly { status: TodoStatus }[]): boolean {
+  return tickets.some((t) => t.status === "in_progress");
+}
+
+/**
+ * 기능 목록 정렬 — **여기 한 곳에서만 일어난다**(티켓 03). 세 단계:
+ *
+ * 1. 무리 — 남은 일 있음(`RANK_OPEN`) → 티켓 없음(`RANK_NO_TICKETS`) → 전부 완료(`RANK_DONE`)
+ * 2. 처리중인 티켓이 있는가 — 있는 쪽이 같은 무리 안에서 먼저(캡틴 지시, 2026-08-10)
+ * 3. 폴더명(`slug`) — 개수가 아니라 이름으로. 2단계는 있다/없다만 보고, 개수로 줄 세우면
+ *    사본 하나가 티켓 여럿을 건드릴 때 순서가 널뛴다.
+ *
+ * 🔴 이 함수는 **처리중이 이미 얹힌** `Feature[]` 를 받는다 — `buildFeatures` 는 문서만 보고
+ * 끝나 처리중을 아직 모른다(`applyInProgress` 가 나중이다). 그래서 정렬은 `buildFeatures` 가
+ * 아니라 `applyInProgress` 가 사실을 다 모은 뒤 호출한다.
+ */
+export function sortFeatures(features: readonly Feature[]): Feature[] {
+  return [...features].sort((a, b) => {
+    const rankDiff = rank(a.tickets) - rank(b.tickets);
+    if (rankDiff !== 0) return rankDiff;
+    const wipDiff = Number(hasInProgress(b.tickets)) - Number(hasInProgress(a.tickets));
+    return wipDiff !== 0 ? wipDiff : a.slug.localeCompare(b.slug);
+  });
 }

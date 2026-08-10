@@ -7,6 +7,7 @@ import type {
   UnreadableCopy,
 } from "@gootte/contract";
 import { parseTicketPath } from "../parse/ticket-path";
+import { sortFeatures } from "./features";
 
 /**
  * "지금 붙들려 있는 일" 계산 — 순수(INV-4). 입력은 **격리 사본 관측 결과**지 문서가 아니다.
@@ -77,6 +78,9 @@ function markTicket(ticket: FeatureTicket, branches: readonly string[]): Feature
  * - 한 티켓을 두 사본이 붙들어도 **티켓은 하나로 센다**. 두 브랜치는 `workedBy` 에 나란히 실린다.
  * - 🔴 **문서가 `claimed` 라고 말하는데 붙든 사본이 없으면** 처리중으로 그리지 않고, 대신 `unclaimed`
  *   에 실어 감추지 않는다 — 지우다 만 흔적이지 진행 중이 아니다(work-claims-its-ticket/01 §D).
+ * - 🔴 **반환하는 `features` 는 이미 정렬돼 있다**(`sortFeatures`, 티켓 03) — 처리중이 얹혀야
+ *   비로소 무리 안에서 누가 위로 오는지 정해지므로, 여기가 사실이 다 모이는 자리이자 정렬하는
+ *   유일한 자리다. `readFeatures` 는 정렬하지 않는다.
  */
 export function applyInProgress(
   features: readonly Feature[],
@@ -123,8 +127,10 @@ export function applyInProgress(
     }),
   }));
 
+  // 정렬은 여기서 한 번만 일어난다(티켓 03) — `marked` 라야 처리중이 실려 있다.
+  // `features`(입력, 문서만 본 순서)는 아직 처리중을 모르니 여기가 그 사실이 다 모이는 자리다.
   return {
-    features: marked,
+    features: sortFeatures(marked),
     inProgress: {
       root: scan.root,
       rootExists: scan.rootExists,

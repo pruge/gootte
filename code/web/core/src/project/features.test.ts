@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { Feature, FeatureTicket } from "@gootte/contract";
 import { parseTicket } from "../parse/feature";
-import { buildFeature, buildFeatures, countOpenFeatures } from "./features";
+import { buildFeature, buildFeatures, countOpenFeatures, sortFeatures } from "./features";
 
 /** 티켓 파일 한 장 합성 — 상단 두 줄이 서식의 전부다(triage-labels). */
 function ticket(status: string, blockedBy?: string): string {
@@ -169,10 +170,12 @@ describe("buildFeatures — 기능 목록", () => {
     tree: [],
   });
 
-  it("폴더명 순으로 정렬한다 — 화면 그룹 순서", () => {
+  // 🔴 정렬하지 않는다(티켓 03) — 순서는 처리중이 얹힌 뒤 `sortFeatures` 가 정한다.
+  // 여기서는 문서 → 계약 형태 변환만 본다.
+  it("문서 순서를 그대로 통과시킨다 — 정렬은 여기서 하지 않는다", () => {
     expect(buildFeatures([docs("zeta"), docs("alpha")]).map((f) => f.slug)).toEqual([
-      "alpha",
       "zeta",
+      "alpha",
     ]);
   });
 
@@ -194,70 +197,18 @@ describe("buildFeatures — 기능 목록", () => {
     tree: [],
   });
 
-  it("남은 일(done/dropped 아닌 티켓)이 있는 기능이 전부 끝난 기능보다 앞에 온다", () => {
-    expect(
-      buildFeatures([
-        docsWithStatus("alpha-done", "resolved (2026-08-01)"),
-        docsWithStatus("zeta-open", "ready-for-agent"),
-      ]).map((f) => f.slug),
-    ).toEqual(["zeta-open", "alpha-done"]);
+  it("티켓이 0개인 기능은 세지 않는다 — 착수할 것이 없다", () => {
+    expect(countOpenFeatures(buildFeatures([docsWithNoTickets("empty")]))).toBe(0);
   });
 
-  // 🔴 "남은 일" = 착수할 것이 남았다. 티켓이 없으면 착수할 것이 없으므로 맨 위 무리를 막지 않는다 —
-  // 기능이 늘수록 진짜 남은 일을 스크롤해 찾게 되는 것이 이 규칙이 막는 통증이다.
-  it("티켓이 0개인 기능은 남은 일 있는 기능보다 뒤로 간다 — 착수할 것이 없다", () => {
-    expect(
-      buildFeatures([
-        docsWithNoTickets("alpha-empty"),
-        docsWithStatus("zeta-open", "ready-for-agent"),
-      ]).map((f) => f.slug),
-    ).toEqual(["zeta-open", "alpha-empty"]);
-  });
-
-  // …그렇다고 완료로 접지도 않는다. 끝났다는 증거가 없는 것과 끝난 것은 다른 값이다.
-  it("티켓이 0개인 기능은 전부 끝난 기능보다는 앞이다 — 끝났다는 증거가 없다", () => {
-    expect(
-      buildFeatures([
-        docsWithStatus("alpha-done", "resolved (2026-08-01)"),
-        docsWithNoTickets("zeta-empty"),
-      ]).map((f) => f.slug),
-    ).toEqual(["zeta-empty", "alpha-done"]);
-  });
-
-  it("세 무리가 남은 일 → 티켓 없음 → 끝남 순으로 온다 — 각 무리 안은 폴더명 순", () => {
-    expect(
-      buildFeatures([
-        docsWithStatus("zeta-done", "resolved (2026-08-01)"),
-        docsWithNoTickets("mike-empty"),
-        docsWithStatus("alpha-open", "ready-for-agent"),
-        docsWithStatus("bravo-done", "resolved (2026-08-01)"),
-        docsWithNoTickets("delta-empty"),
-        docsWithStatus("yankee-open", "blocked"),
-      ]).map((f) => f.slug),
-    ).toEqual([
-      "alpha-open",
-      "yankee-open",
-      "delta-empty",
-      "mike-empty",
-      "bravo-done",
-      "zeta-done",
-    ]);
-  });
-
-  it("같은 무리 안에서는 폴더명 순서가 유지된다", () => {
-    expect(
-      buildFeatures([
-        docsWithStatus("zeta-open", "ready-for-agent"),
-        docsWithStatus("alpha-open", "ready-for-agent"),
-        docsWithStatus("delta-done", "resolved (2026-08-01)"),
-        docsWithStatus("bravo-done", "resolved (2026-08-01)"),
-      ]).map((f) => f.slug),
-    ).toEqual(["alpha-open", "zeta-open", "bravo-done", "delta-done"]);
+  it("입력이 비면 0", () => {
+    expect(countOpenFeatures([])).toBe(0);
   });
 
   /**
    * 🔴 세기와 정렬은 **같은 판정**이어야 한다 — 갈리는 순간 사이드바 수와 카드 순서가
-   * 서로 다른 말을 한다. 그래서 세기를 따로 검증하지 않고 **맨 앞 무리의 크기와 같은지**로 못박는다.
+   * 서로 다른 말을 한다. 그래서 세기를 따로 검증하지 않고 **정렬 맨 앞 무리의 크기와 같은지**로
+   * 못박는다. 정렬은 이제 `sortFeatures` 가 하므로 여기서 한 번 더 태운다.
    */
   it("남은 일 있는 기능 수 = 정렬 맨 앞 무리의 크기", () => {
     const docs = [
@@ -267,25 +218,133 @@ describe("buildFeatures — 기능 목록", () => {
       docsWithStatus("echo-open", "resolved (2026-08-01)", "blocked"),
       docsWithStatus("foxtrot-dropped", "wontfix"),
     ];
-    const sorted = buildFeatures(docs);
-    expect(countOpenFeatures(sorted)).toBe(2); // alpha-open · echo-open
-    expect(sorted.slice(0, 2).map((f) => f.slug)).toEqual(["alpha-open", "echo-open"]);
+    const built = buildFeatures(docs);
+    expect(countOpenFeatures(built)).toBe(2); // alpha-open · echo-open
+    expect(
+      sortFeatures(built)
+        .slice(0, 2)
+        .map((f) => f.slug),
+    ).toEqual(["alpha-open", "echo-open"]);
+  });
+});
+
+describe("sortFeatures — 화면 순서(무리 → 처리중 → 폴더명, 티켓 03)", () => {
+  const t = (status: FeatureTicket["status"], over: Partial<FeatureTicket> = {}): FeatureTicket => ({
+    num: "01",
+    slug: "01-x",
+    title: "x",
+    status,
+    sourceStatus: null,
+    statusKnown: true,
+    blockedBy: [],
+    waitingOn: [],
+    startable: true,
+    workedBy: [],
+    ...over,
   });
 
-  it("티켓이 0개인 기능은 세지 않는다 — 착수할 것이 없다", () => {
-    expect(countOpenFeatures(buildFeatures([docsWithNoTickets("empty")]))).toBe(0);
+  const f = (slug: string, tickets: FeatureTicket[]): Feature => ({
+    slug,
+    title: slug,
+    status: "pending",
+    sourceStatus: null,
+    statusKnown: true,
+    tickets,
+    docs: [],
   });
 
-  it("입력이 비면 0", () => {
-    expect(countOpenFeatures([])).toBe(0);
+  it("남은 일이 있는 기능이 전부 끝난 기능보다 앞에 온다(1단계)", () => {
+    expect(
+      sortFeatures([
+        f("alpha-done", [t("done")]),
+        f("zeta-open", [t("pending")]),
+      ]).map((x) => x.slug),
+    ).toEqual(["zeta-open", "alpha-done"]);
+  });
+
+  it("티켓이 0개인 기능은 남은 일 있는 기능보다 뒤, 전부 끝난 기능보다는 앞이다(1단계, 가운데 무리)", () => {
+    expect(
+      sortFeatures([
+        f("alpha-empty", []),
+        f("zeta-open", [t("pending")]),
+      ]).map((x) => x.slug),
+    ).toEqual(["zeta-open", "alpha-empty"]);
+    expect(
+      sortFeatures([
+        f("alpha-done", [t("done")]),
+        f("zeta-empty", []),
+      ]).map((x) => x.slug),
+    ).toEqual(["zeta-empty", "alpha-done"]);
+  });
+
+  it("세 무리가 남은 일 → 티켓 없음 → 끝남 순으로 온다 — 각 무리 안은 폴더명 순", () => {
+    expect(
+      sortFeatures([
+        f("zeta-done", [t("done")]),
+        f("mike-empty", []),
+        f("alpha-open", [t("pending")]),
+        f("bravo-done", [t("done")]),
+        f("delta-empty", []),
+        f("yankee-open", [t("pending")]),
+      ]).map((x) => x.slug),
+    ).toEqual(["alpha-open", "yankee-open", "delta-empty", "mike-empty", "bravo-done", "zeta-done"]);
   });
 
   it("dropped(wontfix) 는 done 과 똑같이 끝남으로 취급된다", () => {
     expect(
-      buildFeatures([
-        docsWithStatus("alpha-dropped", "wontfix"),
-        docsWithStatus("zeta-open", "ready-for-agent"),
-      ]).map((f) => f.slug),
+      sortFeatures([
+        f("alpha-dropped", [t("dropped")]),
+        f("zeta-open", [t("pending")]),
+      ]).map((x) => x.slug),
     ).toEqual(["zeta-open", "alpha-dropped"]);
+  });
+
+  // 🔴 이 티켓의 진짜 일 — 2단계. 처리중은 무리를 안 바꾸고 무리 "안" 에서만 앞세운다.
+  it("🔴 처리중 있는 기능 + 없는 기능, 폴더명은 없는 쪽이 앞이어도 처리중 있는 쪽이 위(2단계)", () => {
+    expect(
+      sortFeatures([
+        f("alpha-idle", [t("pending")]),
+        f("zeta-wip", [t("in_progress")]),
+      ]).map((x) => x.slug),
+    ).toEqual(["zeta-wip", "alpha-idle"]);
+  });
+
+  it("처리중 있는 기능 둘은 자기들끼리 폴더명 순 — 개수로 줄 세우지 않는다", () => {
+    expect(
+      sortFeatures([
+        f("zeta-wip", [t("in_progress")]),
+        f("alpha-wip", [t("in_progress"), t("in_progress", { slug: "02-y", num: "02" })]),
+      ]).map((x) => x.slug),
+    ).toEqual(["alpha-wip", "zeta-wip"]);
+  });
+
+  it("🔴 다 끝난 기능 + 처리중 있는 기능 — 완료는 여전히 아래(무리가 이긴다)", () => {
+    expect(
+      sortFeatures([
+        f("alpha-wip", [t("in_progress")]),
+        f("zeta-done", [t("done")]),
+      ]).map((x) => x.slug),
+    ).toEqual(["alpha-wip", "zeta-done"]);
+  });
+
+  it("처리중이 하나도 없으면 예전 순서 그대로 — 회귀 고정(이 티켓의 안전선)", () => {
+    expect(
+      sortFeatures([
+        f("zeta-open", [t("pending")]),
+        f("alpha-open", [t("pending")]),
+        f("delta-done", [t("done")]),
+        f("bravo-done", [t("done")]),
+      ]).map((x) => x.slug),
+    ).toEqual(["alpha-open", "zeta-open", "bravo-done", "delta-done"]);
+  });
+
+  it("티켓 없는 기능은 처리중과 무관하게 여전히 가운데 무리다", () => {
+    expect(
+      sortFeatures([
+        f("mike-empty", []),
+        f("alpha-wip", [t("in_progress")]),
+        f("zeta-done", [t("done")]),
+      ]).map((x) => x.slug),
+    ).toEqual(["alpha-wip", "mike-empty", "zeta-done"]);
   });
 });

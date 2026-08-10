@@ -315,3 +315,40 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     ]);
   });
 });
+
+describe("정렬 — 처리중인 기능이 무리 안에서 위로 온다(티켓 03)", () => {
+  /** `auth`(이미 있음) 보다 폴더명이 뒤인 두 번째 기능 — 정렬이 처리중을 보는지는 이걸로만 잡힌다. */
+  function makeSecondFeature(): void {
+    mkdirSync(join(project, "docs", "features", "billing", "issues"), { recursive: true });
+    writeFileSync(
+      join(project, "docs", "features", "billing", "spec.md"),
+      "# billing\n\nStatus: draft\n",
+    );
+    writeFileSync(
+      join(project, "docs", "features", "billing", "issues", "01-plan.md"),
+      ticketFile("01", "요금제"),
+    );
+  }
+
+  // 🔴 이 티켓의 진짜 일 — `readFeatures` 가 끝난 뒤에야 처리중이 얹히므로, 정렬이 그 사실을
+  // 보려면 `applyInProgress` 를 거친 뒤의 결과라야 한다. `observe()` 가 정확히 그 전체 경로다.
+  it("🔴 처리중인 티켓을 가진 기능이 폴더명 순서를 뒤집고 위로 온다", () => {
+    makeSecondFeature();
+    makeCopy({
+      slot: "1",
+      branch: "fm/billing-plan",
+      work: { "docs/features/billing/issues/01-plan.md": ticketFile("01", "요금제") },
+    });
+
+    const { features } = observe();
+    expect(features.map((f) => f.slug)).toEqual(["billing", "auth"]); // "auth" < "billing" 인데도 뒤집힌다
+    expect(features.find((f) => f.slug === "billing")?.tickets[0]?.status).toBe("in_progress");
+  });
+
+  it("처리중이 하나도 없으면 폴더명 순 그대로 — 회귀 고정(이 티켓의 안전선)", () => {
+    makeSecondFeature();
+
+    const { features } = observe();
+    expect(features.map((f) => f.slug)).toEqual(["auth", "billing"]);
+  });
+});
