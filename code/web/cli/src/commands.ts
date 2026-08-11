@@ -1,10 +1,14 @@
-import type { NextResult, PlanMismatch, PlanOrder, TicketKind } from "@gootte/contract";
-import { computeMismatches, computeNext } from "@gootte/core";
+import type { ExtraEntry, ExtraListItem, NextResult, PlanMismatch, PlanOrder, TicketKind } from "@gootte/contract";
+import { annotateExtraExistence, computeMismatches, computeNext } from "@gootte/core";
 import {
+  addExtra,
   defaultPlanDataDir,
   defaultProjectRoots,
   discoverProjects,
+  doneExtra,
   dropOrder,
+  listExtra,
+  pruneExtra,
   readFeatures,
   readPlanOrder,
   setFeatureOrder,
@@ -176,4 +180,77 @@ export function nextText(argv: readonly string[], dataDir = defaultPlanDataDir()
   }
   lines.push("", formatMismatches(result.mismatches));
   return lines.join("\n");
+}
+
+// ── extra — 티켓 밖에서 더 개발된 것을 잡는다(development-order/05) ──────────
+
+export function extraAddText(argv: readonly string[], dataDir = defaultPlanDataDir()): string {
+  const { positional, flags } = parseArgs(argv);
+  const [project, ref, note] = positional;
+  const parsed = ref ? parseTicketRef(ref) : null;
+  if (!project || !parsed || !note) {
+    throw new CliError('usage: gootte extra add <프로젝트> <기능>/<번호> "…" [--who 이름]');
+  }
+  const who = flagString(flags, "who");
+  const entry = addExtra(dataDir, { project, feature: parsed.feature, ticket: parsed.ticket, note, who });
+  return `#${entry.id} ${entry.project} ${entry.feature}/${entry.ticket} — ${entry.note}`;
+}
+
+function extraLine(item: ExtraListItem): string {
+  const doneMark = item.done ? "[처리됨] " : "";
+  const missing = item.ticketExists ? "" : " ⚠ 티켓 없음";
+  const who = item.who ? ` (누가: ${item.who})` : "";
+  return `${doneMark}#${item.id} ${item.project} ${item.feature}/${item.ticket}${missing} — ${item.note}${who}`;
+}
+
+/**
+ * `extra` 항목들을 지금 있는 문서와 대조해 "가리키는 티켓이 있는가" 를 얹는다.
+ * 항목이 여러 프로젝트를 가로지를 수 있어(project 필터 생략 시) 프로젝트별로 묶어 계산한다.
+ */
+function annotateExtraEntries(entries: readonly ExtraEntry[]): ExtraListItem[] {
+  const byProject = new Map<string, ExtraEntry[]>();
+  for (const e of entries) {
+    const list = byProject.get(e.project) ?? [];
+    list.push(e);
+    byProject.set(e.project, list);
+  }
+  const items: ExtraListItem[] = [];
+  for (const [project, projEntries] of byProject) {
+    const path = resolveProjectPath(project);
+    const features = path ? readFeatures(path) : [];
+    items.push(...annotateExtraExistence(projEntries, features));
+  }
+  return items.sort((a, b) => a.id - b.id);
+}
+
+/**
+ * `extra` / `extra --all` — 🔴 `ask` 와 같은 규약(spec §명령): 미처리가 있으면 항목마다 한 줄,
+ * 없으면 **빈 문자열**(main.ts 가 빈 문자열이면 아무것도 안 찍는다 — firstmate 확인 장치가
+ * 이 침묵으로 깨어난다).
+ */
+export function extraListText(argv: readonly string[], dataDir = defaultPlanDataDir()): string {
+  const { positional, flags } = parseArgs(argv);
+  const [project] = positional;
+  const entries = listExtra(dataDir, { project, all: Boolean(flags.all) });
+  const items = annotateExtraEntries(entries);
+  if (flags.json) return JSON.stringify(items, null, 2);
+  if (items.length === 0) return "";
+  return items.map(extraLine).join("\n");
+}
+
+export function extraDoneText(argv: readonly string[], dataDir = defaultPlanDataDir()): string {
+  const { positional } = parseArgs(argv);
+  const [idRaw] = positional;
+  const id = idRaw === undefined ? Number.NaN : Number(idRaw);
+  if (!idRaw || Number.isNaN(id)) throw new CliError("usage: gootte extra done <id>");
+  const entry = doneExtra(dataDir, id);
+  return `#${entry.id} 처리됨`;
+}
+
+export function extraPruneText(argv: readonly string[], dataDir = defaultPlanDataDir()): string {
+  const { flags } = parseArgs(argv);
+  const before = flagString(flags, "before");
+  if (!before) throw new CliError("usage: gootte extra prune --before <날짜>");
+  const count = pruneExtra(dataDir, before);
+  return `삭제: ${count}건`;
 }
