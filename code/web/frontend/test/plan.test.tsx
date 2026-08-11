@@ -314,6 +314,18 @@ describe("PlanView — 기능 보기", () => {
     expect(screen.getByText("billing — 결제")).toBeInTheDocument();
     expect(screen.getByText("먼저 끝낸다")).toBeInTheDocument();
   });
+
+  // 🔴 첫 커버 — 캡틴 피드백(2026-08-11): "grab 할 수 있는 것도 feature로, 잡힌 것도 feature가
+  // 표시되어야" 한다. 칩이 기능 카드 안에서까지 자기 draggable 을 켜 두면, HTML5 드래그는 포인터
+  // 아래 가장 안쪽 draggable(칩)에서 시작해 기능 대신 티켓 드래그가 튀어나온다 — 칩은 이 보기에서
+  // draggable 이 아니어야, 감싼 기능 카드의 draggable 이 그대로 이긴다(`TicketChip.tsx`).
+  it("기능 카드 안의 티켓 칩은 자기 자신이 안 끌린다 — 감싼 기능 카드만 끌린다", () => {
+    renderPlan(DATA, "feature");
+    const chip = screen.getByText("auth-login/02").closest("span")!;
+    expect(chip).not.toHaveAttribute("draggable", "true");
+    const card = screen.getByText("auth-login — 로그인").closest("div[draggable]")!;
+    expect(card).toHaveAttribute("draggable", "true");
+  });
 });
 
 // 🔴 첫 커버(spec §검증) — 드래그 → 쓰기(서버 POST) → 재조회로 값이 남는다. 실제 fetch 대신

@@ -45,6 +45,13 @@ function toneClass(ticket: FeatureTicket | null, highlighted: boolean): string {
  * `justDraggedRef` 가 그 경계를 잡는다: `dragstart` 에서 서고, 이어지는(브라우저에 따라 뒤이어
  * 오기도 하는) `click` 을 한 번 삼킨 뒤 스스로 꺼진다. `dragend` 도 늦게(`setTimeout(0)`) 같은
  * 값을 꺼 둔다 — 클릭이 아예 안 따라오는 보통의 드래그에서도 다음 진짜 클릭이 막히지 않게.
+ *
+ * 🔴 `draggable` 은 `onDragStart` 를 받았을 때만 켠다(단계 보기 — 티켓 칩 자체를 끈다, 티켓 04).
+ * 기능 보기에서는 이 칩이 `FeatureCard`(기능 카드 전체가 `draggable`) 안에 얹힌다 — 칩까지
+ * 같이 `draggable` 이면 HTML5 드래그는 포인터 아래 **가장 안쪽** draggable 에서 시작해, 기능 카드를
+ * 끌려 해도 칩 하나만 끌리는 티켓 드래그가 튀어나온다(캡틴 피드백 2026-08-11: "잡힌 것도 feature로
+ * 표시되어야 하는데 ticket으로 보인다"). `onDragStart` 미전달 = 칩은 끌리지 않고, 감싼 기능 카드의
+ * `draggable` 이 그대로 이긴다.
  */
 export function TicketChip({
   feature,
@@ -57,13 +64,15 @@ export function TicketChip({
   onOpen,
 }: TicketChipProps) {
   const justDraggedRef = useRef(false);
+  const draggableForTicket = onDragStart !== undefined;
 
   return (
     <span
-      draggable
+      draggable={draggableForTicket}
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen && ticket ? 0 : undefined}
       onDragStart={(e) => {
+        if (!draggableForTicket) return;
         justDraggedRef.current = true;
         setTicketDragData(e, feature, ticketNum);
         onDragStart?.(feature, ticketNum);
