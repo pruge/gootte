@@ -170,6 +170,24 @@ describe("PlanView — 단계 보기(기본)", () => {
     renderPlan();
     expect(screen.getByText("auth-login/03 — 계획에 단계가 없다")).toBeInTheDocument();
   });
+
+  /**
+   * 🔴 캡틴이 실제로 부딪히신 것(2026-08-11): 어긋남이 0 인데 주황색 상자가 남아 있었다.
+   * 남아 있던 것은 어긋남이 아니라 **닫지 않은 드래그 경고**였다 — 둘이 같은 옷을 입고
+   * 나란히 서 있어 구분이 안 됐다(티켓 09 ②).
+   * 여기까지는 "어긋남이 0 이면 어긋남 상자는 안 뜬다" 를 지킨다 — 그 전제가 무너지면
+   * 09 가 고칠 문제 자체가 달라진다.
+   */
+  it("🔴 어긋남이 0 건이면 어긋남 상자가 아예 안 뜬다", () => {
+    renderPlan({ ...DATA, next: { ...DATA.next, mismatches: [] } });
+    expect(screen.queryByText(/어긋남/)).toBeNull();
+    expect(screen.queryByText("auth-login/03 — 계획에 단계가 없다")).toBeNull();
+  });
+
+  it("🔴 아무것도 안 끈 첫 화면에는 놓는 순간 경고가 없다", () => {
+    renderPlan();
+    expect(screen.queryByText(/놓는 순간 알아챈 것/)).toBeNull();
+  });
 });
 
 describe("PlanView — `next` 버튼(02 의 함수 결과를 그대로 쓴다)", () => {

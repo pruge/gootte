@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
 import {
   ProjectsResponse,
@@ -24,6 +24,24 @@ import {
 } from "../src/discover-cache";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "roots");
+
+/**
+ * 관리대상 트리 하나를 경로 → "수정 시각 + 내용" 으로 접는다.
+ * 🔴 특정 파일을 지목해 확인하지 않는다 — 지목하면 **다른 파일에 쓰는 것**과
+ * **새 파일을 떨구는 것**(예: `.gootte/`)을 못 잡는다. 그 둘이 INV-2 가 실제로 깨지는 모양이다.
+ */
+function treeSnapshot(root: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else out[relative(root, full)] = `${statSync(full).mtimeMs} ${readFileSync(full, "utf8")}`;
+    }
+  };
+  walk(root);
+  return out;
+}
 const roots = [FIXTURES];
 // 격리 사본 뿌리도 주입한다 — 기계에 실제로 있는 `~/.treehouse` 를 읽으면 테스트가 기계에 종속된다.
 const NO_TREEHOUSE = join(FIXTURES, "..", "no-treehouse");
@@ -380,10 +398,10 @@ describe("POST /api/plan/:slug/ticket-step, /ticket-step/insert, /feature-rank �
   });
 
   // 🔴 INV-2 — 이 쓰기 경로가 관리대상 파일을 하나도 안 건드린다는 것을 실측한다(티켓 04 §완료 조건).
-  test("🔴 INV-2 — 드래그가 관리대상 티켓 파일을 하나도 안 바꾼다", async () => {
+  test("🔴 INV-2 — 드래그가 관리대상을 한 바이트도 안 바꾼다(트리 전체)", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));
-    const ticketFile = join(FIXTURES, "alpha", "docs", "features", "auth-login", "issues", "02-screen.md");
-    const before = readFileSync(ticketFile, "utf8");
+    const projectRoot = join(FIXTURES, "alpha");
+    const before = treeSnapshot(projectRoot);
     try {
       setTicketOrder(dataDir, { project: "alpha", feature: "auth-login", ticket: "02", step: 1, why: "…" });
       const app = createApp({ ...APP, dataDir });
@@ -403,8 +421,10 @@ describe("POST /api/plan/:slug/ticket-step, /ticket-step/insert, /feature-rank �
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ feature: "auth-login", track: "backend", beforeRank: null, afterRank: null }),
       });
-      const after = readFileSync(ticketFile, "utf8");
-      expect(after).toBe(before);
+      // 🔴 파일 하나가 아니라 트리 전체다 — 바뀐 것도, 새로 생긴 것도, 사라진 것도 차이로 잡힌다.
+      expect(treeSnapshot(projectRoot)).toEqual(before);
+      // INV-2 가 예외로 열어 둔 `.gootte/` 네임스페이스조차 쓰지 않는다(사양 §불변식).
+      expect(readdirSync(projectRoot)).not.toContain(".gootte");
     } finally {
       rmSync(dataDir, { recursive: true, force: true });
     }
