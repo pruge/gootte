@@ -411,6 +411,40 @@ describe("POST /api/plan/:slug/ticket-step, /ticket-step/insert, /feature-rank �
     }
   });
 
+  test("track-rename — 그 트랙의 모든 기능이 새 이름을 받는다", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));
+    try {
+      setFeatureOrder(dataDir, { project: "alpha", feature: "auth-login", track: "web", rank: 10, why: "…" });
+      setFeatureOrder(dataDir, { project: "alpha", feature: "doc-tree", track: "web", rank: 20, why: "…" });
+      const app = createApp({ ...APP, dataDir });
+      const res = await app.request("/api/plan/alpha/track-rename", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ track: "web", newTrack: "frontend" }),
+      });
+      expect(res.status).toBe(200);
+      const body = DragResult.parse(await res.json());
+      expect(body.order.features.map((f) => f.track)).toEqual(["frontend", "frontend"]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("track-rename — 그런 트랙이 없으면 400", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));
+    try {
+      const app = createApp({ ...APP, dataDir });
+      const res = await app.request("/api/plan/alpha/track-rename", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ track: "no-such", newTrack: "x" }),
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   // 🔴 INV-2 — 이 쓰기 경로가 관리대상 파일을 하나도 안 건드린다는 것을 실측한다(티켓 04 §완료 조건).
   test("🔴 INV-2 — 드래그가 관리대상을 한 바이트도 안 바꾼다(트리 전체)", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));

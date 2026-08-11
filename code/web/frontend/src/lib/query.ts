@@ -7,6 +7,7 @@ import {
   moveTicketStep,
   insertTicketStep,
   moveFeatureRank,
+  renameTrack,
 } from "./api";
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
@@ -87,6 +88,15 @@ export function useMoveFeatureRank(project: string) {
   return useMutation({
     mutationFn: (input: { feature: string; track: string; beforeRank: number | null; afterRank: number | null }) =>
       moveFeatureRank(project, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.plan(project) }),
+  });
+}
+
+/** 트랙 이름을 고친다 — 그 트랙의 모든 기능이 한꺼번에 새 이름을 받는다. */
+export function useRenameTrack(project: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { track: string; newTrack: string }) => renameTrack(project, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.plan(project) }),
   });
 }

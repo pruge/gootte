@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import type { Feature, FeatureOrderEntry, PlanOrder, TicketOrderEntry } from "@gootte/contract";
-import { appendRank, computeMismatches, firstRank, insertBetween, insertStepAfter, renumberSparse } from "@gootte/core";
+import { appendRank, computeMismatches, insertBetween, insertStepAfter, renumberSparse } from "@gootte/core";
 
 /**
  * 계획(단계·순위·트랙·왜) 저장소 — SQLite, gootte 자기 저장소(INV-2 — 관리대상에는
@@ -38,7 +38,8 @@ const SCHEMA_DDL = `
     track TEXT NOT NULL,
     rank REAL NOT NULL,
     why TEXT NOT NULL,
-    why_needs_review INTEGER NOT NULL DEFAULT 0,
+    why_track TEXT,
+    why_rank REAL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (project, feature)
   );
@@ -48,20 +49,21 @@ const SCHEMA_DDL = `
     ticket TEXT NOT NULL,
     step INTEGER NOT NULL,
     why TEXT NOT NULL,
-    why_needs_review INTEGER NOT NULL DEFAULT 0,
+    why_step INTEGER,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (project, feature, ticket)
   );
 `;
 
 /**
- * 표마다 있어야 할 칸 — 새 칸을 더할 때 고칠 **한 자리**(spec §원인: 표마다 손으로 ALTER 를
+ * 표마다 있어야 할 칸 — 새 칸을 더할 때 고칠 **한 자리**(PR #29 §원인: 표마다 손으로 ALTER 를
  * 적어 두던 것이 빠뜨리기 쉬운 구조 자체였다). `CREATE TABLE IF NOT EXISTS` 는 이미 있는 표에
  * 칸을 안 붙이므로, 오래 쓴 DB 에는 여기 목록을 보고 빠진 칸만 채운다.
  */
 const MIGRATABLE_COLUMNS: readonly { table: string; column: string; ddl: string }[] = [
-  { table: "feature_order", column: "why_needs_review", ddl: "INTEGER NOT NULL DEFAULT 0" },
-  { table: "ticket_order", column: "why_needs_review", ddl: "INTEGER NOT NULL DEFAULT 0" },
+  { table: "feature_order", column: "why_track", ddl: "TEXT" },
+  { table: "feature_order", column: "why_rank", ddl: "REAL" },
+  { table: "ticket_order", column: "why_step", ddl: "INTEGER" },
 ];
 
 function existingColumns(db: DatabaseSyncType, table: string): Set<string> {
@@ -92,6 +94,22 @@ function applySchemaMigrations(db: DatabaseSyncType): SchemaMigrationResult {
   if (existingColumns(db, "ticket_order").has("kind")) {
     db.exec(`ALTER TABLE ticket_order DROP COLUMN kind`);
     droppedColumns.push("ticket_order.kind");
+  }
+  // 확인-필요 플래그(why_needs_review) → 닻(anchor) 모델로 옮긴다 — "제자리로 돌아오면 확인
+  // 필요가 꺼진다"(캡틴 피드백, development-order/15 후속). 옛 플래그가 0(깨끗)이던 줄만
+  // 지금 값에 닻을 내리고, 컬럼 자체는 지운다. PRAGMA 로 먼저 있는지 보고 나서만 손댄다 —
+  // 없는 컬럼을 조용히 삼키지 않는다(PR #29 §try/catch 로 아무 에러나 삼키지 않는다).
+  if (existingColumns(db, "ticket_order").has("why_needs_review")) {
+    db.exec(`UPDATE ticket_order SET why_step = step WHERE why_step IS NULL AND why_needs_review = 0`);
+    db.exec(`ALTER TABLE ticket_order DROP COLUMN why_needs_review`);
+    droppedColumns.push("ticket_order.why_needs_review");
+  }
+  if (existingColumns(db, "feature_order").has("why_needs_review")) {
+    db.exec(
+      `UPDATE feature_order SET why_track = track, why_rank = rank WHERE why_track IS NULL AND why_needs_review = 0`,
+    );
+    db.exec(`ALTER TABLE feature_order DROP COLUMN why_needs_review`);
+    droppedColumns.push("feature_order.why_needs_review");
   }
   return { addedColumns, droppedColumns };
 }
@@ -141,20 +159,36 @@ interface FeatureOrderRow {
   track: string;
   rank: number;
   why: string;
-  whyNeedsReview: number;
+  whyTrack: string | null;
+  whyRank: number | null;
   updatedAt: string;
 }
 
+const FEATURE_ORDER_COLUMNS = `project, feature, track, rank, why, why_track as whyTrack, why_rank as whyRank, updated_at as updatedAt`;
+
+/**
+ * `whyNeedsReview` 는 저장된 깃발이 아니라 **닻과 지금 자리를 비교한 값**이다 — `why_track`·
+ * `why_rank` 는 `왜` 를 마지막으로 사람이 적었을 때의 자리(닻). 드래그는 `track`·`rank` 만
+ * 옮기고 닻은 그대로 두므로, 자리가 닻과 갈라지면 확인 필요가 서고 **닻으로 돌아오면 저절로
+ * 꺼진다** — "제자리로 돌아왔는데 확인 필요가 안 꺼진다"(캡틴 피드백)를 구조로 없앤다.
+ */
 function toFeatureOrderEntry(row: FeatureOrderRow): FeatureOrderEntry {
-  return { ...row, rank: Number(row.rank), whyNeedsReview: Boolean(row.whyNeedsReview) };
+  const rank = Number(row.rank);
+  const whyRank = row.whyRank === null ? null : Number(row.whyRank);
+  return {
+    project: row.project,
+    feature: row.feature,
+    track: row.track,
+    rank,
+    why: row.why,
+    whyNeedsReview: row.whyTrack === null || whyRank === null || row.whyTrack !== row.track || whyRank !== rank,
+    updatedAt: row.updatedAt,
+  };
 }
 
 function readFeatureOrderRow(db: DatabaseSyncType, project: string, feature: string): FeatureOrderEntry | null {
   const row = db
-    .prepare(
-      `SELECT project, feature, track, rank, why, why_needs_review as whyNeedsReview, updated_at as updatedAt
-       FROM feature_order WHERE project = ? AND feature = ?`,
-    )
+    .prepare(`SELECT ${FEATURE_ORDER_COLUMNS} FROM feature_order WHERE project = ? AND feature = ?`)
     .get(project, feature) as FeatureOrderRow | undefined;
   return row ? toFeatureOrderEntry(row) : null;
 }
@@ -180,12 +214,12 @@ export function setFeatureOrder(dataDir: string, input: SetFeatureOrderInput): F
     if (rank === undefined) throw new Error("--rank 이 필요하다(처음 등록)");
     const updatedAt = new Date().toISOString();
     db.prepare(
-      `INSERT INTO feature_order (project, feature, track, rank, why, why_needs_review, updated_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?)
+      `INSERT INTO feature_order (project, feature, track, rank, why, why_track, why_rank, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(project, feature) DO UPDATE SET
          track = excluded.track, rank = excluded.rank, why = excluded.why,
-         why_needs_review = 0, updated_at = excluded.updated_at`,
-    ).run(input.project, input.feature, track, rank, input.why, updatedAt);
+         why_track = excluded.why_track, why_rank = excluded.why_rank, updated_at = excluded.updated_at`,
+    ).run(input.project, input.feature, track, rank, input.why, track, rank, updatedAt);
     appendHistory(
       dataDir,
       `set-feature ${input.project} ${input.feature} → track=${track} rank=${rank} — ${input.why}`,
@@ -202,15 +236,27 @@ interface TicketOrderRow {
   ticket: string;
   step: number;
   why: string;
-  whyNeedsReview: number;
+  whyStep: number | null;
   updatedAt: string;
 }
 
+/** `whyNeedsReview` 는 닻(`why_step`, `왜` 를 마지막으로 적었을 때의 단계)과 지금 단계의
+ * 비교값이다 — `toFeatureOrderEntry` 와 같은 원리(development-order/15 후속, 캡틴 피드백). */
 function toTicketOrderEntry(row: TicketOrderRow): TicketOrderEntry {
-  return { ...row, step: Number(row.step), whyNeedsReview: Boolean(row.whyNeedsReview) };
+  const step = Number(row.step);
+  const whyStep = row.whyStep === null ? null : Number(row.whyStep);
+  return {
+    project: row.project,
+    feature: row.feature,
+    ticket: row.ticket,
+    step,
+    why: row.why,
+    whyNeedsReview: whyStep === null || whyStep !== step,
+    updatedAt: row.updatedAt,
+  };
 }
 
-const TICKET_ORDER_COLUMNS = `project, feature, ticket, step, why, why_needs_review as whyNeedsReview, updated_at as updatedAt`;
+const TICKET_ORDER_COLUMNS = `project, feature, ticket, step, why, why_step as whyStep, updated_at as updatedAt`;
 
 function readTicketOrderRow(
   db: DatabaseSyncType,
@@ -243,12 +289,12 @@ export function setTicketOrder(dataDir: string, input: SetTicketOrderInput): Tic
     if (step === undefined) throw new Error("--step 이 필요하다(처음 등록)");
     const updatedAt = new Date().toISOString();
     db.prepare(
-      `INSERT INTO ticket_order (project, feature, ticket, step, why, why_needs_review, updated_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?)
+      `INSERT INTO ticket_order (project, feature, ticket, step, why, why_step, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(project, feature, ticket) DO UPDATE SET
          step = excluded.step, why = excluded.why,
-         why_needs_review = 0, updated_at = excluded.updated_at`,
-    ).run(input.project, input.feature, input.ticket, step, input.why, updatedAt);
+         why_step = excluded.why_step, updated_at = excluded.updated_at`,
+    ).run(input.project, input.feature, input.ticket, step, input.why, step, updatedAt);
     appendHistory(
       dataDir,
       `set ${input.project} ${input.feature}/${input.ticket} → step=${step} — ${input.why}`,
@@ -296,10 +342,7 @@ export function readPlanOrder(dataDir: string, project: string): PlanOrder {
   try {
     const features = (
       db
-        .prepare(
-          `SELECT project, feature, track, rank, why, why_needs_review as whyNeedsReview, updated_at as updatedAt
-           FROM feature_order WHERE project = ? ORDER BY track, rank`,
-        )
+        .prepare(`SELECT ${FEATURE_ORDER_COLUMNS} FROM feature_order WHERE project = ? ORDER BY track, rank`)
         .all(project) as unknown as FeatureOrderRow[]
     ).map(toFeatureOrderEntry);
     const tickets = (
@@ -313,7 +356,8 @@ export function readPlanOrder(dataDir: string, project: string): PlanOrder {
   }
 }
 
-// ── 드래그(티켓 04) — 순위·단계만 바꾸고 `왜` 는 그대로 둔다, 대신 확인 필요를 세운다 ──────
+// ── 드래그(티켓 04) — 순위·단계만 바꾸고 `왜` 는 그대로 둔다, 닻(`why_step`·`why_track`·
+// `why_rank`)은 그대로 두어 확인 필요가 저절로 서고 저절로 꺼지게 한다(development-order/15 후속) ──
 
 function requireExistingTicket(
   db: DatabaseSyncType,
@@ -341,9 +385,10 @@ export interface MoveTicketStepInput {
 }
 
 /**
- * 티켓 칩을 다른 단계 줄로 끈다 — `왜` 는 그대로, `why_needs_review` 만 선다(spec 04 §왜 는 안 건드린다).
+ * 티켓 칩을 다른 단계 줄로 끈다 — `왜` 도 닻(`why_step`)도 안 건드린다(spec 04 §왜 는 안 건드린다).
  * `step` 계산은 호출자가 이미 정한 값(놓인 줄의 값)을 그대로 받는다 — 새 단계를 만드는 경우는
- * `insertTicketStep` 이 따로 갖는다.
+ * `insertTicketStep` 이 따로 갖는다. `whyNeedsReview` 는 다시 읽어 닻과 비교해 정한다 — 닻이
+ * 있던 자리로 돌아오면 저절로 꺼진다.
  */
 export function moveTicketStep(dataDir: string, input: MoveTicketStepInput): TicketOrderEntry {
   const db = open(dataDir);
@@ -351,14 +396,15 @@ export function moveTicketStep(dataDir: string, input: MoveTicketStepInput): Tic
     const existing = requireExistingTicket(db, input.project, input.feature, input.ticket);
     const updatedAt = new Date().toISOString();
     db.prepare(
-      `UPDATE ticket_order SET step = ?, why_needs_review = 1, updated_at = ?
+      `UPDATE ticket_order SET step = ?, updated_at = ?
        WHERE project = ? AND feature = ? AND ticket = ?`,
     ).run(input.step, updatedAt, input.project, input.feature, input.ticket);
+    const moved = readTicketOrderRow(db, input.project, input.feature, input.ticket) as TicketOrderEntry;
     appendHistory(
       dataDir,
-      `drag ${input.project} ${input.feature}/${input.ticket} → step=${existing.step}→${input.step}(확인 필요) [plan 탭]`,
+      `drag ${input.project} ${input.feature}/${input.ticket} → step=${existing.step}→${input.step}${moved.whyNeedsReview ? "(확인 필요)" : ""} [plan 탭]`,
     );
-    return { ...existing, step: input.step, whyNeedsReview: true, updatedAt };
+    return moved;
   } finally {
     db.close();
   }
@@ -385,12 +431,14 @@ export function insertTicketStep(dataDir: string, input: InsertTicketStepInput):
     const updatedAt = new Date().toISOString();
     db.exec("BEGIN");
     try {
+      // 밀리는 줄은 닻(why_step)도 같이 +1 한다 — 손으로 안 건드린 줄이 밀림만으로 확인
+      // 필요가 새로 서면 안 된다. 이미 닻이 없던(NULL) 줄은 NULL+1=NULL 로 그대로 남는다.
       db.prepare(
-        `UPDATE ticket_order SET step = step + 1
+        `UPDATE ticket_order SET step = step + 1, why_step = why_step + 1
          WHERE project = ? AND step >= ? AND NOT (feature = ? AND ticket = ?)`,
       ).run(input.project, shiftFrom, input.feature, input.ticket);
       db.prepare(
-        `UPDATE ticket_order SET step = ?, why_needs_review = 1, updated_at = ?
+        `UPDATE ticket_order SET step = ?, updated_at = ?
          WHERE project = ? AND feature = ? AND ticket = ?`,
       ).run(newStep, updatedAt, input.project, input.feature, input.ticket);
       db.exec("COMMIT");
@@ -398,11 +446,12 @@ export function insertTicketStep(dataDir: string, input: InsertTicketStepInput):
       db.exec("ROLLBACK");
       throw err;
     }
+    const moved = readTicketOrderRow(db, input.project, input.feature, input.ticket) as TicketOrderEntry;
     appendHistory(
       dataDir,
-      `drag ${input.project} ${input.feature}/${input.ticket} → 새 단계 step=${newStep}(뒤 단계 밀림, 확인 필요) [plan 탭]`,
+      `drag ${input.project} ${input.feature}/${input.ticket} → 새 단계 step=${newStep}(뒤 단계 밀림${moved.whyNeedsReview ? ", 확인 필요" : ""}) [plan 탭]`,
     );
-    return { ...existing, step: newStep, whyNeedsReview: true, updatedAt };
+    return moved;
   } finally {
     db.close();
   }
@@ -432,36 +481,48 @@ function ranksInTrack(db: DatabaseSyncType, project: string, track: string, excl
  * 순위는 `core` 의 같은 순수 함수(`insertBetween`·`appendRank`·`firstRank`)로 계산한다(spec 04
  * §순위 계산은 01 이 만든 core 의 순수 함수를 쓴다) — 화면에서 다시 짜지 않는다.
  * 틈이 다 찼으면(`insertBetween` 이 null) 그 트랙만 성기게 다시 매긴 뒤 다시 끼운다.
+ *
+ * 🔴 지금 순위가 **요청한 자리(이웃 사이)에 이미 들어맞으면 그 값을 그대로 쓴다** — 매번 중간값을
+ * 다시 계산하지 않는다(캡틴 피드백 2026-08-11: "원래 자리로 돌려놓아도 확인 필요가 뜬다"). 안 그러면
+ * `set-feature` 로 10·20 같은 성긴 값이 아닌 임의 순위(가령 25)를 적어 둔 기능을, 다른 트랙으로 끌었다
+ * 되돌리기만 해도(트랙이 잠깐 비었다 다시 채워지며) `firstRank()`·`insertBetween()` 이 매번 다른
+ * 숫자를 새로 배정해 닻(`why_rank`)과 영영 안 맞는다 — 자리는 같은데 번호만 바뀌어 확인 필요가
+ * 거짓으로 눌어붙는다. 이미 들어맞는 자리를 놔두면 이 어긋남 자체가 안 생긴다.
  */
 export function moveFeatureOrder(dataDir: string, input: MoveFeatureOrderInput): FeatureOrderEntry {
   const db = open(dataDir);
   try {
     const existing = requireExistingFeature(db, input.project, input.feature);
     const neighbors = ranksInTrack(db, input.project, input.track, input.feature);
+    const { beforeRank, afterRank } = input;
 
     let rank: number;
-    if (input.beforeRank === null && input.afterRank === null) {
-      rank = neighbors.length === 0 ? firstRank() : appendRank(neighbors);
-    } else if (input.beforeRank === null) {
-      rank = insertBetween(0, input.afterRank as number) ?? renumberAndRetry(db, input, neighbors, 0, input.afterRank as number);
-    } else if (input.afterRank === null) {
-      rank = appendRank([input.beforeRank]);
+    if (beforeRank === null && afterRank === null) {
+      rank = neighbors.length === 0 ? existing.rank : appendRank(neighbors);
+    } else if (beforeRank === null) {
+      const after = afterRank as number;
+      rank = existing.rank < after ? existing.rank : (insertBetween(0, after) ?? renumberAndRetry(db, input, neighbors, 0, after));
+    } else if (afterRank === null) {
+      const before = beforeRank as number;
+      rank = existing.rank > before ? existing.rank : appendRank([before]);
     } else {
       rank =
-        insertBetween(input.beforeRank, input.afterRank) ??
-        renumberAndRetry(db, input, neighbors, input.beforeRank, input.afterRank);
+        existing.rank > beforeRank && existing.rank < afterRank
+          ? existing.rank
+          : (insertBetween(beforeRank, afterRank) ?? renumberAndRetry(db, input, neighbors, beforeRank, afterRank));
     }
 
     const updatedAt = new Date().toISOString();
     db.prepare(
-      `UPDATE feature_order SET track = ?, rank = ?, why_needs_review = 1, updated_at = ?
+      `UPDATE feature_order SET track = ?, rank = ?, updated_at = ?
        WHERE project = ? AND feature = ?`,
     ).run(input.track, rank, updatedAt, input.project, input.feature);
+    const moved = readFeatureOrderRow(db, input.project, input.feature) as FeatureOrderEntry;
     appendHistory(
       dataDir,
-      `drag ${input.project} ${input.feature} → track=${existing.track}→${input.track} rank=${existing.rank}→${rank}(확인 필요) [plan 탭]`,
+      `drag ${input.project} ${input.feature} → track=${existing.track}→${input.track} rank=${existing.rank}→${rank}${moved.whyNeedsReview ? "(확인 필요)" : ""} [plan 탭]`,
     );
-    return { ...existing, track: input.track, rank, whyNeedsReview: true, updatedAt };
+    return moved;
   } finally {
     db.close();
   }
@@ -483,19 +544,55 @@ function renumberAndRetry(
   const updatedAt = new Date().toISOString();
   sorted.forEach((oldRank, i) => {
     const newRank = renumbered[i] as number;
-    db.prepare(`UPDATE feature_order SET rank = ?, updated_at = ? WHERE project = ? AND track = ? AND rank = ?`).run(
-      newRank,
-      updatedAt,
-      input.project,
-      input.track,
-      oldRank,
-    );
+    // 재배치는 사람이 그 기능을 직접 끈 것이 아니다 — 닻(why_rank)이 옛 순위를 가리키고
+    // 있었으면(= 깨끗했다) 같이 옮겨 확인 필요가 새로 서지 않게 한다. 이미 어긋나 있던
+    // 닻(다른 값 또는 NULL)은 그대로 둔다.
+    db.prepare(
+      `UPDATE feature_order SET rank = ?, why_rank = CASE WHEN why_rank = ? THEN ? ELSE why_rank END, updated_at = ?
+       WHERE project = ? AND track = ? AND rank = ?`,
+    ).run(newRank, oldRank, newRank, updatedAt, input.project, input.track, oldRank);
   });
   const beforeIdx = sorted.indexOf(before);
   const afterIdx = sorted.indexOf(after);
   const newBefore = beforeIdx >= 0 ? (renumbered[beforeIdx] as number) : 0;
   const newAfter = afterIdx >= 0 ? (renumbered[afterIdx] as number) : appendRank(renumbered);
   return insertBetween(newBefore, newAfter) ?? appendRank(renumbered);
+}
+
+export interface RenameTrackInput {
+  project: string;
+  /** 지금 트랙 이름. */
+  track: string;
+  /** 새 이름 — 앞뒤 공백은 지운다. */
+  newTrack: string;
+}
+
+/**
+ * 트랙 이름표만 바꾼다 — 그 트랙에 있는 모든 기능의 `track` 을 한꺼번에 새 이름으로 옮긴다.
+ * 순위·왜는 안 건드린다. 이름만 바뀐 것이지 사람이 그 기능을 다른 트랙으로 **옮긴 것이 아니므로**
+ * `why_track` 닻도 같은 값으로 따라간다 — 안 그러면 이름만 고쳤는데 모든 기능에 "확인 필요"가
+ * 선다(`renumberAndRetry` 와 같은 원리, development-order/15 후속).
+ */
+export function renameTrack(dataDir: string, input: RenameTrackInput): void {
+  const db = open(dataDir);
+  try {
+    const newTrack = input.newTrack.trim();
+    if (!newTrack) throw new Error("새 트랙 이름이 필요하다");
+    if (newTrack === input.track) return;
+    const exists = db
+      .prepare(`SELECT 1 FROM feature_order WHERE project = ? AND track = ? LIMIT 1`)
+      .get(input.project, input.track);
+    if (!exists) throw new Error(`그런 트랙이 없다: ${input.track}`);
+    const updatedAt = new Date().toISOString();
+    db.prepare(
+      `UPDATE feature_order
+       SET track = ?, why_track = CASE WHEN why_track = ? THEN ? ELSE why_track END, updated_at = ?
+       WHERE project = ? AND track = ?`,
+    ).run(newTrack, input.track, newTrack, updatedAt, input.project, input.track);
+    appendHistory(dataDir, `rename-track ${input.project} ${input.track} → ${newTrack}`);
+  } finally {
+    db.close();
+  }
 }
 
 // ── 완료되면 스스로 빠진다(development-order/08) ──────────────────────────
@@ -514,7 +611,7 @@ export function dropStaleCompleted(
 ): { feature: string; ticket: string }[] {
   const order = readPlanOrder(dataDir, project);
   const dropped: { feature: string; ticket: string }[] = [];
-  for (const m of computeMismatches(features, order.tickets)) {
+  for (const m of computeMismatches(features, order.features, order.tickets)) {
     if (m.kind !== "done_but_staged" || !m.ticket) continue;
     dropOrder(dataDir, project, m.feature, m.ticket);
     dropped.push({ feature: m.feature, ticket: m.ticket });

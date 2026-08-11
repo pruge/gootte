@@ -5,6 +5,7 @@ import {
   parseBlockedBy,
   parseBlockedByLine,
   parseFeatureSpec,
+  parseNeedsCaptainEye,
   parseStatusLine,
   parseTicket,
 } from "./feature";
@@ -262,6 +263,41 @@ describe("parseTicket — 번호·제목·상태·선행 네 가지", () => {
 
   it("번호 없는 파일도 버리지 않는다", () => {
     expect(parseTicket("notes.md", "**Status:** draft\n").num).toBe("");
+  });
+
+  it("`## 캡틴 확인` 절이 있으면 needsCaptainEye=true 다(development-order/15 ②)", () => {
+    const content = `${ticket("ready-for-agent")}\n\n## 캡틴 확인\n\n- 어디서\n`;
+    expect(parseTicket("05-x.md", content).needsCaptainEye).toBe(true);
+  });
+
+  it("절이 없으면 needsCaptainEye=false 다", () => {
+    expect(parseTicket("05-x.md", ticket("ready-for-agent")).needsCaptainEye).toBe(false);
+  });
+});
+
+describe("parseNeedsCaptainEye — `## 캡틴 확인` 절이 있나 없나로만 정한다(INV-4, development-order/15 ②)", () => {
+  it("H2 헤딩이 있으면 true", () => {
+    expect(parseNeedsCaptainEye("# 제목\n\n## 캡틴 확인\n\n- 어디서 — plan 탭\n")).toBe(true);
+  });
+
+  it("헤딩이 아예 없으면 false", () => {
+    expect(parseNeedsCaptainEye("# 제목\n\n본문뿐이다\n")).toBe(false);
+  });
+
+  it("🔴 실측: '— 없음' 접미는 캡틴이 이미 필요 없다고 정하신 절이라 false 다(access-control/03)", () => {
+    expect(parseNeedsCaptainEye("## 캡틴 확인 — 없음 (캡틴 결정, 2026-08-08)\n")).toBe(false);
+  });
+
+  it("이모지 접두는 걷어내고 읽는다(jinwooauto/catalog-registry/05)", () => {
+    expect(parseNeedsCaptainEye("## 🟢 캡틴 확인 완료 (2026-08-11)\n")).toBe(true);
+  });
+
+  it("H3(회고 보고)은 절로 세지 않는다(jinwooauto/access-control/01 '### 캡틴 확인 결과')", () => {
+    expect(parseNeedsCaptainEye("### 🟢 캡틴 확인 결과 (2026-08-10 저녁)\n")).toBe(false);
+  });
+
+  it("'캡틴 확인' 을 안 담은 다른 H2 헤딩은 무시한다", () => {
+    expect(parseNeedsCaptainEye("## 착수 전에 확인할 것\n\n체크리스트\n")).toBe(false);
   });
 });
 

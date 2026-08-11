@@ -1,11 +1,18 @@
 import { useState } from "react";
 import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { PlanResponse } from "@gootte/contract";
 import { PlanView } from "../src/components/plan/PlanView";
 import { qk } from "../src/lib/query";
 import * as api from "../src/lib/api";
+
+// FeatureCard 의 드래그 유령(`setDragImage` 복제본)은 `document.body` 에 직접 붙었다 setTimeout(0)
+// 으로 스스로 지운다 — RTL 의 자동 cleanup(렌더 트리만 걷어낸다)은 이걸 못 본다. 동기 테스트는 그
+// setTimeout 이 돌기 전에 끝나므로, 표(`data-drag-ghost`)로 찾아 테스트마다 직접 치운다.
+afterEach(() => {
+  document.querySelectorAll("[data-drag-ghost]").forEach((el) => el.remove());
+});
 
 // 서버가 이미 계산해 보낸 값(막힘·착수 가능·next) — 화면은 재판정하지 않는다(INV-1).
 const DATA: PlanResponse = {
@@ -32,6 +39,7 @@ const DATA: PlanResponse = {
           waitingOn: [],
           startable: true,
           workedBy: [],
+          needsCaptainEye: false,
         },
         {
           num: "02",
@@ -45,6 +53,7 @@ const DATA: PlanResponse = {
           waitingOn: [],
           startable: true,
           workedBy: [],
+          needsCaptainEye: false,
         },
       ],
     },
@@ -68,6 +77,7 @@ const DATA: PlanResponse = {
           waitingOn: ["외부 API"],
           startable: false,
           workedBy: [],
+          needsCaptainEye: false,
         },
       ],
     },
@@ -120,7 +130,15 @@ const DATA: PlanResponse = {
       {
         track: "web",
         step: 1,
-        tickets: [{ feature: "auth-login", ticket: "02", title: "로그인 화면", why: "01 은 이미 끝났다" }],
+        tickets: [
+          {
+            feature: "auth-login",
+            ticket: "02",
+            title: "로그인 화면",
+            why: "01 은 이미 끝났다",
+            needsCaptainEye: false,
+          },
+        ],
         emptyReason: null,
       },
       { track: "payments", step: 1, tickets: [], emptyReason: "all_blocked" },
@@ -133,14 +151,16 @@ const DATA: PlanResponse = {
         detail: "auth-login/03 — 계획에 단계가 없다",
       },
     ],
+    captainEyeCount: 0,
   },
   dragWarnings: {},
 };
 
-/** view 상태를 실제로 URL 훅처럼 들고 있는 최소 하네스 — 탭 전환 왕복을 실제로 검증한다. */
+/** view·doc 상태를 실제로 URL 훅처럼 들고 있는 최소 하네스 — 탭 전환·문서 열기 왕복을 실제로 검증한다. */
 function Harness({ project, initialView = null }: { project: string; initialView?: string | null }) {
   const [view, setView] = useState<string | null>(initialView);
-  return <PlanView project={project} view={view} onView={setView} />;
+  const [doc, setDoc] = useState<string | null>(null);
+  return <PlanView project={project} view={view} onView={setView} doc={doc} onDoc={setDoc} />;
 }
 
 function renderPlan(data: PlanResponse = DATA, initialView: string | null = null) {
@@ -154,7 +174,8 @@ function renderPlan(data: PlanResponse = DATA, initialView: string | null = null
   return { ...result, qc };
 }
 
-/** jsdom 은 DataTransfer 를 구현하지 않는다 — setData/getData/types 를 갖는 최소 흉내를 직접 만든다. */
+/** jsdom 은 DataTransfer 를 구현하지 않는다 — setData/getData/types 를 갖는 최소 흉내를 직접 만든다.
+ * `setDragImage` 는 `vi.fn()` 으로 둬서 FeatureCard 의 커스텀 유령(ghost) 호출을 검증할 수 있게 한다. */
 function makeDataTransfer() {
   const store: Record<string, string> = {};
   return {
@@ -167,6 +188,7 @@ function makeDataTransfer() {
     },
     dropEffect: "",
     effectAllowed: "",
+    setDragImage: vi.fn(),
   };
 }
 
@@ -301,6 +323,18 @@ describe("PlanView — 기능 보기", () => {
     expect(screen.getByText("billing — 결제")).toBeInTheDocument();
     expect(screen.getByText("먼저 끝낸다")).toBeInTheDocument();
   });
+
+  // 🔴 첫 커버 — 캡틴 피드백(2026-08-11): "grab 할 수 있는 것도 feature로, 잡힌 것도 feature가
+  // 표시되어야" 한다. 칩이 기능 카드 안에서까지 자기 draggable 을 켜 두면, HTML5 드래그는 포인터
+  // 아래 가장 안쪽 draggable(칩)에서 시작해 기능 대신 티켓 드래그가 튀어나온다 — 칩은 이 보기에서
+  // draggable 이 아니어야, 감싼 기능 카드의 draggable 이 그대로 이긴다(`TicketChip.tsx`).
+  it("기능 카드 안의 티켓 칩은 자기 자신이 안 끌린다 — 감싼 기능 카드만 끌린다", () => {
+    renderPlan(DATA, "feature");
+    const chip = screen.getByText("auth-login/02").closest("span")!;
+    expect(chip).not.toHaveAttribute("draggable", "true");
+    const card = screen.getByText("auth-login — 로그인").closest("div[draggable]")!;
+    expect(card).toHaveAttribute("draggable", "true");
+  });
 });
 
 // 🔴 첫 커버(spec §검증) — 드래그 → 쓰기(서버 POST) → 재조회로 값이 남는다. 실제 fetch 대신
@@ -343,39 +377,186 @@ describe("PlanView — 드래그(티켓 04, 🔴 첫 커버) → 쓰기 → 재�
 
     await waitFor(() => expect(api.moveFeatureRank).toHaveBeenCalled());
   });
+
+  // 🔴 첫 커버 — 캡틴 피드백(2026-08-11): "grab 잡힌 feature의 투명도가 너무 높아. 낮춰.
+  // border도 강하게 주고." 쉬는 상태의 옅은 배경·테두리(bg-surface-2/40, border-border/60)를
+  // 끄는 동안은 불투명 배경 + 굵은 강조 테두리로 바꾼다(`FeatureCard`).
+  it("기능 카드를 끄는 동안은 배경이 불투명해지고 테두리가 굵어진다 — 놓으면 원래대로 돌아온다", () => {
+    renderPlan(DATA, "feature");
+    const card = screen.getByText("billing — 결제").closest("div[draggable]")!;
+
+    expect(card.className).toContain("bg-surface-2/40");
+    expect(card.className).not.toContain("border-2");
+
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(card, { dataTransfer: dt });
+    expect(card.className).toContain("bg-surface"); // 불투명
+    expect(card.className).not.toContain("bg-surface-2/40");
+    expect(card.className).toContain("border-2 border-accent"); // 굵은 강조 테두리
+
+    fireEvent.dragEnd(card, { dataTransfer: dt });
+    expect(card.className).toContain("bg-surface-2/40");
+    expect(card.className).not.toContain("border-2");
+  });
+
+  // 🔴 첫 커버 — 캡틴 재차 피드백(2026-08-11: "feature는 투명도를 더 낮춰"). React state 로
+  // 남는 카드만 진하게 칠하는 것으로는 부족했다 — 손가락을 따라다니는 브라우저 네이티브 드래그
+  // 유령은 `dragstart` 가 끝나기 전에 이미 캡처돼 그 state 변화를 못 반영한다. 그래서
+  // `setDragImage()` 로 불투명·굵은 테두리 스타일을 미리 입힌 복제본을 직접 넘긴다.
+  it("끌기 시작하면 setDragImage 로 불투명한 복제본을 유령 미리보기로 넘긴다", () => {
+    renderPlan(DATA, "feature");
+    const card = screen.getByText("billing — 결제").closest("div[draggable]")!;
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(card, { dataTransfer: dt });
+
+    expect(dt.setDragImage).toHaveBeenCalledTimes(1);
+    const ghost = dt.setDragImage.mock.calls[0]![0] as HTMLElement;
+    expect(ghost.className).toContain("border-2 border-accent bg-surface");
+    expect(ghost.className).not.toContain("bg-surface-2/40");
+  });
 });
 
-// 🔴 첫 커버 — 단계 보기에서 다른 트랙 묶음으로 끌면 기능 전체의 트랙이 바뀐다.
-describe("PlanView — 단계 보기에서 다른 트랙 묶음으로 끌면 기능의 트랙이 바뀐다(🔴 첫 커버)", () => {
+// 🔴 첫 커버 — 캡틴 지시(2026-08-11): "track 이름을 내가 수정 가능하게 해. 이름 클릭하면
+// 수정모드, 나가면 바로 저장되게." 트랙 이름은 `renameTrack` API 왕복으로 저장된다(server 몫,
+// core-io 의 `renameTrack` 함수가 그 트랙의 모든 기능에 새 이름을 한꺼번에 건다).
+describe("PlanView — 트랙 이름을 눌러서 고친다(development-order/15 후속, 🔴 첫 커버)", () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it("끄는 동안 무엇이 바뀌는지 보이고, 놓으면 트랙과 단계가 함께 바뀐다", async () => {
-    vi.spyOn(api, "moveFeatureRank").mockResolvedValue({ order: DATA.order, warnings: [] });
+  it("이름을 누르면 입력칸이 뜨고, blur 하면 바뀐 값으로 renameTrack 이 불린다", async () => {
+    vi.spyOn(api, "renameTrack").mockResolvedValue({ order: DATA.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
+    renderPlan(DATA, "feature");
+
+    const label = screen.getByText("web");
+    fireEvent.click(label);
+    const input = screen.getByDisplayValue("web");
+    fireEvent.change(input, { target: { value: "frontend" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => expect(api.renameTrack).toHaveBeenCalledWith("alpha", { track: "web", newTrack: "frontend" }));
+  });
+
+  it("Enter 도 같은 값으로 저장한다(blur 를 부른다)", async () => {
+    vi.spyOn(api, "renameTrack").mockResolvedValue({ order: DATA.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
+    renderPlan(DATA, "feature");
+
+    fireEvent.click(screen.getByText("web"));
+    const input = screen.getByDisplayValue("web");
+    fireEvent.change(input, { target: { value: "frontend" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(api.renameTrack).toHaveBeenCalledWith("alpha", { track: "web", newTrack: "frontend" }));
+  });
+
+  it("Escape 는 취소한다 — renameTrack 이 안 불리고 원래 이름으로 돌아온다", () => {
+    const renameTrack = vi.spyOn(api, "renameTrack");
+    renderPlan(DATA, "feature");
+
+    fireEvent.click(screen.getByText("web"));
+    const input = screen.getByDisplayValue("web");
+    fireEvent.change(input, { target: { value: "frontend" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(screen.getByText("web")).toBeInTheDocument();
+    expect(renameTrack).not.toHaveBeenCalled();
+  });
+
+  it("안 바꾸고 그냥 나가면(blur) 아무 것도 안 불린다", () => {
+    const renameTrack = vi.spyOn(api, "renameTrack");
+    renderPlan(DATA, "feature");
+
+    fireEvent.click(screen.getByText("web"));
+    fireEvent.blur(screen.getByDisplayValue("web"));
+
+    expect(renameTrack).not.toHaveBeenCalled();
+  });
+});
+
+// 🔴 티켓 04 §무엇이 바뀌나: "티켓 칩 → 단계", "기능 카드 → 트랙" 으로 축이 갈라져 있다.
+// 09 시절 "칩을 다른 트랙 상자로 끌면 기능의 트랙이 바뀐다"는 그 표와 어긋나 있었다 — 캡틴
+// 피드백(2026-08-11, "track이 다르면 막아야 하지 않나 — track은 고정 아닌가")으로 04 표에 맞춘다.
+//
+// 🔴 강조도 캡틴 피드백으로 다시 짰다: "화면은 밝게 빛나는데 정작 못 가잖아." 카드 전체나
+// 마우스가 지금 있는 상자가 아니라, **끄는 티켓 자기 트랙과 같은 상자 하나만** 마우스 위치와
+// 무관하게 빛난다 — 그 상자가 없으면 가상 상자(공간)로 자리를 보여준다("공간을 벌려서 표시").
+describe("PlanView — 단계 보기 드래그는 트랙을 절대 안 바꾸고, 실제 놓일 자리만 정확히 빛난다(04 표 교정, 🔴 첫 커버)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("다른 트랙 상자 위에서 hover 해도 — 내 트랙 상자만 빛나고 그 상자는 안 빛난다, 트랙은 안 바뀐다", async () => {
+    const moveFeatureRank = vi.spyOn(api, "moveFeatureRank");
     vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
     vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
     renderPlan();
 
     const chip = screen.getByText("auth-login/02").closest("span")!; // 지금 트랙 = web
     const step1Card = screen.getByText("단계 1").closest("section")!;
+    const webGroup = within(step1Card).getByText("web").closest("div")!;
     const paymentsGroup = within(step1Card).getByText("payments").closest("div")!;
     const dt = makeDataTransfer();
     fireEvent.dragStart(chip, { dataTransfer: dt });
-    fireEvent.dragOver(paymentsGroup, { dataTransfer: dt });
+    fireEvent.dragOver(paymentsGroup, { dataTransfer: dt }); // 다른 트랙 상자 위에서 hover
 
-    // 🔴 놓기 전에 — 기능 전체가 이동한다는 것이 끄는 동안 보인다(티켓 04 캡틴 확인 1).
-    expect(within(paymentsGroup).getByText("기능 전체가 「payments」로 이동합니다")).toBeInTheDocument();
+    // 마우스는 payments 위에 있지만, 실제로 놓일 web 상자만 빛난다 — payments 는 안 빛난다.
+    expect(webGroup.className).toContain("border-accent");
+    expect(paymentsGroup.className).not.toContain("border-accent");
 
     fireEvent.drop(paymentsGroup, { dataTransfer: dt });
 
     await waitFor(() =>
-      expect(api.moveFeatureRank).toHaveBeenCalledWith("alpha", {
-        feature: "auth-login",
-        track: "payments",
-        beforeRank: null,
-        afterRank: null,
-      }),
+      expect(api.moveTicketStep).toHaveBeenCalledWith("alpha", { feature: "auth-login", ticket: "02", step: 1 }),
     );
-    expect(api.moveTicketStep).toHaveBeenCalledWith("alpha", { feature: "auth-login", ticket: "02", step: 1 });
+    expect(moveFeatureRank).not.toHaveBeenCalled(); // 트랙은 이 경로로 절대 안 바뀐다
+  });
+
+  it("그 단계에 내 트랙 상자가 없으면 — 카드 공간을 벌려 가상 상자로 자리를 보여준다, 트랙은 안 바뀐다", async () => {
+    // 단계 2 는 web 상자만 있다(payments 상자는 없다) — billing/01(payments)을 그리로 끈다.
+    const data: PlanResponse = {
+      ...DATA,
+      order: {
+        ...DATA.order,
+        tickets: DATA.order.tickets.map((t) =>
+          t.feature === "auth-login" && t.ticket === "02" ? { ...t, step: 2 } : t,
+        ),
+      },
+    };
+    vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: data.order, warnings: [] });
+    const moveFeatureRank = vi.spyOn(api, "moveFeatureRank");
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(data);
+    renderPlan(data);
+
+    const chip = screen.getByText("billing/01").closest("span")!; // 지금 트랙 = payments
+    const step2Section = screen.getByText("단계 2").closest("section")!;
+    expect(within(step2Section).queryByText("payments")).toBeNull(); // 상자가 아직 없다
+
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(chip, { dataTransfer: dt });
+    fireEvent.dragOver(step2Section, { dataTransfer: dt });
+
+    // 가상 상자가 나타난다 — 라벨(payments)과 "새 묶음이 생깁니다" 안내가 그 자리에 붙는다.
+    const ghostText = within(step2Section).getByText(/여기로 옮겨집니다/);
+    expect(within(ghostText.closest("div")!).getByText("payments")).toBeInTheDocument();
+
+    fireEvent.drop(step2Section, { dataTransfer: dt });
+
+    await waitFor(() =>
+      expect(api.moveTicketStep).toHaveBeenCalledWith("alpha", { feature: "billing", ticket: "01", step: 2 }),
+    );
+    expect(moveFeatureRank).not.toHaveBeenCalled(); // 트랙은 이 경로로 절대 안 바뀐다
+  });
+
+  it("내 트랙 상자가 이미 있으면 가상 상자는 안 뜬다 — 진짜 상자만 빛난다", async () => {
+    vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
+    renderPlan();
+
+    const chip = screen.getByText("auth-login/02").closest("span")!; // 지금 트랙 = web
+    const step1Card = screen.getByText("단계 1").closest("section")!;
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(chip, { dataTransfer: dt });
+    fireEvent.dragOver(step1Card, { dataTransfer: dt });
+
+    expect(within(step1Card).queryByText(/여기로 옮겨집니다/)).toBeNull();
   });
 });
 
@@ -449,5 +630,82 @@ describe("PlanView — 드래그 경고(티켓 09 ②, 다시 물어서 갱신�
     // 배치가 다시 바뀌면(새 드래그) 그 새 드래그에 대해서는 다시 뜬다.
     dragTicketInto("billing/01", "payments", 1);
     await waitFor(() => expect(screen.getByText("지금 걸림")).toBeInTheDocument());
+  });
+});
+
+// 🔴 첫 커버(development-order/15 ⑤) — 티켓 칩을 누르면 그 문서가 서랍으로 열린다.
+// `features` 탭과 같은 `DocDrawer`·같은 URL 인코딩(`docView.ts`)을 그대로 부른다.
+describe("PlanView — 티켓 칩을 누르면 문서가 열린다(development-order/15 ⑤, 🔴 첫 커버)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("칩을 누르면 그 티켓 문서가 서랍으로 열린다", async () => {
+    vi.spyOn(api, "fetchFeatureDoc").mockResolvedValue({
+      path: "issues/02-screen.md",
+      content: "# 02 — 로그인 화면",
+    });
+    renderPlan();
+
+    fireEvent.click(screen.getByText("auth-login/02"));
+
+    await waitFor(() =>
+      expect(api.fetchFeatureDoc).toHaveBeenCalledWith("alpha", "auth-login", "issues/02-screen.md"),
+    );
+    const drawer = await screen.findByRole("dialog");
+    expect(within(drawer).getByRole("heading", { name: "02 — 로그인 화면" })).toBeInTheDocument();
+  });
+
+  it("서랍을 닫으면 보던 자리로 돌아온다", async () => {
+    vi.spyOn(api, "fetchFeatureDoc").mockResolvedValue({ path: "issues/02-screen.md", content: "# 문서" });
+    renderPlan();
+
+    fireEvent.click(screen.getByText("auth-login/02"));
+    const drawer = await screen.findByRole("dialog");
+    fireEvent.click(within(drawer).getByRole("button", { name: "닫기" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // 계획 화면 자체는 그대로 남아 있다 — 탭을 건너가지 않았다.
+    expect(screen.getByText("단계 1")).toBeInTheDocument();
+  });
+
+  it("🔴 끌고 놓은 것은 문서를 안 연다 — 끌기와 누르기가 안 섞인다", () => {
+    const fetchDoc = vi.spyOn(api, "fetchFeatureDoc");
+    renderPlan();
+
+    const chip = screen.getByText("auth-login/02").closest("span")!;
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(chip, { dataTransfer: dt });
+    fireEvent.dragEnd(chip);
+    fireEvent.click(chip);
+
+    expect(fetchDoc).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("문서 없는 조각(계획엔 있는데 티켓 문서가 없다)은 눌러도 안 열린다", () => {
+    const data: PlanResponse = {
+      ...DATA,
+      order: {
+        ...DATA.order,
+        tickets: [
+          ...DATA.order.tickets,
+          {
+            project: "alpha",
+            feature: "auth-login",
+            ticket: "99",
+            step: 1,
+            why: "문서 없는 어긋남 시험용",
+            whyNeedsReview: false,
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        ],
+      },
+    };
+    const fetchDoc = vi.spyOn(api, "fetchFeatureDoc");
+    renderPlan(data);
+
+    fireEvent.click(screen.getByText("auth-login/99"));
+
+    expect(fetchDoc).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

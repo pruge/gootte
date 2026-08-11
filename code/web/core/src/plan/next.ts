@@ -21,12 +21,54 @@ import type {
 const doneOrDropped = (t: FeatureTicket): boolean => t.status === "done" || t.status === "dropped";
 const ticketKey = (feature: string, ticket: string): string => `${feature}/${ticket}`;
 
+const UNASSIGNED_TRACK = "(트랙 미지정)";
+
+function groupByTrack<T extends { feature: string }>(
+  entries: readonly T[],
+  featureOrders: readonly FeatureOrderEntry[],
+): Map<string, T[]> {
+  const trackByFeature = new Map<string, string>();
+  for (const fo of featureOrders) trackByFeature.set(fo.feature, fo.track);
+  const byTrack = new Map<string, T[]>();
+  for (const e of entries) {
+    const track = trackByFeature.get(e.feature) ?? UNASSIGNED_TRACK;
+    const list = byTrack.get(track) ?? [];
+    list.push(e);
+    byTrack.set(track, list);
+  }
+  return byTrack;
+}
+
+// 이유 줄에 상태를 말하는 낱말 — development-order/15 ③. "누가 집어 갔는지·막혔는지·끝났는지는
+// 티켓이 갖는다"(INV-5), 이유 줄에 적으면 그 줄이 낡아 거짓말을 시작한다. 막지는 않는다.
+// 🔴 실측(gootte·jinwooauto 오늘 이유 줄 30개, 2026-08-11)에 맞춰 좁게 시작한다 — "막힘 없음"
+// 처럼 실제로 쓰이는 정상 표현(명사 "막힘")은 건드리지 않고, 실제 사고를 낸 낱말만 담는다.
+const STALE_REASON_WORDS = [
+  "집어갔",
+  "집어 갔",
+  "임자",
+  "처리중",
+  "진행중",
+  "끝났",
+  "완료됐",
+  "완료했",
+  "막혔",
+  "막혀있",
+  "막혀 있",
+];
+
+function findStaleReasonWord(why: string): string | null {
+  for (const w of STALE_REASON_WORDS) if (why.includes(w)) return w;
+  return null;
+}
+
 /**
- * 계획(DB)과 티켓(관리대상 md)의 어긋남 세 종류 — 감추지 않는다(spec §어긋남 세 줄).
- * `order` 와 `next` 양쪽이 이 함수를 같이 쓴다.
+ * 계획(DB)과 티켓(관리대상 md)의 어긋남 — 감추지 않는다(spec §어긋남 세 줄, development-order/15).
+ * `order` 와 `next` 양쪽이 이 함수를 같이 쓴다 — 판정 자리는 하나뿐이다.
  */
 export function computeMismatches(
   features: readonly Feature[],
+  featureOrders: readonly FeatureOrderEntry[],
   ticketOrders: readonly TicketOrderEntry[],
 ): PlanMismatch[] {
   const docByKey = new Map<string, FeatureTicket>();
@@ -85,10 +127,52 @@ export function computeMismatches(
     }
   }
 
+  // ① 막힘 없는데 그 트랙의 선두 단계가 아니고, 계획의 이유가 비어 있다(development-order/15 ①).
+  // 막힘으로 취급하지 않는다 — startable 계산은 안 건드린다. 이유를 채우면 사라진다(끄는 길).
+  for (const orders of groupByTrack(ticketOrders, featureOrders).values()) {
+    const pending = orders
+      .map((o) => ({ o, doc: docByKey.get(ticketKey(o.feature, o.ticket)) }))
+      .filter((x): x is { o: TicketOrderEntry; doc: FeatureTicket } => x.doc !== undefined && !doneOrDropped(x.doc));
+    if (pending.length === 0) continue;
+    const frontStep = Math.min(...pending.map((x) => x.o.step));
+    for (const { o, doc } of pending) {
+      if (o.step === frontStep) continue;
+      if (doc.waitingOn.length > 0) continue; // 실제로 막혀 있으면 늦는 게 당연하다 — 대상이 아니다
+      if (o.why.trim() !== "") continue; // 이유가 적혀 있으면 조용하다
+      mismatches.push({
+        kind: "unblocked_but_delayed",
+        feature: o.feature,
+        ticket: o.ticket,
+        step: o.step,
+        detail: `${o.feature}/${o.ticket} — 티켓은 막힘이 없다는데 단계 ${o.step}(이 트랙의 선두는 ${frontStep})에 있고, 계획의 이유가 비어 있다`,
+      });
+    }
+  }
+
+  // ③ 이유 줄에 상태를 말하는 낱말이 있다(development-order/15 ③) — 막지 않는다, 낡았을 수 있다고만 말한다.
+  for (const fo of featureOrders) {
+    const word = findStaleReasonWord(fo.why);
+    if (!word) continue;
+    mismatches.push({
+      kind: "stale_reason_wording",
+      feature: fo.feature,
+      detail: `${fo.feature} — 이유 줄에 상태를 말하는 낱말("${word}")이 있다. 낡았을 수 있다`,
+    });
+  }
+  for (const o of ticketOrders) {
+    const word = findStaleReasonWord(o.why);
+    if (!word) continue;
+    mismatches.push({
+      kind: "stale_reason_wording",
+      feature: o.feature,
+      ticket: o.ticket,
+      step: o.step,
+      detail: `${o.feature}/${o.ticket} — 이유 줄에 상태를 말하는 낱말("${word}")이 있다. 낡았을 수 있다`,
+    });
+  }
+
   return mismatches;
 }
-
-const UNASSIGNED_TRACK = "(트랙 미지정)";
 
 function computeTrackNext(
   track: string,
@@ -121,6 +205,7 @@ function computeTrackNext(
           ticket: x.order.ticket,
           title: x.ticket.title,
           why: x.order.why,
+          needsCaptainEye: x.ticket.needsCaptainEye,
         })),
         emptyReason: null,
       };
@@ -163,5 +248,14 @@ export function computeNext(
     .map(([track, orders]) => computeTrackNext(track, orders, ticketByKey))
     .sort((a, b) => a.track.localeCompare(b.track));
 
-  return { tracks, mismatches: computeMismatches(features, ticketOrders) };
+  const captainEyeCount = tracks.reduce(
+    (n, t) => n + t.tickets.filter((tk) => tk.needsCaptainEye).length,
+    0,
+  );
+
+  return {
+    tracks,
+    mismatches: computeMismatches(features, featureOrders, ticketOrders),
+    captainEyeCount,
+  };
 }

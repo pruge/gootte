@@ -76,3 +76,9 @@ export const moveFeatureRank = (
   project: string,
   input: { feature: string; track: string; beforeRank: number | null; afterRank: number | null },
 ): Promise<DragResult> => post(`/api/plan/${encodeURIComponent(project)}/feature-rank`, input, DragResult);
+
+/** 트랙 이름만 고친다 — 그 트랙의 모든 기능이 한꺼번에 새 이름을 받는다. */
+export const renameTrack = (
+  project: string,
+  input: { track: string; newTrack: string },
+): Promise<DragResult> => post(`/api/plan/${encodeURIComponent(project)}/track-rename`, input, DragResult);

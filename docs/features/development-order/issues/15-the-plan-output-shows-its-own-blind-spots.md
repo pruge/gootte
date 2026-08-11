@@ -7,7 +7,7 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능**(2026-08-11 막힘 해제)
 
-**Status:** ready-for-agent
+**Status:** resolved (2026-08-11)
 
 기다리던 [09](09-the-plan-tab-becomes-usable.md) 가 착지했다(`resolved` 2026-08-11, PR `#27`).
 표시가 붙을 자리가 자리를 잡았으므로 그 위에 얹으면 된다.

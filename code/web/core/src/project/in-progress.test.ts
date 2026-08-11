@@ -15,6 +15,7 @@ const ticket = (num: string, slug: string, over: Partial<FeatureTicket> = {}): F
   waitingOn: [],
   startable: true,
   workedBy: [],
+  needsCaptainEye: false,
   ...over,
 });
 

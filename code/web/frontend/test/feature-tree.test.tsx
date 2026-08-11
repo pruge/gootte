@@ -23,6 +23,7 @@ const BASE: Omit<Feature, "docs"> = {
       waitingOn: [],
       startable: true,
       workedBy: [],
+      needsCaptainEye: false,
     },
   ],
 };

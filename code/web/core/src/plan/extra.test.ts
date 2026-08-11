@@ -15,6 +15,7 @@ function ticket(num: string): FeatureTicket {
     waitingOn: [],
     startable: true,
     workedBy: [],
+    needsCaptainEye: false,
   };
 }
 

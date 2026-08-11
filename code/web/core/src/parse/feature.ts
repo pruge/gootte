@@ -130,6 +130,27 @@ export function parseBlockedBy(content: string): string[] {
   return parseBlockedByLine(content).blockedBy;
 }
 
+// H2 헤딩 한 줄("## " 뒤). H3 이상("###")은 이 접두를 매치하지 않는다 — "결과" 회고 문단
+// (예: jinwooauto/access-control/01 의 "### 캡틴 확인 결과")과 절 자체를 가른다.
+const H2_HEADING = /^##[ \t]+([^\n]*)$/gm;
+// 헤딩 텍스트 맨 앞의 꾸밈(이모지 등) — parseBlockedByLine 의 DECORATION_PREFIX 와 같은 원리.
+const CAPTAIN_EYE_DECORATION = /^[\p{S}\p{P}\s]+/u;
+
+/**
+ * `## 캡틴 확인` 절이 있는가 — 판정은 그 절이 있나 없나로만 한다(INV-4, development-order/15 ②).
+ * 뜻을 짐작하지 않는다: 절 안 내용은 안 읽는다. 유일한 예외는 실측(gootte 13장 + jinwooauto
+ * 45장, 2026-08-11)에서 나온 관례 하나 — 헤딩 자체에 **"— 없음"** 이 딸려 있으면(`access-control/03`·
+ * `06`, `authorship/02`) 캡틴이 이미 "필요 없다" 고 적어 두신 것이라 세지 않는다.
+ */
+export function parseNeedsCaptainEye(content: string): boolean {
+  for (const m of content.matchAll(H2_HEADING)) {
+    const text = (m[1] ?? "").replace(CAPTAIN_EYE_DECORATION, "");
+    if (!text.startsWith("캡틴 확인") && !text.startsWith("캡틴확인")) continue;
+    return !text.includes("없음");
+  }
+  return false;
+}
+
 /** 파일 한 장에서 읽어낸 티켓(막힘 해제는 아직 계산 전 — 그건 같은 기능의 다른 티켓을 알아야 한다). */
 export interface TicketDoc {
   num: string;
@@ -142,6 +163,8 @@ export interface TicketDoc {
   blockedBy: string[];
   /** `Blocked by:` 에서 번호도 "없음" 도 못 알아들은 산문 — verbatim(감추지 않는다). */
   unreadableBlockedBy: string[];
+  /** `## 캡틴 확인` 절이 있는가(development-order/15 ②). */
+  needsCaptainEye: boolean;
 }
 
 /** 기능 사양 한 장 — 표제와 상태. */
@@ -176,6 +199,7 @@ export function parseTicket(fileName: string, content: string): TicketDoc {
     completedAt,
     blockedBy,
     unreadableBlockedBy: unreadable,
+    needsCaptainEye: parseNeedsCaptainEye(content),
   };
 }
 

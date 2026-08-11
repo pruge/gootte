@@ -23,6 +23,7 @@ import {
   moveTicketStep,
   insertTicketStep,
   moveFeatureOrder,
+  renameTrack,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
@@ -57,6 +58,10 @@ const featureRankBody = z.object({
   track: z.string().min(1),
   beforeRank: z.number().nullable(),
   afterRank: z.number().nullable(),
+});
+const trackRenameBody = z.object({
+  track: z.string().min(1),
+  newTrack: z.string().min(1),
 });
 export interface AppOptions {
   /** discover 루트 (테스트 주입). 없으면 defaultRoots(). */
@@ -219,6 +224,32 @@ export function createApp(options: AppOptions = {}): Hono {
       const { feature, track, beforeRank, afterRank } = c.req.valid("json");
       try {
         moveFeatureOrder(dataDir, { project, feature, track, beforeRank, afterRank });
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 400);
+      }
+      onPlanChange(project);
+      const order = readPlanOrder(dataDir, project);
+      return c.json(DragResult.parse({ order, warnings: [] }));
+    },
+  );
+
+  /**
+   * 트랙 이름 고치기(development-order/15 후속, 캡틴 지시 2026-08-11: "track 이름을 내가
+   * 수정 가능하게 해"). 그 트랙에 있던 모든 기능이 한꺼번에 새 이름을 받는다 — 순위·왜는
+   * 안 건드린다(`renameTrack`). gootte 자기 DB 만 쓴다(INV-2) — 관리대상은 이 경로에서도 안 건드린다.
+   */
+  app.post(
+    "/api/plan/:slug/track-rename",
+    zValidator("param", slugParam),
+    zValidator("json", trackRenameBody),
+    (c) => {
+      const { slug } = c.req.valid("param");
+      const proj = resolveSlug(roots, slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      const project = basename(proj.path);
+      const { track, newTrack } = c.req.valid("json");
+      try {
+        renameTrack(dataDir, { project, track, newTrack });
       } catch (err) {
         return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 400);
       }

@@ -10,10 +10,13 @@ interface MainPanelProps {
   onTab: (t: Tab) => void;
   view: string | null;
   onView: (v: string | null) => void;
+  /** `plan` 탭에서 연 티켓 문서 주소(development-order/15 ⑤) — `features` 탭은 안 쓴다. */
+  doc: string | null;
+  onDoc: (d: string | null) => void;
 }
 
 /** 셸의 메인 영역 — 본문 header(브랜드 + 프로젝트 + 탭) + 뷰. */
-export function MainPanel({ project, tab, onTab, view, onView }: MainPanelProps) {
+export function MainPanel({ project, tab, onTab, view, onView, doc, onDoc }: MainPanelProps) {
   return (
     <section className="flex flex-1 flex-col overflow-hidden">
       <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border pl-4 pr-6">
@@ -37,7 +40,14 @@ export function MainPanel({ project, tab, onTab, view, onView }: MainPanelProps)
       ) : (
         <div className="flex-1 overflow-hidden pl-4 pr-6 py-5">
           {tab === "plan" ? (
-            <PlanView key={`${project}-plan`} project={project} view={view} onView={onView} />
+            <PlanView
+              key={`${project}-plan`}
+              project={project}
+              view={view}
+              onView={onView}
+              doc={doc}
+              onDoc={onDoc}
+            />
           ) : (
             <FeaturesView key={`${project}-features`} project={project} view={view} onView={onView} />
           )}
