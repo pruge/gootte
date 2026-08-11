@@ -146,9 +146,6 @@ export function PlanView({ project, view, onView, doc, onDoc }: PlanViewProps) {
                 { onSuccess: () => onTicketDropped(feature, ticket) },
               )
             }
-            onMoveFeatureTrack={(feature, track) =>
-              moveFeatureRank.mutate({ feature, track, beforeRank: null, afterRank: null })
-            }
             onOpenDoc={openDoc}
           />
         ) : (

@@ -11,10 +11,13 @@ interface StepViewProps {
   features: readonly Feature[];
   order: PlanOrder;
   highlighted: ReadonlySet<string>;
+  /**
+   * 🔴 이 보기에서 티켓 칩을 끄는 어떤 방식도 트랙을 바꾸지 않는다 — 오직 단계만 바뀐다
+   * (티켓 04 §무엇이 바뀌나: "티켓 칩 → 단계", "기능 카드 → 트랙" 으로 축이 이미 갈라져 있다.
+   * 트랙을 바꾸는 유일한 길은 기능 보기에서 기능 카드 자체를 끄는 것이다, `FeatureView`).
+   */
   onMoveToStep: (feature: string, ticket: string, step: number) => void;
   onInsertAfterStep: (feature: string, ticket: string, afterStep: number) => void;
-  /** 🟡 칩을 다른 트랙 묶음으로 끌면 그 티켓이 속한 **기능 전체**의 트랙이 바뀐다 — 티켓 하나만 옮길 수 없다. */
-  onMoveFeatureTrack: (feature: string, track: string) => void;
   /** 칩을 누르면 그 티켓 문서를 연다(development-order/15 ⑤). */
   onOpenDoc: OpenDocFn;
 }
@@ -24,7 +27,12 @@ interface DraggingTicket {
   track: string;
 }
 
-/** 카드(단계) 안의 트랙 묶음 하나 — 라벨은 칩과 같은 줄을 공유하지 않는다(라벨 위, 칩 아래). */
+/**
+ * 카드(단계) 안의 트랙 묶음 하나 — 라벨은 칩과 같은 줄을 공유하지 않는다(라벨 위, 칩 아래).
+ * 🔴 이 상자의 라벨과 끄는 티켓의 트랙이 달라도 트랙은 안 바뀐다 — 단계만 옮긴다(티켓 04 §표,
+ * 캡틴 피드백 2026-08-11: "track이 다르면 막아야 하지 않나 — track은 고정 아닌가"). 트랙을
+ * 바꾸던 옛 동작(티켓 09 ③)은 04 표와 어긋난 것이었다 — 이 교정으로 04 표에 맞춘다.
+ */
 function TrackGroup({
   track,
   step,
@@ -32,7 +40,6 @@ function TrackGroup({
   highlighted,
   dragging,
   onMoveToStep,
-  onMoveFeatureTrack,
   onTicketDragStart,
   onTicketDragEnd,
   onOpenDoc,
@@ -44,7 +51,6 @@ function TrackGroup({
   highlighted: ReadonlySet<string>;
   dragging: DraggingTicket | null;
   onMoveToStep: (feature: string, ticket: string, step: number) => void;
-  onMoveFeatureTrack: (feature: string, track: string) => void;
   onTicketDragStart: (feature: string, ticket: string) => void;
   onTicketDragEnd: () => void;
   onOpenDoc: OpenDocFn;
@@ -52,7 +58,7 @@ function TrackGroup({
   onEnterBox: () => void;
 }) {
   const [over, setOver] = useState(false);
-  const crossTrack = over && dragging !== null && dragging.track !== track;
+  const differentTrack = over && dragging !== null && dragging.track !== track;
 
   return (
     <div
@@ -72,20 +78,15 @@ function TrackGroup({
         setOver(false);
         const data = readTicketDragData(e);
         if (!data) return;
-        if (dragging && dragging.track !== track) onMoveFeatureTrack(data.feature, track);
-        onMoveToStep(data.feature, data.ticket, step);
+        onMoveToStep(data.feature, data.ticket, step); // 트랙은 안 바뀐다 — 이 상자 라벨과 달라도 그대로
       }}
       className={`min-w-0 rounded-md border-2 p-2 transition-colors ${
-        crossTrack
-          ? "border-partial bg-partial/10"
-          : over
-            ? "border-accent bg-accent/10"
-            : "border-transparent bg-surface-2/40"
+        over ? "border-accent bg-accent/10" : "border-transparent bg-surface-2/40"
       }`}
     >
       <h4 className="mono mb-1.5 text-xs font-medium text-muted">{track}</h4>
-      {crossTrack && (
-        <p className="mono mb-1 text-xs text-partial">기능 전체가 「{track}」로 이동합니다</p>
+      {differentTrack && (
+        <p className="mono mb-1 text-xs text-accent">「{dragging.track}」 트랙 그대로 — 단계만 여기로</p>
       )}
       <div className="flex min-w-0 flex-wrap gap-1.5">
         {chips.map((c) => (
@@ -112,17 +113,13 @@ function TrackGroup({
  * 🔴 카드 배경(트랙 묶음 상자 밖)도 드롭존이다 — **끄는 티켓 자기 트랙 그대로** 이 단계로 옮긴다
  * (캡틴 피드백: "지금은 새 단계를 추가하는 것만 가능해. 단계 내에서 기존 트랙으로 추가가 가능하게
  * 해줘"). 이 단계에 그 트랙 묶음 상자가 아직 없을 때(그 트랙 티켓이 이 단계엔 하나도 없을 때)
- * 쓰는 자리다 — 상자가 있으면 그 상자에 놓으면 된다(`TrackGroup`, `stopPropagation` 으로 안 겹친다).
- * 🔴 트랙은 여기서 안 바뀐다 — `onMoveFeatureTrack` 을 부르지 않는다. 트랙을 바꾸는 유일한 길은
- * 다른 트랙 묶음 상자에 직접 놓는 것뿐이다(캡틴 피드백: "track이 다르면 막아야 하지 않나 —
- * track은 고정 아닌가").
+ * 쓰는 자리다 — 상자가 있으면 그 상자에 놓아도 결과는 같다(`TrackGroup` 도 트랙을 안 바꾼다).
  */
 function StepCard({
   row,
   highlighted,
   dragging,
   onMoveToStep,
-  onMoveFeatureTrack,
   onTicketDragStart,
   onTicketDragEnd,
   onInsertAfterStep,
@@ -132,7 +129,6 @@ function StepCard({
   highlighted: ReadonlySet<string>;
   dragging: DraggingTicket | null;
   onMoveToStep: (feature: string, ticket: string, step: number) => void;
-  onMoveFeatureTrack: (feature: string, track: string) => void;
   onTicketDragStart: (feature: string, ticket: string) => void;
   onTicketDragEnd: () => void;
   onInsertAfterStep: (feature: string, ticket: string, afterStep: number) => void;
@@ -158,7 +154,7 @@ function StepCard({
           setCardOver(false);
           const data = readTicketDragData(e);
           if (!data) return;
-          onMoveToStep(data.feature, data.ticket, row.step); // 트랙은 그대로 — onMoveFeatureTrack 안 부른다
+          onMoveToStep(data.feature, data.ticket, row.step); // 트랙은 그대로 — 이 보기는 트랙을 안 바꾼다
         }}
         className={`min-w-0 rounded-lg border p-3 transition-colors ${
           cardOver ? "border-accent bg-accent/5" : "border-border bg-surface"
@@ -178,7 +174,6 @@ function StepCard({
               highlighted={highlighted}
               dragging={dragging}
               onMoveToStep={onMoveToStep}
-              onMoveFeatureTrack={onMoveFeatureTrack}
               onTicketDragStart={onTicketDragStart}
               onTicketDragEnd={onTicketDragEnd}
               onOpenDoc={onOpenDoc}
@@ -198,7 +193,8 @@ function StepCard({
  * **트랙별로** 묶인다 — 라벨은 칩과 같은 줄을 공유하지 않아(라벨 위, 칩 아래) 트랙 이름 자리를
  * 칩이 침범하지 못한다.
  * 🔴 넓으면 세 칸까지, 좁아지면 두 칸·한 칸으로 접힌다(기능 보기와 같은 반응형).
- * 카드를 다른 트랙 묶음으로 끌면 기능 전체의 트랙이, 다른 카드로 끌면 단계가 바뀐다.
+ * 🔴 티켓 칩을 끌면 **단계만** 바뀐다 — 어느 상자에 놓든, 카드 배경에 놓든 트랙은 그대로다
+ * (티켓 04 §표, 캡틴 피드백 2026-08-11). 트랙은 기능 보기에서 기능 카드를 끌어야 바뀐다.
  */
 export function StepView({
   features,
@@ -206,7 +202,6 @@ export function StepView({
   highlighted,
   onMoveToStep,
   onInsertAfterStep,
-  onMoveFeatureTrack,
   onOpenDoc,
 }: StepViewProps) {
   const rows = groupByStep(features, order);
@@ -230,7 +225,6 @@ export function StepView({
             highlighted={highlighted}
             dragging={dragging}
             onMoveToStep={onMoveToStep}
-            onMoveFeatureTrack={onMoveFeatureTrack}
             onTicketDragStart={onTicketDragStart}
             onTicketDragEnd={onTicketDragEnd}
             onInsertAfterStep={onInsertAfterStep}

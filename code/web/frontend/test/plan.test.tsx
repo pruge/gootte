@@ -358,12 +358,14 @@ describe("PlanView — 드래그(티켓 04, 🔴 첫 커버) → 쓰기 → 재�
   });
 });
 
-// 🔴 첫 커버 — 단계 보기에서 다른 트랙 묶음으로 끌면 기능 전체의 트랙이 바뀐다.
-describe("PlanView — 단계 보기에서 다른 트랙 묶음으로 끌면 기능의 트랙이 바뀐다(🔴 첫 커버)", () => {
+// 🔴 티켓 04 §무엇이 바뀌나: "티켓 칩 → 단계", "기능 카드 → 트랙" 으로 축이 갈라져 있다.
+// 09 시절 "칩을 다른 트랙 상자로 끌면 기능의 트랙이 바뀐다"는 그 표와 어긋나 있었다 — 캡틴
+// 피드백(2026-08-11, "track이 다르면 막아야 하지 않나 — track은 고정 아닌가")으로 04 표에 맞춘다.
+describe("PlanView — 단계 보기에서 다른 트랙 상자에 놓아도 트랙은 안 바뀐다(04 표 교정, 🔴 첫 커버)", () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it("끄는 동안 무엇이 바뀌는지 보이고, 놓으면 트랙과 단계가 함께 바뀐다", async () => {
-    vi.spyOn(api, "moveFeatureRank").mockResolvedValue({ order: DATA.order, warnings: [] });
+  it("다른 트랙 상자 위에서는 '트랙 그대로' 가 보이고, 놓으면 단계만 바뀐다 — 트랙은 안 바뀐다", async () => {
+    const moveFeatureRank = vi.spyOn(api, "moveFeatureRank");
     vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
     vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
     renderPlan();
@@ -375,20 +377,15 @@ describe("PlanView — 단계 보기에서 다른 트랙 묶음으로 끌면 기
     fireEvent.dragStart(chip, { dataTransfer: dt });
     fireEvent.dragOver(paymentsGroup, { dataTransfer: dt });
 
-    // 🔴 놓기 전에 — 기능 전체가 이동한다는 것이 끄는 동안 보인다(티켓 04 캡틴 확인 1).
-    expect(within(paymentsGroup).getByText("기능 전체가 「payments」로 이동합니다")).toBeInTheDocument();
+    // 놓기 전에 — 트랙은 그대로라는 것이 끄는 동안 보인다.
+    expect(within(paymentsGroup).getByText("「web」 트랙 그대로 — 단계만 여기로")).toBeInTheDocument();
 
     fireEvent.drop(paymentsGroup, { dataTransfer: dt });
 
     await waitFor(() =>
-      expect(api.moveFeatureRank).toHaveBeenCalledWith("alpha", {
-        feature: "auth-login",
-        track: "payments",
-        beforeRank: null,
-        afterRank: null,
-      }),
+      expect(api.moveTicketStep).toHaveBeenCalledWith("alpha", { feature: "auth-login", ticket: "02", step: 1 }),
     );
-    expect(api.moveTicketStep).toHaveBeenCalledWith("alpha", { feature: "auth-login", ticket: "02", step: 1 });
+    expect(moveFeatureRank).not.toHaveBeenCalled(); // 트랙은 이 경로로 절대 안 바뀐다
   });
 });
 
@@ -430,7 +427,7 @@ describe("PlanView — 단계 카드 배경에 놓으면 트랙은 그대로 그
     expect(moveFeatureRank).not.toHaveBeenCalled(); // 트랙은 이 경로로 절대 안 바뀐다
   });
 
-  it("기존 트랙 상자 위에 놓으면(겹쳐 있어도) 여전히 그 상자의 규칙(같은 트랙=이동, 다른 트랙=기능 트랙 변경)을 따른다", async () => {
+  it("기존 트랙 상자 위에 놓으면 카드 배경 문구와 안 겹치고, 그 상자도 트랙을 안 바꾼다", async () => {
     vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
     const moveFeatureRank = vi.spyOn(api, "moveFeatureRank");
     vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
