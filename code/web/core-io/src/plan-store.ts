@@ -559,6 +559,33 @@ function renumberAndRetry(
   return insertBetween(newBefore, newAfter) ?? appendRank(renumbered);
 }
 
+/**
+ * `feature-review-dismiss` — 확인 필요를 그 자리에서 내린다(development-order/16 ①). 지금 자리를
+ * 새 닻으로 삼는다(`why_track`·`why_rank` = 지금 `track`·`rank`) — `why` 텍스트는 안 건드린다.
+ * 별도 깃발을 두지 않는다 — 닻 모델 하나로 계속 간다(닻이 둘이면 "제자리로 돌아왔는데 안
+ * 꺼진다" 는 불만이 반대 방향으로 되살아난다). 이후 다시 끌면 새 자리가 이 닻과 갈라져
+ * 확인 필요가 다시 선다(moveFeatureOrder 는 닻을 안 건드리므로 저절로 그렇게 된다).
+ */
+export function dismissFeatureReview(dataDir: string, project: string, feature: string): FeatureOrderEntry {
+  const db = open(dataDir);
+  try {
+    requireExistingFeature(db, project, feature);
+    const updatedAt = new Date().toISOString();
+    db.prepare(
+      `UPDATE feature_order SET why_track = track, why_rank = rank, updated_at = ?
+       WHERE project = ? AND feature = ?`,
+    ).run(updatedAt, project, feature);
+    const updated = readFeatureOrderRow(db, project, feature) as FeatureOrderEntry;
+    appendHistory(
+      dataDir,
+      `dismiss-review ${project} ${feature} → 닻을 지금 자리(track=${updated.track} rank=${updated.rank})로 옮김 [plan 탭]`,
+    );
+    return updated;
+  } finally {
+    db.close();
+  }
+}
+
 export interface RenameTrackInput {
   project: string;
   /** 지금 트랙 이름. */

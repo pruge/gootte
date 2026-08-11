@@ -82,3 +82,10 @@ export const renameTrack = (
   project: string,
   input: { track: string; newTrack: string },
 ): Promise<DragResult> => post(`/api/plan/${encodeURIComponent(project)}/track-rename`, input, DragResult);
+
+/** 확인 필요를 그 자리에서 내린다 — 지금 자리를 새 닻으로 삼는다(development-order/16 ①). */
+export const dismissFeatureReview = (
+  project: string,
+  input: { feature: string },
+): Promise<DragResult> =>
+  post(`/api/plan/${encodeURIComponent(project)}/feature-review-dismiss`, input, DragResult);

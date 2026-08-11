@@ -13,10 +13,27 @@ interface MainPanelProps {
   /** `plan` 탭에서 연 티켓 문서 주소(development-order/15 ⑤) — `features` 탭은 안 쓴다. */
   doc: string | null;
   onDoc: (d: string | null) => void;
+  /** 다른 탭에서 건너와 포커스할 기능(development-order/16 ③④) — 탭마다 뜻이 다르다. */
+  focus: string | null;
+  /** `plan` 탭 기능 카드를 누르면 `features` 탭 그 카드로 건너간다. */
+  onGoToFeatureCard: (feature: string) => void;
+  /** `features` 탭의 `plan` 버튼으로 `plan` 탭 기능 보기, 그 자리로 돌아간다. */
+  onGoToPlanFeature: (feature: string) => void;
 }
 
 /** 셸의 메인 영역 — 본문 header(브랜드 + 프로젝트 + 탭) + 뷰. */
-export function MainPanel({ project, tab, onTab, view, onView, doc, onDoc }: MainPanelProps) {
+export function MainPanel({
+  project,
+  tab,
+  onTab,
+  view,
+  onView,
+  doc,
+  onDoc,
+  focus,
+  onGoToFeatureCard,
+  onGoToPlanFeature,
+}: MainPanelProps) {
   return (
     <section className="flex flex-1 flex-col overflow-hidden">
       <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border pl-4 pr-6">
@@ -47,9 +64,18 @@ export function MainPanel({ project, tab, onTab, view, onView, doc, onDoc }: Mai
               onView={onView}
               doc={doc}
               onDoc={onDoc}
+              focus={focus}
+              onGoToFeatureCard={onGoToFeatureCard}
             />
           ) : (
-            <FeaturesView key={`${project}-features`} project={project} view={view} onView={onView} />
+            <FeaturesView
+              key={`${project}-features`}
+              project={project}
+              view={view}
+              onView={onView}
+              focus={focus}
+              onGoToPlanFeature={onGoToPlanFeature}
+            />
           )}
         </div>
       )}

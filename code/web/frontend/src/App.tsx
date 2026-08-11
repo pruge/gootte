@@ -4,7 +4,19 @@ import { useUrlState } from "./hooks/useUrlState";
 
 /** 셸 — 사이드바(프로젝트) + 메인(본문 header + features 탭). 브랜드=본문 header 좌측, 테마=사이드바 하단. */
 export function App() {
-  const { project, tab, view, doc, setProject, setTab, setView, setDoc } = useUrlState();
+  const {
+    project,
+    tab,
+    view,
+    doc,
+    focus,
+    setProject,
+    setTab,
+    setView,
+    setDoc,
+    goToFeatureCard,
+    goToPlanFeature,
+  } = useUrlState();
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg text-fg">
@@ -17,6 +29,9 @@ export function App() {
         onView={setView}
         doc={doc}
         onDoc={setDoc}
+        focus={focus}
+        onGoToFeatureCard={goToFeatureCard}
+        onGoToPlanFeature={goToPlanFeature}
       />
     </div>
   );

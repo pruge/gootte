@@ -80,4 +80,35 @@ describe("useUrlState", () => {
     expect(result.current.view).toBeNull();
     expect(new URLSearchParams(window.location.search).get("view")).toBeNull();
   });
+
+  it("setTab 은 focus 도 초기화한다", () => {
+    window.history.pushState({}, "", "/?p=x&tab=plan&focus=auth-login");
+    const { result } = renderHook(() => useUrlState());
+    expect(result.current.focus).toBe("auth-login");
+    act(() => result.current.setTab("features"));
+    expect(result.current.focus).toBeNull();
+  });
+
+  // 🔴 development-order/16 ③ — 한 번의 history 항목으로 탭·포커스가 함께 바뀌어야 뒤로 가기
+  // 한 번에 원래 탭으로 돌아온다.
+  it("goToFeatureCard → tab=features + focus, 한 번의 URL 갱신", () => {
+    window.history.pushState({}, "", "/?p=x&tab=plan&view=feature");
+    const { result } = renderHook(() => useUrlState());
+    act(() => result.current.goToFeatureCard("auth-login"));
+    expect(result.current.tab).toBe("features");
+    expect(result.current.focus).toBe("auth-login");
+    expect(result.current.view).toBeNull();
+    const sp = new URLSearchParams(window.location.search);
+    expect(sp.get("tab")).toBe("features");
+    expect(sp.get("focus")).toBe("auth-login");
+  });
+
+  it("goToPlanFeature → tab=plan + view=feature + focus", () => {
+    window.history.pushState({}, "", "/?p=x&tab=features");
+    const { result } = renderHook(() => useUrlState());
+    act(() => result.current.goToPlanFeature("auth-login"));
+    expect(result.current.tab).toBe("plan");
+    expect(result.current.view).toBe("feature");
+    expect(result.current.focus).toBe("auth-login");
+  });
 });

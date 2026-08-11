@@ -13,6 +13,12 @@ export interface UrlState {
    * 보기 전환에 쓰고 있어(티켓 03), 문서 주소를 같은 칸에 실으면 두 뜻이 부딪힌다.
    */
   doc: string | null;
+  /**
+   * 다른 탭에서 건너와 포커스할 기능(development-order/16 ③④) — `view` 처럼 탭마다 뜻이 다르다.
+   * `features` 탭에선 그 기능 카드를 펼치고 issues 폴더를 연다. `plan` 탭에선 그 카드가 있는
+   * 자리로 스크롤한다. 새로고침해도 같은 자리가 열리도록 주소에 싣는다.
+   */
+  focus: string | null;
 }
 
 function read(): UrlState {
@@ -23,6 +29,7 @@ function read(): UrlState {
     tab: (TABS as readonly string[]).includes(rawTab ?? "") ? (rawTab as Tab) : "features",
     view: sp.get("view"),
     doc: sp.get("doc"),
+    focus: sp.get("focus"),
   };
 }
 
@@ -32,6 +39,7 @@ function write(next: UrlState): void {
   sp.set("tab", next.tab);
   if (next.view) sp.set("view", next.view);
   if (next.doc) sp.set("doc", next.doc);
+  if (next.focus) sp.set("focus", next.focus);
   const qs = sp.toString();
   window.history.pushState({}, "", qs ? `?${qs}` : window.location.pathname);
 }
@@ -57,10 +65,25 @@ export function useUrlState() {
     tab: state.tab,
     view: state.view,
     doc: state.doc,
+    focus: state.focus,
     setProject: useCallback((p: string) => update({ project: p }), [update]),
-    // 탭 전환 시 view·doc 초기화(다른 탭의 모드·열린 문서가 새지 않게)
-    setTab: useCallback((t: Tab) => update({ tab: t, view: null, doc: null }), [update]),
+    // 탭 전환 시 view·doc·focus 초기화(다른 탭의 모드·열린 문서·포커스가 새지 않게)
+    setTab: useCallback((t: Tab) => update({ tab: t, view: null, doc: null, focus: null }), [update]),
     setView: useCallback((v: string | null) => update({ view: v }), [update]),
     setDoc: useCallback((d: string | null) => update({ doc: d }), [update]),
+    /**
+     * development-order/16 ③ — `plan` 탭 기능 카드를 눌러 `features` 탭 그 카드로 건너간다.
+     * 탭·포커스를 한 번의 history 항목으로 함께 바꿔야 뒤로 가기 한 번에 `plan` 탭으로 돌아온다
+     * (두 번 나눠 쓰면 pushState 가 둘이 되어 뒤로 가기가 한 번 더 필요해진다).
+     */
+    goToFeatureCard: useCallback(
+      (feature: string) => update({ tab: "features", view: null, doc: null, focus: feature }),
+      [update],
+    ),
+    /** development-order/16 ④ — `features` 탭의 `plan` 버튼으로 `plan` 탭 기능 보기, 그 자리로 돌아간다. */
+    goToPlanFeature: useCallback(
+      (feature: string) => update({ tab: "plan", view: "feature", doc: null, focus: feature }),
+      [update],
+    ),
   };
 }

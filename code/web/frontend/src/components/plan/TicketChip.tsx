@@ -84,6 +84,9 @@ export function TicketChip({
         }, 0);
       }}
       onClick={(e) => {
+        // 기능 보기에서는 이 칩이 기능 카드(그 자체가 누르면 건너가는 물건, development-order/16
+        // ③) 안에 얹힌다 — 칩 클릭이 카드까지 새면 문서 대신 다른 탭으로 건너가 버린다.
+        e.stopPropagation();
         if (justDraggedRef.current) {
           justDraggedRef.current = false;
           return;
@@ -93,6 +96,7 @@ export function TicketChip({
       }}
       onKeyDown={(e) => {
         if (e.key !== "Enter" && e.key !== " ") return;
+        e.stopPropagation();
         if (!ticket) return;
         e.preventDefault();
         onOpen?.(feature, `issues/${ticket.slug}.md`, e.currentTarget);

@@ -8,6 +8,7 @@ import {
   insertTicketStep,
   moveFeatureRank,
   renameTrack,
+  dismissFeatureReview,
 } from "./api";
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
@@ -97,6 +98,15 @@ export function useRenameTrack(project: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { track: string; newTrack: string }) => renameTrack(project, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.plan(project) }),
+  });
+}
+
+/** 확인 필요를 그 자리에서 내린다(development-order/16 ①) — 지금 자리를 새 닻으로 삼는다. */
+export function useDismissFeatureReview(project: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { feature: string }) => dismissFeatureReview(project, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.plan(project) }),
   });
 }

@@ -391,6 +391,56 @@ describe("POST /api/plan/:slug/ticket-step, /ticket-step/insert, /feature-rank �
     }
   });
 
+  test("feature-review-dismiss — 어긋난 닻이 지금 자리로 옮겨가 확인 필요가 꺼진다(development-order/16 ①)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));
+    try {
+      setFeatureOrder(dataDir, { project: "alpha", feature: "auth-login", track: "web", rank: 10, why: "닻 = web/10" });
+      setFeatureOrder(dataDir, { project: "alpha", feature: "doc-tree", track: "web", rank: 20, why: "…" });
+      const app = createApp({ ...APP, dataDir });
+
+      const dragRes = await app.request("/api/plan/alpha/feature-rank", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ feature: "auth-login", track: "web", beforeRank: 20, afterRank: null }),
+      });
+      const dragged = DragResult.parse(await dragRes.json());
+      expect(dragged.order.features.find((f) => f.feature === "auth-login")).toMatchObject({
+        whyNeedsReview: true,
+      });
+
+      const res = await app.request("/api/plan/alpha/feature-review-dismiss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ feature: "auth-login" }),
+      });
+      expect(res.status).toBe(200);
+      const body = DragResult.parse(await res.json());
+      const f = body.order.features.find((x) => x.feature === "auth-login");
+      expect(f).toMatchObject({ why: "닻 = web/10", whyNeedsReview: false });
+
+      // 재조회 — 값이 남아 있다.
+      const reread = readPlanOrder(dataDir, "alpha");
+      expect(reread.features.find((x) => x.feature === "auth-login")?.whyNeedsReview).toBe(false);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("feature-review-dismiss — 계획에 없는 기능이면 400", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));
+    try {
+      const app = createApp({ ...APP, dataDir });
+      const res = await app.request("/api/plan/alpha/feature-review-dismiss", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ feature: "no-such" }),
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   test("feature-rank — 이웃 사이에 끼우면 그 순위만 바뀐다, 트랙도 바꿀 수 있다", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));
     try {

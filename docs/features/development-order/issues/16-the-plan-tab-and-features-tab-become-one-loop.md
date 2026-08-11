@@ -6,7 +6,7 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능**
 
-**Status:** claimed
+**Status:** ready-for-human
 
 ## 캡틴 지시 (원문)
 

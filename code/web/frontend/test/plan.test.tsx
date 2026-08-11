@@ -157,18 +157,42 @@ const DATA: PlanResponse = {
 };
 
 /** view·doc 상태를 실제로 URL 훅처럼 들고 있는 최소 하네스 — 탭 전환·문서 열기 왕복을 실제로 검증한다. */
-function Harness({ project, initialView = null }: { project: string; initialView?: string | null }) {
+function Harness({
+  project,
+  initialView = null,
+  focus = null,
+  onGoToFeatureCard = vi.fn(),
+}: {
+  project: string;
+  initialView?: string | null;
+  focus?: string | null;
+  onGoToFeatureCard?: (feature: string) => void;
+}) {
   const [view, setView] = useState<string | null>(initialView);
   const [doc, setDoc] = useState<string | null>(null);
-  return <PlanView project={project} view={view} onView={setView} doc={doc} onDoc={setDoc} />;
+  return (
+    <PlanView
+      project={project}
+      view={view}
+      onView={setView}
+      doc={doc}
+      onDoc={setDoc}
+      focus={focus}
+      onGoToFeatureCard={onGoToFeatureCard}
+    />
+  );
 }
 
-function renderPlan(data: PlanResponse = DATA, initialView: string | null = null) {
+function renderPlan(
+  data: PlanResponse = DATA,
+  initialView: string | null = null,
+  opts: { focus?: string | null; onGoToFeatureCard?: (feature: string) => void } = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(qk.plan(data.project), data);
   const result = render(
     <QueryClientProvider client={qc}>
-      <Harness project={data.project} initialView={initialView} />
+      <Harness project={data.project} initialView={initialView} {...opts} />
     </QueryClientProvider>,
   );
   return { ...result, qc };
@@ -334,6 +358,96 @@ describe("PlanView — 기능 보기", () => {
     expect(chip).not.toHaveAttribute("draggable", "true");
     const card = screen.getByText("auth-login — 로그인").closest("div[draggable]")!;
     expect(card).toHaveAttribute("draggable", "true");
+  });
+});
+
+// 🔴 첫 커버(development-order/16 ①) — 확인 필요를 그 자리에서 내린다. 지금 자리를 새 닻으로
+// 삼는 방식이라 별도 깃발 저장이 없다(core-io 단위가 그 계산 자체를 덮는다) — 여기서는 화면이
+// 표시를 켜고/끄고, 누르면 그 API 를 부르는지만 본다.
+describe("PlanView — 기능 보기: 확인 필요를 그 자리에서 내린다(development-order/16 ①, 🔴 첫 커버)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  function withReview(needsReview: boolean): PlanResponse {
+    return {
+      ...DATA,
+      order: {
+        ...DATA.order,
+        features: DATA.order.features.map((f) =>
+          f.feature === "auth-login" ? { ...f, whyNeedsReview: needsReview } : f,
+        ),
+      },
+    };
+  }
+
+  it("확인 필요가 선 기능 카드에만 내리는 버튼이 있다", () => {
+    renderPlan(withReview(true), "feature");
+    expect(screen.getByRole("button", { name: /auth-login 확인 필요 내리기/ })).toBeInTheDocument();
+  });
+
+  it("확인 필요가 없으면 버튼도 없다", () => {
+    renderPlan(withReview(false), "feature");
+    expect(screen.queryByRole("button", { name: /확인 필요 내리기/ })).toBeNull();
+  });
+
+  it("누르면 dismissFeatureReview 가 그 기능으로 불린다 — 카드 클릭(건너가기)으로 안 샌다", async () => {
+    const dismissFeatureReview = vi
+      .spyOn(api, "dismissFeatureReview")
+      .mockResolvedValue({ order: withReview(false).order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(withReview(false));
+    const onGoToFeatureCard = vi.fn();
+    renderPlan(withReview(true), "feature", { onGoToFeatureCard });
+
+    fireEvent.click(screen.getByRole("button", { name: /auth-login 확인 필요 내리기/ }));
+
+    await waitFor(() => expect(dismissFeatureReview).toHaveBeenCalledWith("alpha", { feature: "auth-login" }));
+    expect(onGoToFeatureCard).not.toHaveBeenCalled();
+  });
+
+  it("🔴 이유 줄은 그대로다", () => {
+    renderPlan(withReview(true), "feature");
+    expect(screen.getByText("먼저 끝낸다")).toBeInTheDocument();
+  });
+});
+
+// 🔴 첫 커버(development-order/16 ③) — 기능 카드를 누르면 `features` 탭 그 카드로 건너간다.
+// 끌고 손을 뗀 것이 클릭으로 새면 안 된다(15 ⑤ 와 같은 `justDraggedRef` 방식).
+describe("PlanView — 기능 카드를 누르면 features 탭으로 건너간다(development-order/16 ③, 🔴 첫 커버)", () => {
+  it("카드를 누르면(끌지 않고) onGoToFeatureCard 가 그 기능으로 불린다", () => {
+    const onGoToFeatureCard = vi.fn();
+    renderPlan(DATA, "feature", { onGoToFeatureCard });
+
+    fireEvent.click(screen.getByText("auth-login — 로그인"));
+
+    expect(onGoToFeatureCard).toHaveBeenCalledWith("auth-login");
+  });
+
+  it("🔴 끌고 놓은 것은 안 넘어간다 — 끌기와 누르기가 안 섞인다", () => {
+    const onGoToFeatureCard = vi.fn();
+    renderPlan(DATA, "feature", { onGoToFeatureCard });
+
+    const card = screen.getByText("auth-login — 로그인").closest("div[draggable]")!;
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(card, { dataTransfer: dt });
+    fireEvent.dragEnd(card, { dataTransfer: dt });
+    fireEvent.click(card);
+
+    expect(onGoToFeatureCard).not.toHaveBeenCalled();
+  });
+
+  it("④ features 탭에서 건너오면(focus) 그 기능이 있는 자리가 그대로 뜬다 — 렌더가 안 깨진다", () => {
+    renderPlan(DATA, "feature", { focus: "billing" });
+    expect(screen.getByText("billing — 결제")).toBeInTheDocument();
+  });
+
+  it("🔴 카드 안의 티켓 칩을 누른 것은 카드까지 안 샌다 — 문서만 열린다", async () => {
+    vi.spyOn(api, "fetchFeatureDoc").mockResolvedValue({ path: "issues/02-screen.md", content: "# 문서" });
+    const onGoToFeatureCard = vi.fn();
+    renderPlan(DATA, "feature", { onGoToFeatureCard });
+
+    fireEvent.click(screen.getByText("auth-login/02"));
+
+    expect(onGoToFeatureCard).not.toHaveBeenCalled();
+    await screen.findByRole("dialog");
   });
 });
 

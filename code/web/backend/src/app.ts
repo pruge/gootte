@@ -24,6 +24,7 @@ import {
   insertTicketStep,
   moveFeatureOrder,
   renameTrack,
+  dismissFeatureReview,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
@@ -63,6 +64,7 @@ const trackRenameBody = z.object({
   track: z.string().min(1),
   newTrack: z.string().min(1),
 });
+const featureReviewDismissBody = z.object({ feature: z.string().min(1) });
 export interface AppOptions {
   /** discover 루트 (테스트 주입). 없으면 defaultRoots(). */
   roots?: string[];
@@ -250,6 +252,31 @@ export function createApp(options: AppOptions = {}): Hono {
       const { track, newTrack } = c.req.valid("json");
       try {
         renameTrack(dataDir, { project, track, newTrack });
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 400);
+      }
+      onPlanChange(project);
+      const order = readPlanOrder(dataDir, project);
+      return c.json(DragResult.parse({ order, warnings: [] }));
+    },
+  );
+
+  /**
+   * 확인 필요를 그 자리에서 내린다(development-order/16 ①) — 지금 자리를 새 닻으로 삼는다.
+   * gootte 자기 DB 만 쓴다(INV-2) — 관리대상은 이 경로에서도 안 건드린다.
+   */
+  app.post(
+    "/api/plan/:slug/feature-review-dismiss",
+    zValidator("param", slugParam),
+    zValidator("json", featureReviewDismissBody),
+    (c) => {
+      const { slug } = c.req.valid("param");
+      const proj = resolveSlug(roots, slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      const project = basename(proj.path);
+      const { feature } = c.req.valid("json");
+      try {
+        dismissFeatureReview(dataDir, project, feature);
       } catch (err) {
         return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 400);
       }

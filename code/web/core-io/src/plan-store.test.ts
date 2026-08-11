@@ -5,6 +5,7 @@ import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Feature, FeatureTicket } from "@gootte/contract";
 import {
+  dismissFeatureReview,
   dropOrder,
   dropStaleCompleted,
   insertTicketStep,
@@ -485,6 +486,50 @@ describe("renameTrack — 트랙 이름표만 바꾼다(🔴 첫 커버)", () =>
     const before = readPlanOrder(dataDir, "p");
     renameTrack(dataDir, { project: "p", track: "web", newTrack: "web" });
     expect(readPlanOrder(dataDir, "p")).toEqual(before);
+  });
+});
+
+describe("dismissFeatureReview — 확인 필요를 그 자리에서 내린다(development-order/16 ①, 🔴 첫 커버)", () => {
+  it("어긋난 닻이 지금 자리로 옮겨가 확인 필요가 꺼진다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "닻 = web/10" });
+    setFeatureOrder(dataDir, { project: "p", feature: "b", track: "web", rank: 20, why: "…" });
+    const moved = moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", beforeRank: 20, afterRank: null });
+    expect(moved.whyNeedsReview).toBe(true);
+
+    const dismissed = dismissFeatureReview(dataDir, "p", "a");
+    expect(dismissed).toMatchObject({ track: "web", rank: moved.rank, whyNeedsReview: false });
+  });
+
+  it("🔴 why(이유 줄)는 안 건드린다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "원래 이유" });
+    moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "backend", beforeRank: null, afterRank: null });
+    const dismissed = dismissFeatureReview(dataDir, "p", "a");
+    expect(dismissed.why).toBe("원래 이유");
+  });
+
+  it("🔴 별도 깃발이 아니다 — 내린 뒤 다시 끌면 확인 필요가 다시 선다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "…" });
+    setFeatureOrder(dataDir, { project: "p", feature: "b", track: "web", rank: 20, why: "…" });
+    dismissFeatureReview(dataDir, "p", "a");
+    const movedAgain = moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", beforeRank: 20, afterRank: null });
+    expect(movedAgain.whyNeedsReview).toBe(true);
+  });
+
+  it("이미 닻과 같은 자리면(확인 필요가 안 서 있으면) 조용히 그대로다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "…" });
+    const dismissed = dismissFeatureReview(dataDir, "p", "a");
+    expect(dismissed).toMatchObject({ track: "web", rank: 10, whyNeedsReview: false });
+  });
+
+  it("계획에 없는 기능이면 거절한다", () => {
+    expect(() => dismissFeatureReview(dataDir, "p", "no-such")).toThrow();
+  });
+
+  it("history.md 에 dismiss-review 한 줄이 남는다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "…" });
+    dismissFeatureReview(dataDir, "p", "a");
+    const history = readFileSync(join(dataDir, "history.md"), "utf8");
+    expect(history).toContain("dismiss-review p a");
   });
 });
 
