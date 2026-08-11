@@ -28,7 +28,13 @@ function DropIndicator() {
   );
 }
 
-/** 기능 카드 하나 — 끌 수 있다(티켓 04). 위/아래 절반 중 어디를 지나는지로 놓일 자리를 정한다. */
+/**
+ * 기능 카드 하나 — 끌 수 있다(티켓 04). 위/아래 절반 중 어디를 지나는지로 놓일 자리를 정한다.
+ *
+ * 🔴 끄는 동안은 쉬는 상태의 옅은 배경(`bg-surface-2/40`)·옅은 테두리(`border-border/60`)를 안
+ * 쓴다 — 캡틴 피드백(2026-08-11: "grab 잡힌 feature의 투명도가 너무 높아. 낮춰. border도
+ * 강하게 주고"). 잡힌 카드는 불투명 배경과 굵고 진한 테두리로 "지금 이게 들려 있다" 를 분명히 한다.
+ */
 function FeatureCard({
   lane,
   highlighted,
@@ -40,10 +46,16 @@ function FeatureCard({
   onHoverHalf: (half: "top" | "bottom") => void;
   onOpenDoc: OpenDocFn;
 }) {
+  const [isDragging, setIsDragging] = useState(false);
+
   return (
     <div
       draggable
-      onDragStart={(e) => setFeatureDragData(e, lane.feature)}
+      onDragStart={(e) => {
+        setIsDragging(true);
+        setFeatureDragData(e, lane.feature);
+      }}
+      onDragEnd={() => setIsDragging(false)}
       onDragOver={(e) => {
         if (!isFeatureDrag(e)) return;
         e.preventDefault();
@@ -51,7 +63,9 @@ function FeatureCard({
         const rect = e.currentTarget.getBoundingClientRect();
         onHoverHalf(e.clientY - rect.top < rect.height / 2 ? "top" : "bottom");
       }}
-      className="min-w-0 cursor-grab rounded-md border border-border/60 bg-surface-2/40 p-2 active:cursor-grabbing"
+      className={`min-w-0 cursor-grab rounded-md p-2 active:cursor-grabbing ${
+        isDragging ? "border-2 border-accent bg-surface" : "border border-border/60 bg-surface-2/40"
+      }`}
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <span className="min-w-0 truncate text-sm font-medium">{lane.title}</span>

@@ -368,6 +368,27 @@ describe("PlanView — 드래그(티켓 04, 🔴 첫 커버) → 쓰기 → 재�
 
     await waitFor(() => expect(api.moveFeatureRank).toHaveBeenCalled());
   });
+
+  // 🔴 첫 커버 — 캡틴 피드백(2026-08-11): "grab 잡힌 feature의 투명도가 너무 높아. 낮춰.
+  // border도 강하게 주고." 쉬는 상태의 옅은 배경·테두리(bg-surface-2/40, border-border/60)를
+  // 끄는 동안은 불투명 배경 + 굵은 강조 테두리로 바꾼다(`FeatureCard`).
+  it("기능 카드를 끄는 동안은 배경이 불투명해지고 테두리가 굵어진다 — 놓으면 원래대로 돌아온다", () => {
+    renderPlan(DATA, "feature");
+    const card = screen.getByText("billing — 결제").closest("div[draggable]")!;
+
+    expect(card.className).toContain("bg-surface-2/40");
+    expect(card.className).not.toContain("border-2");
+
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(card, { dataTransfer: dt });
+    expect(card.className).toContain("bg-surface"); // 불투명
+    expect(card.className).not.toContain("bg-surface-2/40");
+    expect(card.className).toContain("border-2 border-accent"); // 굵은 강조 테두리
+
+    fireEvent.dragEnd(card, { dataTransfer: dt });
+    expect(card.className).toContain("bg-surface-2/40");
+    expect(card.className).not.toContain("border-2");
+  });
 });
 
 // 🔴 티켓 04 §무엇이 바뀌나: "티켓 칩 → 단계", "기능 카드 → 트랙" 으로 축이 갈라져 있다.
