@@ -301,6 +301,21 @@ describe("GET /api/plan/:slug — 티켓 03", () => {
     }
   });
 
+  test("🔴 계획 DB 스키마가 안 맞으면 원시 SQL 오류 대신 `pnpm db migrate` 안내와 함께 500 — 조용히 반쯤 돌지 않는다", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-plan-broken-"));
+    try {
+      // node:sqlite 가 열자마자 던지는 상태를 만든다 — 마이그레이션으로 못 고치는 스키마 불일치를 흉내.
+      writeFileSync(join(dataDir, "plan.db"), "not a real sqlite db");
+      const app = createApp({ ...APP, dataDir });
+      const res = await app.request("/api/plan/alpha");
+      expect(res.status).toBe(500);
+      const body = ApiError.parse(await res.json());
+      expect(body.error).toContain("pnpm db migrate");
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   test("미해소 프로젝트 slug → 404 ApiError", async () => {
     const app = createApp(APP);
     const res = await app.request("/api/plan/does-not-exist");

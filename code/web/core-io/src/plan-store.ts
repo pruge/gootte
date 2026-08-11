@@ -31,45 +31,103 @@ function historyFile(dataDir: string): string {
   return join(dataDir, "history.md");
 }
 
+const SCHEMA_DDL = `
+  CREATE TABLE IF NOT EXISTS feature_order (
+    project TEXT NOT NULL,
+    feature TEXT NOT NULL,
+    track TEXT NOT NULL,
+    rank REAL NOT NULL,
+    why TEXT NOT NULL,
+    why_needs_review INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (project, feature)
+  );
+  CREATE TABLE IF NOT EXISTS ticket_order (
+    project TEXT NOT NULL,
+    feature TEXT NOT NULL,
+    ticket TEXT NOT NULL,
+    step INTEGER NOT NULL,
+    why TEXT NOT NULL,
+    why_needs_review INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (project, feature, ticket)
+  );
+`;
+
+/**
+ * 표마다 있어야 할 칸 — 새 칸을 더할 때 고칠 **한 자리**(spec §원인: 표마다 손으로 ALTER 를
+ * 적어 두던 것이 빠뜨리기 쉬운 구조 자체였다). `CREATE TABLE IF NOT EXISTS` 는 이미 있는 표에
+ * 칸을 안 붙이므로, 오래 쓴 DB 에는 여기 목록을 보고 빠진 칸만 채운다.
+ */
+const MIGRATABLE_COLUMNS: readonly { table: string; column: string; ddl: string }[] = [
+  { table: "feature_order", column: "why_needs_review", ddl: "INTEGER NOT NULL DEFAULT 0" },
+  { table: "ticket_order", column: "why_needs_review", ddl: "INTEGER NOT NULL DEFAULT 0" },
+];
+
+function existingColumns(db: DatabaseSyncType, table: string): Set<string> {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  return new Set(rows.map((r) => r.name));
+}
+
+export interface SchemaMigrationResult {
+  addedColumns: string[];
+  droppedColumns: string[];
+}
+
+/**
+ * 표를 만들고(없으면) 빠진 칸을 채운다(있으면 건드리지 않는다 — PRAGMA 로 먼저 확인하지,
+ * try/catch 로 아무 에러나 삼키지 않는다). `open()`(매 호출마다 조용히)과
+ * `migratePlanDb`(CLI `db migrate`, 사람에게 보고) 둘 다 이 한 함수를 쓴다.
+ */
+function applySchemaMigrations(db: DatabaseSyncType): SchemaMigrationResult {
+  db.exec(SCHEMA_DDL);
+  const addedColumns: string[] = [];
+  for (const { table, column, ddl } of MIGRATABLE_COLUMNS) {
+    if (existingColumns(db, table).has(column)) continue;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+    addedColumns.push(`${table}.${column}`);
+  }
+  // 종류(kind) 칸이 있던 DB — 캡틴이 종류를 안 두기로 정하셨다(2026-08-11). 지운다.
+  const droppedColumns: string[] = [];
+  if (existingColumns(db, "ticket_order").has("kind")) {
+    db.exec(`ALTER TABLE ticket_order DROP COLUMN kind`);
+    droppedColumns.push("ticket_order.kind");
+  }
+  return { addedColumns, droppedColumns };
+}
+
+function schemaMismatchError(err: unknown): Error {
+  const reason = err instanceof Error ? err.message : String(err);
+  return new Error(`gootte 계획 DB 스키마가 지금 코드와 안 맞는다 — 저장소 루트에서 \`pnpm db migrate\` 를 실행해라. (원인: ${reason})`);
+}
+
 function open(dataDir: string): DatabaseSyncType {
   mkdirSync(dataDir, { recursive: true });
   const db = new DatabaseSync(dbFile(dataDir));
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS feature_order (
-      project TEXT NOT NULL,
-      feature TEXT NOT NULL,
-      track TEXT NOT NULL,
-      rank REAL NOT NULL,
-      why TEXT NOT NULL,
-      why_needs_review INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (project, feature)
-    );
-    CREATE TABLE IF NOT EXISTS ticket_order (
-      project TEXT NOT NULL,
-      feature TEXT NOT NULL,
-      ticket TEXT NOT NULL,
-      step INTEGER NOT NULL,
-      why TEXT NOT NULL,
-      why_needs_review INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (project, feature, ticket)
-    );
-  `);
-  // 이미 있던 DB(이 컬럼이 생기기 전)를 위한 마이그레이션 — 실패(이미 있음)는 무시한다.
-  // DB 는 잃어도 되는 물건이라(spec §저장 형태) 백업·버전 표 없이 이 정도로 충분하다.
   try {
-    db.exec(`ALTER TABLE ticket_order ADD COLUMN why_needs_review INTEGER NOT NULL DEFAULT 0`);
-  } catch {
-    // 컬럼이 이미 있다 — 정상.
-  }
-  // 종류(kind) 칸이 있던 DB — 캡틴이 종류를 안 두기로 정하셨다(2026-08-11). 지운다.
-  try {
-    db.exec(`ALTER TABLE ticket_order DROP COLUMN kind`);
-  } catch {
-    // 이미 없다 — 정상.
+    applySchemaMigrations(db);
+  } catch (err) {
+    db.close();
+    throw schemaMismatchError(err);
   }
   return db;
+}
+
+/**
+ * `db migrate` — 기존 DB 를 지금 스키마로 올린다. 무엇을 고쳤는지 사람이 읽을 수 있게 돌려준다.
+ * 이미 최신이면 두 목록 다 비어 있다(멱등) — DB 는 잃어도 되는 물건이라(spec §저장 형태)
+ * 이 정도(버전 이력 없이 지금 스키마에 맞추기)로 충분하다.
+ */
+export function migratePlanDb(dataDir: string): SchemaMigrationResult {
+  mkdirSync(dataDir, { recursive: true });
+  const db = new DatabaseSync(dbFile(dataDir));
+  try {
+    return applySchemaMigrations(db);
+  } catch (err) {
+    throw schemaMismatchError(err);
+  } finally {
+    db.close();
+  }
 }
 
 function appendHistory(dataDir: string, line: string): void {

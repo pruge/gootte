@@ -5,6 +5,7 @@
     "setup": "pnpm -C code/web install",
     "gootte": "pnpm -s -C code/web gootte",
     "discover": "pnpm -s -C code/web gootte discover",
+    "db": "pnpm -s -C code/web gootte db",
     "verify": "pnpm run test:ports && pnpm -C code/web verify",
     "test": "pnpm -C code/web test",
     "test:ports": "bash scripts/tests/ports.test.sh",
