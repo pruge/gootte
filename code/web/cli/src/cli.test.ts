@@ -4,7 +4,18 @@ import { basename, dirname, join } from "node:path";
 import { beforeAll, beforeEach, describe, it, expect } from "vitest";
 import { discoverProjects } from "@gootte/core-io";
 import { CliError } from "./args";
-import { discoverText, dropText, nextText, orderText, setFeatureText, setTicketText } from "./commands";
+import {
+  discoverText,
+  dropText,
+  extraAddText,
+  extraDoneText,
+  extraListText,
+  extraPruneText,
+  nextText,
+  orderText,
+  setFeatureText,
+  setTicketText,
+} from "./commands";
 
 function w(root: string, rel: string, content: string): void {
   const full = join(root, rel);
@@ -69,5 +80,42 @@ describe("cli — set·set-feature·drop·order·next wiring(티켓 01·02)", ()
   it("next --json — 계획이 없으면 빈 트랙 목록", () => {
     const parsed = JSON.parse(nextText(["p", "--json"], dataDir));
     expect(parsed.tracks).toEqual([]);
+  });
+});
+
+describe("cli — extra wiring(티켓 05)", () => {
+  let dataDir: string;
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), "gootte-extra-cli-"));
+  });
+
+  it("미처리 0건이면 출력이 비어 있다 — 🔴 첫 커버(firstmate 확인 규약)", () => {
+    expect(extraListText(["p"], dataDir)).toBe("");
+  });
+
+  it("add 뒤 extra 를 치면 그 한 건이 나온다", () => {
+    extraAddText(["p", "a/01", "무언가 더 만들었다"], dataDir);
+    const text = extraListText(["p"], dataDir);
+    expect(text).toContain("a/01");
+    expect(text).toContain("무언가 더 만들었다");
+  });
+
+  it("done 뒤 extra 를 치면 다시 비어 있다", () => {
+    const added = extraAddText(["p", "a/01", "…"], dataDir);
+    const id = added.match(/^#(\d+)/)?.[1];
+    extraDoneText([id ?? ""], dataDir);
+    expect(extraListText(["p"], dataDir)).toBe("");
+  });
+
+  it("--all 이면 처리분까지 보인다", () => {
+    const added = extraAddText(["p", "a/01", "…"], dataDir);
+    const id = added.match(/^#(\d+)/)?.[1];
+    extraDoneText([id ?? ""], dataDir);
+    const text = extraListText(["p", "--all"], dataDir);
+    expect(text).toContain("[처리됨]");
+  });
+
+  it("prune 은 --before 없이 거절한다", () => {
+    expect(() => extraPruneText([], dataDir)).toThrow(CliError);
   });
 });

@@ -252,6 +252,31 @@ export const PlanOrder = z.object({
 });
 export type PlanOrder = z.infer<typeof PlanOrder>;
 
+// ── extra — 티켓 밖에서 더 개발된 것을 잡는 큐(development-order/05) ──────────
+// 덮어쓰기(위)와 다르게 **소비하는 큐** — `done` 은 표시일 뿐 지우지 않는다.
+
+/** `extra` 표 1행 — gootte 자기 저장소, 처리 표시로 소비한다. */
+export const ExtraEntry = z.object({
+  id: z.number().int(),
+  project: z.string(),
+  feature: z.string(), // 더 개발된 쪽(낡아지는 쪽) 기능 slug
+  ticket: z.string(), // 그 기능의 티켓 번호
+  note: z.string().min(1), // 무엇이 더 개발됐나 — verbatim, 요약하지 않는다(INV-4)
+  who: z.string().nullable(), // 남긴 사람/에이전트 — 없어도 된다
+  done: z.boolean(), // 처리 표시. 지우지 않는다
+  createdAt: z.string(), // ISO
+});
+export type ExtraEntry = z.infer<typeof ExtraEntry>;
+
+/**
+ * `extra` 목록에 얹는 계산값 — **저장하지 않는다**(INV-1). 가리키는 티켓이 지금 문서에
+ * 있는지는 읽을 때마다 다시 확인한다. 없어도 거절하지 않고 이 값으로 표시만 한다.
+ */
+export const ExtraListItem = ExtraEntry.extend({
+  ticketExists: z.boolean(),
+});
+export type ExtraListItem = z.infer<typeof ExtraListItem>;
+
 /**
  * 계획(DB)과 티켓(관리대상 md)의 어긋남 세 종류 — 감추지 않는다(spec §어긋남은 감추지 않는다).
  * - `ticket_without_step` — 티켓 문서는 있는데 계획에 단계가 없다(새로 썼는데 안 넣음)
