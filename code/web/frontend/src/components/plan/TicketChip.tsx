@@ -1,4 +1,7 @@
+import { useRef } from "react";
+import { IconEye } from "@tabler/icons-react";
 import type { FeatureTicket } from "@gootte/contract";
+import type { OpenDocFn } from "../features/FeatureTree";
 import { setTicketDragData } from "./dragPayload";
 
 interface TicketChipProps {
@@ -16,6 +19,12 @@ interface TicketChipProps {
    */
   onDragStart?: (feature: string, ticketNum: string) => void;
   onDragEnd?: () => void;
+  /**
+   * 누르면 그 티켓의 문서를 연다(development-order/15 ⑤) — `features` 탭과 같은
+   * `OpenDocFn`(featureSlug, path, trigger), 같은 서랍을 그대로 부른다. 문서 없는 칩
+   * (`ticket === null`)은 누르지 않는다 — "(문서 없음)" 이 이미 칩 얼굴에 적혀 있다.
+   */
+  onOpen?: OpenDocFn;
 }
 
 function toneClass(ticket: FeatureTicket | null, highlighted: boolean): string {
@@ -30,7 +39,12 @@ function toneClass(ticket: FeatureTicket | null, highlighted: boolean): string {
 
 /**
  * 티켓 칩 하나 — 상태는 서버가 매 요청 재계산해 보낸 값을 그대로 그린다(INV-1, 여기서 재판정 X).
- * 끌 수 있다(티켓 04) — 단계 줄 사이로, 또는 줄과 줄 사이로.
+ * 끌 수 있다(티켓 04) — 단계 줄 사이로, 또는 줄과 줄 사이로. 누를 수도 있다(⑤) — 문서가 열린다.
+ *
+ * 🔴 끌기와 누르기가 안 섞여야 한다 — 끌고 놓은 것이 클릭으로 새면 이 화면은 못 쓴다.
+ * `justDraggedRef` 가 그 경계를 잡는다: `dragstart` 에서 서고, 이어지는(브라우저에 따라 뒤이어
+ * 오기도 하는) `click` 을 한 번 삼킨 뒤 스스로 꺼진다. `dragend` 도 늦게(`setTimeout(0)`) 같은
+ * 값을 꺼 둔다 — 클릭이 아예 안 따라오는 보통의 드래그에서도 다음 진짜 클릭이 막히지 않게.
  */
 export function TicketChip({
   feature,
@@ -40,22 +54,54 @@ export function TicketChip({
   whyNeedsReview,
   onDragStart,
   onDragEnd,
+  onOpen,
 }: TicketChipProps) {
+  const justDraggedRef = useRef(false);
+
   return (
     <span
       draggable
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen && ticket ? 0 : undefined}
       onDragStart={(e) => {
+        justDraggedRef.current = true;
         setTicketDragData(e, feature, ticketNum);
         onDragStart?.(feature, ticketNum);
       }}
-      onDragEnd={() => onDragEnd?.()}
+      onDragEnd={() => {
+        onDragEnd?.();
+        setTimeout(() => {
+          justDraggedRef.current = false;
+        }, 0);
+      }}
+      onClick={(e) => {
+        if (justDraggedRef.current) {
+          justDraggedRef.current = false;
+          return;
+        }
+        if (!ticket) return; // 문서 없음 — 빈 서랍을 열지 않는다(이미 "(문서 없음)" 이 적혀 있다)
+        onOpen?.(feature, `issues/${ticket.slug}.md`, e.currentTarget);
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        if (!ticket) return;
+        e.preventDefault();
+        onOpen?.(feature, `issues/${ticket.slug}.md`, e.currentTarget);
+      }}
       title={ticket ? ticket.title : `${feature}/${ticketNum} — 티켓 문서를 찾지 못함(어긋남)`}
-      className={`mono flex max-w-full min-w-0 cursor-grab flex-col gap-0.5 rounded-md border px-2 py-1 text-sm active:cursor-grabbing ${toneClass(ticket, highlighted)}`}
+      className={`mono flex max-w-full min-w-0 cursor-grab flex-col gap-0.5 rounded-md border px-2 py-1 text-sm active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-accent ${toneClass(ticket, highlighted)}`}
     >
       <span className="flex min-w-0 items-center gap-1.5">
         <span className="min-w-0 truncate">
           {feature}/{ticketNum}
         </span>
+        {ticket?.needsCaptainEye && (
+          <IconEye
+            size={13}
+            className="shrink-0 text-partial"
+            aria-label="캡틴 확인 필요"
+          />
+        )}
         {whyNeedsReview && (
           <span className="mono shrink-0 rounded bg-partial/15 px-1 py-0.5 text-xs text-partial">확인 필요</span>
         )}

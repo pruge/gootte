@@ -5,6 +5,7 @@ import { groupByStep, UNASSIGNED_TRACK, type StepChip, type StepRow } from "./pl
 import { TicketChip } from "./TicketChip";
 import { StepGap } from "./StepGap";
 import { isTicketDrag, readTicketDragData } from "./dragPayload";
+import type { OpenDocFn } from "../features/FeatureTree";
 
 interface StepViewProps {
   features: readonly Feature[];
@@ -14,6 +15,8 @@ interface StepViewProps {
   onInsertAfterStep: (feature: string, ticket: string, afterStep: number) => void;
   /** 🟡 칩을 다른 트랙 묶음으로 끌면 그 티켓이 속한 **기능 전체**의 트랙이 바뀐다 — 티켓 하나만 옮길 수 없다. */
   onMoveFeatureTrack: (feature: string, track: string) => void;
+  /** 칩을 누르면 그 티켓 문서를 연다(development-order/15 ⑤). */
+  onOpenDoc: OpenDocFn;
 }
 
 interface DraggingTicket {
@@ -32,6 +35,7 @@ function TrackGroup({
   onMoveFeatureTrack,
   onTicketDragStart,
   onTicketDragEnd,
+  onOpenDoc,
 }: {
   track: string;
   step: number;
@@ -42,6 +46,7 @@ function TrackGroup({
   onMoveFeatureTrack: (feature: string, track: string) => void;
   onTicketDragStart: (feature: string, ticket: string) => void;
   onTicketDragEnd: () => void;
+  onOpenDoc: OpenDocFn;
 }) {
   const [over, setOver] = useState(false);
   const crossTrack = over && dragging !== null && dragging.track !== track;
@@ -87,6 +92,7 @@ function TrackGroup({
             whyNeedsReview={c.whyNeedsReview}
             onDragStart={onTicketDragStart}
             onDragEnd={onTicketDragEnd}
+            onOpen={onOpenDoc}
           />
         ))}
       </div>
@@ -104,6 +110,7 @@ function StepCard({
   onTicketDragStart,
   onTicketDragEnd,
   onInsertAfterStep,
+  onOpenDoc,
 }: {
   row: StepRow;
   highlighted: ReadonlySet<string>;
@@ -113,6 +120,7 @@ function StepCard({
   onTicketDragStart: (feature: string, ticket: string) => void;
   onTicketDragEnd: () => void;
   onInsertAfterStep: (feature: string, ticket: string, afterStep: number) => void;
+  onOpenDoc: OpenDocFn;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-2">
@@ -131,6 +139,7 @@ function StepCard({
               onMoveFeatureTrack={onMoveFeatureTrack}
               onTicketDragStart={onTicketDragStart}
               onTicketDragEnd={onTicketDragEnd}
+              onOpenDoc={onOpenDoc}
             />
           ))}
         </div>
@@ -155,6 +164,7 @@ export function StepView({
   onMoveToStep,
   onInsertAfterStep,
   onMoveFeatureTrack,
+  onOpenDoc,
 }: StepViewProps) {
   const rows = groupByStep(features, order);
   const [dragging, setDragging] = useState<DraggingTicket | null>(null);
@@ -181,6 +191,7 @@ export function StepView({
             onTicketDragStart={onTicketDragStart}
             onTicketDragEnd={onTicketDragEnd}
             onInsertAfterStep={onInsertAfterStep}
+            onOpenDoc={onOpenDoc}
           />
         ))}
       </div>

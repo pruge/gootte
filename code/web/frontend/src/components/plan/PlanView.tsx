@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { IconArrowsShuffle } from "@tabler/icons-react";
 import { useInsertTicketStep, useMoveFeatureRank, useMoveTicketStep, usePlan } from "../../lib/query";
 import { Loading, ErrorMsg } from "../common/states";
@@ -8,12 +8,19 @@ import { StepView } from "./StepView";
 import { FeatureView } from "./FeatureView";
 import { DragWarningBanner } from "./DragWarningBanner";
 import { nextKeySet } from "./planGrouping";
+import { decodeDocView, encodeDocView } from "../features/docView";
+import { DocDrawer } from "../features/DocDrawer";
+import type { OpenDocFn } from "../features/FeatureTree";
 
 interface PlanViewProps {
   project: string;
   /** `?view=` — "feature" 아니면 기본값 "step"(spec §자리, 새 라우팅 없음). */
   view: string | null;
   onView: (v: string | null) => void;
+  /** 열린 티켓 문서 주소(development-order/15 ⑤) — `features` 탭의 `view` 문서 주소와 같은
+   * 인코딩(`docView.ts`)을 쓰지만 `view` 는 이 탭에서 이미 단계·기능 보기 전환에 쓰이므로 자리가 다르다. */
+  doc: string | null;
+  onDoc: (d: string | null) => void;
 }
 
 const VIEWS = [
@@ -33,7 +40,7 @@ const VIEWS = [
  * 🔴 판단 요청("의견 물어보기", 티켓 06)은 09 가 걷어냈다 — 캡틴이 상자를 발견해 누르고 기다리는
  * 통로보다, 이미 있는 대화창이 더 낫다는 결정이다(spec §의견 요청은 걷어냈다). 되살리지 않는다.
  */
-export function PlanView({ project, view, onView }: PlanViewProps) {
+export function PlanView({ project, view, onView, doc, onDoc }: PlanViewProps) {
   const { data, isLoading, isError, error } = usePlan(project);
   const [nextOn, setNextOn] = useState(false);
   // 티켓 09 ② — 방금 끈 티켓 하나에 대한 말이다(계획 전체의 어긋남과는 다른 자리). 배치가 바뀌면
@@ -45,6 +52,20 @@ export function PlanView({ project, view, onView }: PlanViewProps) {
   const moveTicketStep = useMoveTicketStep(project);
   const insertTicketStep = useInsertTicketStep(project);
   const moveFeatureRank = useMoveFeatureRank(project);
+
+  // development-order/15 ⑤ — 티켓 칩을 눌러 그 문서를 연다. `features` 탭(`FeaturesView`)과
+  // 같은 서랍(`DocDrawer`)·같은 인코딩(`docView.ts`)을 그대로 부른다 — 두 번째 문서 보기를 짓지 않는다.
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const docView = decodeDocView(doc);
+  const openDoc: OpenDocFn = (featureSlug, path, trigger) => {
+    triggerRef.current = trigger;
+    onDoc(encodeDocView(featureSlug, path));
+  };
+  const closeDoc = () => {
+    onDoc(null);
+    triggerRef.current?.focus();
+    triggerRef.current = null;
+  };
 
   if (isLoading) return <Loading label="개발 순서 읽는 중…" />;
   if (isError) return <ErrorMsg error={error} />;
@@ -128,6 +149,7 @@ export function PlanView({ project, view, onView }: PlanViewProps) {
             onMoveFeatureTrack={(feature, track) =>
               moveFeatureRank.mutate({ feature, track, beforeRank: null, afterRank: null })
             }
+            onOpenDoc={openDoc}
           />
         ) : (
           <FeatureView
@@ -137,9 +159,17 @@ export function PlanView({ project, view, onView }: PlanViewProps) {
             onMoveFeature={(feature, track, beforeRank, afterRank) =>
               moveFeatureRank.mutate({ feature, track, beforeRank, afterRank })
             }
+            onOpenDoc={openDoc}
           />
         )}
       </div>
+
+      <DocDrawer
+        project={project}
+        featureSlug={docView?.featureSlug ?? null}
+        path={docView?.path ?? null}
+        onClose={closeDoc}
+      />
     </div>
   );
 }

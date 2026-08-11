@@ -32,6 +32,7 @@ const DATA: PlanResponse = {
           waitingOn: [],
           startable: true,
           workedBy: [],
+          needsCaptainEye: false,
         },
         {
           num: "02",
@@ -45,6 +46,7 @@ const DATA: PlanResponse = {
           waitingOn: [],
           startable: true,
           workedBy: [],
+          needsCaptainEye: false,
         },
       ],
     },
@@ -68,6 +70,7 @@ const DATA: PlanResponse = {
           waitingOn: ["외부 API"],
           startable: false,
           workedBy: [],
+          needsCaptainEye: false,
         },
       ],
     },
@@ -120,7 +123,15 @@ const DATA: PlanResponse = {
       {
         track: "web",
         step: 1,
-        tickets: [{ feature: "auth-login", ticket: "02", title: "로그인 화면", why: "01 은 이미 끝났다" }],
+        tickets: [
+          {
+            feature: "auth-login",
+            ticket: "02",
+            title: "로그인 화면",
+            why: "01 은 이미 끝났다",
+            needsCaptainEye: false,
+          },
+        ],
         emptyReason: null,
       },
       { track: "payments", step: 1, tickets: [], emptyReason: "all_blocked" },
@@ -133,14 +144,16 @@ const DATA: PlanResponse = {
         detail: "auth-login/03 — 계획에 단계가 없다",
       },
     ],
+    captainEyeCount: 0,
   },
   dragWarnings: {},
 };
 
-/** view 상태를 실제로 URL 훅처럼 들고 있는 최소 하네스 — 탭 전환 왕복을 실제로 검증한다. */
+/** view·doc 상태를 실제로 URL 훅처럼 들고 있는 최소 하네스 — 탭 전환·문서 열기 왕복을 실제로 검증한다. */
 function Harness({ project, initialView = null }: { project: string; initialView?: string | null }) {
   const [view, setView] = useState<string | null>(initialView);
-  return <PlanView project={project} view={view} onView={setView} />;
+  const [doc, setDoc] = useState<string | null>(null);
+  return <PlanView project={project} view={view} onView={setView} doc={doc} onDoc={setDoc} />;
 }
 
 function renderPlan(data: PlanResponse = DATA, initialView: string | null = null) {
@@ -449,5 +462,82 @@ describe("PlanView — 드래그 경고(티켓 09 ②, 다시 물어서 갱신�
     // 배치가 다시 바뀌면(새 드래그) 그 새 드래그에 대해서는 다시 뜬다.
     dragTicketInto("billing/01", "payments", 1);
     await waitFor(() => expect(screen.getByText("지금 걸림")).toBeInTheDocument());
+  });
+});
+
+// 🔴 첫 커버(development-order/15 ⑤) — 티켓 칩을 누르면 그 문서가 서랍으로 열린다.
+// `features` 탭과 같은 `DocDrawer`·같은 URL 인코딩(`docView.ts`)을 그대로 부른다.
+describe("PlanView — 티켓 칩을 누르면 문서가 열린다(development-order/15 ⑤, 🔴 첫 커버)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("칩을 누르면 그 티켓 문서가 서랍으로 열린다", async () => {
+    vi.spyOn(api, "fetchFeatureDoc").mockResolvedValue({
+      path: "issues/02-screen.md",
+      content: "# 02 — 로그인 화면",
+    });
+    renderPlan();
+
+    fireEvent.click(screen.getByText("auth-login/02"));
+
+    await waitFor(() =>
+      expect(api.fetchFeatureDoc).toHaveBeenCalledWith("alpha", "auth-login", "issues/02-screen.md"),
+    );
+    const drawer = await screen.findByRole("dialog");
+    expect(within(drawer).getByRole("heading", { name: "02 — 로그인 화면" })).toBeInTheDocument();
+  });
+
+  it("서랍을 닫으면 보던 자리로 돌아온다", async () => {
+    vi.spyOn(api, "fetchFeatureDoc").mockResolvedValue({ path: "issues/02-screen.md", content: "# 문서" });
+    renderPlan();
+
+    fireEvent.click(screen.getByText("auth-login/02"));
+    const drawer = await screen.findByRole("dialog");
+    fireEvent.click(within(drawer).getByRole("button", { name: "닫기" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // 계획 화면 자체는 그대로 남아 있다 — 탭을 건너가지 않았다.
+    expect(screen.getByText("단계 1")).toBeInTheDocument();
+  });
+
+  it("🔴 끌고 놓은 것은 문서를 안 연다 — 끌기와 누르기가 안 섞인다", () => {
+    const fetchDoc = vi.spyOn(api, "fetchFeatureDoc");
+    renderPlan();
+
+    const chip = screen.getByText("auth-login/02").closest("span")!;
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(chip, { dataTransfer: dt });
+    fireEvent.dragEnd(chip);
+    fireEvent.click(chip);
+
+    expect(fetchDoc).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("문서 없는 조각(계획엔 있는데 티켓 문서가 없다)은 눌러도 안 열린다", () => {
+    const data: PlanResponse = {
+      ...DATA,
+      order: {
+        ...DATA.order,
+        tickets: [
+          ...DATA.order.tickets,
+          {
+            project: "alpha",
+            feature: "auth-login",
+            ticket: "99",
+            step: 1,
+            why: "문서 없는 어긋남 시험용",
+            whyNeedsReview: false,
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        ],
+      },
+    };
+    const fetchDoc = vi.spyOn(api, "fetchFeatureDoc");
+    renderPlan(data);
+
+    fireEvent.click(screen.getByText("auth-login/99"));
+
+    expect(fetchDoc).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

@@ -514,7 +514,7 @@ export function dropStaleCompleted(
 ): { feature: string; ticket: string }[] {
   const order = readPlanOrder(dataDir, project);
   const dropped: { feature: string; ticket: string }[] = [];
-  for (const m of computeMismatches(features, order.tickets)) {
+  for (const m of computeMismatches(features, order.features, order.tickets)) {
     if (m.kind !== "done_but_staged" || !m.ticket) continue;
     dropOrder(dataDir, project, m.feature, m.ticket);
     dropped.push({ feature: m.feature, ticket: m.ticket });

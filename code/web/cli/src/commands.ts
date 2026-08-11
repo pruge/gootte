@@ -105,7 +105,7 @@ function readOrderWithMismatches(project: string, dataDir: string): PlanOrder & 
   const plan = readPlanOrder(dataDir, project);
   const path = resolveProjectPath(project);
   const features = path ? readFeatures(path) : [];
-  return { ...plan, mismatches: computeMismatches(features, plan.tickets) };
+  return { ...plan, mismatches: computeMismatches(features, plan.features, plan.tickets) };
 }
 
 const MISMATCH_LABEL: Record<PlanMismatch["kind"], string> = {
@@ -113,6 +113,8 @@ const MISMATCH_LABEL: Record<PlanMismatch["kind"], string> = {
   step_without_ticket: "티켓 없는 단계",
   done_but_staged: "끝났는데 앞 단계에 남은 것",
   blocked_by_unreadable: "Blocked by 못 읽음",
+  unblocked_but_delayed: "막힘 없는데 뒤 단계 — 이유 없음",
+  stale_reason_wording: "이유 줄이 낡았을 수 있음",
 };
 
 function formatMismatches(mismatches: readonly PlanMismatch[]): string {
@@ -168,9 +170,14 @@ export function nextText(argv: readonly string[], dataDir = defaultPlanDataDir()
     if (t.tickets.length === 0) {
       lines.push(`  (없음 — ${EMPTY_REASON_LABEL[t.emptyReason ?? "no_steps"]})`);
     } else {
-      for (const tk of t.tickets) lines.push(`  ${tk.feature}/${tk.ticket} ${tk.title} — ${tk.why}`);
+      for (const tk of t.tickets) {
+        const eye = tk.needsCaptainEye ? " 👁 캡틴 확인" : "";
+        lines.push(`  ${tk.feature}/${tk.ticket}${eye} ${tk.title} — ${tk.why}`);
+      }
     }
   }
+  // development-order/15 ② — 나란히 보낼 수 있는 것 중 캡틴 눈이 필요한 장수를 한 줄로 센다.
+  lines.push("", `캡틴 눈 필요: ${result.captainEyeCount}개`);
   lines.push("", formatMismatches(result.mismatches));
   return lines.join("\n");
 }

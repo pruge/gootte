@@ -42,6 +42,7 @@ const DATA: FeaturesResponse = {
           waitingOn: [],
           startable: true,
           workedBy: [],
+          needsCaptainEye: false,
         },
         {
           num: "02",
@@ -55,6 +56,7 @@ const DATA: FeaturesResponse = {
           waitingOn: [],
           startable: true,
           workedBy: [],
+          needsCaptainEye: false,
         },
         {
           num: "03",
@@ -68,6 +70,7 @@ const DATA: FeaturesResponse = {
           waitingOn: ["02"],
           startable: false,
           workedBy: [],
+          needsCaptainEye: false,
         },
         {
           num: "04",
@@ -81,6 +84,7 @@ const DATA: FeaturesResponse = {
           waitingOn: [],
           startable: true,
           workedBy: [],
+          needsCaptainEye: false,
         },
         {
           // 처리중 — 문서가 아니라 격리 사본 관측이 준 값이다. 원문 상태는 그대로 남는다.
@@ -95,6 +99,7 @@ const DATA: FeaturesResponse = {
           waitingOn: [],
           startable: true,
           workedBy: ["fm/alpha-oauth"],
+          needsCaptainEye: false,
         },
       ],
     },
@@ -137,6 +142,7 @@ function manyTickets(n: number): FeatureTicket[] {
     waitingOn: [],
     startable: true,
     workedBy: [],
+    needsCaptainEye: false,
   }));
 }
 
@@ -248,6 +254,7 @@ describe("FeaturesView — 머리글 네 수는 항상 뜬다(티켓 01 §설계
               waitingOn: [],
               startable: true,
               workedBy: [],
+              needsCaptainEye: false,
             },
           ],
         },

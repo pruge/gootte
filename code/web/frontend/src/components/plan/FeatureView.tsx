@@ -4,12 +4,15 @@ import { Empty } from "../common/states";
 import { groupByTrackFeature, type FeatureLane, type TrackLane } from "./planGrouping";
 import { TicketChip } from "./TicketChip";
 import { isFeatureDrag, readFeatureDragData, setFeatureDragData } from "./dragPayload";
+import type { OpenDocFn } from "../features/FeatureTree";
 
 interface FeatureViewProps {
   features: readonly Feature[];
   order: PlanOrder;
   highlighted: ReadonlySet<string>;
   onMoveFeature: (feature: string, track: string, beforeRank: number | null, afterRank: number | null) => void;
+  /** 칩을 누르면 그 티켓 문서를 연다(development-order/15 ⑤). */
+  onOpenDoc: OpenDocFn;
 }
 
 function DropIndicator() {
@@ -21,10 +24,12 @@ function FeatureCard({
   lane,
   highlighted,
   onHoverHalf,
+  onOpenDoc,
 }: {
   lane: FeatureLane;
   highlighted: ReadonlySet<string>;
   onHoverHalf: (half: "top" | "bottom") => void;
+  onOpenDoc: OpenDocFn;
 }) {
   return (
     <div
@@ -58,6 +63,7 @@ function FeatureCard({
             ticket={t.ticket}
             highlighted={highlighted.has(`${lane.feature}/${t.ticketNum}`)}
             whyNeedsReview={t.whyNeedsReview}
+            onOpen={onOpenDoc}
           />
         ))}
       </div>
@@ -73,10 +79,12 @@ function TrackLaneColumn({
   lane,
   highlighted,
   onMoveFeature,
+  onOpenDoc,
 }: {
   lane: TrackLane;
   highlighted: ReadonlySet<string>;
   onMoveFeature: FeatureViewProps["onMoveFeature"];
+  onOpenDoc: OpenDocFn;
 }) {
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
@@ -118,6 +126,7 @@ function TrackLaneColumn({
             lane={f}
             highlighted={highlighted}
             onHoverHalf={(half) => setDropIndex(half === "top" ? i : i + 1)}
+            onOpenDoc={onOpenDoc}
           />
         </div>
       ))}
@@ -131,14 +140,20 @@ function TrackLaneColumn({
  * 🔴 트랙을 한 줄로 펴지 않는다 — 트랙마다 자기 칸을 갖는다.
  * 카드를 끌면 순위가, 다른 트랙에 놓으면 트랙까지 바뀐다(티켓 04).
  */
-export function FeatureView({ features, order, highlighted, onMoveFeature }: FeatureViewProps) {
+export function FeatureView({ features, order, highlighted, onMoveFeature, onOpenDoc }: FeatureViewProps) {
   const lanes = groupByTrackFeature(features, order);
   if (lanes.length === 0) return <Empty>계획된 트랙이 없습니다.</Empty>;
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {lanes.map((lane) => (
-        <TrackLaneColumn key={lane.track} lane={lane} highlighted={highlighted} onMoveFeature={onMoveFeature} />
+        <TrackLaneColumn
+          key={lane.track}
+          lane={lane}
+          highlighted={highlighted}
+          onMoveFeature={onMoveFeature}
+          onOpenDoc={onOpenDoc}
+        />
       ))}
     </div>
   );

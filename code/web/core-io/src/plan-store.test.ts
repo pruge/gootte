@@ -33,6 +33,7 @@ function ticket(num: string, overrides: Partial<FeatureTicket> = {}): FeatureTic
     waitingOn: [],
     startable: true,
     workedBy: [],
+    needsCaptainEye: false,
     ...overrides,
   };
 }

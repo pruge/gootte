@@ -74,6 +74,9 @@ export const FeatureTicket = z.object({
   // 이 티켓을 지금 붙들고 있는 격리 사본의 브랜치 이름(verbatim). 관측 파생이라 파일에 없다.
   // 한 티켓을 두 사본이 붙들면 원소 둘 — 그래도 티켓은 하나로 센다.
   workedBy: z.array(z.string()).default([]),
+  // 티켓 문서에 `## 캡틴 확인` 절이 있는가 — 절 존재만으로 정한다(INV-4, development-order/15 ②).
+  // "— 없음" 접미(캡틴이 이미 필요 없다고 결정하신 절)는 필요로 세지 않는다.
+  needsCaptainEye: z.boolean(),
 });
 export type FeatureTicket = z.infer<typeof FeatureTicket>;
 
@@ -292,12 +295,20 @@ export type ExtraListItem = z.infer<typeof ExtraListItem>;
  * - `done_but_staged` — 티켓은 이미 끝났는데(`done`·`dropped`) 계획엔 아직 단계로 남아 있다
  * - `blocked_by_unreadable` — `Blocked by:` 줄에 번호도 "없음" 도 못 알아들은 산문이 있다
  *   (development-order/11) — 막지는 않되, 못 읽었다는 사실 자체를 드러낸다
+ * - `unblocked_but_delayed` — 티켓은 막힘이 없다는데 계획은 그 트랙의 선두 단계가 아닌 곳에
+ *   두었고, 그 단계의 계획 이유가 비어 있다(development-order/15 ①). 막힘이 아니다 — 계획이
+ *   뒤로 둔 까닭이 티켓에는 안 적혀 있다는 사실만 말한다. 이유를 채우면 사라진다.
+ * - `stale_reason_wording` — 계획의 이유 줄에 임자·처리 상태를 말하는 낱말이 있다
+ *   (development-order/15 ③) — 그 상태는 티켓이 갖는다(INV-5), 이유 줄에 적으면 낡는다.
+ *   막지는 않는다.
  */
 export const PlanMismatchKind = z.enum([
   "ticket_without_step",
   "step_without_ticket",
   "done_but_staged",
   "blocked_by_unreadable",
+  "unblocked_but_delayed",
+  "stale_reason_wording",
 ]);
 export type PlanMismatchKind = z.infer<typeof PlanMismatchKind>;
 
@@ -328,6 +339,8 @@ export const NextTicket = z.object({
   ticket: z.string(),
   title: z.string(),
   why: z.string(), // 계획에 적힌 왜 — verbatim 릴레이(INV-4), 요약하지 않는다
+  // `FeatureTicket.needsCaptainEye` 를 그대로 릴레이한다(INV-1, development-order/15 ②).
+  needsCaptainEye: z.boolean(),
 });
 export type NextTicket = z.infer<typeof NextTicket>;
 
@@ -343,6 +356,9 @@ export type NextTrack = z.infer<typeof NextTrack>;
 export const NextResult = z.object({
   tracks: z.array(NextTrack),
   mismatches: z.array(PlanMismatch),
+  // `tracks[].tickets[].needsCaptainEye` 가 true 인 개수 — "몇 장이 캡틴 눈을 요구하나" 한 줄
+  // (development-order/15 ②). 화면과 CLI 가 각자 세지 않는다 — 판정 자리는 하나뿐.
+  captainEyeCount: z.number().int().nonnegative(),
 });
 export type NextResult = z.infer<typeof NextResult>;
 
