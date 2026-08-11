@@ -178,7 +178,7 @@ INV-5 를 새로 딴다.** INV-1 에는 INV-5 를 가리키는 한 줄만 더한
 |---|---|---|
 | `extra` | 항목 id | 프로젝트 · 티켓 · 무엇이 더 개발됐나 · 누가 · **처리됨** · `created_at` |
 
-🔴 **`opinion_request` 는 걷어냈다**(티켓 13, 캡틴 결정 2026-08-11) — 아래 §의견 요청은 걷어냈다.
+🔴 **`opinion_request` 는 걷어냈다**(티켓 09, 캡틴 결정 2026-08-11) — 아래 §의견 요청은 걷어냈다.
 
 **파일**
 
@@ -288,7 +288,7 @@ firstmate 의 사용자 정의 확인 장치 하나로 깨어난다. 새 데몬�
 낡은 의도에 대고 의견을 말하게 되고, 그것이 §문제 의 통증이다.
 그리고 read-path 가 LLM 을 기다리면 INV-4 가 무너진다.
 
-### 🔴 의견 요청은 걷어냈다 (캡틴 결정 2026-08-11, 티켓 13)
+### 🔴 의견 요청은 걷어냈다 (캡틴 결정 2026-08-11, 티켓 09)
 
 한때 여기에 **[의견 물어보기]** 버튼이 있었다(티켓 06). 걷어냈다.
 
@@ -351,7 +351,7 @@ jinwooauto 쪽에서 따로 한다** — DB 가 실제로 선 뒤에.
 | [03](issues/03-the-plan-tab-shows-the-whole-order.md) | `plan` 탭이 전체 순서를 보여준다(읽기) | 캡틴 · `plan` 탭 | 02 · 🟡 캡틴 확인 |
 | [04](issues/04-the-captain-drags-to-change-the-order.md) | 캡틴이 끌어서 순서를 바꾼다 — gootte 의 첫 쓰기 경로 | 캡틴 · `plan` 탭 | 03 · 🟡 캡틴 확인 |
 | [05](issues/05-what-else-got-built-is-caught.md) | 티켓 밖에서 더 개발된 것을 잡는다(`extra`) | firstmate · 터미널 | 01 — 🟢 **02~04 와 나란히** |
-| [06](issues/06-the-captain-asks-for-an-opinion.md) | ~~의견을 청하고 답을 그 자리에서 본다~~ 🔴 **[13](issues/13-the-ask-for-an-opinion-surface-is-removed.md) 이 걷어낸다**(캡틴 결정 2026-08-11) | 캡틴 · `plan` 탭 | 04 |
+| [06](issues/06-the-captain-asks-for-an-opinion.md) | ~~의견을 청하고 답을 그 자리에서 본다~~ 🔴 **[09](issues/09-the-plan-tab-becomes-usable.md) 가 걷어낸다**(캡틴 결정 2026-08-11) | 캡틴 · `plan` 탭 | 04 |
 | [07](issues/07-plan-changes-push-live.md) | 계획이 바뀌면 다른 화면에도 즉시 밀어 준다(WS push) | 캡틴 · `plan` 탭 | 04 — 캡틴 실측 요청(2026-08-11) |
 | [08](issues/08-completed-tickets-drop-themselves.md) | 완료되면 계획에서 스스로 빠진다 | firstmate · 문서 워처 | 07 — 캡틴 요청(2026-08-11) |
 
@@ -362,11 +362,13 @@ jinwooauto 쪽에서 따로 한다** — DB 가 실제로 선 뒤에.
 
 | # | 무엇을 끝까지 내놓나 | 누가 · 어디서 | 막힘 |
 |---|---|---|---|
-| [09](issues/09-the-orange-box-says-two-different-things.md) | 주황색 상자 둘이 구분되고, 드래그 경고가 스스로 사라진다 | 캡틴 · `plan` 탭 | 🟢 **없음** · 🟡 캡틴 확인 |
-| [10](issues/10-tickets-stay-out-of-the-track-column.md) | 티켓 칩이 트랙 이름 칸을 침범하지 않는다 | 캡틴 · `plan` 탭 | 🟢 **없음** · 🟡 캡틴 확인 |
+| [09](issues/09-the-plan-tab-becomes-usable.md) | 🔴 **`plan` 탭을 캡틴이 실제로 쓸 수 있게** — 의견 요청 걷어내기 · 주황 상자 둘 구분 · 트랙 칸 침범 · 조작 줄 붙박이 | 캡틴 · `plan` 탭 | 🟢 **없음** · 🟡 캡틴 확인 |
 | [11](issues/11-a-decorated-no-blockers-line-is-understood.md) | 🔴 꾸며 쓴 "막힘 없음" 을 알아듣는다 — 착수 가능한 티켓이 숨는다 | firstmate · 터미널 | 🟢 **없음** |
 | [12](issues/12-interstitial-and-out-of-order-actually-mean-something.md) | 틈틈이·순서밖이 실제로 뜻을 갖는다 | 캡틴 · `plan` 탭 | 🟢 **없음** · 🟡 캡틴 확인 |
-| [13](issues/13-the-ask-for-an-opinion-surface-is-removed.md) | 🔴 **의견 물어보기를 걷어낸다** — 맨 위 자리를 계획에 돌려준다 | 캡틴 · `plan` 탭 | 🟢 **없음** · 🟡 캡틴 확인 |
+
+🔴 **09 는 넷을 한 장으로 합친 것이다**(캡틴 지시: *"ticket을 너무 작게 만들지마 합칠수 있는것은 합쳐"*).
+같은 화면 · 같은 사람 · **같은 캡틴 확인 한 번**이고, 서로 얽혀 있다 — 걷어낼 상자를 다듬으면 일이 두 번 된다.
+🟢 번호 10·13·14 는 비워 둔다. **재사용하지 않는다** — 지나간 대화가 그 번호로 그 일을 가리킨다.
 
 🔴 **11 이 가장 급하다.** 나머지 셋은 보기 불편하거나 뜻이 안 서는 것이지만,
 11 은 **오늘 할 수 있는 일이 조용히 사라지는 것**이라 아무도 물어볼 이유조차 없다.
@@ -385,9 +387,8 @@ jinwooauto 쪽에서 따로 한다** — DB 가 실제로 선 뒤에.
 단계 6   07
 단계 7   08
 단계 8   11                        ← 가장 급하다. 혼자 먼저 나갔다
-단계 9   13                        ← 지우기. 09 가 다룰 상자를 미리 줄인다
-단계 10  09  ‖  10               ← 같은 plan 탭, 한 묶음
-단계 11  12
+단계 9   09                        ← plan 탭 넷을 한 장으로. 캡틴 확인 한 번
+단계 10  12
 ```
 
 🔴 **쪼개지 않은 것도 결정이다.** 03·04 는 보기와 드래그로 나눴지만 **보기 둘(단계·기능)은 안 나눴다** —
