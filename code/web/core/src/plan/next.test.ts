@@ -16,6 +16,7 @@ function ticket(num: string, overrides: Partial<FeatureTicket> = {}): FeatureTic
     sourceStatus: "ready-for-agent",
     statusKnown: true,
     blockedBy: [],
+    unreadableBlockedBy: [],
     waitingOn: [],
     startable: true,
     workedBy: [],
@@ -44,6 +45,20 @@ describe("computeNext — 트랙마다 지금 나란히 보낼 수 있는 것(sp
     const track = only(result.tracks);
     expect(track.step).toBe(1);
     expect(track.tickets.map((t) => t.ticket).sort()).toEqual(["01", "02"]);
+  });
+
+  it("🔴 못 읽은 산문이 있어도 착수 가능이면 next 에 그대로 나온다(development-order/11 완료 시연)", () => {
+    // catalog-registry/03: `Blocked by:` 가 꾸며 쓴 "없음" 이면 blockedBy 는 비어 startable=true.
+    // unreadableBlockedBy 가 있어도(다른 이유로 못 읽은 산문이 섞였다 해도) startable 계산과
+    // 무관하다 — waitingOn 은 blockedBy 만 본다. next 는 startable 만 본다.
+    const features = [
+      feature("a", [ticket("03", { unreadableBlockedBy: ["설명은 있는데 번호가 없다"] })]),
+    ];
+    const featureOrders = [featureOrder("a", "web", 10)];
+    const ticketOrders = [ticketOrder("a", "03", 1)];
+    const result = computeNext(features, featureOrders, ticketOrders);
+    const track = only(result.tracks);
+    expect(track.tickets.map((t) => t.ticket)).toEqual(["03"]);
   });
 
   it("앞 단계가 전부 완료 → 다음 단계가 열린다", () => {
@@ -102,7 +117,7 @@ describe("computeNext — 트랙마다 지금 나란히 보낼 수 있는 것(sp
   });
 });
 
-describe("computeMismatches — 어긋남 세 종류(spec §어긋남 세 줄)", () => {
+describe("computeMismatches — 어긋남 네 종류(spec §어긋남 세 줄 + development-order/11)", () => {
   it("단계 없는 티켓", () => {
     const features = [feature("a", [ticket("01")])];
     const mismatches = computeMismatches(features, []);
@@ -140,6 +155,30 @@ describe("computeMismatches — 어긋남 세 종류(spec §어긋남 세 줄)",
 
   it("완료된 티켓이 계획에 없는 것은 어긋남이 아니다(단계 없는 티켓 제외 대상)", () => {
     const features = [feature("a", [ticket("01", { status: "done" })])];
+    expect(computeMismatches(features, [])).toEqual([]);
+  });
+
+  it("🔴 Blocked by 를 못 읽은 산문 — 어긋남에 verbatim 으로 오른다(development-order/11)", () => {
+    const features = [
+      feature("a", [ticket("01", { unreadableBlockedBy: ["디자인 논의가 아직 안 끝났다"] })]),
+    ];
+    const mismatches = computeMismatches(features, [ticketOrder("a", "01", 1)]);
+    expect(mismatches).toEqual([
+      {
+        kind: "blocked_by_unreadable",
+        feature: "a",
+        ticket: "01",
+        detail: 'a/01 — Blocked by: 를 못 읽었다 — "디자인 논의가 아직 안 끝났다"',
+      },
+    ]);
+  });
+
+  it("완료·취소된 티켓의 못 읽은 산문은 어긋남으로 세지 않는다", () => {
+    const features = [
+      feature("a", [
+        ticket("01", { status: "done", unreadableBlockedBy: ["오래된 메모"] }),
+      ]),
+    ];
     expect(computeMismatches(features, [])).toEqual([]);
   });
 });

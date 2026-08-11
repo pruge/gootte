@@ -48,6 +48,16 @@ export function computeMismatches(
           detail: `${f.slug}/${t.num} — 계획에 단계가 없다`,
         });
       }
+      // `Blocked by:` 에 번호도 "없음" 도 못 알아들은 산문이 있다 — 막지 않되(startable 계산에서
+      // 이미 빠져 있다) 조용히 사라지지 않게 여기서 드러낸다(development-order/11).
+      for (const raw of t.unreadableBlockedBy) {
+        mismatches.push({
+          kind: "blocked_by_unreadable",
+          feature: f.slug,
+          ticket: t.num,
+          detail: `${f.slug}/${t.num} — Blocked by: 를 못 읽었다 — "${raw}"`,
+        });
+      }
     }
   }
 

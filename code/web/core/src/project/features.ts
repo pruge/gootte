@@ -62,6 +62,7 @@ function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>): FeatureTicket 
     statusKnown: doc.statusKnown,
     ...(doc.completedAt ? { completedAt: doc.completedAt } : {}),
     blockedBy: doc.blockedBy,
+    unreadableBlockedBy: doc.unreadableBlockedBy,
     waitingOn: waiting,
     // 착수 가능 = 선행이 모두 풀렸다 + 임자가 없다. 판정하는 자리는 여기 하나뿐이다.
     startable: waiting.length === 0 && !claimed,

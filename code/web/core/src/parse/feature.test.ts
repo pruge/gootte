@@ -3,6 +3,7 @@ import {
   FIRSTMATE_STATUSES,
   mapFirstmateStatus,
   parseBlockedBy,
+  parseBlockedByLine,
   parseFeatureSpec,
   parseStatusLine,
   parseTicket,
@@ -157,6 +158,75 @@ describe("parseBlockedBy", () => {
     expect(
       parseBlockedBy(ticket("ready-for-agent", "03, 04, 그리고 **자매 기능 `other` 의 티켓 01**")),
     ).toEqual(["03", "04", "그리고 **자매 기능 `other` 의 티켓 01**"]);
+  });
+
+  describe("꾸며 쓴 '없음' — 이모지·굵게·괄호가 붙어도 막힘 없음이다(development-order/11)", () => {
+    it("🔴 실제로 숨었던 서식(jinwooauto/catalog-registry/03 · admin-identity/02) — 이모지+굵게 다음에 없음, 뒤에 완료일 괄호", () => {
+      expect(
+        parseBlockedBy(ticket("ready-for-agent", "🟢 **없음 — 지금 착수 가능**(2026-08-10 막힘 해제).")),
+      ).toEqual([]);
+    });
+
+    it("실제 서식(jinwooauto/farm-owned-authoring/01) — 없음 뒤에 이모지+굵게만", () => {
+      expect(parseBlockedBy(ticket("ready-for-agent", "없음 — 🟢 **지금 착수 가능**"))).toEqual([]);
+    });
+
+    it("굵게만 붙어도 알아본다", () => {
+      expect(parseBlockedBy(ticket("ready-for-agent", "**없음** — 확인 완료"))).toEqual([]);
+    });
+
+    it("괄호로 감싼 없음도 알아본다", () => {
+      expect(parseBlockedBy(ticket("ready-for-agent", "(없음) — 검토 후 갱신"))).toEqual([]);
+    });
+  });
+
+  describe("느슨해지지 않는다 — 번호·링크로 적힌 진짜 막힘은 꾸며도 그대로 막힘이다", () => {
+    it("링크로 적힌 번호는 꾸며 쓴 '없음' 과 섞여도 여전히 선행이다", () => {
+      expect(parseBlockedBy(ticket("blocked", "[03](03-x.md), 04"))).toEqual(["03", "04"]);
+    });
+
+    it("🔴 번호 앞에 없던 꾸밈(이모지·굵게)이 번호 자리를 가리면 번호로 풀리지 않는다 — 없음으로도 안 풀린다(여전히 기다린다)", () => {
+      // LEADING_NUM 은 항목이 번호로 "시작" 할 때만 번호로 읽는다(서식 SoT, issue-tracker).
+      // 이 항목은 번호로 시작하지 않으니 문구 그대로 남아 계속 기다린다 — "없음" 으로 잘못 풀리지 않는다.
+      expect(parseBlockedBy(ticket("blocked", "🔴 **02** — 아직 안 끝났다"))).toEqual([
+        "🔴 **02** — 아직 안 끝났다",
+      ]);
+    });
+  });
+
+  describe("번호도 '없음' 도 없는 산문 — 막힘으로 세지 않되, 못 읽었다는 사실을 드러낸다(development-order/11)", () => {
+    it("🔴 산문만 있으면 blockedBy 는 비고 unreadable 에 verbatim 으로 실린다", () => {
+      expect(parseBlockedByLine(ticket("ready-for-agent", "디자인 논의가 아직 안 끝났다"))).toEqual({
+        blockedBy: [],
+        unreadable: ["디자인 논의가 아직 안 끝났다"],
+      });
+    });
+
+    it("parseBlockedBy 는 이 산문을 선행으로 세지 않는다 — 착수 가능을 막지 않는다", () => {
+      expect(parseBlockedBy(ticket("ready-for-agent", "디자인 논의가 아직 안 끝났다"))).toEqual([]);
+    });
+
+    it("🔴 번호가 하나라도 있으면 나머지 산문은 사유(주석)로 보고 unreadable 에 안 올린다 — 느슨해지지 않는다", () => {
+      // 번호 뒤 사유는 원래도 주석 취급이었다(기존 규칙). 가운뎃점으로 더 쪼개면 실제 서식
+      // (jinwooauto/user-grant-console/02 `읽기·쓰기·복제`)에서 헛된 어긋남이 생긴다.
+      expect(parseBlockedByLine(ticket("blocked", "02, 아직 정해지지 않은 것"))).toEqual({
+        blockedBy: ["02"],
+        unreadable: [],
+      });
+      expect(
+        parseBlockedByLine(
+          ticket("blocked", "[01](01-x.md) — 읽기·쓰기·복제 경로를 그쪽이 만든다"),
+        ),
+      ).toEqual({ blockedBy: ["01"], unreadable: [] });
+    });
+
+    it("실제 서식(jinwooauto/access-control/07) — 번호 뒤에 가운뎃점 섞인 사유가 붙어도 번호만 선행이다", () => {
+      expect(
+        parseBlockedBy(
+          ticket("ready-for-agent", "02, 스케줄 표면 재구축(번호 없음 — 아래 §범위·Comments 참고)"),
+        ),
+      ).toEqual(["02"]);
+    });
   });
 });
 

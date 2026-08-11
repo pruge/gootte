@@ -63,28 +63,71 @@ export function mapFirstmateStatus(value: Status | null): TodoStatus {
 const NO_DEPS = /^(?:없음|없다|none|n\/a|[-—–])(?:\b|$|\s)/i;
 // 항목 맨 앞의 티켓 번호 — `02`, `#02`, `[02](02-x.md)`, `02 — 사유` 를 모두 같은 번호로 읽는다.
 const LEADING_NUM = /^\[?#?(\d{1,3})\]?\b/;
+// "없음" 앞에 붙는 꾸밈(이모지·마크다운 강조 `**`·여는 괄호·공백) — 낱말 자체(한글·숫자)는 걷지 않는다.
+const DECORATION_PREFIX = /^[\p{S}\p{P}\s]+/u;
 
 /**
- * `**Blocked by:** 01, 02` → ["01","02"]. 쉼표로 나눈 항목 하나 = 선행 하나.
+ * `없음` 계열 선언인지 본다. **원문을 먼저** 그대로 시험하고, 실패할 때만 앞머리 꾸밈을 걷어내
+ * 다시 시험한다 — 꾸미지 않은 `-`·`—` 한 글자짜리 선언(NO_DEPS 자체가 그 꾸밈 문자를 포함하는
+ * 경우)을 걷어내 버려 못 알아보게 되는 일이 없도록, 원문이 이미 통과하면 걷어내지 않는다.
+ */
+function isNoDeps(text: string): boolean {
+  if (NO_DEPS.test(text)) return true;
+  const stripped = text.replace(DECORATION_PREFIX, "");
+  return stripped !== text && NO_DEPS.test(stripped);
+}
+
+/** `parseBlockedByLine` 의 결과 — 읽어낸 선행과, 못 읽어낸 산문을 함께 싣는다. */
+export interface BlockedByParse {
+  /** 선행 번호(또는 번호로 해소되지 않는 산문 그대로) — 착수 가능 판정이 기다리는 값. */
+  blockedBy: string[];
+  /** 번호도 "없음" 도 못 알아들은 산문 — verbatim. 막지 않되 감추지 않는다(어긋남으로 드러낸다). */
+  unreadable: string[];
+}
+
+/**
+ * `**Blocked by:** 01, 02` → { blockedBy: ["01","02"], unreadable: [] }. 쉼표(·가운뎃점 포함)로
+ * 나눈 항목 하나 = 선행 하나.
  *
  * - 항목이 **번호로 시작하면** 그 번호다 — 뒤에 붙은 사유·링크·괄호는 값이 아니라 주석이다
  *   (`Status:` 줄과 같은 서식 원리).
- * - 줄이 `없음` 으로 시작하면 선행이 없다. 뒤따르는 사유 속 숫자에 넘어가지 않는다.
+ * - 줄이 `없음` 으로 시작하면 선행이 없다 — 이모지·굵게·괄호로 꾸며져 있어도 같다(`isNoDeps`).
+ *   뒤따르는 사유 속 숫자·가운뎃점에 넘어가지 않는다.
  * - 번호로 시작하지 않는데 숫자가 섞인 항목(예: "그리고 **자매 기능 X 의 티켓 01**")은
- *   **문구 그대로** 싣는다. 🔴 그 `01` 을 이 기능의 01 번으로 읽지 않는다 — 다른 기능의 번호일 수 있고,
- *   비슷하니 아마 이것이겠거니 하는 추정이 곧 INV-4 위반이다. 번호로 해소되지 않아 계속 기다린다.
- * - 숫자가 아예 없는 문구는 선행이 아니다.
+ *   **문구 그대로** `blockedBy` 에 싣는다. 🔴 그 `01` 을 이 기능의 01 번으로 읽지 않는다 —
+ *   다른 기능의 번호일 수 있고, 비슷하니 아마 이것이겠거니 하는 추정이 곧 INV-4 위반이다.
+ *   번호로 해소되지 않아 계속 기다린다.
+ * - 줄에서 번호를 **하나도** 못 찾았고 `없음` 도 아니면, 그 줄 전체가 번호도 "없음" 도 없는
+ *   산문이다 — **선행으로 세지 않는다**(`blockedBy` 는 비운다). 대신 원문 `rest` 를 통째로
+ *   `unreadable` 에 실어 못 읽었다는 사실 자체를 드러낸다. 조용히 버리면(선행도 아니고 표시도
+ *   안 하면) 진짜 막힘과 구분이 안 되는 것처럼 보이고, 막힘으로 세면(반대 방향으로 느슨해지면)
+ *   착수 가능한 티켓이 조용히 숨는다.
+ * - 🔴 번호가 **하나라도** 이미 있으면, 숫자 없는 나머지 항목은 그 번호의 사유·설명으로 보고
+ *   무시한다(줄을 가운뎃점으로 더 나누면 한국어 낱말 나열 "읽기·쓰기·복제" 까지 항목으로 갈려
+ *   실제 서식(jinwooauto/user-grant-console/02)에서 헛된 어긋남을 만든다 — 번호 뒤 사유는
+ *   애초에 주석이라는 원칙을 그대로 지킨다).
  */
-export function parseBlockedBy(content: string): string[] {
+export function parseBlockedByLine(content: string): BlockedByParse {
   const rest = BLOCKED_LINE.exec(content)?.[1]?.trim();
-  if (!rest || NO_DEPS.test(rest)) return [];
-  const out: string[] = [];
+  if (!rest || isNoDeps(rest)) return { blockedBy: [], unreadable: [] };
+  const blockedBy: string[] = [];
   for (const raw of rest.split(/[,、·]/)) {
     const part = raw.trim();
-    const item = LEADING_NUM.exec(part)?.[1] ?? (/\d/.test(part) ? part : null);
-    if (item !== null && !out.includes(item)) out.push(item);
+    if (!part) continue;
+    const leading = LEADING_NUM.exec(part)?.[1];
+    if (leading !== undefined) {
+      if (!blockedBy.includes(leading)) blockedBy.push(leading);
+      continue;
+    }
+    if (/\d/.test(part) && !blockedBy.includes(part)) blockedBy.push(part);
   }
-  return out;
+  if (blockedBy.length > 0) return { blockedBy, unreadable: [] };
+  return { blockedBy: [], unreadable: [rest] };
+}
+
+/** `parseBlockedByLine(content).blockedBy` — 선행만 필요한 호출자를 위한 좁은 창구. */
+export function parseBlockedBy(content: string): string[] {
+  return parseBlockedByLine(content).blockedBy;
 }
 
 /** 파일 한 장에서 읽어낸 티켓(막힘 해제는 아직 계산 전 — 그건 같은 기능의 다른 티켓을 알아야 한다). */
@@ -97,6 +140,8 @@ export interface TicketDoc {
   statusKnown: boolean;
   completedAt: string | null;
   blockedBy: string[];
+  /** `Blocked by:` 에서 번호도 "없음" 도 못 알아들은 산문 — verbatim(감추지 않는다). */
+  unreadableBlockedBy: string[];
 }
 
 /** 기능 사양 한 장 — 표제와 상태. */
@@ -120,6 +165,7 @@ export function parseTicket(fileName: string, content: string): TicketDoc {
   const slug = fileName.replace(/\.md$/i, "");
   const num = /^(\d+)/.exec(slug)?.[1] ?? "";
   const { raw, value, completedAt } = parseStatusLine(content);
+  const { blockedBy, unreadable } = parseBlockedByLine(content);
   return {
     num,
     slug,
@@ -128,7 +174,8 @@ export function parseTicket(fileName: string, content: string): TicketDoc {
     sourceStatus: raw,
     statusKnown: value !== null,
     completedAt,
-    blockedBy: parseBlockedBy(content),
+    blockedBy,
+    unreadableBlockedBy: unreadable,
   };
 }
 

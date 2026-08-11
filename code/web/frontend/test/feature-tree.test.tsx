@@ -19,6 +19,7 @@ const BASE: Omit<Feature, "docs"> = {
       sourceStatus: "ready-for-agent",
       statusKnown: true,
       blockedBy: [],
+      unreadableBlockedBy: [],
       waitingOn: [],
       startable: true,
       workedBy: [],
