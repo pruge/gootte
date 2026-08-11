@@ -309,3 +309,17 @@ export const NextResult = z.object({
   mismatches: z.array(PlanMismatch),
 });
 export type NextResult = z.infer<typeof NextResult>;
+
+/**
+ * `plan` 탭(티켓 03) 응답 — 화면이 전체 개발 순서를 그리는 데 필요한 셋을 한 번에 싣는다.
+ * `features` 는 막힘·착수 가능·완료가 **매 요청 재계산된** 값(INV-1·INV-3, `FeaturesResponse` 와 같은 파생).
+ * `order` 는 gootte 가 저장한 계획(INV-5) 그대로. `next` 는 02 의 순수 함수 결과 — 화면은 이것을
+ * 그대로 쓰고 다시 판정하지 않는다(spec §판정 자리는 하나뿐).
+ */
+export const PlanResponse = z.object({
+  project: z.string(),
+  features: z.array(Feature).default([]),
+  order: PlanOrder,
+  next: NextResult,
+});
+export type PlanResponse = z.infer<typeof PlanResponse>;

@@ -1,6 +1,7 @@
 import { IconTelescope } from "@tabler/icons-react";
 import type { Tab } from "../../hooks/useUrlState";
 import { FeaturesView } from "../features/FeaturesView";
+import { PlanView } from "../plan/PlanView";
 import { Tabs } from "./Tabs";
 
 interface MainPanelProps {
@@ -35,7 +36,11 @@ export function MainPanel({ project, tab, onTab, view, onView }: MainPanelProps)
         </div>
       ) : (
         <div className="flex-1 overflow-hidden pl-4 pr-6 py-5">
-          <FeaturesView key={`${project}-features`} project={project} view={view} onView={onView} />
+          {tab === "plan" ? (
+            <PlanView key={`${project}-plan`} project={project} view={view} onView={onView} />
+          ) : (
+            <FeaturesView key={`${project}-features`} project={project} view={view} onView={onView} />
+          )}
         </div>
       )}
     </section>

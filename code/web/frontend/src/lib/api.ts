@@ -3,6 +3,7 @@ import {
   ProjectsResponse,
   FeaturesResponse,
   FeatureDocResponse,
+  PlanResponse,
   ApiError,
   type Project,
 } from "@gootte/contract";
@@ -25,6 +26,10 @@ export const fetchProjects = (): Promise<Project[]> =>
 /** 기능별 할일 목록(docs/features/) — 막힘 해제는 서버가 계산해 보낸다(INV-1: 화면 재계산 X). */
 export const fetchFeatures = (slug: string) =>
   get(`/api/features/${encodeURIComponent(slug)}`, FeaturesResponse);
+
+/** `plan` 탭(티켓 03) — 전체 개발 순서. `next` 는 서버가 이미 계산해 보낸다(화면은 다시 판정하지 않는다). */
+export const fetchPlan = (slug: string) =>
+  get(`/api/plan/${encodeURIComponent(slug)}`, PlanResponse);
 
 /** 기능 폴더 문서 본문(read-only) — 경로 판정은 서버 몫이다(티켓 01 §설계 4). */
 export const fetchFeatureDoc = (

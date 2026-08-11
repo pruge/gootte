@@ -2,12 +2,14 @@ import { basename } from "node:path";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { ProjectsResponse, FeaturesResponse, FeatureDocResponse, type ApiError } from "@gootte/contract";
-import { applyInProgress, countOpenFeatures } from "@gootte/core";
+import { ProjectsResponse, FeaturesResponse, FeatureDocResponse, PlanResponse, type ApiError } from "@gootte/contract";
+import { applyInProgress, computeNext, countOpenFeatures } from "@gootte/core";
 import {
   readFeatures,
   readFeatureDoc,
+  readPlanOrder,
   scanWorkingCopies,
+  defaultPlanDataDir,
   defaultProjectRoots,
   defaultTreehouseRoot,
 } from "@gootte/core-io";
@@ -25,6 +27,11 @@ export function treehouseRoot(): string {
   return process.env.GOOTTE_TREEHOUSE?.trim() || defaultTreehouseRoot();
 }
 
+/** env `GOOTTE_DATA_DIR` → 계획(INV-5) 저장 자리. CLI(`cli/src/main.ts`)와 같은 관례. */
+export function planDataDir(): string {
+  return process.env.GOOTTE_DATA_DIR?.trim() || defaultPlanDataDir();
+}
+
 const slugParam = z.object({ slug: z.string().min(1) });
 const featureDocParam = z.object({ slug: z.string().min(1), feature: z.string().min(1) });
 const featureDocQuery = z.object({ path: z.string().min(1) });
@@ -33,6 +40,8 @@ export interface AppOptions {
   roots?: string[];
   /** 격리 사본 뿌리 (테스트 주입). 없으면 treehouseRoot(). */
   treehouse?: string;
+  /** 계획 저장소 경로 (테스트 주입). 없으면 planDataDir(). */
+  dataDir?: string;
 }
 
 /**
@@ -42,6 +51,7 @@ export interface AppOptions {
 export function createApp(options: AppOptions = {}): Hono {
   const roots = options.roots ?? defaultRoots();
   const treehouse = options.treehouse ?? treehouseRoot();
+  const dataDir = options.dataDir ?? planDataDir();
   const app = new Hono();
 
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
@@ -72,6 +82,20 @@ export function createApp(options: AppOptions = {}): Hono {
       scanWorkingCopies(treehouse, project),
     );
     return c.json(FeaturesResponse.parse({ project, ...observed }));
+  });
+
+  // GET /api/plan/:slug → PlanResponse (티켓 03 — `plan` 탭). 계획(gootte 자기 저장소, INV-5)과
+  // 티켓 문서(INV-2 read-only, 매 요청 재계산)를 함께 싣고, `next`·어긋남은 02 의 순수 함수 하나로
+  // 계산한다 — 화면과 CLI(`gootte next`)가 같은 함수를 쓴다(spec §판정 자리는 하나뿐).
+  app.get("/api/plan/:slug", zValidator("param", slugParam), (c) => {
+    const { slug } = c.req.valid("param");
+    const proj = resolveSlug(roots, slug);
+    if (!proj) return c.json(notFound(slug), 404);
+    const project = basename(proj.path);
+    const features = readFeatures(proj.path);
+    const order = readPlanOrder(dataDir, project);
+    const next = computeNext(features, order.features, order.tickets);
+    return c.json(PlanResponse.parse({ project, features, order, next }));
   });
 
   // GET /api/features/:slug/:feature/doc?path= → FeatureDocResponse (기능 문서 본문, INV-2 read-only)
