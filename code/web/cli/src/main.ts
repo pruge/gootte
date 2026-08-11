@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { defaultPlanDataDir, defaultProjectRoots } from "@gootte/core-io";
 import { CliError } from "./args";
 import {
+  dbMigrateText,
   discoverText,
   dropText,
   extraAddText,
@@ -24,6 +25,7 @@ function usage(): number {
     [
       "usage: gootte <command> ...",
       "  discover [roots...]",
+      "  db migrate  — 계획 DB(~/.gootte/plan.db) 를 지금 스키마로 올린다(멱등)",
       '  set         <프로젝트> <기능>/<번호> [--step n] --why "…"',
       '  set-feature <프로젝트> <기능> --track <트랙> --rank <n> --why "…"',
       "  drop        <프로젝트> <기능>[/<번호>]",
@@ -48,6 +50,14 @@ function run(argv: string[]): number {
           rest.length > 0 ? rest.map((r) => resolve(r)) : [process.cwd(), ...defaultProjectRoots()];
         process.stdout.write(discoverText(targets) + "\n");
         return 0;
+      }
+      case "db": {
+        const [sub] = rest;
+        if (sub === "migrate") {
+          process.stdout.write(dbMigrateText(planDataDir()) + "\n");
+          return 0;
+        }
+        return usage();
       }
       case "set":
         process.stdout.write(setTicketText(rest, planDataDir()) + "\n");

@@ -1,18 +1,24 @@
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Feature, FeatureTicket } from "@gootte/contract";
 import {
   dropOrder,
   dropStaleCompleted,
   insertTicketStep,
+  migratePlanDb,
   moveFeatureOrder,
   moveTicketStep,
   readPlanOrder,
   setFeatureOrder,
   setTicketOrder,
 } from "./plan-store";
+
+/** 옛 모양 DB 를 만들 때만 쓴다 — 나머지는 전부 이 모듈의 store 함수로 만든다(머리말과 같은 이유). */
+type DatabaseSyncCtor = new (path: string) => DatabaseSyncType;
+const { DatabaseSync } = process.getBuiltinModule("node:sqlite") as { DatabaseSync: DatabaseSyncCtor };
 
 function ticket(num: string, overrides: Partial<FeatureTicket> = {}): FeatureTicket {
   return {
@@ -117,6 +123,70 @@ describe("plan-store — 덮어쓰기만(INV-5, 이력 테이블 없음)", () =>
   it("set — 새로 등록되면 whyNeedsReview 는 false", () => {
     const entry = setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "01", step: 1, why: "…" });
     expect(entry.whyNeedsReview).toBe(false);
+  });
+});
+
+describe("스키마 마이그레이션 — 옛 모양 DB(캡틴 DB 재현, 🔴 새 DB 만으로는 이 결함을 못 잡는다)", () => {
+  /** `why_needs_review` 가 생기기 전의 원시 `feature_order`/`ticket_order` 모양을 그대로 만든다. */
+  function oldShapeDb(): DatabaseSyncType {
+    const db = new DatabaseSync(join(dataDir, "plan.db"));
+    db.exec(`
+      CREATE TABLE feature_order (
+        project TEXT NOT NULL, feature TEXT NOT NULL, track TEXT NOT NULL,
+        rank REAL NOT NULL, why TEXT NOT NULL, updated_at TEXT NOT NULL,
+        PRIMARY KEY (project, feature)
+      );
+      CREATE TABLE ticket_order (
+        project TEXT NOT NULL, feature TEXT NOT NULL, ticket TEXT NOT NULL,
+        step INTEGER NOT NULL, why TEXT NOT NULL, updated_at TEXT NOT NULL,
+        PRIMARY KEY (project, feature, ticket)
+      );
+    `);
+    return db;
+  }
+
+  it("feature_order 에 why_needs_review 가 없는 옛 DB — 실측 오류(no such column)를 이제 안 낸다", () => {
+    const db = oldShapeDb();
+    db.prepare(
+      `INSERT INTO feature_order (project, feature, track, rank, why, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run("p", "a", "web", 10, "옛 이유", "2026-01-01T00:00:00.000Z");
+    db.close();
+
+    const order = readPlanOrder(dataDir, "p");
+    expect(order.features).toHaveLength(1);
+    expect(order.features[0]).toMatchObject({ feature: "a", track: "web", rank: 10, whyNeedsReview: false });
+  });
+
+  it("옛 DB 로 읽고 쓴 뒤에도 다른 칸은 그대로다", () => {
+    const db = oldShapeDb();
+    db.prepare(
+      `INSERT INTO ticket_order (project, feature, ticket, step, why, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run("p", "a", "01", 1, "옛 이유", "2026-01-01T00:00:00.000Z");
+    db.close();
+
+    const updated = setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "01", why: "새 이유" });
+    expect(updated).toMatchObject({ step: 1, why: "새 이유", whyNeedsReview: false });
+  });
+
+  it("db migrate — 옛 DB 를 올리면 추가된 칸을 보고한다", () => {
+    oldShapeDb().close();
+    const result = migratePlanDb(dataDir);
+    expect(result.addedColumns).toEqual(
+      expect.arrayContaining(["feature_order.why_needs_review", "ticket_order.why_needs_review"]),
+    );
+  });
+
+  it("db migrate — 이미 최신인 DB 는 아무것도 안 바꾼다(멱등)", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "…" });
+    const result = migratePlanDb(dataDir);
+    expect(result).toEqual({ addedColumns: [], droppedColumns: [] });
+  });
+
+  it("db migrate 를 두 번 돌려도 두 번째는 아무것도 안 바꾼다", () => {
+    oldShapeDb().close();
+    migratePlanDb(dataDir);
+    const second = migratePlanDb(dataDir);
+    expect(second).toEqual({ addedColumns: [], droppedColumns: [] });
   });
 });
 

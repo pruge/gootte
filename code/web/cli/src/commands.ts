@@ -8,6 +8,7 @@ import {
   doneExtra,
   dropOrder,
   listExtra,
+  migratePlanDb,
   pruneExtra,
   readFeatures,
   readPlanOrder,
@@ -76,6 +77,19 @@ export function setTicketText(argv: readonly string[], dataDir = defaultPlanData
   if (step !== undefined && !Number.isInteger(step)) throw new CliError("--step 은 정수여야 한다");
   const entry = setTicketOrder(dataDir, { project, feature: parsed.feature, ticket: parsed.ticket, step, why });
   return `${entry.project} ${entry.feature}/${entry.ticket} → step=${entry.step} — ${entry.why}`;
+}
+
+/**
+ * `db migrate` — 기존 DB 를 지금 스키마로 올린다(spec §DB 는 잃어도 되는 물건, 버전 이력 없이
+ * 지금 스키마에 맞추는 한 자리). 이미 최신이면 바뀐 게 없다고 그대로 말한다(멱등).
+ */
+export function dbMigrateText(dataDir = defaultPlanDataDir()): string {
+  const { addedColumns, droppedColumns } = migratePlanDb(dataDir);
+  if (addedColumns.length === 0 && droppedColumns.length === 0) return "이미 최신이다 — 바꾼 것 없음.";
+  const lines = ["스키마를 지금 코드에 맞춰 올렸다:"];
+  for (const c of addedColumns) lines.push(`  + ${c}`);
+  for (const c of droppedColumns) lines.push(`  - ${c}`);
+  return lines.join("\n");
 }
 
 export function dropText(argv: readonly string[], dataDir = defaultPlanDataDir()): string {

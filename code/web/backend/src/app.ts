@@ -139,7 +139,12 @@ export function createApp(options: AppOptions = {}): Hono {
     if (!proj) return c.json(notFound(slug), 404);
     const project = basename(proj.path);
     const features = readFeatures(proj.path);
-    const order = readPlanOrder(dataDir, project);
+    let order: ReturnType<typeof readPlanOrder>;
+    try {
+      order = readPlanOrder(dataDir, project);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 500);
+    }
     const next = computeNext(features, order.features, order.tickets);
     const dragWarnings = computeDragWarnings(features, order);
     return c.json(PlanResponse.parse({ project, features, order, next, dragWarnings }));
