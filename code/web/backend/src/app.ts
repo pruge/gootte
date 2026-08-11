@@ -65,6 +65,12 @@ export interface AppOptions {
   treehouse?: string;
   /** 계획 저장소 경로 (테스트 주입). 없으면 planDataDir(). */
   dataDir?: string;
+  /**
+   * 드래그 쓰기가 성공할 때마다 불린다(development-order/07) — `server.ts`가 여기 연결해
+   * `hub.broadcast({ kind: "project", project })`로 WS push한다. app.ts 는 `LiveHub`를 모른다
+   * (테스트 용이성 — 기본은 no-op).
+   */
+  onPlanChange?: (project: string) => void;
 }
 
 /**
@@ -75,6 +81,7 @@ export function createApp(options: AppOptions = {}): Hono {
   const roots = options.roots ?? defaultRoots();
   const treehouse = options.treehouse ?? treehouseRoot();
   const dataDir = options.dataDir ?? planDataDir();
+  const onPlanChange = options.onPlanChange ?? (() => {});
   const app = new Hono();
 
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
@@ -152,6 +159,7 @@ export function createApp(options: AppOptions = {}): Hono {
       } catch (err) {
         return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 400);
       }
+      onPlanChange(project);
       return c.json(ticketDragResponse(proj.path, project, feature, ticket, step));
     },
   );
@@ -172,6 +180,7 @@ export function createApp(options: AppOptions = {}): Hono {
       } catch (err) {
         return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 400);
       }
+      onPlanChange(project);
       return c.json(ticketDragResponse(proj.path, project, feature, ticket, newStep));
     },
   );
@@ -191,6 +200,7 @@ export function createApp(options: AppOptions = {}): Hono {
       } catch (err) {
         return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 400);
       }
+      onPlanChange(project);
       const order = readPlanOrder(dataDir, project);
       return c.json(DragResult.parse({ order, warnings: [] }));
     },

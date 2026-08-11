@@ -64,6 +64,23 @@ describe("useLiveSync (023)", () => {
     expect(invalidated(qc, ["plan", "beta"])).toBe(false); // 다른 프로젝트 무영향
   });
 
+  it("plan 메시지(development-order/07) → plan 쿼리 전부 invalidate, 다른 쿼리는 그대로", () => {
+    qc.setQueryData(["plan", "alpha"], 1);
+    qc.setQueryData(["plan", "beta"], 1);
+    qc.setQueryData(["doc", "alpha", "todo", "x"], 1);
+    qc.setQueryData(["projects"], []);
+    render(<Harness qc={qc} />);
+    const ws = MockWS.instances[0]!;
+    ws.open();
+    ws.emit({ kind: "plan" });
+    // 🔴 project 가 없어 어느 프로젝트인지 모른다 — plan 쿼리는 전부(alpha·beta 둘 다) invalidate.
+    expect(invalidated(qc, ["plan", "alpha"])).toBe(true);
+    expect(invalidated(qc, ["plan", "beta"])).toBe(true);
+    // plan 이 아닌 쿼리는 안 건드린다.
+    expect(invalidated(qc, ["doc", "alpha", "todo", "x"])).toBe(false);
+    expect(invalidated(qc, ["projects"])).toBe(false);
+  });
+
   it("projects 메시지 → projects 쿼리만 invalidate", () => {
     qc.setQueryData(["projects"], []);
     qc.setQueryData(["plan", "alpha"], 1);

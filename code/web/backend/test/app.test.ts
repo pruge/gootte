@@ -435,6 +435,78 @@ describe("POST /api/plan/:slug/ticket-step, /ticket-step/insert, /feature-rank �
   });
 });
 
+// development-order/07 — 세 POST 경로가 성공하면 onPlanChange(project) 를 정확히 한 번 부른다.
+// server.ts 가 여기 hub.broadcast({kind:"project",project}) 를 연결한다(여기선 콜백만 검증).
+describe("POST /api/plan/:slug/* — onPlanChange 훅(development-order/07)", () => {
+  test("ticket-step 성공 → onPlanChange(project) 한 번", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));
+    try {
+      setTicketOrder(dataDir, { project: "alpha", feature: "auth-login", ticket: "02", step: 1, why: "…" });
+      const calls: string[] = [];
+      const app = createApp({ ...APP, dataDir, onPlanChange: (p) => calls.push(p) });
+      await app.request("/api/plan/alpha/ticket-step", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ feature: "auth-login", ticket: "02", step: 2 }),
+      });
+      expect(calls).toEqual(["alpha"]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("ticket-step/insert 성공 → onPlanChange(project) 한 번", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));
+    try {
+      setTicketOrder(dataDir, { project: "alpha", feature: "auth-login", ticket: "02", step: 1, why: "…" });
+      const calls: string[] = [];
+      const app = createApp({ ...APP, dataDir, onPlanChange: (p) => calls.push(p) });
+      await app.request("/api/plan/alpha/ticket-step/insert", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ feature: "auth-login", ticket: "02", afterStep: 0 }),
+      });
+      expect(calls).toEqual(["alpha"]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("feature-rank 성공 → onPlanChange(project) 한 번", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));
+    try {
+      setFeatureOrder(dataDir, { project: "alpha", feature: "auth-login", track: "web", rank: 10, why: "…" });
+      const calls: string[] = [];
+      const app = createApp({ ...APP, dataDir, onPlanChange: (p) => calls.push(p) });
+      await app.request("/api/plan/alpha/feature-rank", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ feature: "auth-login", track: "backend", beforeRank: null, afterRank: null }),
+      });
+      expect(calls).toEqual(["alpha"]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("실패(계획에 없는 티켓)면 onPlanChange 를 안 부른다", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));
+    try {
+      const calls: string[] = [];
+      const app = createApp({ ...APP, dataDir, onPlanChange: (p) => calls.push(p) });
+      const res = await app.request("/api/plan/alpha/ticket-step", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ feature: "auth-login", ticket: "99", step: 1 }),
+      });
+      expect(res.status).toBe(400);
+      expect(calls).toEqual([]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("discover 캐시 (W2)", () => {
   test("TTL 내 재사용, TTL 경과 후 재스캔", () => {
     clearDiscoverCache();

@@ -193,10 +193,13 @@ export type FeatureDocResponse = z.infer<typeof FeatureDocResponse>;
  * 파일 변경 push 신호 — INV-4(해석·요약 X, "바뀜"만). coarse 단위(ADR-0004):
  * `project` = 그 프로젝트 문서/worktree 변경 → 그 프로젝트 쿼리 invalidate.
  * `projects` = 프로젝트 추가/삭제 → projects 쿼리 invalidate(+서버 discover-cache bust).
+ * `plan` = gootte 자기 계획 저장소(`plan.db`)가 바뀌었다(드래그 또는 CLI) → project 는 없다,
+ *   파일 워처는 어느 프로젝트인지 모르니(development-order/07) `plan` 쿼리 전부 invalidate.
  */
 export const ChangeEvent = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("project"), project: z.string() }),
   z.object({ kind: z.literal("projects") }),
+  z.object({ kind: z.literal("plan") }),
 ]);
 export type ChangeEvent = z.infer<typeof ChangeEvent>;
 
