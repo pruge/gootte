@@ -341,6 +341,7 @@ jinwooauto 쪽에서 따로 한다** — DB 가 실제로 선 뒤에.
 | [05](issues/05-what-else-got-built-is-caught.md) | 티켓 밖에서 더 개발된 것을 잡는다(`extra`) | firstmate · 터미널 | 01 — 🟢 **02~04 와 나란히** |
 | [06](issues/06-the-captain-asks-for-an-opinion.md) | 의견을 청하고 답을 그 자리에서 본다 | 캡틴 · `plan` 탭 | 04 |
 | [07](issues/07-plan-changes-push-live.md) | 계획이 바뀌면 다른 화면에도 즉시 밀어 준다(WS push) | 캡틴 · `plan` 탭 | 04 — 캡틴 실측 요청(2026-08-11) |
+| [08](issues/08-completed-tickets-drop-themselves.md) | 완료되면 계획에서 스스로 빠진다 | firstmate · 문서 워처 | 07 — 캡틴 요청(2026-08-11) |
 
 이 순서가 만드는 병렬 — **이 기능 자신이 첫 사용자다.**
 

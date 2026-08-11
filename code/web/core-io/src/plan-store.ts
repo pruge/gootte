@@ -2,8 +2,8 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
-import type { FeatureOrderEntry, PlanOrder, TicketKind, TicketOrderEntry } from "@gootte/contract";
-import { appendRank, firstRank, insertBetween, insertStepAfter, renumberSparse } from "@gootte/core";
+import type { Feature, FeatureOrderEntry, PlanOrder, TicketKind, TicketOrderEntry } from "@gootte/contract";
+import { appendRank, computeMismatches, firstRank, insertBetween, insertStepAfter, renumberSparse } from "@gootte/core";
 
 /**
  * 계획(단계·순위·트랙·왜) 저장소 — SQLite, gootte 자기 저장소(INV-2 — 관리대상에는
@@ -438,4 +438,28 @@ function renumberAndRetry(
   const newBefore = beforeIdx >= 0 ? (renumbered[beforeIdx] as number) : 0;
   const newAfter = afterIdx >= 0 ? (renumbered[afterIdx] as number) : appendRank(renumbered);
   return insertBetween(newBefore, newAfter) ?? appendRank(renumbered);
+}
+
+// ── 완료되면 스스로 빠진다(development-order/08) ──────────────────────────
+
+/**
+ * 완료(`done`·`dropped`)됐는데 계획에 남은 티켓을 전부 지운다 — 판정은 `computeMismatches`의
+ * `done_but_staged`를 그대로 여과한다(새 술어를 안 만든다, 판정 자리는 하나뿐).
+ * 🔴 호출자는 **문서 워처**(server.ts)여야 한다 — 관리대상 문서가 실제로 바뀌었을 때만 부른다.
+ * HTTP GET 경로에서 부르지 않는다(backend read-only 관례는 그대로 지킨다).
+ * `feature_order`(기능 트랙·순위)는 안 건드린다 — 티켓 단위 판정이라 티켓 줄만 지운다.
+ */
+export function dropStaleCompleted(
+  dataDir: string,
+  project: string,
+  features: readonly Feature[],
+): { feature: string; ticket: string }[] {
+  const order = readPlanOrder(dataDir, project);
+  const dropped: { feature: string; ticket: string }[] = [];
+  for (const m of computeMismatches(features, order.tickets)) {
+    if (m.kind !== "done_but_staged" || !m.ticket) continue;
+    dropOrder(dataDir, project, m.feature, m.ticket);
+    dropped.push({ feature: m.feature, ticket: m.ticket });
+  }
+  return dropped;
 }

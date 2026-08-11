@@ -2,8 +2,10 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { Feature, FeatureTicket } from "@gootte/contract";
 import {
   dropOrder,
+  dropStaleCompleted,
   insertTicketStep,
   moveFeatureOrder,
   moveTicketStep,
@@ -11,6 +13,26 @@ import {
   setFeatureOrder,
   setTicketOrder,
 } from "./plan-store";
+
+function ticket(num: string, overrides: Partial<FeatureTicket> = {}): FeatureTicket {
+  return {
+    num,
+    slug: `${num}-x`,
+    title: `티켓 ${num}`,
+    status: "pending",
+    sourceStatus: "ready-for-agent",
+    statusKnown: true,
+    blockedBy: [],
+    waitingOn: [],
+    startable: true,
+    workedBy: [],
+    ...overrides,
+  };
+}
+
+function feature(slug: string, tickets: FeatureTicket[]): Feature {
+  return { slug, title: slug, status: "pending", sourceStatus: null, statusKnown: true, tickets, docs: [] };
+}
 
 /** 임시 디렉토리 픽스처 — 이 저장소 자신의 문서를 픽스처로 쓰지 않는다(AGENTS.md §Verify gate). */
 let dataDir: string;
@@ -221,5 +243,60 @@ describe("moveFeatureOrder — 기능 카드를 끈다(티켓 04, 🔴 첫 커�
     expect(() =>
       moveFeatureOrder(dataDir, { project: "p", feature: "no-such", track: "web", beforeRank: null, afterRank: null }),
     ).toThrow();
+  });
+});
+
+describe("dropStaleCompleted — 완료되면 스스로 빠진다(development-order/08, 🔴 첫 커버)", () => {
+  it("완료된 티켓만 지우고, 지운 목록을 돌려준다", () => {
+    setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "01", step: 1, why: "…" });
+    setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "02", step: 2, why: "…" });
+    const features = [feature("a", [ticket("01", { status: "done" }), ticket("02")])];
+
+    const dropped = dropStaleCompleted(dataDir, "p", features);
+    expect(dropped).toEqual([{ feature: "a", ticket: "01" }]);
+
+    const order = readPlanOrder(dataDir, "p");
+    expect(order.tickets.map((t) => t.ticket)).toEqual(["02"]);
+  });
+
+  it("wontfix(dropped)도 완료로 본다", () => {
+    setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "01", step: 1, why: "…" });
+    const features = [feature("a", [ticket("01", { status: "dropped" })])];
+    const dropped = dropStaleCompleted(dataDir, "p", features);
+    expect(dropped).toEqual([{ feature: "a", ticket: "01" }]);
+  });
+
+  it("완료 안 된 티켓은 안 건드린다", () => {
+    setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "01", step: 1, why: "…" });
+    const features = [feature("a", [ticket("01")])];
+    expect(dropStaleCompleted(dataDir, "p", features)).toEqual([]);
+    expect(readPlanOrder(dataDir, "p").tickets).toHaveLength(1);
+  });
+
+  it("다른 프로젝트의 계획은 안 건드린다", () => {
+    setTicketOrder(dataDir, { project: "p1", feature: "a", ticket: "01", step: 1, why: "…" });
+    setTicketOrder(dataDir, { project: "p2", feature: "a", ticket: "01", step: 1, why: "…" });
+    const features = [feature("a", [ticket("01", { status: "done" })])];
+    dropStaleCompleted(dataDir, "p1", features);
+    expect(readPlanOrder(dataDir, "p1").tickets).toHaveLength(0);
+    expect(readPlanOrder(dataDir, "p2").tickets).toHaveLength(1); // p2 는 안 건드림
+  });
+
+  it("feature_order(기능 트랙·순위)는 안 건드린다 — 티켓 줄만 지운다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "…" });
+    setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "01", step: 1, why: "…" });
+    const features = [feature("a", [ticket("01", { status: "done" })])];
+    dropStaleCompleted(dataDir, "p", features);
+    const order = readPlanOrder(dataDir, "p");
+    expect(order.features).toHaveLength(1);
+    expect(order.tickets).toHaveLength(0);
+  });
+
+  it("history.md 에 drop 한 줄이 남는다", () => {
+    setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "01", step: 1, why: "…" });
+    const features = [feature("a", [ticket("01", { status: "done" })])];
+    dropStaleCompleted(dataDir, "p", features);
+    const history = readFileSync(join(dataDir, "history.md"), "utf8");
+    expect(history).toContain("drop p a/01");
   });
 });
