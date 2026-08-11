@@ -2,8 +2,16 @@ import { basename } from "node:path";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { ProjectsResponse, FeaturesResponse, FeatureDocResponse, PlanResponse, type ApiError } from "@gootte/contract";
-import { applyInProgress, computeNext, countOpenFeatures } from "@gootte/core";
+import {
+  ProjectsResponse,
+  FeaturesResponse,
+  FeatureDocResponse,
+  PlanResponse,
+  DragResult,
+  type ApiError,
+  type DragWarning,
+} from "@gootte/contract";
+import { applyInProgress, checkTicketDragWarnings, computeNext, countOpenFeatures } from "@gootte/core";
 import {
   readFeatures,
   readFeatureDoc,
@@ -12,6 +20,9 @@ import {
   defaultPlanDataDir,
   defaultProjectRoots,
   defaultTreehouseRoot,
+  moveTicketStep,
+  insertTicketStep,
+  moveFeatureOrder,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
@@ -35,6 +46,18 @@ export function planDataDir(): string {
 const slugParam = z.object({ slug: z.string().min(1) });
 const featureDocParam = z.object({ slug: z.string().min(1), feature: z.string().min(1) });
 const featureDocQuery = z.object({ path: z.string().min(1) });
+const ticketStepBody = z.object({ feature: z.string().min(1), ticket: z.string().min(1), step: z.number().int() });
+const insertTicketStepBody = z.object({
+  feature: z.string().min(1),
+  ticket: z.string().min(1),
+  afterStep: z.number().int(),
+});
+const featureRankBody = z.object({
+  feature: z.string().min(1),
+  track: z.string().min(1),
+  beforeRank: z.number().nullable(),
+  afterRank: z.number().nullable(),
+});
 export interface AppOptions {
   /** discover 루트 (테스트 주입). 없으면 defaultRoots(). */
   roots?: string[];
@@ -97,6 +120,81 @@ export function createApp(options: AppOptions = {}): Hono {
     const next = computeNext(features, order.features, order.tickets);
     return c.json(PlanResponse.parse({ project, features, order, next }));
   });
+
+  /**
+   * 티켓 04 — 캡틴이 `plan` 탭에서 끌어서 순서를 바꾼다. gootte 의 첫 쓰기 경로(INV-2 §예외조차
+   * 안 쓴다) — 쓰기는 오직 `dataDir`(gootte 자기 SQLite) 로만 간다. 관리대상 문서는 `readFeatures`
+   * 로 읽기만 한다. 네 검사는 즉시 계산해 응답에 얹되(`checkTicketDragWarnings`), 드래그 자체는
+   * 막지 않는다(spec 04 §놓는 순간, §검사가 드래그를 막지 않는다).
+   */
+  function ticketDragResponse(projectPath: string, project: string, feature: string, ticket: string, newStep: number) {
+    const features = readFeatures(projectPath);
+    const order = readPlanOrder(dataDir, project);
+    const doc = features.find((f) => f.slug === feature)?.tickets.find((t) => t.num === ticket);
+    const warnings: DragWarning[] = doc
+      ? checkTicketDragWarnings(doc, feature, newStep, order.tickets)
+      : [];
+    return DragResult.parse({ order, warnings });
+  }
+
+  app.post(
+    "/api/plan/:slug/ticket-step",
+    zValidator("param", slugParam),
+    zValidator("json", ticketStepBody),
+    (c) => {
+      const { slug } = c.req.valid("param");
+      const proj = resolveSlug(roots, slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      const project = basename(proj.path);
+      const { feature, ticket, step } = c.req.valid("json");
+      try {
+        moveTicketStep(dataDir, { project, feature, ticket, step });
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 400);
+      }
+      return c.json(ticketDragResponse(proj.path, project, feature, ticket, step));
+    },
+  );
+
+  app.post(
+    "/api/plan/:slug/ticket-step/insert",
+    zValidator("param", slugParam),
+    zValidator("json", insertTicketStepBody),
+    (c) => {
+      const { slug } = c.req.valid("param");
+      const proj = resolveSlug(roots, slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      const project = basename(proj.path);
+      const { feature, ticket, afterStep } = c.req.valid("json");
+      let newStep: number;
+      try {
+        newStep = insertTicketStep(dataDir, { project, feature, ticket, afterStep }).step;
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 400);
+      }
+      return c.json(ticketDragResponse(proj.path, project, feature, ticket, newStep));
+    },
+  );
+
+  app.post(
+    "/api/plan/:slug/feature-rank",
+    zValidator("param", slugParam),
+    zValidator("json", featureRankBody),
+    (c) => {
+      const { slug } = c.req.valid("param");
+      const proj = resolveSlug(roots, slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      const project = basename(proj.path);
+      const { feature, track, beforeRank, afterRank } = c.req.valid("json");
+      try {
+        moveFeatureOrder(dataDir, { project, feature, track, beforeRank, afterRank });
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 400);
+      }
+      const order = readPlanOrder(dataDir, project);
+      return c.json(DragResult.parse({ order, warnings: [] }));
+    },
+  );
 
   // GET /api/features/:slug/:feature/doc?path= → FeatureDocResponse (기능 문서 본문, INV-2 read-only)
   // 🔴 요청받은 path 는 readFeatureDoc 이 그 기능 폴더 안으로 해소되는지 판정한 뒤에야 읽는다 —

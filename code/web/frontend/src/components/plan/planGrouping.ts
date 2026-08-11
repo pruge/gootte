@@ -19,6 +19,8 @@ export interface StepChip {
   ticketNum: string;
   /** null = 계획엔 있는데 티켓 문서가 없다 — `step_without_ticket` 어긋남과 짝(감추지 않는다). */
   ticket: FeatureTicket | null;
+  /** 드래그(티켓 04)가 단계만 바꾸고 `why` 는 안 건드렸다는 표시. */
+  whyNeedsReview: boolean;
 }
 
 export interface StepTrackGroup {
@@ -41,7 +43,12 @@ export function groupByStep(features: readonly Feature[], order: PlanOrder): Ste
     const track = trackByFeature.get(o.feature) ?? UNASSIGNED_TRACK;
     const byTrack = stepMap.get(o.step) ?? new Map<string, StepChip[]>();
     const chips = byTrack.get(track) ?? [];
-    chips.push({ feature: o.feature, ticketNum: o.ticket, ticket: docByKey.get(`${o.feature}/${o.ticket}`) ?? null });
+    chips.push({
+      feature: o.feature,
+      ticketNum: o.ticket,
+      ticket: docByKey.get(`${o.feature}/${o.ticket}`) ?? null,
+      whyNeedsReview: o.whyNeedsReview,
+    });
     byTrack.set(track, chips);
     stepMap.set(o.step, byTrack);
   }
@@ -62,6 +69,7 @@ export interface FeatureLaneTicket {
   step: number;
   kind: TicketKind;
   why: string;
+  whyNeedsReview: boolean;
 }
 
 export interface FeatureLane {
@@ -107,6 +115,7 @@ export function groupByTrackFeature(features: readonly Feature[], order: PlanOrd
           step: t.step,
           kind: t.kind,
           why: t.why,
+          whyNeedsReview: t.whyNeedsReview,
         })),
     };
     const list = byTrack.get(fo.track) ?? [];

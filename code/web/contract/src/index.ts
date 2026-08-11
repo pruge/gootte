@@ -240,6 +240,9 @@ export const TicketOrderEntry = z.object({
   step: z.number().int(),
   kind: TicketKind,
   why: z.string().min(1),
+  // `whyNeedsReview` 는 드래그(티켓 04)가 단계만 바꾸고 `why` 는 안 건드릴 때 붙는 표시 —
+  // CLI(`set`) 경로에서는 항상 false(FeatureOrderEntry 와 같은 관례).
+  whyNeedsReview: z.boolean().default(false),
   updatedAt: z.string(),
 });
 export type TicketOrderEntry = z.infer<typeof TicketOrderEntry>;
@@ -348,3 +351,30 @@ export const PlanResponse = z.object({
   next: NextResult,
 });
 export type PlanResponse = z.infer<typeof PlanResponse>;
+
+// ── 드래그(티켓 04) — gootte 의 첫 쓰기 경로 ──────────────────────
+// 놓는 순간 기계가 아는 것만, 즉시(spec §두 속도). planner 를 기다리지 않는다(INV-4).
+
+/**
+ * 드래그 놓는 순간의 네 검사(spec §놓는 순간). 캡틴의 결정을 되돌리지 않는다 — 알려줄 뿐이다.
+ */
+export const DragWarningKind = z.enum([
+  "blocked_regression", // 이 티켓이 기다리는 것을 뒤 단계로 보냈다
+  "already_done", // 완료된 티켓을 옮겼다
+  "claimed", // 지금 누가 붙들고 있는 티켓의 자리를 바꿨다
+  "stale_block_reason", // 기다린다고 적힌 것이 이미 착지했다
+]);
+export type DragWarningKind = z.infer<typeof DragWarningKind>;
+
+export const DragWarning = z.object({
+  kind: DragWarningKind,
+  detail: z.string(), // 사람이 읽는 한 줄 — verbatim 릴레이(INV-4), 요약하지 않는다
+});
+export type DragWarning = z.infer<typeof DragWarning>;
+
+/** 드래그 쓰기 응답 — 갱신된 계획 + 그 자리에서 뜨는 경고(비어 있을 수 있다). */
+export const DragResult = z.object({
+  order: PlanOrder,
+  warnings: z.array(DragWarning),
+});
+export type DragResult = z.infer<typeof DragResult>;

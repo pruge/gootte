@@ -32,7 +32,7 @@ function featureOrder(feature: string, track: string, rank: number): FeatureOrde
 }
 
 function ticketOrder(feature: string, ticket: string, step: number, why = "…"): TicketOrderEntry {
-  return { project: "p", feature, ticket, step, kind: "planned", why, updatedAt: "t" };
+  return { project: "p", feature, ticket, step, kind: "planned", why, whyNeedsReview: false, updatedAt: "t" };
 }
 
 describe("computeNext — 트랙마다 지금 나란히 보낼 수 있는 것(spec §next 의 정의)", () => {
