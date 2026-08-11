@@ -33,7 +33,12 @@ export interface StepRow {
   byTrack: StepTrackGroup[];
 }
 
-/** 단계 보기 — 같은 단계(가로줄) 안에서 트랙별로 나눠 담는다(트랙을 한 줄로 펴지 않는다). */
+/**
+ * 단계 보기 — 카드는 **단계**를 나타내고, 그 안에서 티켓을 **트랙별로 묶어** 보여준다(캡틴 지시
+ * 2026-08-11: "카드는 단계를 표시하고 그 안에 track 별 ticket으로 묶어 표시하라"). 트랙 이름은
+ * 칩과 같은 줄을 공유하지 않는다(라벨 위·칩 아래로 블록을 쌓는다) — 트랙 이름 칸을 칩이
+ * 침범하던 원래 버그는 "같은 줄에 라벨+칩을 나란히 두는 것" 자체가 원인이었다.
+ */
 export function groupByStep(features: readonly Feature[], order: PlanOrder): StepRow[] {
   const trackByFeature = new Map(order.features.map((f) => [f.feature, f.track]));
   const docByKey = ticketDocByKey(features);

@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import type { Feature, PlanOrder } from "@gootte/contract";
 import { Empty } from "../common/states";
-import { groupByStep } from "./planGrouping";
+import { groupByStep, UNASSIGNED_TRACK, type StepChip, type StepRow } from "./planGrouping";
 import { TicketChip } from "./TicketChip";
 import { StepGap } from "./StepGap";
 import { isTicketDrag, readTicketDragData } from "./dragPayload";
@@ -12,88 +12,178 @@ interface StepViewProps {
   highlighted: ReadonlySet<string>;
   onMoveToStep: (feature: string, ticket: string, step: number) => void;
   onInsertAfterStep: (feature: string, ticket: string, afterStep: number) => void;
+  /** 🟡 칩을 다른 트랙 묶음으로 끌면 그 티켓이 속한 **기능 전체**의 트랙이 바뀐다 — 티켓 하나만 옮길 수 없다. */
+  onMoveFeatureTrack: (feature: string, track: string) => void;
 }
 
-/**
- * 단계 줄 하나 — 그 위에 놓으면(줄과 합친다) 그 티켓의 단계가 이 줄 값이 된다.
- * 끄는 동안 놓일 자리가 눈에 보여야 한다(캡틴 확인 항목 1) — 테두리 강조로 알린다.
- */
-function StepRowDropTarget({
+interface DraggingTicket {
+  feature: string;
+  track: string;
+}
+
+/** 카드(단계) 안의 트랙 묶음 하나 — 라벨은 칩과 같은 줄을 공유하지 않는다(라벨 위, 칩 아래). */
+function TrackGroup({
+  track,
   step,
-  onDrop,
-  children,
+  chips,
+  highlighted,
+  dragging,
+  onMoveToStep,
+  onMoveFeatureTrack,
+  onTicketDragStart,
+  onTicketDragEnd,
 }: {
+  track: string;
   step: number;
-  onDrop: (feature: string, ticket: string) => void;
-  children: ReactNode;
+  chips: readonly StepChip[];
+  highlighted: ReadonlySet<string>;
+  dragging: DraggingTicket | null;
+  onMoveToStep: (feature: string, ticket: string, step: number) => void;
+  onMoveFeatureTrack: (feature: string, track: string) => void;
+  onTicketDragStart: (feature: string, ticket: string) => void;
+  onTicketDragEnd: () => void;
 }) {
-  const [active, setActive] = useState(false);
+  const [over, setOver] = useState(false);
+  const crossTrack = over && dragging !== null && dragging.track !== track;
+
   return (
-    <section
+    <div
       onDragOver={(e) => {
         if (!isTicketDrag(e)) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
-        setActive(true);
+        setOver(true);
       }}
-      onDragLeave={() => setActive(false)}
+      onDragLeave={() => setOver(false)}
       onDrop={(e) => {
         if (!isTicketDrag(e)) return;
         e.preventDefault();
-        setActive(false);
+        setOver(false);
         const data = readTicketDragData(e);
-        if (data) onDrop(data.feature, data.ticket);
+        if (!data) return;
+        if (dragging && dragging.track !== track) onMoveFeatureTrack(data.feature, track);
+        onMoveToStep(data.feature, data.ticket, step);
       }}
-      className={`rounded-lg border p-3 transition-colors ${
-        active ? "border-accent bg-accent/10" : "border-border bg-surface"
+      className={`min-w-0 rounded-md border-2 p-2 transition-colors ${
+        crossTrack
+          ? "border-partial bg-partial/10"
+          : over
+            ? "border-accent bg-accent/10"
+            : "border-transparent bg-surface-2/40"
       }`}
     >
-      <h3 className="mono mb-2 text-sm text-muted">단계 {step}</h3>
-      {children}
-    </section>
+      <h4 className="mono mb-1.5 text-xs font-medium text-muted">{track}</h4>
+      {crossTrack && (
+        <p className="mono mb-1 text-xs text-partial">기능 전체가 「{track}」로 이동합니다</p>
+      )}
+      <div className="flex min-w-0 flex-wrap gap-1.5">
+        {chips.map((c) => (
+          <TicketChip
+            key={`${c.feature}/${c.ticketNum}`}
+            feature={c.feature}
+            ticketNum={c.ticketNum}
+            ticket={c.ticket}
+            highlighted={highlighted.has(`${c.feature}/${c.ticketNum}`)}
+            whyNeedsReview={c.whyNeedsReview}
+            onDragStart={onTicketDragStart}
+            onDragEnd={onTicketDragEnd}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 카드 하나 = 단계 하나. 안에서 트랙 묶음이 위에서 아래로 쌓인다. 카드 바로 아래에 그 자신의 틈이 붙는다. */
+function StepCard({
+  row,
+  highlighted,
+  dragging,
+  onMoveToStep,
+  onMoveFeatureTrack,
+  onTicketDragStart,
+  onTicketDragEnd,
+  onInsertAfterStep,
+}: {
+  row: StepRow;
+  highlighted: ReadonlySet<string>;
+  dragging: DraggingTicket | null;
+  onMoveToStep: (feature: string, ticket: string, step: number) => void;
+  onMoveFeatureTrack: (feature: string, track: string) => void;
+  onTicketDragStart: (feature: string, ticket: string) => void;
+  onTicketDragEnd: () => void;
+  onInsertAfterStep: (feature: string, ticket: string, afterStep: number) => void;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <section className="min-w-0 rounded-lg border border-border bg-surface p-3">
+        <h3 className="mono mb-2 text-sm font-medium text-muted">단계 {row.step}</h3>
+        <div className="flex min-w-0 flex-col gap-3">
+          {row.byTrack.map((g) => (
+            <TrackGroup
+              key={g.track}
+              track={g.track}
+              step={row.step}
+              chips={g.chips}
+              highlighted={highlighted}
+              dragging={dragging}
+              onMoveToStep={onMoveToStep}
+              onMoveFeatureTrack={onMoveFeatureTrack}
+              onTicketDragStart={onTicketDragStart}
+              onTicketDragEnd={onTicketDragEnd}
+            />
+          ))}
+        </div>
+      </section>
+      <StepGap afterStep={row.step} onInsertAfterStep={onInsertAfterStep} />
+    </div>
   );
 }
 
 /**
- * 단계 보기(기본) — 단계가 가로줄. 같은 줄에 있으면 병렬(spec §두 보기).
- * 🔴 트랙을 한 줄로 펴지 않는다 — 같은 단계 안에서도 트랙별로 나눠 그린다.
- * 티켓 칩을 다른 줄로 끌면 그 단계로, 줄과 줄 사이(`StepGap`)에 놓으면 새 단계가 생긴다(티켓 04).
+ * 단계 보기(기본) — 기능 보기와 **같은 3열 그리드**를 쓰되, 칸은 **단계**다(캡틴 지시 2026-08-11:
+ * "3column 그대로 두고 단계와 track 위치만 바꾸면 되는것을"). 칸(카드) 안에서 티켓은
+ * **트랙별로** 묶인다 — 라벨은 칩과 같은 줄을 공유하지 않아(라벨 위, 칩 아래) 트랙 이름 자리를
+ * 칩이 침범하지 못한다.
+ * 🔴 넓으면 세 칸까지, 좁아지면 두 칸·한 칸으로 접힌다(기능 보기와 같은 반응형).
+ * 카드를 다른 트랙 묶음으로 끌면 기능 전체의 트랙이, 다른 카드로 끌면 단계가 바뀐다.
  */
-export function StepView({ features, order, highlighted, onMoveToStep, onInsertAfterStep }: StepViewProps) {
+export function StepView({
+  features,
+  order,
+  highlighted,
+  onMoveToStep,
+  onInsertAfterStep,
+  onMoveFeatureTrack,
+}: StepViewProps) {
   const rows = groupByStep(features, order);
+  const [dragging, setDragging] = useState<DraggingTicket | null>(null);
   if (rows.length === 0) return <Empty>계획된 단계가 없습니다.</Empty>;
 
+  const trackByFeature = new Map(order.features.map((f) => [f.feature, f.track]));
+  const onTicketDragStart = (feature: string, _ticket: string) => {
+    setDragging({ feature, track: trackByFeature.get(feature) ?? UNASSIGNED_TRACK });
+  };
+  const onTicketDragEnd = () => setDragging(null);
+
   return (
-    <div className="flex flex-col">
+    <div className="flex min-w-0 flex-col gap-3">
       <StepGap afterStep={0} onInsertAfterStep={onInsertAfterStep} />
-      {rows.map((row) => (
-        <div key={row.step} className="flex flex-col gap-1">
-          <StepRowDropTarget step={row.step} onDrop={(feature, ticket) => onMoveToStep(feature, ticket, row.step)}>
-            <div className="flex flex-col gap-2">
-              {row.byTrack.map((lane) => (
-                <div key={lane.track} className="flex flex-wrap items-center gap-2">
-                  <span className="mono w-28 shrink-0 truncate text-xs text-muted" title={lane.track}>
-                    {lane.track}
-                  </span>
-                  <div className="flex min-w-0 flex-wrap gap-2">
-                    {lane.chips.map((c) => (
-                      <TicketChip
-                        key={`${c.feature}/${c.ticketNum}`}
-                        feature={c.feature}
-                        ticketNum={c.ticketNum}
-                        ticket={c.ticket}
-                        highlighted={highlighted.has(`${c.feature}/${c.ticketNum}`)}
-                        whyNeedsReview={c.whyNeedsReview}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </StepRowDropTarget>
-          <StepGap afterStep={row.step} onInsertAfterStep={onInsertAfterStep} />
-        </div>
-      ))}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {rows.map((row) => (
+          <StepCard
+            key={row.step}
+            row={row}
+            highlighted={highlighted}
+            dragging={dragging}
+            onMoveToStep={onMoveToStep}
+            onMoveFeatureTrack={onMoveFeatureTrack}
+            onTicketDragStart={onTicketDragStart}
+            onTicketDragEnd={onTicketDragEnd}
+            onInsertAfterStep={onInsertAfterStep}
+          />
+        ))}
+      </div>
     </div>
   );
 }

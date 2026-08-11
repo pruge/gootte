@@ -134,8 +134,7 @@ const DATA: PlanResponse = {
       },
     ],
   },
-  askTriggers: [],
-  askRequests: [],
+  dragWarnings: {},
 };
 
 /** view 상태를 실제로 URL 훅처럼 들고 있는 최소 하네스 — 탭 전환 왕복을 실제로 검증한다. */
@@ -147,21 +146,97 @@ function Harness({ project, initialView = null }: { project: string; initialView
 function renderPlan(data: PlanResponse = DATA, initialView: string | null = null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(qk.plan(data.project), data);
-  return render(
+  const result = render(
     <QueryClientProvider client={qc}>
       <Harness project={data.project} initialView={initialView} />
     </QueryClientProvider>,
   );
+  return { ...result, qc };
 }
 
-describe("PlanView — 단계 보기(기본)", () => {
-  it("같은 단계가 한 줄에 모이고, 트랙마다 자기 묶음을 갖는다", () => {
+/** jsdom 은 DataTransfer 를 구현하지 않는다 — setData/getData/types 를 갖는 최소 흉내를 직접 만든다. */
+function makeDataTransfer() {
+  const store: Record<string, string> = {};
+  return {
+    setData: (type: string, val: string) => {
+      store[type] = val;
+    },
+    getData: (type: string) => store[type] ?? "",
+    get types() {
+      return Object.keys(store);
+    },
+    dropEffect: "",
+    effectAllowed: "",
+  };
+}
+
+/** 단계 보기에서 티켓 칩 하나를 다른(또는 같은) 단계 카드의 특정 트랙 묶음에 끌어 놓는다. */
+function dragTicketInto(chipText: string, trackText: string, step: number) {
+  const chip = screen.getByText(chipText).closest("span")!;
+  const card = screen.getByText(`단계 ${step}`).closest("section")!;
+  const group = within(card).getByText(trackText).closest("div")!;
+  const dt = makeDataTransfer();
+  fireEvent.dragStart(chip, { dataTransfer: dt });
+  fireEvent.dragOver(group, { dataTransfer: dt });
+  fireEvent.drop(group, { dataTransfer: dt });
+}
+
+describe("PlanView — 단계 보기(기본, 카드는 단계 · 그 안은 트랙별 묶음)", () => {
+  it("카드는 단계를 나타내고, 그 안에서 트랙별로 티켓이 묶인다", () => {
     renderPlan();
+    const card = screen.getByText("단계 1").closest("section")!;
+    const webGroup = within(card).getByText("web").closest("div")!;
+    const paymentsGroup = within(card).getByText("payments").closest("div")!;
+    expect(within(webGroup).getByText("auth-login/02")).toBeInTheDocument();
+    expect(within(paymentsGroup).getByText("billing/01")).toBeInTheDocument();
+    // 🔴 트랙을 한 줄로 펴지 않는다 — 같은 카드 안에서도 트랙별 묶음이 나뉜다.
+    expect(within(webGroup).queryByText("billing/01")).toBeNull();
+    expect(within(paymentsGroup).queryByText("auth-login/02")).toBeNull();
+  });
+
+  it("단계마다 카드 하나 — 그 단계에 티켓이 있는 트랙만 묶여 나타난다", () => {
+    const data: PlanResponse = {
+      ...DATA,
+      order: {
+        ...DATA.order,
+        features: [
+          ...DATA.order.features,
+          {
+            project: "alpha",
+            feature: "gateway-ctl",
+            track: "gateway",
+            rank: 10,
+            why: "게이트웨이 제어",
+            whyNeedsReview: false,
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        ],
+        tickets: [
+          ...DATA.order.tickets,
+          {
+            project: "alpha",
+            feature: "gateway-ctl",
+            ticket: "01",
+            step: 2,
+            why: "web·payments 뒤에 온다",
+            whyNeedsReview: false,
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        ],
+      },
+    };
+    renderPlan(data);
+
     const step1 = screen.getByText("단계 1").closest("section")!;
+    const step2 = screen.getByText("단계 2").closest("section")!;
+    // 단계 1 카드엔 web·payments 묶음만 있다 — gateway 는 아직 없다.
     expect(within(step1).getByText("web")).toBeInTheDocument();
     expect(within(step1).getByText("payments")).toBeInTheDocument();
-    expect(within(step1).getByText("auth-login/02")).toBeInTheDocument();
-    expect(within(step1).getByText("billing/01")).toBeInTheDocument();
+    expect(within(step1).queryByText("gateway")).toBeNull();
+    // 단계 2 카드엔 gateway 묶음만 있다.
+    expect(within(step2).getByText("gateway")).toBeInTheDocument();
+    expect(within(step2).queryByText("web")).toBeNull();
+    expect(within(step2).queryByText("payments")).toBeNull();
   });
 
   it("🔴 어긋남은 접히지 않고 바로 보인다 — 아무것도 안 눌러도 뜬다", () => {
@@ -173,8 +248,6 @@ describe("PlanView — 단계 보기(기본)", () => {
    * 🔴 캡틴이 실제로 부딪히신 것(2026-08-11): 어긋남이 0 인데 주황색 상자가 남아 있었다.
    * 남아 있던 것은 어긋남이 아니라 **닫지 않은 드래그 경고**였다 — 둘이 같은 옷을 입고
    * 나란히 서 있어 구분이 안 됐다(티켓 09 ②).
-   * 여기까지는 "어긋남이 0 이면 어긋남 상자는 안 뜬다" 를 지킨다 — 그 전제가 무너지면
-   * 09 가 고칠 문제 자체가 달라진다.
    */
   it("🔴 어긋남이 0 건이면 어긋남 상자가 아예 안 뜬다", () => {
     renderPlan({ ...DATA, next: { ...DATA.next, mismatches: [] } });
@@ -182,9 +255,22 @@ describe("PlanView — 단계 보기(기본)", () => {
     expect(screen.queryByText("auth-login/03 — 계획에 단계가 없다")).toBeNull();
   });
 
-  it("🔴 아무것도 안 끈 첫 화면에는 놓는 순간 경고가 없다", () => {
+  it("🔴 아무것도 안 끈 첫 화면에는 드래그 경고가 없다 — 서버가 무언가를 알고 있어도", () => {
+    renderPlan({ ...DATA, dragWarnings: { "billing/01": [{ kind: "claimed", detail: "지금 걸림" }] } });
+    expect(screen.queryByText(/방금 그 드래그가 걸렸습니다/)).toBeNull();
+    expect(screen.queryByText("지금 걸림")).toBeNull();
+  });
+});
+
+describe("PlanView — 조작 줄(티켓 09 ④, 스크롤해도 화면에 남는다)", () => {
+  it("🔴 보기 전환·next 는 스크롤 영역 밖에 있다 — 계획 본문만 스크롤한다", () => {
     renderPlan();
-    expect(screen.queryByText(/놓는 순간 알아챈 것/)).toBeNull();
+    const tablist = screen.getByRole("tablist", { name: "보기" });
+    const nextButton = screen.getByRole("button", { name: /next/i });
+    expect(tablist.closest(".overflow-y-auto")).toBeNull();
+    expect(nextButton.closest(".overflow-y-auto")).toBeNull();
+    // 대조군 — 계획 본문(어긋남 등)은 스크롤 영역 안에 있다.
+    expect(screen.getByText("auth-login/03 — 계획에 단계가 없다").closest(".overflow-y-auto")).not.toBeNull();
   });
 });
 
@@ -217,28 +303,12 @@ describe("PlanView — 기능 보기", () => {
   });
 });
 
-/** jsdom 은 DataTransfer 를 구현하지 않는다 — setData/getData/types 를 갖는 최소 흉내를 직접 만든다. */
-function makeDataTransfer() {
-  const store: Record<string, string> = {};
-  return {
-    setData: (type: string, val: string) => {
-      store[type] = val;
-    },
-    getData: (type: string) => store[type] ?? "",
-    get types() {
-      return Object.keys(store);
-    },
-    dropEffect: "",
-    effectAllowed: "",
-  };
-}
-
 // 🔴 첫 커버(spec §검증) — 드래그 → 쓰기(서버 POST) → 재조회로 값이 남는다. 실제 fetch 대신
 // api.ts 의 함수를 스텁해 왕복만 확인한다(백엔드 쓰기 자체는 core-io·backend 단위 테스트가 덮는다).
 describe("PlanView — 드래그(티켓 04, 🔴 첫 커버) → 쓰기 → 재조회로 값이 남는다", () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it("티켓 칩을 다른 단계 줄에 놓으면 moveTicketStep 이 불리고, 재조회 결과가 화면에 반영된다", async () => {
+  it("티켓 칩을 다른 단계 칸에 놓으면 moveTicketStep 이 불리고, 재조회 결과가 화면에 반영된다", async () => {
     const refetched: PlanResponse = {
       ...DATA,
       order: {
@@ -252,13 +322,7 @@ describe("PlanView — 드래그(티켓 04, 🔴 첫 커버) → 쓰기 → 재�
     vi.spyOn(api, "fetchPlan").mockResolvedValue(refetched);
 
     renderPlan();
-
-    const chip = screen.getByText("billing/01").closest("span")!;
-    const step1Section = screen.getByText("단계 1").closest("section")!;
-    const dt = makeDataTransfer();
-    fireEvent.dragStart(chip, { dataTransfer: dt });
-    fireEvent.dragOver(step1Section, { dataTransfer: dt });
-    fireEvent.drop(step1Section, { dataTransfer: dt });
+    dragTicketInto("billing/01", "payments", 1);
 
     await waitFor(() => expect(api.moveTicketStep).toHaveBeenCalledWith("alpha", { feature: "billing", ticket: "01", step: 1 }));
     await waitFor(() => expect(api.fetchPlan).toHaveBeenCalled());
@@ -281,80 +345,109 @@ describe("PlanView — 드래그(티켓 04, 🔴 첫 커버) → 쓰기 → 재�
   });
 });
 
-// 🔴 첫 커버(spec 06 §테스트) — 답이 요약 없이 그대로 실린다, 그리고 버튼이 04 의 즉시 검사와 섞이지 않는다.
-describe("PlanView — 판단 요청(티켓 06, 🔴 첫 커버)", () => {
+// 🔴 첫 커버 — 단계 보기에서 다른 트랙 묶음으로 끌면 기능 전체의 트랙이 바뀐다.
+describe("PlanView — 단계 보기에서 다른 트랙 묶음으로 끌면 기능의 트랙이 바뀐다(🔴 첫 커버)", () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it("조건이 없으면 판단 요청 패널이 안 뜬다", () => {
+  it("끄는 동안 무엇이 바뀌는지 보이고, 놓으면 트랙과 단계가 함께 바뀐다", async () => {
+    vi.spyOn(api, "moveFeatureRank").mockResolvedValue({ order: DATA.order, warnings: [] });
+    vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
     renderPlan();
-    expect(screen.queryByText("판단이 필요합니다 — 캡틴 의견을 청할 수 있습니다")).toBeNull();
-  });
 
-  it("버튼이 뜨는 자리가 있으면 [의견 물어보기] 가 보이고, 04 의 놓는 순간 배너와는 다른 문구다", () => {
-    const data: PlanResponse = {
+    const chip = screen.getByText("auth-login/02").closest("span")!; // 지금 트랙 = web
+    const step1Card = screen.getByText("단계 1").closest("section")!;
+    const paymentsGroup = within(step1Card).getByText("payments").closest("div")!;
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(chip, { dataTransfer: dt });
+    fireEvent.dragOver(paymentsGroup, { dataTransfer: dt });
+
+    // 🔴 놓기 전에 — 기능 전체가 이동한다는 것이 끄는 동안 보인다(티켓 04 캡틴 확인 1).
+    expect(within(paymentsGroup).getByText("기능 전체가 「payments」로 이동합니다")).toBeInTheDocument();
+
+    fireEvent.drop(paymentsGroup, { dataTransfer: dt });
+
+    await waitFor(() =>
+      expect(api.moveFeatureRank).toHaveBeenCalledWith("alpha", {
+        feature: "auth-login",
+        track: "payments",
+        beforeRank: null,
+        afterRank: null,
+      }),
+    );
+    expect(api.moveTicketStep).toHaveBeenCalledWith("alpha", { feature: "auth-login", ticket: "02", step: 1 });
+  });
+});
+
+// 🔴 첫 커버(티켓 09 ②) — 서버가 매 읽기 다시 계산해 보낸 dragWarnings 를 화면이 찾아 보여줄 뿐,
+// 스스로 판정하지 않는다("다시 물어서 갱신한다").
+describe("PlanView — 드래그 경고(티켓 09 ②, 다시 물어서 갱신한다, 🔴 첫 커버)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("드래그 직후 서버가 dragWarnings 를 실어 보내면 그 배치 옆에 뜬다", async () => {
+    const warned: PlanResponse = {
       ...DATA,
-      askTriggers: [
-        { kind: "new_parallel", feature: null, step: 1, detail: "단계 1에 서로 다른 기능이 나란히 놓였다 — 정말 무관한지 봐 달라" },
-      ],
+      dragWarnings: { "billing/01": [{ kind: "claimed", detail: "지금 걸림" }] },
     };
-    renderPlan(data);
-    expect(screen.getByText("단계 1에 서로 다른 기능이 나란히 놓였다 — 정말 무관한지 봐 달라")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "의견 물어보기" })).toBeInTheDocument();
-    // 놓는 순간 검사(04)의 문구("막지 않습니다")는 여기 없다 — 두 덩이가 섞이지 않는다.
-    expect(screen.queryByText(/놓는 순간 알아챈 것/)).toBeNull();
+    vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(warned);
+    renderPlan();
+
+    dragTicketInto("billing/01", "payments", 1);
+
+    await waitFor(() => expect(screen.getByText("지금 걸림")).toBeInTheDocument());
   });
 
-  it("누르면 요청이 남고(verbatim detail 전송) 버튼이 보냈습니다로 바뀐다", async () => {
-    const detail = "단계 1에 서로 다른 기능이 나란히 놓였다 — 정말 무관한지 봐 달라";
-    const data: PlanResponse = { ...DATA, askTriggers: [{ kind: "new_parallel", feature: null, step: 1, detail }] };
-    const created = {
-      id: 1,
-      project: "alpha",
-      batchSummary: "…",
-      question: detail,
-      answer: null,
-      done: false,
-      updatedAt: "2026-08-11T00:00:00.000Z",
-    };
-    vi.spyOn(api, "postAsk").mockResolvedValue(created);
-    vi.spyOn(api, "fetchPlan").mockResolvedValue({ ...data, askRequests: [created] });
-    renderPlan(data);
+  it("🔴 곧바로 되돌려 조건이 사라지면 ✕ 없이도 스스로 없어진다", async () => {
+    const warned: PlanResponse = { ...DATA, dragWarnings: { "billing/01": [{ kind: "claimed", detail: "지금 걸림" }] } };
+    const clean: PlanResponse = { ...DATA, dragWarnings: {} };
+    vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValueOnce(warned).mockResolvedValueOnce(clean);
+    renderPlan();
 
-    fireEvent.click(screen.getByRole("button", { name: "의견 물어보기" }));
+    dragTicketInto("billing/01", "payments", 1);
+    await waitFor(() => expect(screen.getByText("지금 걸림")).toBeInTheDocument());
 
-    await waitFor(() => expect(api.postAsk).toHaveBeenCalledWith("alpha", detail));
-    expect(screen.getByRole("button", { name: "보냈습니다" })).toBeDisabled();
+    dragTicketInto("billing/01", "payments", 1);
+    await waitFor(() => expect(screen.queryByText("지금 걸림")).toBeNull());
   });
 
-  it("답이 도착하면 그 배치 옆에 verbatim 으로 붙는다 — 요약하지 않는다", () => {
-    const answer = "무관하다 — 이대로 가자. 잘라내지도 다듬지도 않는다, 있는 그대로 한 줄.";
-    const data: PlanResponse = {
-      ...DATA,
-      askRequests: [
-        {
-          id: 7,
-          project: "alpha",
-          batchSummary: "…",
-          question: "정말 무관한지 봐 달라",
-          answer,
-          done: true,
-          updatedAt: "2026-08-11T01:00:00.000Z",
-        },
-      ],
-    };
-    const { container } = renderPlan(data);
-    expect(container.textContent).toContain(answer);
-    expect(screen.getByText(/planner · 2026-08-11T01:00:00.000Z/)).toBeInTheDocument();
+  it("🔴 계획이 다른 경로(터미널·WS 등)로 바뀌어도 낡은 경고가 안 남는다", async () => {
+    const warned: PlanResponse = { ...DATA, dragWarnings: { "billing/01": [{ kind: "claimed", detail: "지금 걸림" }] } };
+    const clean: PlanResponse = { ...DATA, dragWarnings: {} };
+    vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
+    const fetchMock = vi.spyOn(api, "fetchPlan").mockResolvedValueOnce(warned);
+    const { qc } = renderPlan();
+
+    dragTicketInto("billing/01", "payments", 1);
+    await waitFor(() => expect(screen.getByText("지금 걸림")).toBeInTheDocument());
+
+    // 이 세션에서 새로 끈 것이 아니라 — 다른 경로로 계획이 바뀌었다고 가정하고 다시 읽는다.
+    fetchMock.mockResolvedValueOnce(clean);
+    await qc.invalidateQueries({ queryKey: qk.plan("alpha") });
+
+    await waitFor(() => expect(screen.queryByText("지금 걸림")).toBeNull());
   });
 
-  it("답을 기다리는 중이면 그 사실이 보인다", () => {
-    const data: PlanResponse = {
-      ...DATA,
-      askRequests: [
-        { id: 7, project: "alpha", batchSummary: "…", question: "정말 무관한지", answer: null, done: false, updatedAt: "t" },
-      ],
-    };
-    renderPlan(data);
-    expect(screen.getByText("답을 기다리는 중…")).toBeInTheDocument();
+  it("🔴 ✕ 로 닫은 경고는 배치가 다시 바뀌기 전까지 닫혀 있다", async () => {
+    const warned: PlanResponse = { ...DATA, dragWarnings: { "billing/01": [{ kind: "claimed", detail: "지금 걸림" }] } };
+    vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(warned);
+    const { qc } = renderPlan();
+
+    dragTicketInto("billing/01", "payments", 1);
+    await waitFor(() => expect(screen.getByText("지금 걸림")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+    expect(screen.queryByText("지금 걸림")).toBeNull();
+
+    // 같은 배치인 채로 다시 읽어도(예: 포커스 리페치) 닫힌 채로 있는다.
+    await qc.invalidateQueries({ queryKey: qk.plan("alpha") });
+    await waitFor(() => expect(api.fetchPlan).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("지금 걸림")).toBeNull();
+
+    // 배치가 다시 바뀌면(새 드래그) 그 새 드래그에 대해서는 다시 뜬다.
+    dragTicketInto("billing/01", "payments", 1);
+    await waitFor(() => expect(screen.getByText("지금 걸림")).toBeInTheDocument());
   });
 });

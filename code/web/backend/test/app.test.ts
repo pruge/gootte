@@ -10,11 +10,10 @@ import {
   FeatureDocResponse,
   PlanResponse,
   DragResult,
-  OpinionRequest,
   ApiError,
   type Project,
 } from "@gootte/contract";
-import { addOpinionRequest, answerOpinionRequest, readPlanOrder, setFeatureOrder, setTicketOrder } from "@gootte/core-io";
+import { readPlanOrder, setFeatureOrder, setTicketOrder } from "@gootte/core-io";
 import { createApp } from "../src/app";
 import {
   clearDiscoverCache,
@@ -528,95 +527,33 @@ describe("POST /api/plan/:slug/* — onPlanChange 훅(development-order/07)", ()
   });
 });
 
-describe("GET /api/plan/:slug — askTriggers·askRequests(티켓 06)", () => {
-  test("엇갈림이 생기면 askTriggers 에 잡힌다, 04 의 warnings 와는 다른 자리다", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-ask-"));
+// 🔴 티켓 09 ② — 놓는 순간뿐 아니라 매 plan 읽기에도 04 의 같은 검사를 다시 돌린다(첫 커버).
+// 화면은 이 표에서 자기 티켓 키를 찾아 보여줄 뿐이므로, 배치가 바뀌면 다음 읽기에서 답도 같이 바뀐다.
+describe("GET /api/plan/:slug — dragWarnings(티켓 09 ②, 다시 물어서 갱신한다)", () => {
+  test("지금 자리 그대로가 04 의 검사에 걸리면 그 티켓 키로 잡힌다", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-dragwarn-"));
     try {
+      // 01 은 이미 resolved — 완료된 티켓이 계획에 단계로 남아 있으면 already_done 이 걸린다.
       setTicketOrder(dataDir, { project: "alpha", feature: "auth-login", ticket: "01", step: 1, why: "…" });
-      setTicketOrder(dataDir, { project: "alpha", feature: "billing", ticket: "01", step: 2, why: "…" });
-      setTicketOrder(dataDir, { project: "alpha", feature: "auth-login", ticket: "02", step: 3, why: "…" });
       const app = createApp({ ...APP, dataDir });
       const body = PlanResponse.parse(await (await app.request("/api/plan/alpha")).json());
-      expect(body.askTriggers.map((t) => t.kind)).toContain("ticket_crossed");
+      expect(body.dragWarnings["auth-login/01"]?.map((w) => w.kind)).toContain("already_done");
     } finally {
       rmSync(dataDir, { recursive: true, force: true });
     }
   });
 
-  test("조건이 없으면 askTriggers 가 빈 배열이다 — 버튼도 안 뜬다", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-ask-"));
+  test("걸리는 것이 없으면 표가 빈 채로 온다", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-dragwarn-"));
     try {
-      setTicketOrder(dataDir, { project: "alpha", feature: "auth-login", ticket: "02", step: 1, why: "…" });
+      // billing/01 — 아직 안 끝났고, 기다리는 것(외부 API)이 여전히 안 풀렸다. 걸릴 것이 없다.
+      setTicketOrder(dataDir, { project: "alpha", feature: "billing", ticket: "01", step: 1, why: "…" });
       const app = createApp({ ...APP, dataDir });
       const body = PlanResponse.parse(await (await app.request("/api/plan/alpha")).json());
-      expect(body.askTriggers).toEqual([]);
+      expect(body.dragWarnings).toEqual({});
     } finally {
       rmSync(dataDir, { recursive: true, force: true });
     }
-  });
-
-  test("askRequests 는 처리·미처리 가리지 않고 함께 온다 — 답이 그 배치 옆에 붙는다", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-ask-"));
-    try {
-      const entry = addOpinionRequest(dataDir, { project: "alpha", batchSummary: "…", question: "이대로?" });
-      answerOpinionRequest(dataDir, entry.id, "이대로 가자 — 요약 없이 그대로");
-      const app = createApp({ ...APP, dataDir });
-      const body = PlanResponse.parse(await (await app.request("/api/plan/alpha")).json());
-      expect(body.askRequests).toHaveLength(1);
-      // 🔴 verbatim — 요약하지 않는다(INV-4).
-      expect(body.askRequests[0]?.answer).toBe("이대로 가자 — 요약 없이 그대로");
-    } finally {
-      rmSync(dataDir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("POST /api/plan/:slug/ask — 티켓 06, 버튼 클릭", () => {
-  test("요청 한 줄을 남기고 배치 요약을 그 순간 스냅샷한다", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-ask-"));
-    try {
-      setTicketOrder(dataDir, { project: "alpha", feature: "auth-login", ticket: "02", step: 1, why: "먼저" });
-      const app = createApp({ ...APP, dataDir });
-      const res = await app.request("/api/plan/alpha/ask", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ detail: "정말 무관한지 봐 달라" }),
-      });
-      expect(res.status).toBe(200);
-      const body = OpinionRequest.parse(await res.json());
-      expect(body.question).toBe("정말 무관한지 봐 달라");
-      expect(body.batchSummary).toContain("auth-login/02");
-      expect(body.answer).toBeNull();
-      expect(body.done).toBe(false);
-    } finally {
-      rmSync(dataDir, { recursive: true, force: true });
-    }
-  });
-
-  test("성공하면 onPlanChange(project) 를 한 번 부른다(development-order/07 과 같은 배선)", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-ask-"));
-    try {
-      const calls: string[] = [];
-      const app = createApp({ ...APP, dataDir, onPlanChange: (p) => calls.push(p) });
-      await app.request("/api/plan/alpha/ask", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ detail: "봐 달라" }),
-      });
-      expect(calls).toEqual(["alpha"]);
-    } finally {
-      rmSync(dataDir, { recursive: true, force: true });
-    }
-  });
-
-  test("미해소 프로젝트 slug → 404 ApiError", async () => {
-    const app = createApp(APP);
-    const res = await app.request("/api/plan/does-not-exist/ask", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ detail: "봐 달라" }),
-    });
-    expect(res.status).toBe(404);
   });
 });
 

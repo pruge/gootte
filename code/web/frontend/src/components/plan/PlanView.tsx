@@ -1,15 +1,7 @@
 import { useState } from "react";
 import { IconArrowsShuffle } from "@tabler/icons-react";
-import type { DragWarning } from "@gootte/contract";
-import {
-  useAskOpinion,
-  useInsertTicketStep,
-  useMoveFeatureRank,
-  useMoveTicketStep,
-  usePlan,
-} from "../../lib/query";
+import { useInsertTicketStep, useMoveFeatureRank, useMoveTicketStep, usePlan } from "../../lib/query";
 import { Loading, ErrorMsg } from "../common/states";
-import { AskOpinionPanel } from "./AskOpinionPanel";
 import { MismatchList } from "./MismatchList";
 import { NextPanel } from "./NextPanel";
 import { StepView } from "./StepView";
@@ -37,28 +29,40 @@ const VIEWS = [
  * 보낸 `data.next` 를 그대로 읽어 강조 집합을 고를 뿐이다(INV-1, spec §판정 자리는 하나뿐).
  * 🔴 상태(끝남·막힘·임자·착수 가능)는 캐시하지 않는다 — `usePlan` 이 매 요청 다시 읽는다(INV-3·INV-5).
  * 🔴 드래그의 네 검사는 서버(`checkTicketDragWarnings`)가 계산해 보낸다 — 여기서 다시 판정하지 않는다.
+ *
+ * 🔴 판단 요청("의견 물어보기", 티켓 06)은 09 가 걷어냈다 — 캡틴이 상자를 발견해 누르고 기다리는
+ * 통로보다, 이미 있는 대화창이 더 낫다는 결정이다(spec §의견 요청은 걷어냈다). 되살리지 않는다.
  */
 export function PlanView({ project, view, onView }: PlanViewProps) {
   const { data, isLoading, isError, error } = usePlan(project);
   const [nextOn, setNextOn] = useState(false);
-  const [warnings, setWarnings] = useState<readonly DragWarning[]>([]);
-  const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
+  // 티켓 09 ② — 방금 끈 티켓 하나에 대한 말이다(계획 전체의 어긋남과는 다른 자리). 배치가 바뀌면
+  // 다시 물어서 갱신하므로(`data.dragWarnings`), 여기서는 "누구를 봤는지"·"닫았는지"만 들고 있는다.
+  const [dragSubject, setDragSubject] = useState<{ feature: string; ticket: string } | null>(null);
+  const [dismissed, setDismissed] = useState(false);
   const activeView = view === "feature" ? "feature" : "step";
 
   const moveTicketStep = useMoveTicketStep(project);
   const insertTicketStep = useInsertTicketStep(project);
   const moveFeatureRank = useMoveFeatureRank(project);
-  const askOpinion = useAskOpinion(project);
 
   if (isLoading) return <Loading label="개발 순서 읽는 중…" />;
   if (isError) return <ErrorMsg error={error} />;
   if (!data) return null;
 
   const highlighted = nextOn ? nextKeySet(data.next) : new Set<string>();
+  const dragWarnings =
+    dragSubject && !dismissed ? (data.dragWarnings[`${dragSubject.feature}/${dragSubject.ticket}`] ?? []) : [];
+
+  function onTicketDropped(feature: string, ticket: string) {
+    setDragSubject({ feature, ticket });
+    setDismissed(false);
+  }
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto pb-2">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      {/* 조작 줄 — 스크롤 대상이 아니다(티켓 09 ④). 계획만 아래에서 스크롤한다. */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div role="tablist" aria-label="보기" className="flex gap-1 rounded-lg bg-surface-2 p-1">
           {VIEWS.map((v) => {
             const active = v.id === activeView;
@@ -97,53 +101,45 @@ export function PlanView({ project, view, onView }: PlanViewProps) {
         </div>
       </div>
 
-      {nextOn && <NextPanel next={data.next} />}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-2">
+        {nextOn && <NextPanel next={data.next} />}
 
-      <DragWarningBanner warnings={warnings} onDismiss={() => setWarnings([])} />
+        <DragWarningBanner warnings={dragWarnings} onDismiss={() => setDismissed(true)} />
 
-      <MismatchList mismatches={data.next.mismatches} />
+        <MismatchList mismatches={data.next.mismatches} />
 
-      <AskOpinionPanel
-        triggers={data.askTriggers}
-        requests={data.askRequests}
-        sending={sending}
-        onAsk={(detail) => {
-          setSending((prev) => new Set(prev).add(detail));
-          askOpinion.mutate(detail);
-        }}
-      />
-
-      {activeView === "step" ? (
-        <StepView
-          features={data.features}
-          order={data.order}
-          highlighted={highlighted}
-          onMoveToStep={(feature, ticket, step) =>
-            moveTicketStep.mutate(
-              { feature, ticket, step },
-              { onSuccess: (result) => setWarnings(result.warnings) },
-            )
-          }
-          onInsertAfterStep={(feature, ticket, afterStep) =>
-            insertTicketStep.mutate(
-              { feature, ticket, afterStep },
-              { onSuccess: (result) => setWarnings(result.warnings) },
-            )
-          }
-        />
-      ) : (
-        <FeatureView
-          features={data.features}
-          order={data.order}
-          highlighted={highlighted}
-          onMoveFeature={(feature, track, beforeRank, afterRank) =>
-            moveFeatureRank.mutate(
-              { feature, track, beforeRank, afterRank },
-              { onSuccess: (result) => setWarnings(result.warnings) },
-            )
-          }
-        />
-      )}
+        {activeView === "step" ? (
+          <StepView
+            features={data.features}
+            order={data.order}
+            highlighted={highlighted}
+            onMoveToStep={(feature, ticket, step) =>
+              moveTicketStep.mutate(
+                { feature, ticket, step },
+                { onSuccess: () => onTicketDropped(feature, ticket) },
+              )
+            }
+            onInsertAfterStep={(feature, ticket, afterStep) =>
+              insertTicketStep.mutate(
+                { feature, ticket, afterStep },
+                { onSuccess: () => onTicketDropped(feature, ticket) },
+              )
+            }
+            onMoveFeatureTrack={(feature, track) =>
+              moveFeatureRank.mutate({ feature, track, beforeRank: null, afterRank: null })
+            }
+          />
+        ) : (
+          <FeatureView
+            features={data.features}
+            order={data.order}
+            highlighted={highlighted}
+            onMoveFeature={(feature, track, beforeRank, afterRank) =>
+              moveFeatureRank.mutate({ feature, track, beforeRank, afterRank })
+            }
+          />
+        )}
+      </div>
     </div>
   );
 }
