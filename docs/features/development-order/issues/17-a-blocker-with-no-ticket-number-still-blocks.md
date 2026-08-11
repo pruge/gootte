@@ -6,7 +6,7 @@ gootte 가 그것을 **진짜 막힘으로 읽는다** — 그 문장에 숫자�
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능**
 
-**Status:** resolved (2026-08-12)
+**Status:** ready-for-human
 
 ## 🔴 오늘 실제로 벌어진 일 (2026-08-11)
 
