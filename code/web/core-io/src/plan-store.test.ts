@@ -12,6 +12,7 @@ import {
   moveFeatureOrder,
   moveTicketStep,
   readPlanOrder,
+  renameTrack,
   setFeatureOrder,
   setTicketOrder,
 } from "./plan-store";
@@ -393,6 +394,28 @@ describe("moveFeatureOrder — 기능 카드를 끈다(티켓 04, 🔴 첫 커�
     ).toThrow();
   });
 
+  // 🔴 첫 커버 — 캡틴이 실제로 겪은 버그(2026-08-11): "feature를 원래 자리로 돌려놓아도
+  // '확인 필요'가 뜬다." `set-feature` 로 성긴 값(10·20)이 아닌 임의 순위(25)를 적어 둔 솔로
+  // 기능을 다른 트랙으로 끌었다 되돌리면, 비어 있던 트랙에 다시 들어갈 때 `firstRank()`(고정
+  // 상수 10)가 원래 순위(25)를 덮어써 닻과 영영 안 맞았다 — 자리는 같은데 번호만 바뀌었다.
+  it("성긴 값이 아닌 임의 순위로 등록한 솔로 기능을 다른 트랙으로 끌었다 되돌리면 — 확인 필요가 꺼진다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 25, why: "닻 = web/25" });
+
+    const away = moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "backend", beforeRank: null, afterRank: null });
+    expect(away.whyNeedsReview).toBe(true); // 트랙이 달라졌으니 맞다
+
+    const back = moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", beforeRank: null, afterRank: null });
+    expect(back).toMatchObject({ track: "web", rank: 25, whyNeedsReview: false });
+  });
+
+  it("이웃과 함께 있어도 지금 순위가 이미 요청한 자리에 들어맞으면 번호를 안 바꾼다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 25, why: "…" });
+    setFeatureOrder(dataDir, { project: "p", feature: "b", track: "web", rank: 30, why: "…" });
+    // a(25)는 이미 [0, 30) 사이 — 그 자리를 다시 요청하면 25 그대로 남아야 한다(중간값 15로 안 바뀐다).
+    const moved = moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", beforeRank: null, afterRank: 30 });
+    expect(moved.rank).toBe(25);
+  });
+
   it("🔴 놓인 자리(트랙·순위)가 닻과 같으면 확인 필요가 안 선다 — 돌아오면 꺼진다", () => {
     setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "닻 = web/10" });
     setFeatureOrder(dataDir, { project: "p", feature: "b", track: "web", rank: 20, why: "…" });
@@ -403,6 +426,65 @@ describe("moveFeatureOrder — 기능 카드를 끈다(티켓 04, 🔴 첫 커�
 
     const back = moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", beforeRank: null, afterRank: 20 });
     expect(back).toMatchObject({ track: "web", rank: 10, whyNeedsReview: false });
+  });
+});
+
+// 🔴 첫 커버 — 캡틴 지시(2026-08-11): "track 이름을 내가 수정 가능하게 해." 이름만 바꾼다,
+// 그 트랙에 있던 모든 기능이 한꺼번에 새 이름을 받는다. 순위·왜·닻은 이름만 따라간다 —
+// 사람이 그 기능을 옮긴 게 아니므로 확인 필요가 새로 서면 안 된다.
+describe("renameTrack — 트랙 이름표만 바꾼다(🔴 첫 커버)", () => {
+  it("그 트랙의 모든 기능이 새 이름을 받는다 — 순위·왜는 그대로", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "이유 A" });
+    setFeatureOrder(dataDir, { project: "p", feature: "b", track: "web", rank: 20, why: "이유 B" });
+    setFeatureOrder(dataDir, { project: "p", feature: "c", track: "backend", rank: 10, why: "안 건드림" });
+
+    renameTrack(dataDir, { project: "p", track: "web", newTrack: "frontend" });
+
+    const order = readPlanOrder(dataDir, "p");
+    const a = order.features.find((f) => f.feature === "a");
+    const b = order.features.find((f) => f.feature === "b");
+    const c = order.features.find((f) => f.feature === "c");
+    expect(a).toMatchObject({ track: "frontend", rank: 10, why: "이유 A" });
+    expect(b).toMatchObject({ track: "frontend", rank: 20, why: "이유 B" });
+    expect(c).toMatchObject({ track: "backend", rank: 10 }); // 다른 트랙은 안 건드린다
+  });
+
+  it("이름만 바뀐 것이지 사람이 옮긴 게 아니다 — 확인 필요가 새로 안 선다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "닻 = web/10" });
+    renameTrack(dataDir, { project: "p", track: "web", newTrack: "frontend" });
+    const order = readPlanOrder(dataDir, "p");
+    expect(order.features.find((f) => f.feature === "a")).toMatchObject({
+      track: "frontend",
+      whyNeedsReview: false,
+    });
+  });
+
+  it("이미 확인 필요였던 기능은(닻이 어긋나 있던) 이름만 바뀌어도 그대로 확인 필요다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "…" });
+    setFeatureOrder(dataDir, { project: "p", feature: "b", track: "web", rank: 20, why: "…" });
+    moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", beforeRank: 20, afterRank: null }); // 닻(10)과 다른 순위로 옮겨 어긋나게 만든다
+    const before = readPlanOrder(dataDir, "p").features.find((f) => f.feature === "a")!;
+    expect(before.whyNeedsReview).toBe(true);
+
+    renameTrack(dataDir, { project: "p", track: "web", newTrack: "frontend" });
+    const after = readPlanOrder(dataDir, "p").features.find((f) => f.feature === "a")!;
+    expect(after).toMatchObject({ track: "frontend", whyNeedsReview: true });
+  });
+
+  it("그런 트랙이 없으면 거절한다", () => {
+    expect(() => renameTrack(dataDir, { project: "p", track: "no-such", newTrack: "x" })).toThrow();
+  });
+
+  it("새 이름이 비어 있으면 거절한다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "…" });
+    expect(() => renameTrack(dataDir, { project: "p", track: "web", newTrack: "   " })).toThrow();
+  });
+
+  it("새 이름이 지금 이름과 같으면 아무 것도 안 바뀐다(조용히 끝)", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "…" });
+    const before = readPlanOrder(dataDir, "p");
+    renameTrack(dataDir, { project: "p", track: "web", newTrack: "web" });
+    expect(readPlanOrder(dataDir, "p")).toEqual(before);
   });
 });
 

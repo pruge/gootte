@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import type { Feature, FeatureOrderEntry, PlanOrder, TicketOrderEntry } from "@gootte/contract";
-import { appendRank, computeMismatches, firstRank, insertBetween, insertStepAfter, renumberSparse } from "@gootte/core";
+import { appendRank, computeMismatches, insertBetween, insertStepAfter, renumberSparse } from "@gootte/core";
 
 /**
  * 계획(단계·순위·트랙·왜) 저장소 — SQLite, gootte 자기 저장소(INV-2 — 관리대상에는
@@ -481,24 +481,35 @@ function ranksInTrack(db: DatabaseSyncType, project: string, track: string, excl
  * 순위는 `core` 의 같은 순수 함수(`insertBetween`·`appendRank`·`firstRank`)로 계산한다(spec 04
  * §순위 계산은 01 이 만든 core 의 순수 함수를 쓴다) — 화면에서 다시 짜지 않는다.
  * 틈이 다 찼으면(`insertBetween` 이 null) 그 트랙만 성기게 다시 매긴 뒤 다시 끼운다.
+ *
+ * 🔴 지금 순위가 **요청한 자리(이웃 사이)에 이미 들어맞으면 그 값을 그대로 쓴다** — 매번 중간값을
+ * 다시 계산하지 않는다(캡틴 피드백 2026-08-11: "원래 자리로 돌려놓아도 확인 필요가 뜬다"). 안 그러면
+ * `set-feature` 로 10·20 같은 성긴 값이 아닌 임의 순위(가령 25)를 적어 둔 기능을, 다른 트랙으로 끌었다
+ * 되돌리기만 해도(트랙이 잠깐 비었다 다시 채워지며) `firstRank()`·`insertBetween()` 이 매번 다른
+ * 숫자를 새로 배정해 닻(`why_rank`)과 영영 안 맞는다 — 자리는 같은데 번호만 바뀌어 확인 필요가
+ * 거짓으로 눌어붙는다. 이미 들어맞는 자리를 놔두면 이 어긋남 자체가 안 생긴다.
  */
 export function moveFeatureOrder(dataDir: string, input: MoveFeatureOrderInput): FeatureOrderEntry {
   const db = open(dataDir);
   try {
     const existing = requireExistingFeature(db, input.project, input.feature);
     const neighbors = ranksInTrack(db, input.project, input.track, input.feature);
+    const { beforeRank, afterRank } = input;
 
     let rank: number;
-    if (input.beforeRank === null && input.afterRank === null) {
-      rank = neighbors.length === 0 ? firstRank() : appendRank(neighbors);
-    } else if (input.beforeRank === null) {
-      rank = insertBetween(0, input.afterRank as number) ?? renumberAndRetry(db, input, neighbors, 0, input.afterRank as number);
-    } else if (input.afterRank === null) {
-      rank = appendRank([input.beforeRank]);
+    if (beforeRank === null && afterRank === null) {
+      rank = neighbors.length === 0 ? existing.rank : appendRank(neighbors);
+    } else if (beforeRank === null) {
+      const after = afterRank as number;
+      rank = existing.rank < after ? existing.rank : (insertBetween(0, after) ?? renumberAndRetry(db, input, neighbors, 0, after));
+    } else if (afterRank === null) {
+      const before = beforeRank as number;
+      rank = existing.rank > before ? existing.rank : appendRank([before]);
     } else {
       rank =
-        insertBetween(input.beforeRank, input.afterRank) ??
-        renumberAndRetry(db, input, neighbors, input.beforeRank, input.afterRank);
+        existing.rank > beforeRank && existing.rank < afterRank
+          ? existing.rank
+          : (insertBetween(beforeRank, afterRank) ?? renumberAndRetry(db, input, neighbors, beforeRank, afterRank));
     }
 
     const updatedAt = new Date().toISOString();
@@ -546,6 +557,42 @@ function renumberAndRetry(
   const newBefore = beforeIdx >= 0 ? (renumbered[beforeIdx] as number) : 0;
   const newAfter = afterIdx >= 0 ? (renumbered[afterIdx] as number) : appendRank(renumbered);
   return insertBetween(newBefore, newAfter) ?? appendRank(renumbered);
+}
+
+export interface RenameTrackInput {
+  project: string;
+  /** 지금 트랙 이름. */
+  track: string;
+  /** 새 이름 — 앞뒤 공백은 지운다. */
+  newTrack: string;
+}
+
+/**
+ * 트랙 이름표만 바꾼다 — 그 트랙에 있는 모든 기능의 `track` 을 한꺼번에 새 이름으로 옮긴다.
+ * 순위·왜는 안 건드린다. 이름만 바뀐 것이지 사람이 그 기능을 다른 트랙으로 **옮긴 것이 아니므로**
+ * `why_track` 닻도 같은 값으로 따라간다 — 안 그러면 이름만 고쳤는데 모든 기능에 "확인 필요"가
+ * 선다(`renumberAndRetry` 와 같은 원리, development-order/15 후속).
+ */
+export function renameTrack(dataDir: string, input: RenameTrackInput): void {
+  const db = open(dataDir);
+  try {
+    const newTrack = input.newTrack.trim();
+    if (!newTrack) throw new Error("새 트랙 이름이 필요하다");
+    if (newTrack === input.track) return;
+    const exists = db
+      .prepare(`SELECT 1 FROM feature_order WHERE project = ? AND track = ? LIMIT 1`)
+      .get(input.project, input.track);
+    if (!exists) throw new Error(`그런 트랙이 없다: ${input.track}`);
+    const updatedAt = new Date().toISOString();
+    db.prepare(
+      `UPDATE feature_order
+       SET track = ?, why_track = CASE WHEN why_track = ? THEN ? ELSE why_track END, updated_at = ?
+       WHERE project = ? AND track = ?`,
+    ).run(newTrack, input.track, newTrack, updatedAt, input.project, input.track);
+    appendHistory(dataDir, `rename-track ${input.project} ${input.track} → ${newTrack}`);
+  } finally {
+    db.close();
+  }
 }
 
 // ── 완료되면 스스로 빠진다(development-order/08) ──────────────────────────
