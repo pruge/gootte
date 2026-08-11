@@ -34,6 +34,22 @@ describe("useUrlState", () => {
     expect(result.current.tab).toBe("features");
   });
 
+  it("setTab plan → URL `?tab=plan`, `?view=` 초기화(티켓 03)", () => {
+    window.history.pushState({}, "", "/?p=x&tab=features&view=board");
+    const { result } = renderHook(() => useUrlState());
+    act(() => result.current.setTab("plan"));
+    expect(result.current.tab).toBe("plan");
+    expect(new URLSearchParams(window.location.search).get("tab")).toBe("plan");
+    expect(result.current.view).toBeNull();
+  });
+
+  it("`?tab=plan` 을 북마크로 열면 plan 탭으로 그대로 열린다", () => {
+    window.history.pushState({}, "", "/?p=x&tab=plan&view=feature");
+    const { result } = renderHook(() => useUrlState());
+    expect(result.current.tab).toBe("plan");
+    expect(result.current.view).toBe("feature");
+  });
+
   it("🔴 없어진 탭을 가리키는 옛 링크는 features 로 떨어진다 — 빈 화면이 아니다", () => {
     window.history.pushState({}, "", "/?p=tuya&tab=lineage");
     const { result } = renderHook(() => useUrlState());

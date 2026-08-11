@@ -1,0 +1,34 @@
+import type { FeatureTicket } from "@gootte/contract";
+
+interface TicketChipProps {
+  feature: string;
+  ticketNum: string;
+  /** null = 계획엔 있는데 티켓 문서가 없다(`step_without_ticket` 어긋남). */
+  ticket: FeatureTicket | null;
+  highlighted: boolean;
+}
+
+function toneClass(ticket: FeatureTicket | null, highlighted: boolean): string {
+  if (highlighted) return "border-accent bg-accent/15 text-accent ring-1 ring-accent";
+  if (!ticket) return "border-drop/40 bg-drop/10 text-drop";
+  if (ticket.status === "done") return "border-border bg-surface-2 text-muted";
+  if (ticket.status === "dropped") return "border-border bg-surface-2 text-muted line-through";
+  if (ticket.status === "in_progress") return "border-active/40 bg-active/10 text-active";
+  if (ticket.startable) return "border-accent/40 bg-accent/10 text-accent";
+  return "border-border bg-surface text-fg";
+}
+
+/** 티켓 칩 하나 — 상태는 서버가 매 요청 재계산해 보낸 값을 그대로 그린다(INV-1, 여기서 재판정 X). */
+export function TicketChip({ feature, ticketNum, ticket, highlighted }: TicketChipProps) {
+  return (
+    <span
+      title={ticket ? ticket.title : `${feature}/${ticketNum} — 티켓 문서를 찾지 못함(어긋남)`}
+      className={`mono inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-sm ${toneClass(ticket, highlighted)}`}
+    >
+      <span className="shrink-0">
+        {feature}/{ticketNum}
+      </span>
+      <span className="min-w-0 truncate text-fg/80">{ticket ? ticket.title : "(문서 없음)"}</span>
+    </span>
+  );
+}

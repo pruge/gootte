@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
-import { ProjectsResponse, FeaturesResponse, FeatureDocResponse, ApiError, type Project } from "@gootte/contract";
+import { ProjectsResponse, FeaturesResponse, FeatureDocResponse, PlanResponse, ApiError, type Project } from "@gootte/contract";
+import { setFeatureOrder, setTicketOrder } from "@gootte/core-io";
 import { createApp } from "../src/app";
 import {
   clearDiscoverCache,
@@ -225,6 +226,58 @@ describe("GET /api/features/:slug/:feature/doc — 문서 본문(read-only, INV-
   test("미해소 프로젝트 slug → 404 ApiError", async () => {
     const app = createApp(APP);
     const res = await app.request("/api/features/does-not-exist/doc-tree/doc?path=spec.md");
+    expect(res.status).toBe(404);
+  });
+});
+
+// fixture alpha 의 auth-login — 01 resolved · 02 blocked by 01(이미 끝났으니 이제 착수 가능) · 03 알 수 없음
+describe("GET /api/plan/:slug — 티켓 03", () => {
+  test("PlanResponse envelope — features + order + next 를 함께 싣는다", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-plan-"));
+    try {
+      setFeatureOrder(dataDir, {
+        project: "alpha",
+        feature: "auth-login",
+        track: "web",
+        rank: 10,
+        why: "먼저",
+      });
+      setTicketOrder(dataDir, {
+        project: "alpha",
+        feature: "auth-login",
+        ticket: "02",
+        step: 1,
+        why: "01 은 이미 끝났다",
+      });
+      const app = createApp({ ...APP, dataDir });
+      const res = await app.request("/api/plan/alpha");
+      expect(res.status).toBe(200);
+      const body = PlanResponse.parse(await res.json());
+      expect(body.project).toBe("alpha");
+      expect(body.order.tickets).toHaveLength(1);
+      expect(body.order.tickets[0]).toMatchObject({ feature: "auth-login", ticket: "02", step: 1 });
+      // 🔴 판정 자리는 하나뿐 — 02 는 01 이 이미 끝나 착수 가능하다는 것을 `next`(02 의 함수)가 그대로 골라낸다.
+      const track = body.next.tracks.find((t) => t.track === "web");
+      expect(track?.tickets.map((t) => `${t.feature}/${t.ticket}`)).toEqual(["auth-login/02"]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("🔴 계획에 없는 티켓은 어긋남으로 잡힌다 — 감추지 않는다", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-plan-"));
+    try {
+      const app = createApp({ ...APP, dataDir });
+      const body = PlanResponse.parse(await (await app.request("/api/plan/alpha")).json());
+      expect(body.next.mismatches.some((m) => m.kind === "ticket_without_step")).toBe(true);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("미해소 프로젝트 slug → 404 ApiError", async () => {
+    const app = createApp(APP);
+    const res = await app.request("/api/plan/does-not-exist");
     expect(res.status).toBe(404);
   });
 });
