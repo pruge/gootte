@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { FeaturesResponse, FeatureTicket } from "@gootte/contract";
 import { FeaturesView } from "../src/components/features/FeaturesView";
 import { qk } from "../src/lib/query";
@@ -107,17 +107,31 @@ const DATA: FeaturesResponse = {
 };
 
 /** view 상태를 실제로 URL 훅처럼 들고 있는 최소 하네스 — DocDrawer/열림 상태 왕복을 실제로 검증한다. */
-function Harness({ project, initialView = null }: { project: string; initialView?: string | null }) {
+function Harness({
+  project,
+  initialView = null,
+  onGoToPlanFeature = vi.fn(),
+}: {
+  project: string;
+  initialView?: string | null;
+  onGoToPlanFeature?: (feature: string) => void;
+}) {
   const [view, setView] = useState<string | null>(initialView);
-  return <FeaturesView project={project} view={view} onView={setView} />;
+  return (
+    <FeaturesView project={project} view={view} onView={setView} onGoToPlanFeature={onGoToPlanFeature} />
+  );
 }
 
-function renderView(data: FeaturesResponse, initialView: string | null = null) {
+function renderView(
+  data: FeaturesResponse,
+  initialView: string | null = null,
+  opts: { onGoToPlanFeature?: (feature: string) => void } = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(qk.features(data.project), data);
   return render(
     <QueryClientProvider client={qc}>
-      <Harness project={data.project} initialView={initialView} />
+      <Harness project={data.project} initialView={initialView} {...opts} />
     </QueryClientProvider>,
   );
 }
@@ -268,6 +282,57 @@ describe("FeaturesView — 머리글 네 수는 항상 뜬다(티켓 01 §설계
   it("처리중인 티켓이 있으면 머리글에 그 수가 색과 함께 보인다", () => {
     renderFeatures();
     expect(screen.getByText(/처리중 1/)).toBeInTheDocument();
+  });
+});
+
+// 🔴 첫 커버(development-order/16 ④) — features 탭 카드의 plan 버튼. 남은 일이 있으면 뜨고,
+// 누르면 plan 탭 기능 보기, 그 기능이 있는 자리로 건너간다.
+describe("FeaturesView — 남은 일이 있으면 plan 버튼이 뜬다(development-order/16 ④, 🔴 첫 커버)", () => {
+  it("남은 일이 있는 기능(auth-login)엔 plan 버튼이 있다", () => {
+    renderFeatures();
+    expect(screen.getByRole("button", { name: "plan" })).toBeInTheDocument();
+  });
+
+  it("남은 일이 없으면(전부 done/dropped) 버튼이 없다", () => {
+    const data: FeaturesResponse = {
+      project: "alpha",
+      inProgress: NO_WORK,
+      features: [
+        {
+          slug: "done-feature",
+          title: "done-feature — 다 끝남",
+          status: "done",
+          sourceStatus: "resolved",
+          statusKnown: true,
+          docs: [],
+          tickets: [
+            {
+              num: "01",
+              slug: "01-a",
+              title: "끝난 것",
+              status: "done",
+              sourceStatus: "resolved",
+              statusKnown: true,
+              blockedBy: [],
+              unreadableBlockedBy: [],
+              waitingOn: [],
+              startable: true,
+              workedBy: [],
+              needsCaptainEye: false,
+            },
+          ],
+        },
+      ],
+    };
+    renderView(data);
+    expect(screen.queryByRole("button", { name: "plan" })).toBeNull();
+  });
+
+  it("누르면 onGoToPlanFeature 가 그 기능으로 불린다", () => {
+    const onGoToPlanFeature = vi.fn();
+    renderView(DATA, null, { onGoToPlanFeature });
+    fireEvent.click(screen.getByRole("button", { name: "plan" }));
+    expect(onGoToPlanFeature).toHaveBeenCalledWith("auth-login");
   });
 });
 

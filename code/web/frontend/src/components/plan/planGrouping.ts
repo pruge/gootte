@@ -90,7 +90,23 @@ export interface TrackLane {
   features: FeatureLane[];
 }
 
-/** 기능 보기 — 트랙(세로줄) 안에 기능 카드를 순위대로, 카드마다 그 기능의 티켓과 단계. */
+/**
+ * 남은 티켓이 없다 — 티켓이 있고 전부 done/dropped(development-order/16 ②). 티켓이 0개인 기능은
+ * 안 가라앉는다 — "끝났다는 증거가 없다"(core `sortFeatures` 의 `RANK_NO_TICKETS` 와 같은 기준).
+ * 문서를 못 찾은 기능(계획에만 있고 폴더가 없는 어긋남)도 안 가라앉는다 — 모른다를 "끝났다"로 접지 않는다.
+ */
+function hasNoOpenWork(doc: Feature | undefined): boolean {
+  return doc !== undefined && doc.tickets.length > 0 && doc.tickets.every((t) => t.status === "done" || t.status === "dropped");
+}
+
+/**
+ * 기능 보기 — 트랙(세로줄) 안에 기능 카드를 순위대로, 카드마다 그 기능의 티켓과 단계.
+ *
+ * 🔴 development-order/16 ② — 남은 티켓이 없는 기능은 트랙 끝으로 가라앉는다. **보이는 순서만**
+ * 바꾼다 — 저장된 `rank` 값은 안 건드리고(INV-5), 살아 있는 기능들 사이 순서(rank 오름차순)도
+ * 한 칸 안 바뀐다. 티켓이 새로 생기면 다음 읽기에서 `hasNoOpenWork` 가 저절로 false 가 되어
+ * 제 rank 자리로 돌아온다 — 별도 상태를 저장하지 않는다(매 read 재계산, INV-1).
+ */
 export function groupByTrackFeature(features: readonly Feature[], order: PlanOrder): TrackLane[] {
   const featureBySlug = new Map(features.map((f) => [f.slug, f]));
   const ticketOrdersByFeature = new Map<string, typeof order.tickets>();
@@ -128,7 +144,12 @@ export function groupByTrackFeature(features: readonly Feature[], order: PlanOrd
 
   return [...byTrack.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([track, lanes]) => ({ track, features: lanes.slice().sort((a, b) => a.rank - b.rank) }));
+    .map(([track, lanes]) => {
+      const byRank = lanes.slice().sort((a, b) => a.rank - b.rank);
+      const alive = byRank.filter((l) => !hasNoOpenWork(featureBySlug.get(l.feature)));
+      const sunk = byRank.filter((l) => hasNoOpenWork(featureBySlug.get(l.feature)));
+      return { track, features: [...alive, ...sunk] };
+    });
 }
 
 /** `next` 버튼이 켜졌을 때 강조할 "지금 나란히" 집합 — 02 의 순수 함수 결과를 그대로 읽는다. */

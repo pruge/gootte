@@ -29,8 +29,9 @@ const BASE: Omit<Feature, "docs"> = {
 };
 
 function renderCard(feature: Feature, onOpenDoc = vi.fn()) {
-  render(<FeatureCard feature={feature} onOpenDoc={onOpenDoc} />);
-  return { onOpenDoc };
+  const onGoToPlan = vi.fn();
+  render(<FeatureCard feature={feature} onOpenDoc={onOpenDoc} onGoToPlan={onGoToPlan} />);
+  return { onOpenDoc, onGoToPlan };
 }
 
 function open() {

@@ -80,4 +80,21 @@ describe("useUrlState", () => {
     expect(result.current.view).toBeNull();
     expect(new URLSearchParams(window.location.search).get("view")).toBeNull();
   });
+
+  it("setTab 은 focus 도 초기화한다", () => {
+    window.history.pushState({}, "", "/?p=x&tab=plan&focus=auth-login");
+    const { result } = renderHook(() => useUrlState());
+    expect(result.current.focus).toBe("auth-login");
+    act(() => result.current.setTab("features"));
+    expect(result.current.focus).toBeNull();
+  });
+
+  it("goToPlanFeature → tab=plan + view=feature + focus", () => {
+    window.history.pushState({}, "", "/?p=x&tab=features");
+    const { result } = renderHook(() => useUrlState());
+    act(() => result.current.goToPlanFeature("auth-login"));
+    expect(result.current.tab).toBe("plan");
+    expect(result.current.view).toBe("feature");
+    expect(result.current.focus).toBe("auth-login");
+  });
 });

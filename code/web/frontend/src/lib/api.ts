@@ -82,3 +82,14 @@ export const renameTrack = (
   project: string,
   input: { track: string; newTrack: string },
 ): Promise<DragResult> => post(`/api/plan/${encodeURIComponent(project)}/track-rename`, input, DragResult);
+
+/** 확인 필요를 그 자리에서 내린다 — 지금 자리를 새 닻으로 삼는다(development-order/16 ①). */
+export const dismissFeatureReview = (
+  project: string,
+  input: { feature: string },
+): Promise<DragResult> =>
+  post(`/api/plan/${encodeURIComponent(project)}/feature-review-dismiss`, input, DragResult);
+
+/** `next` 버튼 옆 clear — 지금 서 있는 확인 필요를 기능·티켓 가리지 않고 전부 지운다(캡틴 지시 2026-08-11). */
+export const clearAllReviewFlags = (project: string): Promise<DragResult> =>
+  post(`/api/plan/${encodeURIComponent(project)}/review/clear-all`, {}, DragResult);
