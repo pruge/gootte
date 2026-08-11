@@ -392,6 +392,67 @@ describe("PlanView — 단계 보기에서 다른 트랙 묶음으로 끌면 기
   });
 });
 
+// 🔴 첫 커버 — 캡틴 피드백: "지금은 새 단계를 추가하는 것만 가능해. 단계 내에서 기존 트랙으로
+// 추가가 가능하게 해줘" + "track이 다르면 막아야 하지 않나 — track은 고정 아닌가". 그 단계에
+// 내 트랙 상자가 아직 없어도 카드 배경에 놓으면 옮기고, 트랙은 그 경로로는 절대 안 바뀐다.
+describe("PlanView — 단계 카드 배경에 놓으면 트랙은 그대로 그 단계로 옮긴다(캡틴 피드백, 🔴 첫 커버)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("그 단계에 내 트랙 상자가 없어도 카드 배경에 놓으면 옮겨진다 — 트랙은 안 바뀐다", async () => {
+    // 단계 2 는 web 상자만 있다(payments 상자는 없다) — billing/01(payments)을 그리로 끈다.
+    const data: PlanResponse = {
+      ...DATA,
+      order: {
+        ...DATA.order,
+        tickets: DATA.order.tickets.map((t) =>
+          t.feature === "auth-login" && t.ticket === "02" ? { ...t, step: 2 } : t,
+        ),
+      },
+    };
+    vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: data.order, warnings: [] });
+    const moveFeatureRank = vi.spyOn(api, "moveFeatureRank");
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(data);
+    renderPlan(data);
+
+    const chip = screen.getByText("billing/01").closest("span")!; // 지금 트랙 = payments
+    const step2Section = screen.getByText("단계 2").closest("section")!;
+    expect(within(step2Section).queryByText("payments")).toBeNull(); // 상자가 아직 없다
+
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(chip, { dataTransfer: dt });
+    fireEvent.dragOver(step2Section, { dataTransfer: dt });
+    expect(within(step2Section).getByText("「payments」 트랙 그대로 여기(단계 2)로")).toBeInTheDocument();
+    fireEvent.drop(step2Section, { dataTransfer: dt });
+
+    await waitFor(() =>
+      expect(api.moveTicketStep).toHaveBeenCalledWith("alpha", { feature: "billing", ticket: "01", step: 2 }),
+    );
+    expect(moveFeatureRank).not.toHaveBeenCalled(); // 트랙은 이 경로로 절대 안 바뀐다
+  });
+
+  it("기존 트랙 상자 위에 놓으면(겹쳐 있어도) 여전히 그 상자의 규칙(같은 트랙=이동, 다른 트랙=기능 트랙 변경)을 따른다", async () => {
+    vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
+    const moveFeatureRank = vi.spyOn(api, "moveFeatureRank");
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
+    renderPlan();
+
+    const chip = screen.getByText("auth-login/02").closest("span")!; // 지금 트랙 = web
+    const step1Card = screen.getByText("단계 1").closest("section")!;
+    const webGroup = within(step1Card).getByText("web").closest("div")!;
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(chip, { dataTransfer: dt });
+    fireEvent.dragOver(webGroup, { dataTransfer: dt });
+    // 카드 배경 문구(제자리 트랙 유지)가 상자 위에서는 겹쳐 보이지 않는다.
+    expect(within(step1Card).queryByText(/트랙 그대로/)).toBeNull();
+    fireEvent.drop(webGroup, { dataTransfer: dt });
+
+    await waitFor(() =>
+      expect(api.moveTicketStep).toHaveBeenCalledWith("alpha", { feature: "auth-login", ticket: "02", step: 1 }),
+    );
+    expect(moveFeatureRank).not.toHaveBeenCalled(); // 같은 트랙 상자라 기능 트랙은 안 바뀐다
+  });
+});
+
 // 🔴 첫 커버(티켓 09 ②) — 서버가 매 읽기 다시 계산해 보낸 dragWarnings 를 화면이 찾아 보여줄 뿐,
 // 스스로 판정하지 않는다("다시 물어서 갱신한다").
 describe("PlanView — 드래그 경고(티켓 09 ②, 다시 물어서 갱신한다, 🔴 첫 커버)", () => {

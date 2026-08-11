@@ -36,6 +36,7 @@ function TrackGroup({
   onTicketDragStart,
   onTicketDragEnd,
   onOpenDoc,
+  onEnterBox,
 }: {
   track: string;
   step: number;
@@ -47,6 +48,8 @@ function TrackGroup({
   onTicketDragStart: (feature: string, ticket: string) => void;
   onTicketDragEnd: () => void;
   onOpenDoc: OpenDocFn;
+  /** 이 상자 위에 있는 동안은 카드 배경("제자리 트랙 유지") 강조를 꺼 둔다 — 겹쳐 보이지 않게. */
+  onEnterBox: () => void;
 }) {
   const [over, setOver] = useState(false);
   const crossTrack = over && dragging !== null && dragging.track !== track;
@@ -56,13 +59,16 @@ function TrackGroup({
       onDragOver={(e) => {
         if (!isTicketDrag(e)) return;
         e.preventDefault();
+        e.stopPropagation(); // 카드 배경(StepCard)의 "제자리 트랙 유지" 처리로 안 새게 한다.
         e.dataTransfer.dropEffect = "move";
         setOver(true);
+        onEnterBox();
       }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => {
         if (!isTicketDrag(e)) return;
         e.preventDefault();
+        e.stopPropagation();
         setOver(false);
         const data = readTicketDragData(e);
         if (!data) return;
@@ -100,7 +106,17 @@ function TrackGroup({
   );
 }
 
-/** 카드 하나 = 단계 하나. 안에서 트랙 묶음이 위에서 아래로 쌓인다. 카드 바로 아래에 그 자신의 틈이 붙는다. */
+/**
+ * 카드 하나 = 단계 하나. 안에서 트랙 묶음이 위에서 아래로 쌓인다. 카드 바로 아래에 그 자신의 틈이 붙는다.
+ *
+ * 🔴 카드 배경(트랙 묶음 상자 밖)도 드롭존이다 — **끄는 티켓 자기 트랙 그대로** 이 단계로 옮긴다
+ * (캡틴 피드백: "지금은 새 단계를 추가하는 것만 가능해. 단계 내에서 기존 트랙으로 추가가 가능하게
+ * 해줘"). 이 단계에 그 트랙 묶음 상자가 아직 없을 때(그 트랙 티켓이 이 단계엔 하나도 없을 때)
+ * 쓰는 자리다 — 상자가 있으면 그 상자에 놓으면 된다(`TrackGroup`, `stopPropagation` 으로 안 겹친다).
+ * 🔴 트랙은 여기서 안 바뀐다 — `onMoveFeatureTrack` 을 부르지 않는다. 트랙을 바꾸는 유일한 길은
+ * 다른 트랙 묶음 상자에 직접 놓는 것뿐이다(캡틴 피드백: "track이 다르면 막아야 하지 않나 —
+ * track은 고정 아닌가").
+ */
 function StepCard({
   row,
   highlighted,
@@ -122,10 +138,36 @@ function StepCard({
   onInsertAfterStep: (feature: string, ticket: string, afterStep: number) => void;
   onOpenDoc: OpenDocFn;
 }) {
+  const [cardOver, setCardOver] = useState(false);
+
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      <section className="min-w-0 rounded-lg border border-border bg-surface p-3">
+      <section
+        onDragOver={(e) => {
+          if (!isTicketDrag(e) || !dragging) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setCardOver(true);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setCardOver(false);
+        }}
+        onDrop={(e) => {
+          if (!isTicketDrag(e) || !dragging) return;
+          e.preventDefault();
+          setCardOver(false);
+          const data = readTicketDragData(e);
+          if (!data) return;
+          onMoveToStep(data.feature, data.ticket, row.step); // 트랙은 그대로 — onMoveFeatureTrack 안 부른다
+        }}
+        className={`min-w-0 rounded-lg border p-3 transition-colors ${
+          cardOver ? "border-accent bg-accent/5" : "border-border bg-surface"
+        }`}
+      >
         <h3 className="mono mb-2 text-sm font-medium text-muted">단계 {row.step}</h3>
+        {cardOver && dragging && (
+          <p className="mono mb-2 text-xs text-accent">「{dragging.track}」 트랙 그대로 여기(단계 {row.step})로</p>
+        )}
         <div className="flex min-w-0 flex-col gap-3">
           {row.byTrack.map((g) => (
             <TrackGroup
@@ -140,6 +182,7 @@ function StepCard({
               onTicketDragStart={onTicketDragStart}
               onTicketDragEnd={onTicketDragEnd}
               onOpenDoc={onOpenDoc}
+              onEnterBox={() => setCardOver(false)}
             />
           ))}
         </div>
