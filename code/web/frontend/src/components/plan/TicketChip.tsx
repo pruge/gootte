@@ -50,15 +50,20 @@ export function TicketChip({
       }}
       onDragEnd={() => onDragEnd?.()}
       title={ticket ? ticket.title : `${feature}/${ticketNum} — 티켓 문서를 찾지 못함(어긋남)`}
-      className={`mono inline-flex max-w-full cursor-grab items-center gap-1.5 rounded-md border px-2 py-1 text-sm active:cursor-grabbing ${toneClass(ticket, highlighted)}`}
+      className={`mono flex max-w-full min-w-0 cursor-grab flex-col gap-0.5 rounded-md border px-2 py-1 text-sm active:cursor-grabbing ${toneClass(ticket, highlighted)}`}
     >
-      <span className="min-w-0 shrink truncate">
-        {feature}/{ticketNum}
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="min-w-0 truncate">
+          {feature}/{ticketNum}
+        </span>
+        {whyNeedsReview && (
+          <span className="mono shrink-0 rounded bg-partial/15 px-1 py-0.5 text-xs text-partial">확인 필요</span>
+        )}
       </span>
-      <span className="min-w-0 shrink truncate text-fg/80">{ticket ? ticket.title : "(문서 없음)"}</span>
-      {whyNeedsReview && (
-        <span className="mono shrink-0 rounded bg-partial/15 px-1 py-0.5 text-xs text-partial">확인 필요</span>
-      )}
+      {/* 🔴 설명은 말줄임으로 줄이지 않는다 — 이름과 줄을 바꿔, 필요한 만큼 여러 줄로 그대로 보여준다. */}
+      <span className="min-w-0 whitespace-normal break-words text-fg/80">
+        {ticket ? ticket.title : "(문서 없음)"}
+      </span>
     </span>
   );
 }

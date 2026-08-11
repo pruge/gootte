@@ -1,8 +1,9 @@
 import { useState } from "react";
 import type { Feature, PlanOrder } from "@gootte/contract";
 import { Empty } from "../common/states";
-import { groupByStep, UNASSIGNED_TRACK, type StepChip } from "./planGrouping";
+import { groupByStep, UNASSIGNED_TRACK, type StepChip, type StepRow } from "./planGrouping";
 import { TicketChip } from "./TicketChip";
+import { StepGap } from "./StepGap";
 import { isTicketDrag, readTicketDragData } from "./dragPayload";
 
 interface StepViewProps {
@@ -20,45 +21,7 @@ interface DraggingTicket {
   track: string;
 }
 
-/**
- * 단계 줄과 줄 **사이**의 틈 — 여기 놓으면 새 단계가 생긴다(spec 04 §무엇이 바뀌나).
- */
-function StepGap({
-  afterStep,
-  onInsertAfterStep,
-}: {
-  afterStep: number;
-  onInsertAfterStep: (feature: string, ticket: string, afterStep: number) => void;
-}) {
-  const [active, setActive] = useState(false);
-  return (
-    <div
-      onDragOver={(e) => {
-        if (!isTicketDrag(e)) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        setActive(true);
-      }}
-      onDragLeave={() => setActive(false)}
-      onDrop={(e) => {
-        if (!isTicketDrag(e)) return;
-        e.preventDefault();
-        setActive(false);
-        const data = readTicketDragData(e);
-        if (data) onInsertAfterStep(data.feature, data.ticket, afterStep);
-      }}
-      className={`mono flex items-center justify-center rounded transition-all ${
-        active
-          ? "h-7 border-2 border-dashed border-accent bg-accent/15 text-xs text-accent"
-          : "h-2 border-2 border-dashed border-transparent"
-      }`}
-    >
-      {active && "여기 새 단계"}
-    </div>
-  );
-}
-
-/** 단계 카드 안의 트랙 묶음 하나 — 라벨은 칩과 같은 줄을 공유하지 않는다(라벨 위, 칩 아래). */
+/** 카드(단계) 안의 트랙 묶음 하나 — 라벨은 칩과 같은 줄을 공유하지 않는다(라벨 위, 칩 아래). */
 function TrackGroup({
   track,
   step,
@@ -101,7 +64,7 @@ function TrackGroup({
         if (dragging && dragging.track !== track) onMoveFeatureTrack(data.feature, track);
         onMoveToStep(data.feature, data.ticket, step);
       }}
-      className={`min-w-44 max-w-full rounded-md border-2 p-2 transition-colors ${
+      className={`min-w-0 rounded-md border-2 p-2 transition-colors ${
         crossTrack
           ? "border-partial bg-partial/10"
           : over
@@ -131,11 +94,59 @@ function TrackGroup({
   );
 }
 
+/** 카드 하나 = 단계 하나. 안에서 트랙 묶음이 위에서 아래로 쌓인다. 카드 바로 아래에 그 자신의 틈이 붙는다. */
+function StepCard({
+  row,
+  highlighted,
+  dragging,
+  onMoveToStep,
+  onMoveFeatureTrack,
+  onTicketDragStart,
+  onTicketDragEnd,
+  onInsertAfterStep,
+}: {
+  row: StepRow;
+  highlighted: ReadonlySet<string>;
+  dragging: DraggingTicket | null;
+  onMoveToStep: (feature: string, ticket: string, step: number) => void;
+  onMoveFeatureTrack: (feature: string, track: string) => void;
+  onTicketDragStart: (feature: string, ticket: string) => void;
+  onTicketDragEnd: () => void;
+  onInsertAfterStep: (feature: string, ticket: string, afterStep: number) => void;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <section className="min-w-0 rounded-lg border border-border bg-surface p-3">
+        <h3 className="mono mb-2 text-sm font-medium text-muted">단계 {row.step}</h3>
+        <div className="flex min-w-0 flex-col gap-3">
+          {row.byTrack.map((g) => (
+            <TrackGroup
+              key={g.track}
+              track={g.track}
+              step={row.step}
+              chips={g.chips}
+              highlighted={highlighted}
+              dragging={dragging}
+              onMoveToStep={onMoveToStep}
+              onMoveFeatureTrack={onMoveFeatureTrack}
+              onTicketDragStart={onTicketDragStart}
+              onTicketDragEnd={onTicketDragEnd}
+            />
+          ))}
+        </div>
+      </section>
+      <StepGap afterStep={row.step} onInsertAfterStep={onInsertAfterStep} />
+    </div>
+  );
+}
+
 /**
- * 단계 보기(기본) — 카드는 **단계**, 그 안에서 **트랙별로** 티켓을 묶는다(캡틴 지시 2026-08-11).
- * 🔴 트랙을 한 줄로 펴지 않는다 — 같은 단계 안에서도 트랙마다 자기 묶음을 갖는다.
- * 티켓 칩을 다른 단계 카드로 끌면 그 단계로, 카드와 카드 사이(`StepGap`)에 놓으면 새 단계가 생긴다.
- * 다른 트랙 묶음으로 끌면 그 기능 전체의 트랙이 바뀐다 — 끄는 동안 그 사실이 먼저 보인다.
+ * 단계 보기(기본) — 기능 보기와 **같은 3열 그리드**를 쓰되, 칸은 **단계**다(캡틴 지시 2026-08-11:
+ * "3column 그대로 두고 단계와 track 위치만 바꾸면 되는것을"). 칸(카드) 안에서 티켓은
+ * **트랙별로** 묶인다 — 라벨은 칩과 같은 줄을 공유하지 않아(라벨 위, 칩 아래) 트랙 이름 자리를
+ * 칩이 침범하지 못한다.
+ * 🔴 넓으면 세 칸까지, 좁아지면 두 칸·한 칸으로 접힌다(기능 보기와 같은 반응형).
+ * 카드를 다른 트랙 묶음으로 끌면 기능 전체의 트랙이, 다른 카드로 끌면 단계가 바뀐다.
  */
 export function StepView({
   features,
@@ -156,32 +167,23 @@ export function StepView({
   const onTicketDragEnd = () => setDragging(null);
 
   return (
-    <div className="flex min-w-0 flex-col">
+    <div className="flex min-w-0 flex-col gap-3">
       <StepGap afterStep={0} onInsertAfterStep={onInsertAfterStep} />
-      {rows.map((row) => (
-        <div key={row.step} className="flex min-w-0 flex-col gap-1">
-          <section className="min-w-0 rounded-lg border border-border bg-surface p-3">
-            <h3 className="mono mb-2 text-sm font-medium text-muted">단계 {row.step}</h3>
-            <div className="flex min-w-0 flex-wrap gap-3">
-              {row.byTrack.map((g) => (
-                <TrackGroup
-                  key={g.track}
-                  track={g.track}
-                  step={row.step}
-                  chips={g.chips}
-                  highlighted={highlighted}
-                  dragging={dragging}
-                  onMoveToStep={onMoveToStep}
-                  onMoveFeatureTrack={onMoveFeatureTrack}
-                  onTicketDragStart={onTicketDragStart}
-                  onTicketDragEnd={onTicketDragEnd}
-                />
-              ))}
-            </div>
-          </section>
-          <StepGap afterStep={row.step} onInsertAfterStep={onInsertAfterStep} />
-        </div>
-      ))}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {rows.map((row) => (
+          <StepCard
+            key={row.step}
+            row={row}
+            highlighted={highlighted}
+            dragging={dragging}
+            onMoveToStep={onMoveToStep}
+            onMoveFeatureTrack={onMoveFeatureTrack}
+            onTicketDragStart={onTicketDragStart}
+            onTicketDragEnd={onTicketDragEnd}
+            onInsertAfterStep={onInsertAfterStep}
+          />
+        ))}
+      </div>
     </div>
   );
 }
