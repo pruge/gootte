@@ -159,7 +159,7 @@ describe("computeMismatches — 어긋남 여섯 종류(spec §어긋남 세 줄
     expect(computeMismatches(features, [], [])).toEqual([]);
   });
 
-  it("🔴 Blocked by 를 못 읽은 산문 — 어긋남에 verbatim 으로 오른다(development-order/11)", () => {
+  it("🔴 번호 없는 막힘 — 막혔다·번호 없다·저절로 안 풀린다 셋을 말하며 어긋남에 verbatim 으로 오른다(development-order/17)", () => {
     const features = [
       feature("a", [ticket("01", { unreadableBlockedBy: ["디자인 논의가 아직 안 끝났다"] })]),
     ];
@@ -169,7 +169,7 @@ describe("computeMismatches — 어긋남 여섯 종류(spec §어긋남 세 줄
         kind: "blocked_by_unreadable",
         feature: "a",
         ticket: "01",
-        detail: 'a/01 — Blocked by: 를 못 읽었다 — "디자인 논의가 아직 안 끝났다"',
+        detail: 'a/01 — 막혀 있지만 기다리는 대상에 번호가 없다. 선행이 끝나도 자동으로 안 열린다 — "디자인 논의가 아직 안 끝났다"',
       },
     ]);
   });
