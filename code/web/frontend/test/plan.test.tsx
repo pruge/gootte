@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { render, screen, within, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { PlanResponse } from "@gootte/contract";
 import { PlanView } from "../src/components/plan/PlanView";
 import { qk } from "../src/lib/query";
+import * as api from "../src/lib/api";
 
 // 서버가 이미 계산해 보낸 값(막힘·착수 가능·next) — 화면은 재판정하지 않는다(INV-1).
 const DATA: PlanResponse = {
@@ -98,6 +99,7 @@ const DATA: PlanResponse = {
         step: 1,
         kind: "planned",
         why: "01 은 이미 끝났다",
+        whyNeedsReview: false,
         updatedAt: "2026-08-11T00:00:00.000Z",
       },
       {
@@ -107,6 +109,7 @@ const DATA: PlanResponse = {
         step: 1,
         kind: "planned",
         why: "막힘 확인용",
+        whyNeedsReview: false,
         updatedAt: "2026-08-11T00:00:00.000Z",
       },
     ],
@@ -190,5 +193,69 @@ describe("PlanView — 기능 보기", () => {
     expect(screen.getByText("auth-login — 로그인")).toBeInTheDocument();
     expect(screen.getByText("billing — 결제")).toBeInTheDocument();
     expect(screen.getByText("먼저 끝낸다")).toBeInTheDocument();
+  });
+});
+
+/** jsdom 은 DataTransfer 를 구현하지 않는다 — setData/getData/types 를 갖는 최소 흉내를 직접 만든다. */
+function makeDataTransfer() {
+  const store: Record<string, string> = {};
+  return {
+    setData: (type: string, val: string) => {
+      store[type] = val;
+    },
+    getData: (type: string) => store[type] ?? "",
+    get types() {
+      return Object.keys(store);
+    },
+    dropEffect: "",
+    effectAllowed: "",
+  };
+}
+
+// 🔴 첫 커버(spec §검증) — 드래그 → 쓰기(서버 POST) → 재조회로 값이 남는다. 실제 fetch 대신
+// api.ts 의 함수를 스텁해 왕복만 확인한다(백엔드 쓰기 자체는 core-io·backend 단위 테스트가 덮는다).
+describe("PlanView — 드래그(티켓 04, 🔴 첫 커버) → 쓰기 → 재조회로 값이 남는다", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("티켓 칩을 다른 단계 줄에 놓으면 moveTicketStep 이 불리고, 재조회 결과가 화면에 반영된다", async () => {
+    const refetched: PlanResponse = {
+      ...DATA,
+      order: {
+        ...DATA.order,
+        tickets: DATA.order.tickets.map((t) =>
+          t.feature === "billing" && t.ticket === "01" ? { ...t, step: 1, whyNeedsReview: true } : t,
+        ),
+      },
+    };
+    vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: refetched.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(refetched);
+
+    renderPlan();
+
+    const chip = screen.getByText("billing/01").closest("span")!;
+    const step1Section = screen.getByText("단계 1").closest("section")!;
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(chip, { dataTransfer: dt });
+    fireEvent.dragOver(step1Section, { dataTransfer: dt });
+    fireEvent.drop(step1Section, { dataTransfer: dt });
+
+    await waitFor(() => expect(api.moveTicketStep).toHaveBeenCalledWith("alpha", { feature: "billing", ticket: "01", step: 1 }));
+    await waitFor(() => expect(api.fetchPlan).toHaveBeenCalled());
+  });
+
+  it("기능 카드를 끌면 moveFeatureRank 가 불린다", async () => {
+    vi.spyOn(api, "moveFeatureRank").mockResolvedValue({ order: DATA.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
+
+    renderPlan(DATA, "feature");
+
+    const card = screen.getByText("billing — 결제").closest("div[draggable]")!;
+    const lane = screen.getByText("payments").closest("section")!;
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(card, { dataTransfer: dt });
+    fireEvent.dragOver(lane, { dataTransfer: dt });
+    fireEvent.drop(lane, { dataTransfer: dt });
+
+    await waitFor(() => expect(api.moveFeatureRank).toHaveBeenCalled());
   });
 });

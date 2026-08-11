@@ -1,5 +1,13 @@
-import { QueryClient, useQuery } from "@tanstack/react-query";
-import { fetchProjects, fetchFeatures, fetchFeatureDoc, fetchPlan } from "./api";
+import { QueryClient, useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import {
+  fetchProjects,
+  fetchFeatures,
+  fetchFeatureDoc,
+  fetchPlan,
+  moveTicketStep,
+  insertTicketStep,
+  moveFeatureRank,
+} from "./api";
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
 export function makeQueryClient(): QueryClient {
@@ -50,5 +58,35 @@ export function useFeatureDoc(
     queryKey: qk.featureDoc(project ?? "", feature ?? "", path ?? ""),
     queryFn: () => fetchFeatureDoc(project as string, feature as string, path as string),
     enabled: project !== null && feature !== null && path !== null,
+  });
+}
+
+// ── 드래그(티켓 04) — 성공하면 `plan` 쿼리를 무효화해 다시 읽는다(INV-3, 화면이 두 번째 SoT 를 안 갖는다). */
+
+/** 티켓 칩을 다른 단계 줄로 끈다. */
+export function useMoveTicketStep(project: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { feature: string; ticket: string; step: number }) => moveTicketStep(project, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.plan(project) }),
+  });
+}
+
+/** 티켓 칩을 줄과 줄 사이에 놓는다 — 새 단계. */
+export function useInsertTicketStep(project: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { feature: string; ticket: string; afterStep: number }) => insertTicketStep(project, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.plan(project) }),
+  });
+}
+
+/** 기능 카드를 끈다 — 순위, 또는 트랙까지. */
+export function useMoveFeatureRank(project: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { feature: string; track: string; beforeRank: number | null; afterRank: number | null }) =>
+      moveFeatureRank(project, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.plan(project) }),
   });
 }

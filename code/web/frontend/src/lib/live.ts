@@ -11,6 +11,7 @@ function liveUrl(): string {
  * WS `/api/live` 구독 → 서버 push(ChangeEvent)에 따라 쿼리 invalidate(2b, ADR-0004).
  * - kind:"project" → 그 프로젝트 쿼리(queryKey 에 slug 포함) invalidate.
  * - kind:"projects" → projects 쿼리 invalidate.
+ * - kind:"plan" → 계획(DB) 워처는 project 를 모른다(development-order/07) — `plan` 쿼리 전부 invalidate.
  * - 끊기면 backoff 재연결, 재연결 open 시 전체 invalidate(끊긴 새 놓친 변경 흡수).
  */
 export function useLiveSync(qc: QueryClient): void {
@@ -46,6 +47,10 @@ export function useLiveSync(qc: QueryClient): void {
         const ev = parsed.data;
         if (ev.kind === "projects") {
           void qc.invalidateQueries({ queryKey: ["projects"] });
+        } else if (ev.kind === "plan") {
+          void qc.invalidateQueries({
+            predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "plan",
+          });
         } else {
           void qc.invalidateQueries({
             predicate: (q) => Array.isArray(q.queryKey) && q.queryKey.includes(ev.project),

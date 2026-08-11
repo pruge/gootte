@@ -1,4 +1,5 @@
 import type { FeatureTicket } from "@gootte/contract";
+import { setTicketDragData } from "./dragPayload";
 
 interface TicketChipProps {
   feature: string;
@@ -6,6 +7,8 @@ interface TicketChipProps {
   /** null = 계획엔 있는데 티켓 문서가 없다(`step_without_ticket` 어긋남). */
   ticket: FeatureTicket | null;
   highlighted: boolean;
+  /** 드래그가 단계만 바꾸고 `why` 는 안 건드렸다는 표시(spec 04 §왜 는 안 건드린다). */
+  whyNeedsReview?: boolean;
 }
 
 function toneClass(ticket: FeatureTicket | null, highlighted: boolean): string {
@@ -18,17 +21,25 @@ function toneClass(ticket: FeatureTicket | null, highlighted: boolean): string {
   return "border-border bg-surface text-fg";
 }
 
-/** 티켓 칩 하나 — 상태는 서버가 매 요청 재계산해 보낸 값을 그대로 그린다(INV-1, 여기서 재판정 X). */
-export function TicketChip({ feature, ticketNum, ticket, highlighted }: TicketChipProps) {
+/**
+ * 티켓 칩 하나 — 상태는 서버가 매 요청 재계산해 보낸 값을 그대로 그린다(INV-1, 여기서 재판정 X).
+ * 끌 수 있다(티켓 04) — 단계 줄 사이로, 또는 줄과 줄 사이로.
+ */
+export function TicketChip({ feature, ticketNum, ticket, highlighted, whyNeedsReview }: TicketChipProps) {
   return (
     <span
+      draggable
+      onDragStart={(e) => setTicketDragData(e, feature, ticketNum)}
       title={ticket ? ticket.title : `${feature}/${ticketNum} — 티켓 문서를 찾지 못함(어긋남)`}
-      className={`mono inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-sm ${toneClass(ticket, highlighted)}`}
+      className={`mono inline-flex max-w-full cursor-grab items-center gap-1.5 rounded-md border px-2 py-1 text-sm active:cursor-grabbing ${toneClass(ticket, highlighted)}`}
     >
       <span className="shrink-0">
         {feature}/{ticketNum}
       </span>
       <span className="min-w-0 truncate text-fg/80">{ticket ? ticket.title : "(문서 없음)"}</span>
+      {whyNeedsReview && (
+        <span className="mono shrink-0 rounded bg-partial/15 px-1 py-0.5 text-xs text-partial">확인 필요</span>
+      )}
     </span>
   );
 }
