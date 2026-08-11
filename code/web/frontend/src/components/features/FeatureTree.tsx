@@ -9,9 +9,6 @@ export type OpenDocFn = (featureSlug: string, path: string, trigger: HTMLElement
 interface FeatureTreeProps {
   feature: Feature;
   onOpenDoc: OpenDocFn;
-  /** `plan` 탭 기능 카드를 눌러 건너왔으면 issues 폴더가 이미 펼쳐진 채로 시작한다
-   * (development-order/16 ③ — 펼쳐지는 것은 `issues` 지 `check` 가 아니다). */
-  defaultOpenIssues?: boolean;
 }
 
 /** `adr` → `issues` → 나머지(spec.md 등 낱장) 순으로 고정한다(캡틴 지시). 없으면 그 자리가 빈다. */
@@ -32,22 +29,14 @@ function splitDocs(docs: Feature["docs"]) {
  * 없는 칸은 그 자리가 빈다(INV-4, 폴더에 없는 걸 그려 넣지 않는다).
  * `issues/` 도 `feature.docs` 에 포함돼 있어서 진짜 파일 이름으로 뜬다. 눌러서 원문을 읽는다.
  */
-export function FeatureTree({ feature, onOpenDoc, defaultOpenIssues = false }: FeatureTreeProps) {
+export function FeatureTree({ feature, onOpenDoc }: FeatureTreeProps) {
   const [checkOpen, setCheckOpen] = useState(true);
   const { adr, issues, rest } = splitDocs(feature.docs);
 
   return (
     <ul className="divide-y divide-border">
       {adr && <DocTreeNode node={adr} depth={0} featureSlug={feature.slug} onOpenDoc={onOpenDoc} />}
-      {issues && (
-        <DocTreeNode
-          node={issues}
-          depth={0}
-          featureSlug={feature.slug}
-          onOpenDoc={onOpenDoc}
-          initialOpen={defaultOpenIssues}
-        />
-      )}
+      {issues && <DocTreeNode node={issues} depth={0} featureSlug={feature.slug} onOpenDoc={onOpenDoc} />}
       <li>
         <button
           type="button"
@@ -96,15 +85,13 @@ function DocTreeNode({
   depth,
   featureSlug,
   onOpenDoc,
-  initialOpen = false,
 }: {
   node: FeatureDocNode;
   depth: number;
   featureSlug: string;
   onOpenDoc: OpenDocFn;
-  initialOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(initialOpen);
+  const [open, setOpen] = useState(false);
   const indent = treeIndentStyle(depth);
 
   if (node.kind === "dir") {

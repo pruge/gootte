@@ -2,7 +2,7 @@ import { useState } from "react";
 import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { PlanResponse } from "@gootte/contract";
+import type { FeatureTicket, PlanResponse } from "@gootte/contract";
 import { PlanView } from "../src/components/plan/PlanView";
 import { qk } from "../src/lib/query";
 import * as api from "../src/lib/api";
@@ -161,32 +161,22 @@ function Harness({
   project,
   initialView = null,
   focus = null,
-  onGoToFeatureCard = vi.fn(),
 }: {
   project: string;
   initialView?: string | null;
   focus?: string | null;
-  onGoToFeatureCard?: (feature: string) => void;
 }) {
   const [view, setView] = useState<string | null>(initialView);
   const [doc, setDoc] = useState<string | null>(null);
   return (
-    <PlanView
-      project={project}
-      view={view}
-      onView={setView}
-      doc={doc}
-      onDoc={setDoc}
-      focus={focus}
-      onGoToFeatureCard={onGoToFeatureCard}
-    />
+    <PlanView project={project} view={view} onView={setView} doc={doc} onDoc={setDoc} focus={focus} />
   );
 }
 
 function renderPlan(
   data: PlanResponse = DATA,
   initialView: string | null = null,
-  opts: { focus?: string | null; onGoToFeatureCard?: (feature: string) => void } = {},
+  opts: { focus?: string | null } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(qk.plan(data.project), data);
@@ -340,6 +330,74 @@ describe("PlanView — `next` 버튼(02 의 함수 결과를 그대로 쓴다)",
   });
 });
 
+// 🔴 첫 커버(status-colors-tell-apart/01) — 처리중과 착수 가능이 훑어보기만 해도 갈린다.
+// 판정 기준은 색값이 아니라 "배경이 있나 없나" — 값은 사람이 조정할 수 있어도 이 사실은 안 바뀐다.
+describe("TicketChip — 처리중과 착수 가능이 채움으로 갈린다(status-colors-tell-apart/01, 🔴 첫 커버)", () => {
+  const WITH_IN_PROGRESS: PlanResponse = {
+    ...DATA,
+    features: DATA.features.map((f) =>
+      f.slug === "billing"
+        ? {
+            ...f,
+            tickets: f.tickets.map((t) =>
+              t.num === "01" ? { ...t, status: "in_progress", workedBy: ["fm/billing-work"] } : t,
+            ),
+          }
+        : f,
+    ),
+    next: {
+      ...DATA.next,
+      tracks: DATA.next.tracks.map((t) => (t.track === "payments" ? { ...t, tickets: [], emptyReason: "all_claimed" } : t)),
+    },
+  };
+
+  it("단계 보기 — 착수 가능 칩엔 배경 클래스가 없다(테두리만)", () => {
+    renderPlan(DATA);
+    const chip = screen.getByText("auth-login/02").closest("span[title]")!;
+    expect(chip.className).toContain("border-accent/40");
+    expect(chip.className).not.toContain("bg-accent");
+  });
+
+  it("단계 보기 — 처리중 칩은 배경 클래스가 있다(지금 그대로)", () => {
+    renderPlan(WITH_IN_PROGRESS);
+    const chip = screen.getByText("billing/01").closest("span[title]")!;
+    expect(chip.className).toContain("border-active/40");
+    expect(chip.className).toContain("bg-active/10");
+  });
+
+  it("기능 보기 — 같은 칩이라 같이 갈린다(두 벌로 안 가른다)", () => {
+    renderPlan(WITH_IN_PROGRESS, "feature");
+    const startableChip = screen.getByText("auth-login/02").closest("span[title]")!;
+    expect(startableChip.className).not.toContain("bg-accent");
+    const workingChip = screen.getByText("billing/01").closest("span[title]")!;
+    expect(workingChip.className).toContain("bg-active/10");
+  });
+
+  it("🔴 나머지 칩(완료·취소)은 안 바뀐다", () => {
+    const withDoneStaged: PlanResponse = {
+      ...DATA,
+      order: {
+        ...DATA.order,
+        tickets: [
+          ...DATA.order.tickets,
+          {
+            project: "alpha",
+            feature: "auth-login",
+            ticket: "01",
+            step: 1,
+            why: "이미 끝남",
+            whyNeedsReview: false,
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        ],
+      },
+    };
+    renderPlan(withDoneStaged, "feature");
+    const done = screen.getByText("auth-login/01").closest("span[title]")!;
+    expect(done.className).toContain("bg-surface-2");
+  });
+});
+
 describe("PlanView — 기능 보기", () => {
   it("`?view=feature` 로 트랙(세로줄) 안에 기능 카드가 순위대로 뜬다", () => {
     renderPlan(DATA, "feature");
@@ -364,6 +422,52 @@ describe("PlanView — 기능 보기", () => {
 // 🔴 첫 커버(development-order/16 ①) — 확인 필요를 그 자리에서 내린다. 지금 자리를 새 닻으로
 // 삼는 방식이라 별도 깃발 저장이 없다(core-io 단위가 그 계산 자체를 덮는다) — 여기서는 화면이
 // 표시를 켜고/끄고, 누르면 그 API 를 부르는지만 본다.
+// 🔴 첫 커버(캡틴 지시 2026-08-11: "next 버튼 옆에 clear 버튼을 만들어줘. clear를 누르면
+// 확인 필요 플래그가 사라지게해") — 검토 없이 바로, 기능·티켓 가리지 않고 전부 지운다.
+describe("PlanView — next 옆 clear 버튼(캡틴 지시 2026-08-11, 🔴 첫 커버)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("확인 필요가 하나도 없으면 버튼이 없다", () => {
+    renderPlan();
+    expect(screen.queryByRole("button", { name: /^clear/ })).toBeNull();
+  });
+
+  it("확인 필요가 있으면(기능이든 티켓이든) 개수와 함께 버튼이 뜬다", () => {
+    const withReview: PlanResponse = {
+      ...DATA,
+      order: { ...DATA.order, tickets: DATA.order.tickets.map((t) => ({ ...t, whyNeedsReview: true })) },
+    };
+    renderPlan(withReview);
+    expect(screen.getByRole("button", { name: "clear 2" })).toBeInTheDocument();
+  });
+
+  it("누르면 clearAllReviewFlags 가 이 프로젝트로 불리고, 재조회 결과가 반영된다", async () => {
+    const withReview: PlanResponse = {
+      ...DATA,
+      order: {
+        ...DATA.order,
+        features: DATA.order.features.map((f) =>
+          f.feature === "auth-login" ? { ...f, whyNeedsReview: true } : f,
+        ),
+      },
+    };
+    const cleared: PlanResponse = {
+      ...DATA,
+      order: { ...DATA.order }, // whyNeedsReview 전부 false(기본 DATA 그대로)
+    };
+    const clearAllReviewFlags = vi
+      .spyOn(api, "clearAllReviewFlags")
+      .mockResolvedValue({ order: cleared.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(cleared);
+    renderPlan(withReview);
+
+    fireEvent.click(screen.getByRole("button", { name: "clear 1" }));
+
+    await waitFor(() => expect(clearAllReviewFlags).toHaveBeenCalledWith("alpha"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^clear/ })).toBeNull());
+  });
+});
+
 describe("PlanView — 기능 보기: 확인 필요를 그 자리에서 내린다(development-order/16 ①, 🔴 첫 커버)", () => {
   beforeEach(() => vi.restoreAllMocks());
 
@@ -389,18 +493,18 @@ describe("PlanView — 기능 보기: 확인 필요를 그 자리에서 내린�
     expect(screen.queryByRole("button", { name: /확인 필요 내리기/ })).toBeNull();
   });
 
-  it("누르면 dismissFeatureReview 가 그 기능으로 불린다 — 카드 클릭(건너가기)으로 안 샌다", async () => {
+  it("누르면 dismissFeatureReview 가 그 기능으로 불린다 — 카드 클릭(문서 열기)으로 안 샌다", async () => {
     const dismissFeatureReview = vi
       .spyOn(api, "dismissFeatureReview")
       .mockResolvedValue({ order: withReview(false).order, warnings: [] });
     vi.spyOn(api, "fetchPlan").mockResolvedValue(withReview(false));
-    const onGoToFeatureCard = vi.fn();
-    renderPlan(withReview(true), "feature", { onGoToFeatureCard });
+    const fetchDoc = vi.spyOn(api, "fetchFeatureDoc");
+    renderPlan(withReview(true), "feature");
 
     fireEvent.click(screen.getByRole("button", { name: /auth-login 확인 필요 내리기/ }));
 
     await waitFor(() => expect(dismissFeatureReview).toHaveBeenCalledWith("alpha", { feature: "auth-login" }));
-    expect(onGoToFeatureCard).not.toHaveBeenCalled();
+    expect(fetchDoc).not.toHaveBeenCalled();
   });
 
   it("🔴 이유 줄은 그대로다", () => {
@@ -409,21 +513,84 @@ describe("PlanView — 기능 보기: 확인 필요를 그 자리에서 내린�
   });
 });
 
-// 🔴 첫 커버(development-order/16 ③) — 기능 카드를 누르면 `features` 탭 그 카드로 건너간다.
+// 🔴 첫 커버(development-order/16 ③, 캡틴 지시 2026-08-11 로 대체 — features 탭으로 안 보낸다) —
+// 기능 카드를 누르면 그 기능의 처리중 티켓 문서가 plan 탭 안에서 서랍으로 바로 열린다.
 // 끌고 손을 뗀 것이 클릭으로 새면 안 된다(15 ⑤ 와 같은 `justDraggedRef` 방식).
-describe("PlanView — 기능 카드를 누르면 features 탭으로 건너간다(development-order/16 ③, 🔴 첫 커버)", () => {
-  it("카드를 누르면(끌지 않고) onGoToFeatureCard 가 그 기능으로 불린다", () => {
-    const onGoToFeatureCard = vi.fn();
-    renderPlan(DATA, "feature", { onGoToFeatureCard });
+describe("PlanView — 기능 카드를 누르면 처리중 티켓 문서가 서랍으로 열린다(development-order/16 ③, 🔴 첫 커버)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  function withInProgress(): PlanResponse {
+    return {
+      ...DATA,
+      features: DATA.features.map((f) =>
+        f.slug === "auth-login"
+          ? {
+              ...f,
+              tickets: [
+                ...f.tickets,
+                {
+                  num: "03",
+                  slug: "03-social",
+                  title: "소셜 로그인",
+                  status: "pending",
+                  sourceStatus: "ready-for-agent",
+                  statusKnown: true,
+                  blockedBy: [],
+                  unreadableBlockedBy: [],
+                  waitingOn: [],
+                  startable: true,
+                  workedBy: [],
+                  needsCaptainEye: false,
+                } satisfies FeatureTicket,
+              ].map((t): FeatureTicket =>
+                t.num === "02" ? { ...t, status: "in_progress", workedBy: ["fm/auth-work"] } : t,
+              ),
+            }
+          : f,
+      ),
+      order: {
+        ...DATA.order,
+        tickets: [
+          ...DATA.order.tickets,
+          {
+            project: "alpha",
+            feature: "auth-login",
+            ticket: "03",
+            step: 1,
+            why: "같이 진행",
+            whyNeedsReview: false,
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        ],
+      },
+    };
+  }
+
+  it("처리중 티켓이 있으면 카드를 눌러(끌지 않고) 그 문서가 서랍으로 열린다", async () => {
+    vi.spyOn(api, "fetchFeatureDoc").mockResolvedValue({ path: "issues/02-screen.md", content: "# 로그인 화면" });
+    renderPlan(withInProgress(), "feature");
 
     fireEvent.click(screen.getByText("auth-login — 로그인"));
 
-    expect(onGoToFeatureCard).toHaveBeenCalledWith("auth-login");
+    await waitFor(() =>
+      expect(api.fetchFeatureDoc).toHaveBeenCalledWith("alpha", "auth-login", "issues/02-screen.md"),
+    );
+    await screen.findByRole("dialog");
   });
 
-  it("🔴 끌고 놓은 것은 안 넘어간다 — 끌기와 누르기가 안 섞인다", () => {
-    const onGoToFeatureCard = vi.fn();
-    renderPlan(DATA, "feature", { onGoToFeatureCard });
+  it("🔴 처리중 티켓이 없으면 카드를 눌러도 아무 일도 안 일어난다 — features 탭으로도 안 보낸다", () => {
+    const fetchDoc = vi.spyOn(api, "fetchFeatureDoc");
+    renderPlan(DATA, "feature");
+
+    fireEvent.click(screen.getByText("auth-login — 로그인"));
+
+    expect(fetchDoc).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("🔴 끌고 놓은 것은 문서를 안 연다 — 끌기와 누르기가 안 섞인다", () => {
+    const fetchDoc = vi.spyOn(api, "fetchFeatureDoc");
+    renderPlan(withInProgress(), "feature");
 
     const card = screen.getByText("auth-login — 로그인").closest("div[draggable]")!;
     const dt = makeDataTransfer();
@@ -431,23 +598,24 @@ describe("PlanView — 기능 카드를 누르면 features 탭으로 건너간�
     fireEvent.dragEnd(card, { dataTransfer: dt });
     fireEvent.click(card);
 
-    expect(onGoToFeatureCard).not.toHaveBeenCalled();
+    expect(fetchDoc).not.toHaveBeenCalled();
+  });
+
+  it("🔴 카드 안의 다른 티켓 칩을 누른 것은 카드까지 안 샌다 — 처리중 문서가 아니라 그 칩 자신의 문서가 열린다", async () => {
+    vi.spyOn(api, "fetchFeatureDoc").mockResolvedValue({ path: "issues/03-social.md", content: "# 소셜 로그인" });
+    renderPlan(withInProgress(), "feature");
+
+    fireEvent.click(screen.getByText("auth-login/03")); // 처리중(02)이 아니라 03 칩을 눌렀다
+
+    await waitFor(() =>
+      expect(api.fetchFeatureDoc).toHaveBeenCalledWith("alpha", "auth-login", "issues/03-social.md"),
+    );
+    expect(api.fetchFeatureDoc).not.toHaveBeenCalledWith("alpha", "auth-login", "issues/02-screen.md");
   });
 
   it("④ features 탭에서 건너오면(focus) 그 기능이 있는 자리가 그대로 뜬다 — 렌더가 안 깨진다", () => {
     renderPlan(DATA, "feature", { focus: "billing" });
     expect(screen.getByText("billing — 결제")).toBeInTheDocument();
-  });
-
-  it("🔴 카드 안의 티켓 칩을 누른 것은 카드까지 안 샌다 — 문서만 열린다", async () => {
-    vi.spyOn(api, "fetchFeatureDoc").mockResolvedValue({ path: "issues/02-screen.md", content: "# 문서" });
-    const onGoToFeatureCard = vi.fn();
-    renderPlan(DATA, "feature", { onGoToFeatureCard });
-
-    fireEvent.click(screen.getByText("auth-login/02"));
-
-    expect(onGoToFeatureCard).not.toHaveBeenCalled();
-    await screen.findByRole("dialog");
   });
 });
 

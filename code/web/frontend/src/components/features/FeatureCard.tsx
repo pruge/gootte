@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { Feature } from "@gootte/contract";
 import { FeatureTree, type OpenDocFn } from "./FeatureTree";
 
@@ -15,9 +15,6 @@ function counts(f: Feature) {
 interface FeatureCardProps {
   feature: Feature;
   onOpenDoc: OpenDocFn;
-  /** `plan` 탭 기능 카드를 눌러 건너왔으면 펼친 채로 시작하고 issues 폴더도 연다
-   * (development-order/16 ③). */
-  expandOnMount?: boolean;
   /** 남은 일이 있으면 이 카드에 `plan` 버튼이 뜬다 — 누르면 `plan` 탭 기능 보기, 그 자리로
    * 돌아간다(development-order/16 ④). */
   onGoToPlan: (feature: string) => void;
@@ -34,20 +31,13 @@ interface FeatureCardProps {
  * 버튼 안에 버튼을 넣는 것은 무효 HTML 이라(중첩 인터랙티브), 토글과 `plan` 을 같은 줄의
  * 형제 버튼 둘로 가른다(development-order/16 ④).
  */
-export function FeatureCard({ feature, onOpenDoc, expandOnMount = false, onGoToPlan }: FeatureCardProps) {
-  const [expanded, setExpanded] = useState(expandOnMount);
+export function FeatureCard({ feature, onOpenDoc, onGoToPlan }: FeatureCardProps) {
+  const [expanded, setExpanded] = useState(false);
   const { done, open, startable, working } = counts(feature);
   const headingId = `feature-${feature.slug}-heading`;
-  const sectionRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    if (expandOnMount && typeof sectionRef.current?.scrollIntoView === "function") {
-      sectionRef.current.scrollIntoView({ block: "nearest" });
-    }
-  }, [expandOnMount]);
 
   return (
-    <section ref={sectionRef} className="shrink-0 overflow-hidden rounded-lg border border-border bg-surface">
+    <section className="shrink-0 overflow-hidden rounded-lg border border-border bg-surface">
       <div className="flex w-full items-stretch border-b border-border bg-surface-2/40">
         <button
           type="button"
@@ -92,7 +82,7 @@ export function FeatureCard({ feature, onOpenDoc, expandOnMount = false, onGoToP
 
       {expanded && (
         <div aria-labelledby={headingId}>
-          <FeatureTree feature={feature} onOpenDoc={onOpenDoc} defaultOpenIssues={expandOnMount} />
+          <FeatureTree feature={feature} onOpenDoc={onOpenDoc} />
         </div>
       )}
     </section>

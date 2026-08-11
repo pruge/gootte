@@ -14,9 +14,8 @@ export interface UrlState {
    */
   doc: string | null;
   /**
-   * 다른 탭에서 건너와 포커스할 기능(development-order/16 ③④) — `view` 처럼 탭마다 뜻이 다르다.
-   * `features` 탭에선 그 기능 카드를 펼치고 issues 폴더를 연다. `plan` 탭에선 그 카드가 있는
-   * 자리로 스크롤한다. 새로고침해도 같은 자리가 열리도록 주소에 싣는다.
+   * `features` 탭에서 건너와 `plan` 탭 기능 보기에서 포커스할 기능(development-order/16 ④).
+   * 그 카드가 있는 자리로 스크롤한다. 새로고침해도 같은 자리가 열리도록 주소에 싣는다.
    */
   focus: string | null;
 }
@@ -71,15 +70,6 @@ export function useUrlState() {
     setTab: useCallback((t: Tab) => update({ tab: t, view: null, doc: null, focus: null }), [update]),
     setView: useCallback((v: string | null) => update({ view: v }), [update]),
     setDoc: useCallback((d: string | null) => update({ doc: d }), [update]),
-    /**
-     * development-order/16 ③ — `plan` 탭 기능 카드를 눌러 `features` 탭 그 카드로 건너간다.
-     * 탭·포커스를 한 번의 history 항목으로 함께 바꿔야 뒤로 가기 한 번에 `plan` 탭으로 돌아온다
-     * (두 번 나눠 쓰면 pushState 가 둘이 되어 뒤로 가기가 한 번 더 필요해진다).
-     */
-    goToFeatureCard: useCallback(
-      (feature: string) => update({ tab: "features", view: null, doc: null, focus: feature }),
-      [update],
-    ),
     /** development-order/16 ④ — `features` 탭의 `plan` 버튼으로 `plan` 탭 기능 보기, 그 자리로 돌아간다. */
     goToPlanFeature: useCallback(
       (feature: string) => update({ tab: "plan", view: "feature", doc: null, focus: feature }),

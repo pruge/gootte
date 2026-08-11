@@ -290,6 +290,25 @@ describe("GET /api/plan/:slug — 티켓 03", () => {
     }
   });
 
+  // 🔴 첫 커버(development-order/16 ③, 캡틴 지시 2026-08-11) — plan 탭 기능 카드를 눌러
+  // 처리중 티켓 문서를 열려면 이 응답의 `features[].tickets[].status` 가 관측을 거쳐야 한다.
+  // `/api/features` 와 같은 `applyInProgress` 를 안 거치면 이 값이 절대 "in_progress" 가 못 된다.
+  test("🔴 features 는 /api/features 와 같은 관측을 거친다 — 처리중 티켓이 실린다", async () => {
+    const th = makeTreehouse();
+    try {
+      const body = PlanResponse.parse(
+        await (await createApp({ roots, treehouse: th }).request("/api/plan/alpha")).json(),
+      );
+      const t = body.features
+        .find((f) => f.slug === "auth-login")
+        ?.tickets.find((x) => x.slug === "02-screen");
+      expect(t?.status).toBe("in_progress");
+      expect(t?.workedBy).toEqual(["fm/screen"]);
+    } finally {
+      rmSync(th, { recursive: true, force: true });
+    }
+  });
+
   test("🔴 계획에 없는 티켓은 어긋남으로 잡힌다 — 감추지 않는다", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-plan-"));
     try {
@@ -436,6 +455,33 @@ describe("POST /api/plan/:slug/ticket-step, /ticket-step/insert, /feature-rank �
         body: JSON.stringify({ feature: "no-such" }),
       });
       expect(res.status).toBe(400);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("review/clear-all — 기능·티켓 확인 필요를 한 번에 전부 지운다(캡틴 지시 2026-08-11)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-drag-"));
+    try {
+      setFeatureOrder(dataDir, { project: "alpha", feature: "auth-login", track: "web", rank: 10, why: "…" });
+      setFeatureOrder(dataDir, { project: "alpha", feature: "doc-tree", track: "web", rank: 20, why: "…" });
+      const app = createApp({ ...APP, dataDir });
+
+      const dragRes = await app.request("/api/plan/alpha/feature-rank", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ feature: "auth-login", track: "web", beforeRank: 20, afterRank: null }),
+      });
+      const dragged = DragResult.parse(await dragRes.json());
+      expect(dragged.order.features.find((f) => f.feature === "auth-login")?.whyNeedsReview).toBe(true);
+
+      const res = await app.request("/api/plan/alpha/review/clear-all", { method: "POST" });
+      expect(res.status).toBe(200);
+      const body = DragResult.parse(await res.json());
+      expect(body.order.features.every((f) => !f.whyNeedsReview)).toBe(true);
+
+      const reread = readPlanOrder(dataDir, "alpha");
+      expect(reread.features.find((f) => f.feature === "auth-login")?.whyNeedsReview).toBe(false);
     } finally {
       rmSync(dataDir, { recursive: true, force: true });
     }

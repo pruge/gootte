@@ -25,6 +25,7 @@ import {
   moveFeatureOrder,
   renameTrack,
   dismissFeatureReview,
+  clearAllReviewFlags,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
@@ -140,12 +141,15 @@ export function createApp(options: AppOptions = {}): Hono {
   // GET /api/plan/:slug → PlanResponse (티켓 03 — `plan` 탭). 계획(gootte 자기 저장소, INV-5)과
   // 티켓 문서(INV-2 read-only, 매 요청 재계산)를 함께 싣고, `next`·어긋남은 02 의 순수 함수 하나로
   // 계산한다 — 화면과 CLI(`gootte next`)가 같은 함수를 쓴다(spec §판정 자리는 하나뿐).
+  // 🔴 처리중은 `/api/features` 와 같은 관측(`applyInProgress`)을 거친다(development-order/16 ③
+  // 캡틴 지시 — 기능 카드를 누르면 처리중 티켓 문서를 연다. 이 관측 없이는 `status` 가 절대
+  // "in_progress" 가 될 수 없어 그 판정이 항상 빈다).
   app.get("/api/plan/:slug", zValidator("param", slugParam), (c) => {
     const { slug } = c.req.valid("param");
     const proj = resolveSlug(roots, slug);
     if (!proj) return c.json(notFound(slug), 404);
     const project = basename(proj.path);
-    const features = readFeatures(proj.path);
+    const { features } = applyInProgress(readFeatures(proj.path), scanWorkingCopies(treehouse, project));
     let order: ReturnType<typeof readPlanOrder>;
     try {
       order = readPlanOrder(dataDir, project);
@@ -285,6 +289,21 @@ export function createApp(options: AppOptions = {}): Hono {
       return c.json(DragResult.parse({ order, warnings: [] }));
     },
   );
+
+  /**
+   * `next` 버튼 옆 clear(캡틴 지시 2026-08-11) — 지금 서 있는 확인 필요를 기능·티켓 가리지 않고
+   * 전부 지운다. 본문이 없다 — 지울 대상은 서버가 지금 계획을 읽어 스스로 고른다.
+   */
+  app.post("/api/plan/:slug/review/clear-all", zValidator("param", slugParam), (c) => {
+    const { slug } = c.req.valid("param");
+    const proj = resolveSlug(roots, slug);
+    if (!proj) return c.json(notFound(slug), 404);
+    const project = basename(proj.path);
+    clearAllReviewFlags(dataDir, project);
+    onPlanChange(project);
+    const order = readPlanOrder(dataDir, project);
+    return c.json(DragResult.parse({ order, warnings: [] }));
+  });
 
   // GET /api/features/:slug/:feature/doc?path= → FeatureDocResponse (기능 문서 본문, INV-2 read-only)
   // 🔴 요청받은 path 는 readFeatureDoc 이 그 기능 폴더 안으로 해소되는지 판정한 뒤에야 읽는다 —

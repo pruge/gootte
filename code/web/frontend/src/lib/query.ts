@@ -9,6 +9,7 @@ import {
   moveFeatureRank,
   renameTrack,
   dismissFeatureReview,
+  clearAllReviewFlags,
 } from "./api";
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
@@ -107,6 +108,15 @@ export function useDismissFeatureReview(project: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { feature: string }) => dismissFeatureReview(project, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.plan(project) }),
+  });
+}
+
+/** `next` 버튼 옆 clear — 지금 서 있는 확인 필요를 기능·티켓 가리지 않고 전부 지운다(캡틴 지시 2026-08-11). */
+export function useClearAllReviewFlags(project: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => clearAllReviewFlags(project),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.plan(project) }),
   });
 }

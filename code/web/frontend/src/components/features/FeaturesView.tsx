@@ -113,8 +113,6 @@ interface FeaturesViewProps {
   /** 드로어에 열린 문서 — URL `view` 파라미터(F8). null 이면 드로어가 닫혀 있다. */
   view: string | null;
   onView: (v: string | null) => void;
-  /** `plan` 탭에서 건너왔으면 이 기능 카드를 펼치고 issues 폴더를 연다(development-order/16 ③). */
-  focus: string | null;
   /** 카드의 `plan` 버튼 — `plan` 탭 기능 보기, 그 자리로 건너간다(development-order/16 ④). */
   onGoToPlanFeature: (feature: string) => void;
 }
@@ -127,7 +125,7 @@ interface FeaturesViewProps {
  * 카드 목록은 이 컴포넌트가 스크롤을 갖는다(`overflow-y-auto`) — 각 카드는 `shrink-0` 이라
  * 내용만큼 자라고 눌리지 않는다(F1 회귀 고정, 티켓 01 §설계 1).
  */
-export function FeaturesView({ project, view, onView, focus, onGoToPlanFeature }: FeaturesViewProps) {
+export function FeaturesView({ project, view, onView, onGoToPlanFeature }: FeaturesViewProps) {
   const { data, isLoading, isError, error } = useFeatures(project);
   // 문서를 연 트리거 요소 — 드로어를 닫을 때 포커스를 여기로 돌려준다(티켓 01 §설계 4).
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -159,13 +157,7 @@ export function FeaturesView({ project, view, onView, focus, onGoToPlanFeature }
       <div className="flex h-full flex-col gap-4 overflow-y-auto pb-2">
         <UnresolvedWork inProgress={data.inProgress} />
         {data.features.map((f) => (
-          <FeatureCard
-            key={f.slug}
-            feature={f}
-            onOpenDoc={openDoc}
-            expandOnMount={f.slug === focus}
-            onGoToPlan={onGoToPlanFeature}
-          />
+          <FeatureCard key={f.slug} feature={f} onOpenDoc={openDoc} onGoToPlan={onGoToPlanFeature} />
         ))}
       </div>
       <DocDrawer

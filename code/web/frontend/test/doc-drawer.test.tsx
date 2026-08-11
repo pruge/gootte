@@ -133,7 +133,7 @@ const FEATURES_DATA: FeaturesResponse = {
 function Harness({ initialView = null }: { initialView?: string | null }) {
   const [view, setView] = useState<string | null>(initialView);
   return (
-    <FeaturesView project="alpha" view={view} onView={setView} focus={null} onGoToPlanFeature={vi.fn()} />
+    <FeaturesView project="alpha" view={view} onView={setView} onGoToPlanFeature={vi.fn()} />
   );
 }
 

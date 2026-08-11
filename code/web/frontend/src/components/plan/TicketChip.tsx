@@ -27,13 +27,19 @@ interface TicketChipProps {
   onOpen?: OpenDocFn;
 }
 
+/**
+ * 처리중과 착수 가능이 훑어보기만 해도 갈린다(status-colors-tell-apart/01, 캡틴 결정) —
+ * **채움**으로 가른다: 처리중은 테두리+배경(채워져 있다), 착수 가능은 테두리만(속이 비어 있다).
+ * 색상 각도가 아니라 채움 유무가 판정 기준이다 — 밝기·색상만으로는 훑을 때 안 갈렸다(캡틴 피드백).
+ * 🔴 한 색도 안 바꾼다 — 값은 그대로, 착수 가능의 `bg-accent/10` 만 뺀다.
+ */
 function toneClass(ticket: FeatureTicket | null, highlighted: boolean): string {
   if (highlighted) return "border-accent bg-accent/15 text-accent ring-1 ring-accent";
   if (!ticket) return "border-drop/40 bg-drop/10 text-drop";
   if (ticket.status === "done") return "border-border bg-surface-2 text-muted";
   if (ticket.status === "dropped") return "border-border bg-surface-2 text-muted line-through";
   if (ticket.status === "in_progress") return "border-active/40 bg-active/10 text-active";
-  if (ticket.startable) return "border-accent/40 bg-accent/10 text-accent";
+  if (ticket.startable) return "border-accent/40 text-accent";
   return "border-border bg-surface text-fg";
 }
 

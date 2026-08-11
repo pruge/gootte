@@ -5,6 +5,7 @@ import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Feature, FeatureTicket } from "@gootte/contract";
 import {
+  clearAllReviewFlags,
   dismissFeatureReview,
   dropOrder,
   dropStaleCompleted,
@@ -530,6 +531,60 @@ describe("dismissFeatureReview — 확인 필요를 그 자리에서 내린다(d
     dismissFeatureReview(dataDir, "p", "a");
     const history = readFileSync(join(dataDir, "history.md"), "utf8");
     expect(history).toContain("dismiss-review p a");
+  });
+});
+
+describe("clearAllReviewFlags — next 버튼 옆 clear, 기능·티켓 가리지 않고 전부(캡틴 지시 2026-08-11, 🔴 첫 커버)", () => {
+  it("어긋난 기능·티켓 닻이 전부 지금 자리로 옮겨간다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "…" });
+    setFeatureOrder(dataDir, { project: "p", feature: "b", track: "web", rank: 20, why: "…" });
+    setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "01", step: 1, why: "…" });
+
+    moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", beforeRank: 20, afterRank: null });
+    moveTicketStep(dataDir, { project: "p", feature: "a", ticket: "01", step: 5 });
+    const before = readPlanOrder(dataDir, "p");
+    expect(before.features.find((f) => f.feature === "a")?.whyNeedsReview).toBe(true);
+    expect(before.tickets.find((t) => t.ticket === "01")?.whyNeedsReview).toBe(true);
+
+    const result = clearAllReviewFlags(dataDir, "p");
+    expect(result.features).toEqual(["a"]);
+    expect(result.tickets).toEqual([{ feature: "a", ticket: "01" }]);
+
+    const after = readPlanOrder(dataDir, "p");
+    expect(after.features.every((f) => !f.whyNeedsReview)).toBe(true);
+    expect(after.tickets.every((t) => !t.whyNeedsReview)).toBe(true);
+  });
+
+  it("확인 필요가 없던 줄은 안 건드린다(그대로 조용하다)", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "안 건드림" });
+    const before = readPlanOrder(dataDir, "p").features[0]!.updatedAt;
+    const result = clearAllReviewFlags(dataDir, "p");
+    expect(result.features).toEqual([]);
+    expect(readPlanOrder(dataDir, "p").features[0]!.updatedAt).toBe(before);
+  });
+
+  it("다른 프로젝트는 안 건드린다", () => {
+    setFeatureOrder(dataDir, { project: "p1", feature: "a", track: "web", rank: 10, why: "…" });
+    setFeatureOrder(dataDir, { project: "p2", feature: "a", track: "web", rank: 20, why: "…" });
+    moveFeatureOrder(dataDir, { project: "p1", feature: "a", track: "backend", beforeRank: null, afterRank: null });
+    moveFeatureOrder(dataDir, { project: "p2", feature: "a", track: "backend", beforeRank: null, afterRank: null });
+
+    clearAllReviewFlags(dataDir, "p1");
+
+    expect(readPlanOrder(dataDir, "p1").features[0]?.whyNeedsReview).toBe(false);
+    expect(readPlanOrder(dataDir, "p2").features[0]?.whyNeedsReview).toBe(true); // p2 는 안 건드림
+  });
+
+  it("아무것도 없어도 조용히 빈 결과를 돌려준다", () => {
+    expect(clearAllReviewFlags(dataDir, "p")).toEqual({ features: [], tickets: [] });
+  });
+
+  it("history.md 에 한 줄이 남는다 — 지운 것이 있을 때만", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "…" });
+    moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "backend", beforeRank: null, afterRank: null });
+    clearAllReviewFlags(dataDir, "p");
+    const history = readFileSync(join(dataDir, "history.md"), "utf8");
+    expect(history).toContain("clear-all-review p");
   });
 });
 

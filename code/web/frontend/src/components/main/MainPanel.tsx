@@ -13,10 +13,8 @@ interface MainPanelProps {
   /** `plan` 탭에서 연 티켓 문서 주소(development-order/15 ⑤) — `features` 탭은 안 쓴다. */
   doc: string | null;
   onDoc: (d: string | null) => void;
-  /** 다른 탭에서 건너와 포커스할 기능(development-order/16 ③④) — 탭마다 뜻이 다르다. */
+  /** `features` 탭에서 건너와 `plan` 탭 기능 보기에서 포커스할 기능(development-order/16 ④). */
   focus: string | null;
-  /** `plan` 탭 기능 카드를 누르면 `features` 탭 그 카드로 건너간다. */
-  onGoToFeatureCard: (feature: string) => void;
   /** `features` 탭의 `plan` 버튼으로 `plan` 탭 기능 보기, 그 자리로 돌아간다. */
   onGoToPlanFeature: (feature: string) => void;
 }
@@ -31,7 +29,6 @@ export function MainPanel({
   doc,
   onDoc,
   focus,
-  onGoToFeatureCard,
   onGoToPlanFeature,
 }: MainPanelProps) {
   return (
@@ -65,7 +62,6 @@ export function MainPanel({
               doc={doc}
               onDoc={onDoc}
               focus={focus}
-              onGoToFeatureCard={onGoToFeatureCard}
             />
           ) : (
             <FeaturesView
@@ -73,7 +69,6 @@ export function MainPanel({
               project={project}
               view={view}
               onView={onView}
-              focus={focus}
               onGoToPlanFeature={onGoToPlanFeature}
             />
           )}

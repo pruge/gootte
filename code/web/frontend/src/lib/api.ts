@@ -89,3 +89,7 @@ export const dismissFeatureReview = (
   input: { feature: string },
 ): Promise<DragResult> =>
   post(`/api/plan/${encodeURIComponent(project)}/feature-review-dismiss`, input, DragResult);
+
+/** `next` 버튼 옆 clear — 지금 서 있는 확인 필요를 기능·티켓 가리지 않고 전부 지운다(캡틴 지시 2026-08-11). */
+export const clearAllReviewFlags = (project: string): Promise<DragResult> =>
+  post(`/api/plan/${encodeURIComponent(project)}/review/clear-all`, {}, DragResult);

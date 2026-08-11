@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
-import { IconArrowsShuffle } from "@tabler/icons-react";
+import { IconArrowsShuffle, IconChecks } from "@tabler/icons-react";
 import {
+  useClearAllReviewFlags,
   useDismissFeatureReview,
   useInsertTicketStep,
   useMoveFeatureRank,
@@ -30,8 +31,6 @@ interface PlanViewProps {
   onDoc: (d: string | null) => void;
   /** `features` 탭에서 건너왔으면 이 기능이 있는 자리로 스크롤한다(development-order/16 ④). */
   focus: string | null;
-  /** 기능 카드를 누르면 `features` 탭 그 카드로 건너간다(development-order/16 ③). */
-  onGoToFeatureCard: (feature: string) => void;
 }
 
 const VIEWS = [
@@ -51,7 +50,7 @@ const VIEWS = [
  * 🔴 판단 요청("의견 물어보기", 티켓 06)은 09 가 걷어냈다 — 캡틴이 상자를 발견해 누르고 기다리는
  * 통로보다, 이미 있는 대화창이 더 낫다는 결정이다(spec §의견 요청은 걷어냈다). 되살리지 않는다.
  */
-export function PlanView({ project, view, onView, doc, onDoc, focus, onGoToFeatureCard }: PlanViewProps) {
+export function PlanView({ project, view, onView, doc, onDoc, focus }: PlanViewProps) {
   const { data, isLoading, isError, error } = usePlan(project);
   const [nextOn, setNextOn] = useState(false);
   // 티켓 09 ② — 방금 끈 티켓 하나에 대한 말이다(계획 전체의 어긋남과는 다른 자리). 배치가 바뀌면
@@ -65,6 +64,7 @@ export function PlanView({ project, view, onView, doc, onDoc, focus, onGoToFeatu
   const moveFeatureRank = useMoveFeatureRank(project);
   const renameTrack = useRenameTrack(project);
   const dismissFeatureReview = useDismissFeatureReview(project);
+  const clearAllReview = useClearAllReviewFlags(project);
 
   // development-order/15 ⑤ — 티켓 칩을 눌러 그 문서를 연다. `features` 탭(`FeaturesView`)과
   // 같은 서랍(`DocDrawer`)·같은 인코딩(`docView.ts`)을 그대로 부른다 — 두 번째 문서 보기를 짓지 않는다.
@@ -85,6 +85,9 @@ export function PlanView({ project, view, onView, doc, onDoc, focus, onGoToFeatu
   if (!data) return null;
 
   const highlighted = nextOn ? nextKeySet(data.next) : new Set<string>();
+  const needsReviewCount =
+    data.order.features.filter((f) => f.whyNeedsReview).length +
+    data.order.tickets.filter((t) => t.whyNeedsReview).length;
   const dragWarnings =
     dragSubject && !dismissed ? (data.dragWarnings[`${dragSubject.feature}/${dragSubject.ticket}`] ?? []) : [];
 
@@ -132,6 +135,19 @@ export function PlanView({ project, view, onView, doc, onDoc, focus, onGoToFeatu
           >
             <IconArrowsShuffle size={16} /> next
           </button>
+          {/* 검토 없이 바로 지운다(캡틴 지시 2026-08-11: "검토 필요없이 내가 clear 할수 있게
+              해달라는거였어") — 지금 서 있는 확인 필요(기능+티켓)를 전부 한 번에 내린다.
+              🔴 없으면 버튼도 없다(development-order/16 ①과 같은 관례). */}
+          {needsReviewCount > 0 && (
+            <button
+              type="button"
+              onClick={() => clearAllReview.mutate()}
+              className="mono flex shrink-0 items-center gap-1.5 rounded-md border border-partial/40 bg-partial/10 px-3 py-1.5 text-sm text-partial transition-colors hover:bg-partial/20 focus-visible:outline-2 focus-visible:outline-accent"
+              title="지금 서 있는 확인 필요를 전부 지운다"
+            >
+              <IconChecks size={16} /> clear {needsReviewCount}
+            </button>
+          )}
         </div>
       </div>
 
@@ -172,7 +188,6 @@ export function PlanView({ project, view, onView, doc, onDoc, focus, onGoToFeatu
             }
             onRenameTrack={(track, newTrack) => renameTrack.mutate({ track, newTrack })}
             onOpenDoc={openDoc}
-            onOpenFeatureCard={onGoToFeatureCard}
             onDismissReview={(feature) => dismissFeatureReview.mutate({ feature })}
           />
         )}

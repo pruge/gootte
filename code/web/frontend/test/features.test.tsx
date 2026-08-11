@@ -110,30 +110,22 @@ const DATA: FeaturesResponse = {
 function Harness({
   project,
   initialView = null,
-  focus = null,
   onGoToPlanFeature = vi.fn(),
 }: {
   project: string;
   initialView?: string | null;
-  focus?: string | null;
   onGoToPlanFeature?: (feature: string) => void;
 }) {
   const [view, setView] = useState<string | null>(initialView);
   return (
-    <FeaturesView
-      project={project}
-      view={view}
-      onView={setView}
-      focus={focus}
-      onGoToPlanFeature={onGoToPlanFeature}
-    />
+    <FeaturesView project={project} view={view} onView={setView} onGoToPlanFeature={onGoToPlanFeature} />
   );
 }
 
 function renderView(
   data: FeaturesResponse,
   initialView: string | null = null,
-  opts: { focus?: string | null; onGoToPlanFeature?: (feature: string) => void } = {},
+  opts: { onGoToPlanFeature?: (feature: string) => void } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(qk.features(data.project), data);
@@ -341,42 +333,6 @@ describe("FeaturesView — 남은 일이 있으면 plan 버튼이 뜬다(develop
     renderView(DATA, null, { onGoToPlanFeature });
     fireEvent.click(screen.getByRole("button", { name: "plan" }));
     expect(onGoToPlanFeature).toHaveBeenCalledWith("auth-login");
-  });
-});
-
-// 🔴 첫 커버(development-order/16 ③) — `plan` 탭에서 건너오면 그 기능 카드가 펼쳐진 채로,
-// issues 폴더도 이미 열린 채로 시작한다. `check` 가 아니다.
-describe("FeaturesView — focus 로 건너오면 카드가 펼쳐지고 issues 폴더가 열려 있다(development-order/16 ③, 🔴 첫 커버)", () => {
-  const withIssues: FeaturesResponse = {
-    project: "alpha",
-    inProgress: NO_WORK,
-    features: [
-      {
-        ...DATA.features[0]!,
-        docs: [
-          {
-            kind: "dir",
-            name: "issues",
-            path: "issues",
-            children: [{ kind: "file", name: "01-session.md", path: "issues/01-session.md" }],
-          },
-        ],
-      },
-    ],
-  };
-
-  it("focus 가 없으면 평소대로 접힌 채로 시작한다", () => {
-    renderView(withIssues);
-    const button = screen.getByRole("heading", { name: "auth-login — 로그인" }).closest("button")!;
-    expect(button).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("focus 가 그 기능이면 펼쳐진 채로 시작하고, issues 폴더도 이미 열려 있다 — check 가 아니다", () => {
-    renderView(withIssues, null, { focus: "auth-login" });
-    const button = screen.getByRole("heading", { name: "auth-login — 로그인" }).closest("button")!;
-    expect(button).toHaveAttribute("aria-expanded", "true");
-    // issues 폴더가 이미 열려 있다 — 그 안의 파일이 누르지 않아도 보인다.
-    expect(screen.getByText("01-session.md")).toBeInTheDocument();
   });
 });
 

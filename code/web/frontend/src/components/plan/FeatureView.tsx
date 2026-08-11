@@ -18,10 +18,13 @@ interface FeatureViewProps {
   onRenameTrack: (track: string, newTrack: string) => void;
   /** 칩을 누르면 그 티켓 문서를 연다(development-order/15 ⑤). */
   onOpenDoc: OpenDocFn;
-  /** 기능 카드를 누르면 `features` 탭 그 카드로 건너간다(development-order/16 ③). */
-  onOpenFeatureCard: (feature: string) => void;
   /** 확인 필요를 그 자리에서 내린다(development-order/16 ①). */
   onDismissReview: (feature: string) => void;
+}
+
+/** 지금 처리중인 티켓 하나 — 여럿이면 앞선 단계(step) 것을 먼저 본다. */
+function inProgressTicket(lane: FeatureLane): FeatureLane["tickets"][number] | null {
+  return lane.tickets.find((t) => t.ticket?.status === "in_progress") ?? null;
 }
 
 const CARD_BASE_CLASS = "min-w-0 cursor-grab rounded-md p-2 active:cursor-grabbing";
@@ -55,8 +58,9 @@ function DropIndicator() {
  * 따라다니는 유령은 여전히 흐렸다. `dataTransfer.setDragImage()` 로 원하는 스타일을 미리 입힌
  * 복제본을 직접 넘겨야 그 유령 자체가 불투명해진다.
  *
- * 🔴 development-order/16 ③ — 이 카드는 끌어서 순위를 바꾸는 물건이면서 동시에 눌러서
- * `features` 탭으로 건너가는 물건이다. 끌고 손을 뗀 것이 클릭으로 새면 안 된다 — 15 ⑤ 가
+ * 🔴 development-order/16 ③(캡틴 지시 2026-08-11 로 대체 — features 탭으로 안 보낸다) —
+ * 이 카드는 끌어서 순위를 바꾸는 물건이면서 동시에 눌러서 **처리중 티켓의 문서를 그 자리에서
+ * 서랍으로 여는** 물건이다. 끌고 손을 뗀 것이 클릭으로 새면 안 된다 — 15 ⑤ 가
  * 티켓 칩(`TicketChip.tsx`)에서 푼 것과 **같은** `justDraggedRef` 방식을 그대로 쓴다.
  * 두 번째 해법을 만들지 않는다.
  */
@@ -66,7 +70,6 @@ function FeatureCard({
   focused,
   onHoverHalf,
   onOpenDoc,
-  onOpenFeatureCard,
   onDismissReview,
 }: {
   lane: FeatureLane;
@@ -74,7 +77,6 @@ function FeatureCard({
   focused: boolean;
   onHoverHalf: (half: "top" | "bottom") => void;
   onOpenDoc: OpenDocFn;
-  onOpenFeatureCard: (feature: string) => void;
   onDismissReview: (feature: string) => void;
 }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -126,12 +128,15 @@ function FeatureCard({
         const rect = e.currentTarget.getBoundingClientRect();
         onHoverHalf(e.clientY - rect.top < rect.height / 2 ? "top" : "bottom");
       }}
-      onClick={() => {
+      onClick={(e) => {
         if (justDraggedRef.current) {
           justDraggedRef.current = false;
           return;
         }
-        onOpenFeatureCard(lane.feature);
+        // 처리중 티켓이 없으면 보여줄 문서가 없다 — 조용히 아무 일도 안 한다(빈 서랍을 안 연다).
+        const working = inProgressTicket(lane);
+        if (!working?.ticket) return;
+        onOpenDoc(lane.feature, `issues/${working.ticket.slug}.md`, e.currentTarget);
       }}
       className={`${CARD_BASE_CLASS} ${isDragging ? CARD_DRAGGING_CLASS : CARD_RESTING_CLASS}`}
     >
@@ -246,7 +251,6 @@ function TrackLaneColumn({
   onMoveFeature,
   onRenameTrack,
   onOpenDoc,
-  onOpenFeatureCard,
   onDismissReview,
 }: {
   lane: TrackLane;
@@ -255,7 +259,6 @@ function TrackLaneColumn({
   onMoveFeature: FeatureViewProps["onMoveFeature"];
   onRenameTrack: FeatureViewProps["onRenameTrack"];
   onOpenDoc: OpenDocFn;
-  onOpenFeatureCard: (feature: string) => void;
   onDismissReview: (feature: string) => void;
 }) {
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -300,7 +303,6 @@ function TrackLaneColumn({
             focused={f.feature === focus}
             onHoverHalf={(half) => setDropIndex(half === "top" ? i : i + 1)}
             onOpenDoc={onOpenDoc}
-            onOpenFeatureCard={onOpenFeatureCard}
             onDismissReview={onDismissReview}
           />
         </div>
@@ -323,7 +325,6 @@ export function FeatureView({
   onMoveFeature,
   onRenameTrack,
   onOpenDoc,
-  onOpenFeatureCard,
   onDismissReview,
 }: FeatureViewProps) {
   const lanes = groupByTrackFeature(features, order);
@@ -340,7 +341,6 @@ export function FeatureView({
           onMoveFeature={onMoveFeature}
           onRenameTrack={onRenameTrack}
           onOpenDoc={onOpenDoc}
-          onOpenFeatureCard={onOpenFeatureCard}
           onDismissReview={onDismissReview}
         />
       ))}

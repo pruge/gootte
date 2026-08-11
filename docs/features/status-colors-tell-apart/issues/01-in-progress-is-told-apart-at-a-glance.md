@@ -6,7 +6,7 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능**
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 캡틴 결정 (원문)
 

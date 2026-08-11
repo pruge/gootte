@@ -586,6 +586,72 @@ export function dismissFeatureReview(dataDir: string, project: string, feature: 
   }
 }
 
+export interface ClearAllReviewResult {
+  features: string[];
+  tickets: { feature: string; ticket: string }[];
+}
+
+/**
+ * `review/clear-all` — `next` 버튼 옆의 clear(캡틴 지시 2026-08-11: "검토 필요없이 내가 clear
+ * 할수 있게 해달라는거였어"). 지금 서 있는 확인 필요를 **기능·티켓 가리지 않고 전부** 지운다 —
+ * `dismissFeatureReview` 와 같은 원리(닻을 지금 자리로), 티켓 쪽도 같은 원리로 한 번에 묶는다.
+ * 한 트랜잭션으로 묶어 절반만 지워진 채 남는 일이 없게 한다.
+ */
+export function clearAllReviewFlags(dataDir: string, project: string): ClearAllReviewResult {
+  const db = open(dataDir);
+  try {
+    const featureRows = (
+      db
+        .prepare(`SELECT ${FEATURE_ORDER_COLUMNS} FROM feature_order WHERE project = ?`)
+        .all(project) as unknown as FeatureOrderRow[]
+    )
+      .map(toFeatureOrderEntry)
+      .filter((f) => f.whyNeedsReview);
+    const ticketRows = (
+      db
+        .prepare(`SELECT ${TICKET_ORDER_COLUMNS} FROM ticket_order WHERE project = ?`)
+        .all(project) as unknown as TicketOrderRow[]
+    )
+      .map(toTicketOrderEntry)
+      .filter((t) => t.whyNeedsReview);
+
+    const updatedAt = new Date().toISOString();
+    db.exec("BEGIN");
+    try {
+      for (const f of featureRows) {
+        db.prepare(
+          `UPDATE feature_order SET why_track = track, why_rank = rank, updated_at = ?
+           WHERE project = ? AND feature = ?`,
+        ).run(updatedAt, project, f.feature);
+      }
+      for (const t of ticketRows) {
+        db.prepare(
+          `UPDATE ticket_order SET why_step = step, updated_at = ?
+           WHERE project = ? AND feature = ? AND ticket = ?`,
+        ).run(updatedAt, project, t.feature, t.ticket);
+      }
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw err;
+    }
+
+    const result: ClearAllReviewResult = {
+      features: featureRows.map((f) => f.feature),
+      tickets: ticketRows.map((t) => ({ feature: t.feature, ticket: t.ticket })),
+    };
+    if (result.features.length > 0 || result.tickets.length > 0) {
+      appendHistory(
+        dataDir,
+        `clear-all-review ${project} → 기능 ${result.features.length}개, 티켓 ${result.tickets.length}개 [plan 탭]`,
+      );
+    }
+    return result;
+  } finally {
+    db.close();
+  }
+}
+
 export interface RenameTrackInput {
   project: string;
   /** 지금 트랙 이름. */
