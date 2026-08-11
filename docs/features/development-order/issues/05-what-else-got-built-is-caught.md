@@ -7,7 +7,7 @@ planner 는 **새로 등록된 것만** 읽고, 그만큼 낡은 다른 티켓�
 **Blocked by:** [01](01-the-plan-is-written-down-and-read-back.md) — 저장 자리가 먼저 있어야 한다
 🟢 **02·03·04 와는 안 겹친다 — 나란히 진행 가능**
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 ## 캡틴 지시 (2026-08-11, 원문)
 
