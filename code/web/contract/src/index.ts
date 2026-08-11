@@ -205,3 +205,107 @@ export const ApiError = z.object({
   error: z.string(),
 });
 export type ApiError = z.infer<typeof ApiError>;
+
+// ── 계획(개발 순서) — INV-5 가 저장을 허락하는 유일한 종류의 값 ──────────
+// `docs/features/development-order/` 티켓 01·02. gootte 자기 저장소, 덮어쓰기만(이력 테이블 없음).
+
+/** 티켓 단계의 종류 — 계획대로 · 틈틈이(다른 작업과 곁들여) · 순서밖(계획에 없던 급한 일). */
+export const TicketKind = z.enum(["planned", "interstitial", "out_of_order"]);
+export type TicketKind = z.infer<typeof TicketKind>;
+
+/**
+ * 기능 하나의 트랙·순위 — `feature_order` 표 1행. `why` 는 필수(빈 문자열이면 숫자만 남아
+ * 착지 한 번에 무의미해진다). `whyNeedsReview` 는 드래그(티켓 04)가 순위만 바꾸고 `why` 는
+ * 안 건드릴 때 붙는 표시 — 이 티켓(01·02)의 CLI 경로에서는 항상 false.
+ */
+export const FeatureOrderEntry = z.object({
+  project: z.string(),
+  feature: z.string(),
+  track: z.string(),
+  rank: z.number(), // 성기게(10·20·30) — 강제하지 않는다, planner 의 습관이다
+  why: z.string().min(1),
+  whyNeedsReview: z.boolean().default(false),
+  updatedAt: z.string(), // ISO — 덮어쓴 시각
+});
+export type FeatureOrderEntry = z.infer<typeof FeatureOrderEntry>;
+
+/**
+ * 티켓 하나의 단계 — `ticket_order` 표 1행. **단계**(`step`) 하나로 순서와 병렬을 함께 적는다
+ * (같은 단계 = 병렬, 다르면 순서 — spec §모델). 의존 관계는 여기 없다 — 티켓의 `Blocked by:` 가 SoT.
+ */
+export const TicketOrderEntry = z.object({
+  project: z.string(),
+  feature: z.string(),
+  ticket: z.string(), // 티켓 번호("01") — `FeatureTicket.num` 과 같은 값
+  step: z.number().int(),
+  kind: TicketKind,
+  why: z.string().min(1),
+  updatedAt: z.string(),
+});
+export type TicketOrderEntry = z.infer<typeof TicketOrderEntry>;
+
+/** `order` 응답 — 적힌 계획을 그대로. 어긋남은 티켓 02 가 곱해 얹는다. */
+export const PlanOrder = z.object({
+  project: z.string(),
+  features: z.array(FeatureOrderEntry),
+  tickets: z.array(TicketOrderEntry),
+});
+export type PlanOrder = z.infer<typeof PlanOrder>;
+
+/**
+ * 계획(DB)과 티켓(관리대상 md)의 어긋남 세 종류 — 감추지 않는다(spec §어긋남은 감추지 않는다).
+ * - `ticket_without_step` — 티켓 문서는 있는데 계획에 단계가 없다(새로 썼는데 안 넣음)
+ * - `step_without_ticket` — 계획엔 단계가 있는데 티켓 문서가 없다(사라졌거나 번호가 바뀜)
+ * - `done_but_staged` — 티켓은 이미 끝났는데(`done`·`dropped`) 계획엔 아직 단계로 남아 있다
+ */
+export const PlanMismatchKind = z.enum([
+  "ticket_without_step",
+  "step_without_ticket",
+  "done_but_staged",
+]);
+export type PlanMismatchKind = z.infer<typeof PlanMismatchKind>;
+
+export const PlanMismatch = z.object({
+  kind: PlanMismatchKind,
+  feature: z.string(),
+  ticket: z.string().optional(),
+  step: z.number().optional(),
+  detail: z.string(), // 사람이 읽는 한 줄 — 계산된 값이라 여기서 조립한다(요약 아님, 사실 나열)
+});
+export type PlanMismatch = z.infer<typeof PlanMismatch>;
+
+/**
+ * `next` 가 트랙별로 빈 이유 — 그냥 빈 목록은 "할 일이 없다" 와 "전부 막혔다" 를 구분 못 한다
+ * (spec §next 의 정의). `mixed` = 막힘과 임자 있음이 섞여 어느 한쪽으로 못 몬다.
+ */
+export const NextEmptyReason = z.enum([
+  "all_blocked",
+  "all_claimed",
+  "mixed",
+  "no_steps",
+  "all_done",
+]);
+export type NextEmptyReason = z.infer<typeof NextEmptyReason>;
+
+export const NextTicket = z.object({
+  feature: z.string(),
+  ticket: z.string(),
+  title: z.string(),
+  why: z.string(), // 계획에 적힌 왜 — verbatim 릴레이(INV-4), 요약하지 않는다
+});
+export type NextTicket = z.infer<typeof NextTicket>;
+
+/** 트랙 하나의 "지금 나란히 보낼 수 있는 것" — `tickets` 가 비면 `emptyReason` 이 왜인지 말한다. */
+export const NextTrack = z.object({
+  track: z.string(),
+  step: z.number().nullable(), // 이 트랙에 계획된 단계가 없으면 null
+  tickets: z.array(NextTicket),
+  emptyReason: NextEmptyReason.nullable(), // tickets 가 있으면 null
+});
+export type NextTrack = z.infer<typeof NextTrack>;
+
+export const NextResult = z.object({
+  tracks: z.array(NextTrack),
+  mismatches: z.array(PlanMismatch),
+});
+export type NextResult = z.infer<typeof NextResult>;

@@ -6,7 +6,7 @@
 
 **Blocked by:** 없음 — 🟢 **지금 착수 가능**
 
-**Status:** claimed
+**Status:** resolved (2026-08-11)
 
 ## 캡틴 지시 (2026-08-11, 원문)
 

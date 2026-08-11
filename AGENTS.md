@@ -21,7 +21,7 @@
 
 - **INV-1 — 파생물만.** projection(막힘 해제 · 처리중 · render-data)은 **관리대상의 md SoT 와 격리 사본
   관측에서 재생성**되는 파생물이다. 손으로 유지되는 2차 SoT 금지 — desync = 틀린 다음-할일 =
-  이 제품이 없애려는 통증의 재발.
+  이 제품이 없애려는 통증의 재발. (사람만 아는 계획 자체를 저장해도 되는 경계는 INV-5 가 갖는다.)
 - **INV-2 — 관리대상은 읽기 전용.** gootte 는 관리대상 프로젝트 문서를 **읽기만** 한다.
   관리대상의 SoT 문서(`docs/features/` 의 spec·티켓·adr)는 **절대 mutate 하지 않는다** —
   처리중 표시를 티켓 파일에 적어 넣는 것도 여기 포함된다.
@@ -31,9 +31,14 @@
 - **INV-4 — read-path 는 결정적·LLM-free.** 할일 목록·막힘 해제·처리중 판정은 전부 계산이다.
   산문 "왜" 는 요약하지 말고 **verbatim 릴레이** — 지능(왜 판단)은 write-time 에 캡처되고,
   read-time 은 계산과 릴레이만 한다.
+- **INV-5 — 계획은 저장하고 사실은 저장하지 않는다.** 사람이 정한 것(단계 · 기능 순위 · 트랙 · 왜)은
+  gootte 자기 저장소에 저장한다. **원본을 다시 읽어 같은 값이 나오는 것은 저장하지 않는다** —
+  티켓 상태 · 막힘 · 착수 가능 여부 · 처리중 · 임자 · 완료 · 제목.
+  판단 기준 한 줄: **다른 어디에도 없는 것만 저장할 자격이 있다.**
+  (`docs/features/development-order/`)
 
-빠른 판단: 새 파일을 쓰려 한다 → INV-1·INV-2 / 캐시·스냅샷을 두려 한다 → INV-1·INV-3 /
-요약·추론을 넣으려 한다 → INV-4.
+빠른 판단: 새 파일을 쓰려 한다 → INV-1·INV-2, 단 사람만 아는 계획(단계·순위·트랙·왜)이면 INV-5 가 저장을
+허락한다 / 캐시·스냅샷을 두려 한다 → INV-1·INV-3 / 요약·추론을 넣으려 한다 → INV-4.
 
 ## Verify gate — 컴파일만으로 완료 금지
 
@@ -105,6 +110,7 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 | `pnpm test:ports` | 포트 해석기 테스트만 (`scripts/tests/ports.test.sh`) | 에이전트 가능 |
 | `pnpm discover <root>` | 로컬 관리대상 프로젝트 발견 · 읽기 전용 | 에이전트 가능 |
 | `pnpm gootte discover <…>` | 같은 것을 CLI 로 직접 호출 | 에이전트 가능 |
+| `pnpm gootte set\|set-feature\|drop\|order\|next <…>` | 개발 순서 계획(INV-5) — 인자는 `code/web/cli/src/commands.ts` 가 SoT | planner·에이전트 가능 |
 | `pnpm dev:backend` | Hono API dev 서버 (`scripts/dev-backend.sh` → `tsx watch`) | **사용자가 띄운다** |
 | `pnpm dev:frontend` | Vite dev 서버 (`scripts/dev-frontend.sh`, `/api` → backend 프록시) | **사용자가 띄운다** |
 | `pnpm dev` | backend + frontend 동시 (`scripts/dev.sh`) | **사용자가 띄운다** |
@@ -114,7 +120,8 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 `discover` 와 backend 가 어디를 뒤질지는 env `GOOTTE_ROOTS`(콜론 구분, 기본
 `~/Documents/ai2/projects`)가 정한다. **"지금 누가 무엇을 붙들고 있나"** 를 관측할 격리 사본 뿌리는 env
 `GOOTTE_TREEHOUSE`(기본 `~/.treehouse`) 다 — 기계마다 다르니 경로를 코드에 못 박지 않는다.
-둘 다 `code/web/backend/src/app.ts` 가 SoT.
+둘 다 `code/web/backend/src/app.ts` 가 SoT. 계획(INV-5) 저장 자리는 env `GOOTTE_DATA_DIR`(기본
+`~/.gootte`) — `code/web/cli/src/main.ts` 가 SoT.
 
 ### dev 포트 — `scripts/ports.sh` 가 유일한 판정자
 

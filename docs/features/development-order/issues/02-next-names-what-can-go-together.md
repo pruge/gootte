@@ -6,7 +6,7 @@
 
 **Blocked by:** [01](01-the-plan-is-written-down-and-read-back.md) — 계획이 저장돼 있어야 곱할 것이 있다
 
-**Status:** claimed
+**Status:** resolved (2026-08-11)
 
 ## 캡틴 지시 (2026-08-11, 원문)
 
