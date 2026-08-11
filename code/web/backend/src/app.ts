@@ -8,10 +8,18 @@ import {
   FeatureDocResponse,
   PlanResponse,
   DragResult,
+  OpinionRequest,
   type ApiError,
   type DragWarning,
 } from "@gootte/contract";
-import { applyInProgress, checkTicketDragWarnings, computeNext, countOpenFeatures } from "@gootte/core";
+import {
+  applyInProgress,
+  checkTicketDragWarnings,
+  computeNext,
+  countOpenFeatures,
+  detectOpinionTriggers,
+  formatPlanSnapshot,
+} from "@gootte/core";
 import {
   readFeatures,
   readFeatureDoc,
@@ -23,6 +31,8 @@ import {
   moveTicketStep,
   insertTicketStep,
   moveFeatureOrder,
+  addOpinionRequest,
+  listOpinionRequests,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
@@ -58,6 +68,7 @@ const featureRankBody = z.object({
   beforeRank: z.number().nullable(),
   afterRank: z.number().nullable(),
 });
+const askRequestBody = z.object({ detail: z.string().min(1) });
 export interface AppOptions {
   /** discover 루트 (테스트 주입). 없으면 defaultRoots(). */
   roots?: string[];
@@ -117,6 +128,8 @@ export function createApp(options: AppOptions = {}): Hono {
   // GET /api/plan/:slug → PlanResponse (티켓 03 — `plan` 탭). 계획(gootte 자기 저장소, INV-5)과
   // 티켓 문서(INV-2 read-only, 매 요청 재계산)를 함께 싣고, `next`·어긋남은 02 의 순수 함수 하나로
   // 계산한다 — 화면과 CLI(`gootte next`)가 같은 함수를 쓴다(spec §판정 자리는 하나뿐).
+  // `askTriggers` 는 06 의 순수 함수가 매 요청 계산(INV-1) — 버튼이 뜰 자리일 뿐 저장하지 않는다.
+  // `askRequests` 는 처리·미처리 가리지 않고 함께 싣는다 — 답이 그 배치 옆에 계속 붙어 있어야 한다.
   app.get("/api/plan/:slug", zValidator("param", slugParam), (c) => {
     const { slug } = c.req.valid("param");
     const proj = resolveSlug(roots, slug);
@@ -125,8 +138,36 @@ export function createApp(options: AppOptions = {}): Hono {
     const features = readFeatures(proj.path);
     const order = readPlanOrder(dataDir, project);
     const next = computeNext(features, order.features, order.tickets);
-    return c.json(PlanResponse.parse({ project, features, order, next }));
+    const askTriggers = detectOpinionTriggers(order);
+    const askRequests = listOpinionRequests(dataDir, { project, all: true });
+    return c.json(PlanResponse.parse({ project, features, order, next, askTriggers, askRequests }));
   });
+
+  /**
+   * 티켓 06 — 캡틴이 [의견 물어보기] 를 누른다. gootte 의 두 번째 쓰기 경로 — `opinion_request` 한 줄만
+   * 남긴다(채팅창이 아니다). 배치 요약은 **이 순간의** `order` 를 스냅샷한다(spec 06 §표).
+   * 답은 planner 가 CLI(`ask answer`)로 적는다 — 이 라우트는 요청을 남기는 쪽만 갖는다.
+   */
+  app.post(
+    "/api/plan/:slug/ask",
+    zValidator("param", slugParam),
+    zValidator("json", askRequestBody),
+    (c) => {
+      const { slug } = c.req.valid("param");
+      const proj = resolveSlug(roots, slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      const project = basename(proj.path);
+      const { detail } = c.req.valid("json");
+      const order = readPlanOrder(dataDir, project);
+      const entry = addOpinionRequest(dataDir, {
+        project,
+        batchSummary: formatPlanSnapshot(order),
+        question: detail,
+      });
+      onPlanChange(project);
+      return c.json(OpinionRequest.parse(entry));
+    },
+  );
 
   /**
    * 티켓 04 — 캡틴이 `plan` 탭에서 끌어서 순서를 바꾼다. gootte 의 첫 쓰기 경로(INV-2 §예외조차

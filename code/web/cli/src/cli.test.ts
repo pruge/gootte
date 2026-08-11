@@ -2,9 +2,12 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { beforeAll, beforeEach, describe, it, expect } from "vitest";
-import { discoverProjects } from "@gootte/core-io";
+import { addOpinionRequest, discoverProjects } from "@gootte/core-io";
 import { CliError } from "./args";
 import {
+  askAnswerText,
+  askListText,
+  askShowText,
   discoverText,
   dropText,
   extraAddText,
@@ -117,5 +120,46 @@ describe("cli — extra wiring(티켓 05)", () => {
 
   it("prune 은 --before 없이 거절한다", () => {
     expect(() => extraPruneText([], dataDir)).toThrow(CliError);
+  });
+});
+
+describe("cli — ask wiring(티켓 06)", () => {
+  let dataDir: string;
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), "gootte-ask-cli-"));
+  });
+
+  it("대기 0건이면 출력이 비어 있다 — 🔴 첫 커버(firstmate 확인 규약, extra 와 같다)", () => {
+    expect(askListText(["p"], dataDir)).toBe("");
+  });
+
+  it("요청이 있으면 ask 에 그 한 줄이 나온다", () => {
+    addOpinionRequest(dataDir, { project: "p", batchSummary: "…", question: "이대로 가도 되는지 봐 달라" });
+    const text = askListText(["p"], dataDir);
+    expect(text).toContain("이대로 가도 되는지 봐 달라");
+  });
+
+  it("answer 뒤 ask 를 치면 다시 비어 있다", () => {
+    const entry = addOpinionRequest(dataDir, { project: "p", batchSummary: "…", question: "…" });
+    askAnswerText([String(entry.id), "--say", "이대로 가자"], dataDir);
+    expect(askListText(["p"], dataDir)).toBe("");
+  });
+
+  it("ask show 가 배치 요약·물음·답을 verbatim 으로 보여준다", () => {
+    const entry = addOpinionRequest(dataDir, { project: "p", batchSummary: "그 순간의 배치", question: "정말 무관한지" });
+    askAnswerText([String(entry.id), "--say", "무관하다 — 이대로 가자"], dataDir);
+    const text = askShowText([String(entry.id)], dataDir);
+    expect(text).toContain("그 순간의 배치");
+    expect(text).toContain("정말 무관한지");
+    expect(text).toContain("무관하다 — 이대로 가자");
+  });
+
+  it("answer 는 --say 없이 거절한다", () => {
+    const entry = addOpinionRequest(dataDir, { project: "p", batchSummary: "…", question: "…" });
+    expect(() => askAnswerText([String(entry.id)], dataDir)).toThrow(CliError);
+  });
+
+  it("show 는 없는 id 면 거절한다", () => {
+    expect(() => askShowText(["999"], dataDir)).toThrow(CliError);
   });
 });

@@ -6,3 +6,4 @@ export * from "./watch";
 export * from "./plan-watch";
 export * from "./plan-store";
 export * from "./extra-store";
+export * from "./opinion-store";

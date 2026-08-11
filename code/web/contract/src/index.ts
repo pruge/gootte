@@ -341,17 +341,63 @@ export const NextResult = z.object({
 });
 export type NextResult = z.infer<typeof NextResult>;
 
+// ── 판단 요청(ask, 티켓 06) — 캡틴이 의견을 청하고 답을 그 자리에서 본다 ──────────
+// `opinion_request` 표. `extra`(위)와 같은 규약 — 소비하는 큐, 있을 때만 한 줄, 없으면 침묵.
+
+/**
+ * 버튼이 뜨는 조건 셋(spec 06 §인지는 자동, 전달은 버튼) — 기계가 매 읽기 계산한다(INV-1).
+ * `ticket_crossed` = 한 기능의 티켓 사이에 다른 기능이 끼어들었다.
+ * `new_parallel` = 서로 다른 기능의 티켓이 같은 단계에 놓였다.
+ * `why_flipped` = 드래그(티켓 04)가 `왜` 를 확인 필요로 세웠다 — 새 판정이 아니라 그 표시를 그대로 읽는다.
+ */
+export const OpinionTriggerKind = z.enum(["ticket_crossed", "new_parallel", "why_flipped"]);
+export type OpinionTriggerKind = z.infer<typeof OpinionTriggerKind>;
+
+/**
+ * 판단이 필요한 자리 하나 — **저장하지 않는다**(INV-1, 04 의 즉시 검사와 같은 성격이지만 다른 판정 자리).
+ * `detail` 이 그대로 버튼을 눌렀을 때의 "물음" 이 된다 — 기계가 아는 사실을 verbatim 으로 얹을 뿐,
+ * 캡틴이 무엇을 물어야 할지 안 정하셔도 된다.
+ */
+export const OpinionTrigger = z.object({
+  kind: OpinionTriggerKind,
+  feature: z.string().nullable(),
+  step: z.number().int().nullable(),
+  detail: z.string(),
+});
+export type OpinionTrigger = z.infer<typeof OpinionTrigger>;
+
+/**
+ * `opinion_request` 표 1행 — gootte 자기 저장소, 처리 표시로 소비한다(`extra` 와 같은 성격, 지우지 않는다).
+ * `batchSummary` 는 버튼을 누른 **그 순간의 배치**(verbatim 스냅샷) — 나중에 더 끄셔도 planner 가
+ * 무엇에 대해 답하는지 흔들리지 않는다. `answer` 는 planner 가 `ask answer` 로 적은 그대로 싣는다 —
+ * 요약하지 않는다(INV-4).
+ */
+export const OpinionRequest = z.object({
+  id: z.number().int(),
+  project: z.string(),
+  batchSummary: z.string().min(1),
+  question: z.string().min(1),
+  answer: z.string().nullable(),
+  done: z.boolean(), // 답이 달리면 true — 처리 표시일 뿐 지우지 않는다
+  updatedAt: z.string(),
+});
+export type OpinionRequest = z.infer<typeof OpinionRequest>;
+
 /**
  * `plan` 탭(티켓 03) 응답 — 화면이 전체 개발 순서를 그리는 데 필요한 셋을 한 번에 싣는다.
  * `features` 는 막힘·착수 가능·완료가 **매 요청 재계산된** 값(INV-1·INV-3, `FeaturesResponse` 와 같은 파생).
  * `order` 는 gootte 가 저장한 계획(INV-5) 그대로. `next` 는 02 의 순수 함수 결과 — 화면은 이것을
  * 그대로 쓰고 다시 판정하지 않는다(spec §판정 자리는 하나뿐).
+ * `askTriggers` 는 06 의 순수 함수가 매 요청 계산한 것(INV-1) — 버튼이 뜰 자리. `askRequests` 는
+ * gootte 가 저장한 판단 요청/답 그대로(INV-5) — 처리·미처리 가리지 않고 함께 싣는다(그 배치 옆에 붙어야 한다).
  */
 export const PlanResponse = z.object({
   project: z.string(),
   features: z.array(Feature).default([]),
   order: PlanOrder,
   next: NextResult,
+  askTriggers: z.array(OpinionTrigger).default([]),
+  askRequests: z.array(OpinionRequest).default([]),
 });
 export type PlanResponse = z.infer<typeof PlanResponse>;
 
