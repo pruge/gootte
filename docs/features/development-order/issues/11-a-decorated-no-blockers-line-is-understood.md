@@ -6,7 +6,7 @@
 
 **Blocked by:** 없음 — 지금 착수 가능
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 ## 🔴 실제로 숨은 티켓 (2026-08-11 실측)
 
