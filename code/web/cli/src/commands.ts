@@ -1,23 +1,13 @@
-import type {
-  ExtraEntry,
-  ExtraListItem,
-  NextResult,
-  OpinionRequest,
-  PlanMismatch,
-  PlanOrder,
-} from "@gootte/contract";
+import type { ExtraEntry, ExtraListItem, NextResult, PlanMismatch, PlanOrder } from "@gootte/contract";
 import { annotateExtraExistence, computeMismatches, computeNext } from "@gootte/core";
 import {
   addExtra,
-  answerOpinionRequest,
   defaultPlanDataDir,
   defaultProjectRoots,
   discoverProjects,
   doneExtra,
   dropOrder,
-  getOpinionRequest,
   listExtra,
-  listOpinionRequests,
   pruneExtra,
   readFeatures,
   readPlanOrder,
@@ -242,56 +232,4 @@ export function extraPruneText(argv: readonly string[], dataDir = defaultPlanDat
   if (!before) throw new CliError("usage: gootte extra prune --before <날짜>");
   const count = pruneExtra(dataDir, before);
   return `삭제: ${count}건`;
-}
-
-// ── ask — 캡틴이 의견을 청하고 답을 그 자리에서 본다(development-order/06) ──────────
-// 요청은 화면(`plan` 탭)의 버튼이 만든다 — CLI 는 대기 중인 것을 읽고 답을 적는 쪽만 갖는다.
-
-function askLine(item: OpinionRequest): string {
-  const doneMark = item.done ? "[답변됨] " : "";
-  return `${doneMark}#${item.id} ${item.project} — ${item.question}`;
-}
-
-/**
- * `ask` — 🔴 `extra` 와 같은 규약(spec §명령): 대기 중이면 항목마다 한 줄, 없으면 **빈 문자열**
- * (main.ts 가 빈 문자열이면 아무것도 안 찍는다 — firstmate 확인 장치가 이 침묵으로 깨어난다).
- */
-export function askListText(argv: readonly string[], dataDir = defaultPlanDataDir()): string {
-  const { positional, flags } = parseArgs(argv);
-  const [project] = positional;
-  const items = listOpinionRequests(dataDir, { project, all: Boolean(flags.all) });
-  if (flags.json) return JSON.stringify(items, null, 2);
-  if (items.length === 0) return "";
-  return items.map(askLine).join("\n");
-}
-
-export function askShowText(argv: readonly string[], dataDir = defaultPlanDataDir()): string {
-  const { positional, flags } = parseArgs(argv);
-  const [idRaw] = positional;
-  const id = idRaw === undefined ? Number.NaN : Number(idRaw);
-  if (!idRaw || Number.isNaN(id)) throw new CliError("usage: gootte ask show <id>");
-  const item = getOpinionRequest(dataDir, id);
-  if (!item) throw new CliError(`ask id ${id} 를 찾을 수 없다`);
-  if (flags.json) return JSON.stringify(item, null, 2);
-  return [
-    `#${item.id} ${item.project}`,
-    "",
-    "배치:",
-    item.batchSummary,
-    "",
-    "물음:",
-    item.question,
-    "",
-    item.answer ? `답:\n${item.answer}` : "(아직 답 없음)",
-  ].join("\n");
-}
-
-export function askAnswerText(argv: readonly string[], dataDir = defaultPlanDataDir()): string {
-  const { positional, flags } = parseArgs(argv);
-  const [idRaw] = positional;
-  const id = idRaw === undefined ? Number.NaN : Number(idRaw);
-  const say = flagString(flags, "say");
-  if (!idRaw || Number.isNaN(id) || !say) throw new CliError('usage: gootte ask answer <id> --say "…"');
-  const entry = answerOpinionRequest(dataDir, id, say);
-  return `#${entry.id} 답변 완료`;
 }

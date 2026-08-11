@@ -9,6 +9,13 @@ interface TicketChipProps {
   highlighted: boolean;
   /** 드래그가 단계만 바꾸고 `why` 는 안 건드렸다는 표시(spec 04 §왜 는 안 건드린다). */
   whyNeedsReview?: boolean;
+  /**
+   * 끄는 동안 무엇을 끄는지 부모가 알아야 할 때(티켓 09 ③ — 다른 칸으로 끌면 기능의 트랙이
+   * 바뀐다는 것을 dragover 중에 미리 알려야 한다). `dataTransfer.getData` 는 dragover 중엔
+   * 못 읽으므로(브라우저 제약) 이 콜백으로 React 상태에 얹어 둔다.
+   */
+  onDragStart?: (feature: string, ticketNum: string) => void;
+  onDragEnd?: () => void;
 }
 
 function toneClass(ticket: FeatureTicket | null, highlighted: boolean): string {
@@ -25,11 +32,23 @@ function toneClass(ticket: FeatureTicket | null, highlighted: boolean): string {
  * 티켓 칩 하나 — 상태는 서버가 매 요청 재계산해 보낸 값을 그대로 그린다(INV-1, 여기서 재판정 X).
  * 끌 수 있다(티켓 04) — 단계 줄 사이로, 또는 줄과 줄 사이로.
  */
-export function TicketChip({ feature, ticketNum, ticket, highlighted, whyNeedsReview }: TicketChipProps) {
+export function TicketChip({
+  feature,
+  ticketNum,
+  ticket,
+  highlighted,
+  whyNeedsReview,
+  onDragStart,
+  onDragEnd,
+}: TicketChipProps) {
   return (
     <span
       draggable
-      onDragStart={(e) => setTicketDragData(e, feature, ticketNum)}
+      onDragStart={(e) => {
+        setTicketDragData(e, feature, ticketNum);
+        onDragStart?.(feature, ticketNum);
+      }}
+      onDragEnd={() => onDragEnd?.()}
       title={ticket ? ticket.title : `${feature}/${ticketNum} — 티켓 문서를 찾지 못함(어긋남)`}
       className={`mono inline-flex max-w-full cursor-grab items-center gap-1.5 rounded-md border px-2 py-1 text-sm active:cursor-grabbing ${toneClass(ticket, highlighted)}`}
     >
