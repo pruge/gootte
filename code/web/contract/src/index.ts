@@ -64,6 +64,9 @@ export const FeatureTicket = z.object({
   completedAt: z.string().optional(), // `resolved (YYYY-MM-DD)` 의 완료일
   // `Blocked by:` 한 항목 = 한 원소. 번호("01") 아니면 번호로 특정되지 않은 문구(verbatim).
   blockedBy: z.array(z.string()).default([]),
+  // 번호도 "없음" 도 못 알아들은 산문 — verbatim. 막지 않되(startable 계산에서 빠진다) 감추지도 않는다
+  // — `computeMismatches` 가 이 값을 어긋남 목록에 올린다(development-order/11).
+  unreadableBlockedBy: z.array(z.string()).default([]),
   waitingOn: z.array(z.string()).default([]), // 그중 아직 완료가 아닌 것 — 계산
   // 착수 가능 = waitingOn 이 비었고 + 임자(claimed)가 없다 — 계산이지 파일에 적힌 값이 아니다(INV-1).
   // 판정하는 자리는 여기 하나뿐이다 — 머리글 집계와 줄 표시가 이 값을 그대로 센다(같은 결함을 반복하지 않는다).
@@ -284,15 +287,18 @@ export const ExtraListItem = ExtraEntry.extend({
 export type ExtraListItem = z.infer<typeof ExtraListItem>;
 
 /**
- * 계획(DB)과 티켓(관리대상 md)의 어긋남 세 종류 — 감추지 않는다(spec §어긋남은 감추지 않는다).
+ * 계획(DB)과 티켓(관리대상 md)의 어긋남 — 감추지 않는다(spec §어긋남은 감추지 않는다).
  * - `ticket_without_step` — 티켓 문서는 있는데 계획에 단계가 없다(새로 썼는데 안 넣음)
  * - `step_without_ticket` — 계획엔 단계가 있는데 티켓 문서가 없다(사라졌거나 번호가 바뀜)
  * - `done_but_staged` — 티켓은 이미 끝났는데(`done`·`dropped`) 계획엔 아직 단계로 남아 있다
+ * - `blocked_by_unreadable` — `Blocked by:` 줄에 번호도 "없음" 도 못 알아들은 산문이 있다
+ *   (development-order/11) — 막지는 않되, 못 읽었다는 사실 자체를 드러낸다
  */
 export const PlanMismatchKind = z.enum([
   "ticket_without_step",
   "step_without_ticket",
   "done_but_staged",
+  "blocked_by_unreadable",
 ]);
 export type PlanMismatchKind = z.infer<typeof PlanMismatchKind>;
 

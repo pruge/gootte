@@ -11,6 +11,7 @@ const ticket = (num: string, slug: string, over: Partial<FeatureTicket> = {}): F
   sourceStatus: "ready-for-agent",
   statusKnown: true,
   blockedBy: [],
+  unreadableBlockedBy: [],
   waitingOn: [],
   startable: true,
   workedBy: [],

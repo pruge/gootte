@@ -11,6 +11,7 @@ function ticket(num: string, overrides: Partial<FeatureTicket> = {}): FeatureTic
     sourceStatus: "ready-for-agent",
     statusKnown: true,
     blockedBy: [],
+    unreadableBlockedBy: [],
     waitingOn: [],
     startable: true,
     workedBy: [],

@@ -131,6 +131,7 @@ const MISMATCH_LABEL: Record<PlanMismatch["kind"], string> = {
   ticket_without_step: "단계 없는 티켓",
   step_without_ticket: "티켓 없는 단계",
   done_but_staged: "끝났는데 앞 단계에 남은 것",
+  blocked_by_unreadable: "Blocked by 못 읽음",
 };
 
 function formatMismatches(mismatches: readonly PlanMismatch[]): string {
