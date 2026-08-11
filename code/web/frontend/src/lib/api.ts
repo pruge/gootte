@@ -5,6 +5,7 @@ import {
   FeatureDocResponse,
   PlanResponse,
   DragResult,
+  OpinionRequest,
   ApiError,
   type Project,
 } from "@gootte/contract";
@@ -76,3 +77,10 @@ export const moveFeatureRank = (
   project: string,
   input: { feature: string; track: string; beforeRank: number | null; afterRank: number | null },
 ): Promise<DragResult> => post(`/api/plan/${encodeURIComponent(project)}/feature-rank`, input, DragResult);
+
+// ── ask(티켓 06) — [의견 물어보기] 버튼. 캡틴이 무엇을 물을지 타이핑하지 않는다 —
+// 서버가 계산해 보낸 트리거의 `detail` 을 그대로 보낸다. ──────────
+
+/** 버튼 클릭 — 요청 한 줄을 남긴다. 답은 planner 가 CLI 로 적는다(이 함수가 기다리지 않는다). */
+export const postAsk = (project: string, detail: string): Promise<OpinionRequest> =>
+  post(`/api/plan/${encodeURIComponent(project)}/ask`, { detail }, OpinionRequest);

@@ -2,6 +2,9 @@ import { resolve } from "node:path";
 import { defaultPlanDataDir, defaultProjectRoots } from "@gootte/core-io";
 import { CliError } from "./args";
 import {
+  askAnswerText,
+  askListText,
+  askShowText,
   discoverText,
   dropText,
   extraAddText,
@@ -33,6 +36,9 @@ function usage(): number {
       "  extra       [프로젝트] [--all] [--json]   (미처리만 — 없으면 침묵)",
       "  extra done  <id>",
       "  extra prune --before <날짜>",
+      "  ask         [프로젝트] [--all] [--json]   (대기 중만 — 없으면 침묵)",
+      "  ask show    <id>",
+      '  ask answer  <id> --say "…"',
       "",
     ].join("\n"),
   );
@@ -80,6 +86,21 @@ function run(argv: string[]): number {
         }
         // 미처리 없음 → 빈 문자열 → 아무것도 안 찍는다(ask 와 같은 침묵 규약).
         const text = extraListText(rest, planDataDir());
+        if (text) process.stdout.write(text + "\n");
+        return 0;
+      }
+      case "ask": {
+        const [sub, ...subRest] = rest;
+        if (sub === "show") {
+          process.stdout.write(askShowText(subRest, planDataDir()) + "\n");
+          return 0;
+        }
+        if (sub === "answer") {
+          process.stdout.write(askAnswerText(subRest, planDataDir()) + "\n");
+          return 0;
+        }
+        // 대기 없음 → 빈 문자열 → 아무것도 안 찍는다(extra 와 같은 침묵 규약).
+        const text = askListText(rest, planDataDir());
         if (text) process.stdout.write(text + "\n");
         return 0;
       }

@@ -6,7 +6,7 @@
 
 **Blocked by:** [04](04-the-captain-drags-to-change-the-order.md) — 버튼이 드래그 화면 위에 산다
 
-**Status:** claimed
+**Status:** resolved (2026-08-11)
 
 ## 캡틴 지시 (2026-08-11, 원문)
 

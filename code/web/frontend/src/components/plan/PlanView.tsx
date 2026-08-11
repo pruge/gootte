@@ -1,8 +1,15 @@
 import { useState } from "react";
 import { IconArrowsShuffle } from "@tabler/icons-react";
 import type { DragWarning } from "@gootte/contract";
-import { useInsertTicketStep, useMoveFeatureRank, useMoveTicketStep, usePlan } from "../../lib/query";
+import {
+  useAskOpinion,
+  useInsertTicketStep,
+  useMoveFeatureRank,
+  useMoveTicketStep,
+  usePlan,
+} from "../../lib/query";
 import { Loading, ErrorMsg } from "../common/states";
+import { AskOpinionPanel } from "./AskOpinionPanel";
 import { MismatchList } from "./MismatchList";
 import { NextPanel } from "./NextPanel";
 import { StepView } from "./StepView";
@@ -35,11 +42,13 @@ export function PlanView({ project, view, onView }: PlanViewProps) {
   const { data, isLoading, isError, error } = usePlan(project);
   const [nextOn, setNextOn] = useState(false);
   const [warnings, setWarnings] = useState<readonly DragWarning[]>([]);
+  const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
   const activeView = view === "feature" ? "feature" : "step";
 
   const moveTicketStep = useMoveTicketStep(project);
   const insertTicketStep = useInsertTicketStep(project);
   const moveFeatureRank = useMoveFeatureRank(project);
+  const askOpinion = useAskOpinion(project);
 
   if (isLoading) return <Loading label="개발 순서 읽는 중…" />;
   if (isError) return <ErrorMsg error={error} />;
@@ -93,6 +102,16 @@ export function PlanView({ project, view, onView }: PlanViewProps) {
       <DragWarningBanner warnings={warnings} onDismiss={() => setWarnings([])} />
 
       <MismatchList mismatches={data.next.mismatches} />
+
+      <AskOpinionPanel
+        triggers={data.askTriggers}
+        requests={data.askRequests}
+        sending={sending}
+        onAsk={(detail) => {
+          setSending((prev) => new Set(prev).add(detail));
+          askOpinion.mutate(detail);
+        }}
+      />
 
       {activeView === "step" ? (
         <StepView

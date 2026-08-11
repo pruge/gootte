@@ -7,6 +7,7 @@ import {
   moveTicketStep,
   insertTicketStep,
   moveFeatureRank,
+  postAsk,
 } from "./api";
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
@@ -87,6 +88,15 @@ export function useMoveFeatureRank(project: string) {
   return useMutation({
     mutationFn: (input: { feature: string; track: string; beforeRank: number | null; afterRank: number | null }) =>
       moveFeatureRank(project, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.plan(project) }),
+  });
+}
+
+/** [의견 물어보기](티켓 06) — 요청 한 줄을 남긴다. 답은 CLI 로 planner 가 적고, 도착은 WS(`plan.db` 워처)가 알려준다. */
+export function useAskOpinion(project: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (detail: string) => postAsk(project, detail),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.plan(project) }),
   });
 }

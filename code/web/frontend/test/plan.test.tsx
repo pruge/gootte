@@ -133,6 +133,8 @@ const DATA: PlanResponse = {
       },
     ],
   },
+  askTriggers: [],
+  askRequests: [],
 };
 
 /** view 상태를 실제로 URL 훅처럼 들고 있는 최소 하네스 — 탭 전환 왕복을 실제로 검증한다. */
@@ -257,5 +259,83 @@ describe("PlanView — 드래그(티켓 04, 🔴 첫 커버) → 쓰기 → 재�
     fireEvent.drop(lane, { dataTransfer: dt });
 
     await waitFor(() => expect(api.moveFeatureRank).toHaveBeenCalled());
+  });
+});
+
+// 🔴 첫 커버(spec 06 §테스트) — 답이 요약 없이 그대로 실린다, 그리고 버튼이 04 의 즉시 검사와 섞이지 않는다.
+describe("PlanView — 판단 요청(티켓 06, 🔴 첫 커버)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("조건이 없으면 판단 요청 패널이 안 뜬다", () => {
+    renderPlan();
+    expect(screen.queryByText("판단이 필요합니다 — 캡틴 의견을 청할 수 있습니다")).toBeNull();
+  });
+
+  it("버튼이 뜨는 자리가 있으면 [의견 물어보기] 가 보이고, 04 의 놓는 순간 배너와는 다른 문구다", () => {
+    const data: PlanResponse = {
+      ...DATA,
+      askTriggers: [
+        { kind: "new_parallel", feature: null, step: 1, detail: "단계 1에 서로 다른 기능이 나란히 놓였다 — 정말 무관한지 봐 달라" },
+      ],
+    };
+    renderPlan(data);
+    expect(screen.getByText("단계 1에 서로 다른 기능이 나란히 놓였다 — 정말 무관한지 봐 달라")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "의견 물어보기" })).toBeInTheDocument();
+    // 놓는 순간 검사(04)의 문구("막지 않습니다")는 여기 없다 — 두 덩이가 섞이지 않는다.
+    expect(screen.queryByText(/놓는 순간 알아챈 것/)).toBeNull();
+  });
+
+  it("누르면 요청이 남고(verbatim detail 전송) 버튼이 보냈습니다로 바뀐다", async () => {
+    const detail = "단계 1에 서로 다른 기능이 나란히 놓였다 — 정말 무관한지 봐 달라";
+    const data: PlanResponse = { ...DATA, askTriggers: [{ kind: "new_parallel", feature: null, step: 1, detail }] };
+    const created = {
+      id: 1,
+      project: "alpha",
+      batchSummary: "…",
+      question: detail,
+      answer: null,
+      done: false,
+      updatedAt: "2026-08-11T00:00:00.000Z",
+    };
+    vi.spyOn(api, "postAsk").mockResolvedValue(created);
+    vi.spyOn(api, "fetchPlan").mockResolvedValue({ ...data, askRequests: [created] });
+    renderPlan(data);
+
+    fireEvent.click(screen.getByRole("button", { name: "의견 물어보기" }));
+
+    await waitFor(() => expect(api.postAsk).toHaveBeenCalledWith("alpha", detail));
+    expect(screen.getByRole("button", { name: "보냈습니다" })).toBeDisabled();
+  });
+
+  it("답이 도착하면 그 배치 옆에 verbatim 으로 붙는다 — 요약하지 않는다", () => {
+    const answer = "무관하다 — 이대로 가자. 잘라내지도 다듬지도 않는다, 있는 그대로 한 줄.";
+    const data: PlanResponse = {
+      ...DATA,
+      askRequests: [
+        {
+          id: 7,
+          project: "alpha",
+          batchSummary: "…",
+          question: "정말 무관한지 봐 달라",
+          answer,
+          done: true,
+          updatedAt: "2026-08-11T01:00:00.000Z",
+        },
+      ],
+    };
+    const { container } = renderPlan(data);
+    expect(container.textContent).toContain(answer);
+    expect(screen.getByText(/planner · 2026-08-11T01:00:00.000Z/)).toBeInTheDocument();
+  });
+
+  it("답을 기다리는 중이면 그 사실이 보인다", () => {
+    const data: PlanResponse = {
+      ...DATA,
+      askRequests: [
+        { id: 7, project: "alpha", batchSummary: "…", question: "정말 무관한지", answer: null, done: false, updatedAt: "t" },
+      ],
+    };
+    renderPlan(data);
+    expect(screen.getByText("답을 기다리는 중…")).toBeInTheDocument();
   });
 });
