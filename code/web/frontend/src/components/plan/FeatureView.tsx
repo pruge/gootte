@@ -15,8 +15,17 @@ interface FeatureViewProps {
   onOpenDoc: OpenDocFn;
 }
 
+/**
+ * 놓일 자리 — 가는 줄이 아니라 **공간**으로 보여준다(캡틴 피드백 2026-08-11:
+ * "기능보기에서는 잘 해놓았어. 다만 한 줄로 표시하지 말고 공간으로 표시해"). 실제 기능 카드가
+ * 차지할 만한 높이를 점선 테두리로 미리 비워 둔다.
+ */
 function DropIndicator() {
-  return <div className="h-0.5 rounded-full bg-accent" />;
+  return (
+    <div className="flex h-11 min-w-0 items-center justify-center rounded-md border-2 border-dashed border-accent bg-accent/10">
+      <span className="mono text-xs text-accent">여기로 이동</span>
+    </div>
+  );
 }
 
 /** 기능 카드 하나 — 끌 수 있다(티켓 04). 위/아래 절반 중 어디를 지나는지로 놓일 자리를 정한다. */

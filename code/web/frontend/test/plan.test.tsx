@@ -361,10 +361,14 @@ describe("PlanView — 드래그(티켓 04, 🔴 첫 커버) → 쓰기 → 재�
 // 🔴 티켓 04 §무엇이 바뀌나: "티켓 칩 → 단계", "기능 카드 → 트랙" 으로 축이 갈라져 있다.
 // 09 시절 "칩을 다른 트랙 상자로 끌면 기능의 트랙이 바뀐다"는 그 표와 어긋나 있었다 — 캡틴
 // 피드백(2026-08-11, "track이 다르면 막아야 하지 않나 — track은 고정 아닌가")으로 04 표에 맞춘다.
-describe("PlanView — 단계 보기에서 다른 트랙 상자에 놓아도 트랙은 안 바뀐다(04 표 교정, 🔴 첫 커버)", () => {
+//
+// 🔴 강조도 캡틴 피드백으로 다시 짰다: "화면은 밝게 빛나는데 정작 못 가잖아." 카드 전체나
+// 마우스가 지금 있는 상자가 아니라, **끄는 티켓 자기 트랙과 같은 상자 하나만** 마우스 위치와
+// 무관하게 빛난다 — 그 상자가 없으면 가상 상자(공간)로 자리를 보여준다("공간을 벌려서 표시").
+describe("PlanView — 단계 보기 드래그는 트랙을 절대 안 바꾸고, 실제 놓일 자리만 정확히 빛난다(04 표 교정, 🔴 첫 커버)", () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it("다른 트랙 상자 위에서는 '트랙 그대로' 가 보이고, 놓으면 단계만 바뀐다 — 트랙은 안 바뀐다", async () => {
+  it("다른 트랙 상자 위에서 hover 해도 — 내 트랙 상자만 빛나고 그 상자는 안 빛난다, 트랙은 안 바뀐다", async () => {
     const moveFeatureRank = vi.spyOn(api, "moveFeatureRank");
     vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
     vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
@@ -372,13 +376,15 @@ describe("PlanView — 단계 보기에서 다른 트랙 상자에 놓아도 트
 
     const chip = screen.getByText("auth-login/02").closest("span")!; // 지금 트랙 = web
     const step1Card = screen.getByText("단계 1").closest("section")!;
+    const webGroup = within(step1Card).getByText("web").closest("div")!;
     const paymentsGroup = within(step1Card).getByText("payments").closest("div")!;
     const dt = makeDataTransfer();
     fireEvent.dragStart(chip, { dataTransfer: dt });
-    fireEvent.dragOver(paymentsGroup, { dataTransfer: dt });
+    fireEvent.dragOver(paymentsGroup, { dataTransfer: dt }); // 다른 트랙 상자 위에서 hover
 
-    // 놓기 전에 — 트랙은 그대로라는 것이 끄는 동안 보인다.
-    expect(within(paymentsGroup).getByText("「web」 트랙 그대로 — 단계만 여기로")).toBeInTheDocument();
+    // 마우스는 payments 위에 있지만, 실제로 놓일 web 상자만 빛난다 — payments 는 안 빛난다.
+    expect(webGroup.className).toContain("border-accent");
+    expect(paymentsGroup.className).not.toContain("border-accent");
 
     fireEvent.drop(paymentsGroup, { dataTransfer: dt });
 
@@ -387,15 +393,8 @@ describe("PlanView — 단계 보기에서 다른 트랙 상자에 놓아도 트
     );
     expect(moveFeatureRank).not.toHaveBeenCalled(); // 트랙은 이 경로로 절대 안 바뀐다
   });
-});
 
-// 🔴 첫 커버 — 캡틴 피드백: "지금은 새 단계를 추가하는 것만 가능해. 단계 내에서 기존 트랙으로
-// 추가가 가능하게 해줘" + "track이 다르면 막아야 하지 않나 — track은 고정 아닌가". 그 단계에
-// 내 트랙 상자가 아직 없어도 카드 배경에 놓으면 옮기고, 트랙은 그 경로로는 절대 안 바뀐다.
-describe("PlanView — 단계 카드 배경에 놓으면 트랙은 그대로 그 단계로 옮긴다(캡틴 피드백, 🔴 첫 커버)", () => {
-  beforeEach(() => vi.restoreAllMocks());
-
-  it("그 단계에 내 트랙 상자가 없어도 카드 배경에 놓으면 옮겨진다 — 트랙은 안 바뀐다", async () => {
+  it("그 단계에 내 트랙 상자가 없으면 — 카드 공간을 벌려 가상 상자로 자리를 보여준다, 트랙은 안 바뀐다", async () => {
     // 단계 2 는 web 상자만 있다(payments 상자는 없다) — billing/01(payments)을 그리로 끈다.
     const data: PlanResponse = {
       ...DATA,
@@ -418,7 +417,11 @@ describe("PlanView — 단계 카드 배경에 놓으면 트랙은 그대로 그
     const dt = makeDataTransfer();
     fireEvent.dragStart(chip, { dataTransfer: dt });
     fireEvent.dragOver(step2Section, { dataTransfer: dt });
-    expect(within(step2Section).getByText("「payments」 트랙 그대로 여기(단계 2)로")).toBeInTheDocument();
+
+    // 가상 상자가 나타난다 — 라벨(payments)과 "새 묶음이 생깁니다" 안내가 그 자리에 붙는다.
+    const ghostText = within(step2Section).getByText(/여기로 옮겨집니다/);
+    expect(within(ghostText.closest("div")!).getByText("payments")).toBeInTheDocument();
+
     fireEvent.drop(step2Section, { dataTransfer: dt });
 
     await waitFor(() =>
@@ -427,26 +430,18 @@ describe("PlanView — 단계 카드 배경에 놓으면 트랙은 그대로 그
     expect(moveFeatureRank).not.toHaveBeenCalled(); // 트랙은 이 경로로 절대 안 바뀐다
   });
 
-  it("기존 트랙 상자 위에 놓으면 카드 배경 문구와 안 겹치고, 그 상자도 트랙을 안 바꾼다", async () => {
+  it("내 트랙 상자가 이미 있으면 가상 상자는 안 뜬다 — 진짜 상자만 빛난다", async () => {
     vi.spyOn(api, "moveTicketStep").mockResolvedValue({ order: DATA.order, warnings: [] });
-    const moveFeatureRank = vi.spyOn(api, "moveFeatureRank");
     vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
     renderPlan();
 
     const chip = screen.getByText("auth-login/02").closest("span")!; // 지금 트랙 = web
     const step1Card = screen.getByText("단계 1").closest("section")!;
-    const webGroup = within(step1Card).getByText("web").closest("div")!;
     const dt = makeDataTransfer();
     fireEvent.dragStart(chip, { dataTransfer: dt });
-    fireEvent.dragOver(webGroup, { dataTransfer: dt });
-    // 카드 배경 문구(제자리 트랙 유지)가 상자 위에서는 겹쳐 보이지 않는다.
-    expect(within(step1Card).queryByText(/트랙 그대로/)).toBeNull();
-    fireEvent.drop(webGroup, { dataTransfer: dt });
+    fireEvent.dragOver(step1Card, { dataTransfer: dt });
 
-    await waitFor(() =>
-      expect(api.moveTicketStep).toHaveBeenCalledWith("alpha", { feature: "auth-login", ticket: "02", step: 1 }),
-    );
-    expect(moveFeatureRank).not.toHaveBeenCalled(); // 같은 트랙 상자라 기능 트랙은 안 바뀐다
+    expect(within(step1Card).queryByText(/여기로 옮겨집니다/)).toBeNull();
   });
 });
 
