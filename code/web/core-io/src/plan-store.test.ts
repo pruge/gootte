@@ -146,16 +146,19 @@ describe("스키마 마이그레이션 — 옛 모양 DB(캡틴 DB 재현, 🔴 
     return db;
   }
 
-  it("feature_order 에 why_needs_review 가 없는 옛 DB — 실측 오류(no such column)를 이제 안 낸다", () => {
+  it("feature_order 에 닻 칸이 없는 옛 DB — 실측 오류(no such column)를 이제 안 낸다", () => {
     const db = oldShapeDb();
     db.prepare(
       `INSERT INTO feature_order (project, feature, track, rank, why, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
     ).run("p", "a", "web", 10, "옛 이유", "2026-01-01T00:00:00.000Z");
     db.close();
 
+    // 🔴 이 줄은 닻(왜를 마지막으로 적었을 때의 자리)이 한 번도 기록된 적 없다 — "제자리인지
+    // 모른다" 를 조용히 "제자리다" 로 접지 않는다(development-order/15 후속). `set` 을 다시
+    // 하면 사라진다(끄는 길은 있다) — 옛 DB 로 읽고 쓴 뒤 테스트가 그것을 고정한다.
     const order = readPlanOrder(dataDir, "p");
     expect(order.features).toHaveLength(1);
-    expect(order.features[0]).toMatchObject({ feature: "a", track: "web", rank: 10, whyNeedsReview: false });
+    expect(order.features[0]).toMatchObject({ feature: "a", track: "web", rank: 10, whyNeedsReview: true });
   });
 
   it("옛 DB 로 읽고 쓴 뒤에도 다른 칸은 그대로다", () => {
@@ -173,7 +176,7 @@ describe("스키마 마이그레이션 — 옛 모양 DB(캡틴 DB 재현, 🔴 
     oldShapeDb().close();
     const result = migratePlanDb(dataDir);
     expect(result.addedColumns).toEqual(
-      expect.arrayContaining(["feature_order.why_needs_review", "ticket_order.why_needs_review"]),
+      expect.arrayContaining(["feature_order.why_track", "feature_order.why_rank", "ticket_order.why_step"]),
     );
   });
 
@@ -188,6 +191,67 @@ describe("스키마 마이그레이션 — 옛 모양 DB(캡틴 DB 재현, 🔴 
     migratePlanDb(dataDir);
     const second = migratePlanDb(dataDir);
     expect(second).toEqual({ addedColumns: [], droppedColumns: [] });
+  });
+
+  /**
+   * `why_needs_review` 플래그가 있던 DB(티켓 04 시절 모양, 지금 실제로 이 저장소가 겪은 모양) —
+   * 닻 모델로 옮긴 뒤(development-order/15 후속) 컬럼을 지운다. `oldShapeDb`(그 칸조차 없던 훨씬
+   * 더 옛 모양)와는 다른 마이그레이션 경로를 탄다 — 둘 다 실측이라 따로 고정한다.
+   */
+  function reviewFlagShapeDb(): DatabaseSyncType {
+    const db = new DatabaseSync(join(dataDir, "plan.db"));
+    db.exec(`
+      CREATE TABLE feature_order (
+        project TEXT NOT NULL, feature TEXT NOT NULL, track TEXT NOT NULL,
+        rank REAL NOT NULL, why TEXT NOT NULL, why_needs_review INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL, PRIMARY KEY (project, feature)
+      );
+      CREATE TABLE ticket_order (
+        project TEXT NOT NULL, feature TEXT NOT NULL, ticket TEXT NOT NULL,
+        step INTEGER NOT NULL, why TEXT NOT NULL, why_needs_review INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL, PRIMARY KEY (project, feature, ticket)
+      );
+    `);
+    return db;
+  }
+
+  it("🔴 why_needs_review 가 0(깨끗)이던 줄은 지금 자리에 닻을 내려 조용하다", () => {
+    const db = reviewFlagShapeDb();
+    db.prepare(
+      `INSERT INTO ticket_order (project, feature, ticket, step, why, why_needs_review, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?)`,
+    ).run("p", "a", "01", 3, "옛 이유", "2026-01-01T00:00:00.000Z");
+    db.close();
+
+    const order = readPlanOrder(dataDir, "p");
+    expect(order.tickets[0]).toMatchObject({ step: 3, whyNeedsReview: false });
+  });
+
+  it("🔴 why_needs_review 가 1(더러움)이던 줄은 마이그레이션 뒤에도 확인 필요가 그대로다", () => {
+    const db = reviewFlagShapeDb();
+    db.prepare(
+      `INSERT INTO ticket_order (project, feature, ticket, step, why, why_needs_review, updated_at)
+       VALUES (?, ?, ?, ?, ?, 1, ?)`,
+    ).run("p", "a", "01", 3, "옛 이유", "2026-01-01T00:00:00.000Z");
+    db.close();
+
+    const order = readPlanOrder(dataDir, "p");
+    expect(order.tickets[0]).toMatchObject({ step: 3, whyNeedsReview: true });
+
+    // `set` 을 다시 하면 그때 비로소 닻이 지금 자리에 내려 조용해진다(끄는 길).
+    const updated = setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "01", why: "다시 확인함" });
+    expect(updated.whyNeedsReview).toBe(false);
+  });
+
+  it("db migrate — why_needs_review 가 있던 DB 는 그 컬럼을 지웠다고 보고한다", () => {
+    reviewFlagShapeDb().close();
+    const result = migratePlanDb(dataDir);
+    expect(result.addedColumns).toEqual(
+      expect.arrayContaining(["feature_order.why_track", "feature_order.why_rank", "ticket_order.why_step"]),
+    );
+    expect(result.droppedColumns).toEqual(
+      expect.arrayContaining(["feature_order.why_needs_review", "ticket_order.why_needs_review"]),
+    );
   });
 });
 
@@ -240,13 +304,27 @@ describe("insertTicketStep — 줄 사이에 놓으면 새 단계가 생기고 �
     setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "02", step: 2, why: "…" });
     setTicketOrder(dataDir, { project: "p", feature: "b", ticket: "01", step: 5, why: "…" });
 
-    insertTicketStep(dataDir, { project: "p", feature: "a", ticket: "02", afterStep: 1 });
+    // afterStep=3 → a/02 는 2 에서 4 로(닻과 갈라진다), b/01 은 밀려서 5 에서 6 으로(닻도 같이 밀린다).
+    insertTicketStep(dataDir, { project: "p", feature: "a", ticket: "02", afterStep: 3 });
 
     const order = readPlanOrder(dataDir, "p");
     const moved = order.tickets.find((t) => t.feature === "a" && t.ticket === "02");
     const shifted = order.tickets.find((t) => t.feature === "b" && t.ticket === "01");
-    expect(moved?.whyNeedsReview).toBe(true);
+    expect(moved).toMatchObject({ step: 4, whyNeedsReview: true });
     expect(shifted).toMatchObject({ step: 6, whyNeedsReview: false }); // 밀렸지만 확인 필요는 안 붙는다
+  });
+
+  it("🔴 놓인 자리가 닻(마지막으로 이유를 적은 단계)과 같으면 확인 필요가 안 선다 — 돌아오면 꺼진다", () => {
+    setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "01", step: 1, why: "…" });
+    setTicketOrder(dataDir, { project: "p", feature: "a", ticket: "02", step: 4, why: "닻 = 4" });
+
+    // afterStep=1 → newStep=2 (닻과 다르다) → 확인 필요가 선다.
+    const away = insertTicketStep(dataDir, { project: "p", feature: "a", ticket: "02", afterStep: 1 });
+    expect(away).toMatchObject({ step: 2, whyNeedsReview: true });
+
+    // moveTicketStep 으로 닻(4)까지 그대로 돌려놓으면 확인 필요가 저절로 꺼진다.
+    const back = moveTicketStep(dataDir, { project: "p", feature: "a", ticket: "02", step: 4 });
+    expect(back).toMatchObject({ step: 4, whyNeedsReview: false });
   });
 
   it("history.md 에 drag 한 줄이 남는다", () => {
@@ -313,6 +391,18 @@ describe("moveFeatureOrder — 기능 카드를 끈다(티켓 04, 🔴 첫 커�
     expect(() =>
       moveFeatureOrder(dataDir, { project: "p", feature: "no-such", track: "web", beforeRank: null, afterRank: null }),
     ).toThrow();
+  });
+
+  it("🔴 놓인 자리(트랙·순위)가 닻과 같으면 확인 필요가 안 선다 — 돌아오면 꺼진다", () => {
+    setFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", rank: 10, why: "닻 = web/10" });
+    setFeatureOrder(dataDir, { project: "p", feature: "b", track: "web", rank: 20, why: "…" });
+
+    const away = moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", beforeRank: 20, afterRank: null });
+    expect(away.rank).toBeGreaterThan(20);
+    expect(away.whyNeedsReview).toBe(true);
+
+    const back = moveFeatureOrder(dataDir, { project: "p", feature: "a", track: "web", beforeRank: null, afterRank: 20 });
+    expect(back).toMatchObject({ track: "web", rank: 10, whyNeedsReview: false });
   });
 });
 
