@@ -6,7 +6,7 @@
 
 **Blocked by:** [02](02-next-names-what-can-go-together.md) — 화면의 `next` 버튼이 02 의 함수를 그대로 쓴다
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 ## 캡틴 지시 (2026-08-11, 원문)
 
