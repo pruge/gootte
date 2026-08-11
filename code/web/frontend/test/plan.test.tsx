@@ -170,30 +170,31 @@ function makeDataTransfer() {
   };
 }
 
-/** 단계 보기에서 티켓 칩 하나를 다른(또는 같은) 칸의 특정 단계 셀에 끌어 놓는다. */
+/** 단계 보기에서 티켓 칩 하나를 다른(또는 같은) 단계 카드의 특정 트랙 묶음에 끌어 놓는다. */
 function dragTicketInto(chipText: string, trackText: string, step: number) {
   const chip = screen.getByText(chipText).closest("span")!;
-  const column = screen.getByText(trackText).closest("div")!;
-  const cell = within(column).getByText(`단계 ${step}`).closest("div")!;
+  const card = screen.getByText(`단계 ${step}`).closest("section")!;
+  const group = within(card).getByText(trackText).closest("div")!;
   const dt = makeDataTransfer();
   fireEvent.dragStart(chip, { dataTransfer: dt });
-  fireEvent.dragOver(cell, { dataTransfer: dt });
-  fireEvent.drop(cell, { dataTransfer: dt });
+  fireEvent.dragOver(group, { dataTransfer: dt });
+  fireEvent.drop(group, { dataTransfer: dt });
 }
 
-describe("PlanView — 단계 보기(기본, 티켓 09 ③ 트랙마다 세로 칸)", () => {
-  it("트랙마다 자기 칸을 갖고, 같은 단계의 티켓이 각자의 칸에 담긴다", () => {
+describe("PlanView — 단계 보기(기본, 카드는 단계 · 그 안은 트랙별 묶음)", () => {
+  it("카드는 단계를 나타내고, 그 안에서 트랙별로 티켓이 묶인다", () => {
     renderPlan();
-    const webColumn = screen.getByText("web").closest("div")!;
-    const paymentsColumn = screen.getByText("payments").closest("div")!;
-    expect(within(webColumn).getByText("auth-login/02")).toBeInTheDocument();
-    expect(within(paymentsColumn).getByText("billing/01")).toBeInTheDocument();
-    // 🔴 트랙을 한 줄로 펴지 않는다 — 서로 다른 칸에 나뉘어 있다.
-    expect(within(webColumn).queryByText("billing/01")).toBeNull();
-    expect(within(paymentsColumn).queryByText("auth-login/02")).toBeNull();
+    const card = screen.getByText("단계 1").closest("section")!;
+    const webGroup = within(card).getByText("web").closest("div")!;
+    const paymentsGroup = within(card).getByText("payments").closest("div")!;
+    expect(within(webGroup).getByText("auth-login/02")).toBeInTheDocument();
+    expect(within(paymentsGroup).getByText("billing/01")).toBeInTheDocument();
+    // 🔴 트랙을 한 줄로 펴지 않는다 — 같은 카드 안에서도 트랙별 묶음이 나뉜다.
+    expect(within(webGroup).queryByText("billing/01")).toBeNull();
+    expect(within(paymentsGroup).queryByText("auth-login/02")).toBeNull();
   });
 
-  it("🔴 같은 단계가 칸들 사이에서 같은 순서로 선다 — 비어 있는 트랙도 자리를 지킨다", () => {
+  it("단계마다 카드 하나 — 그 단계에 티켓이 있는 트랙만 묶여 나타난다", () => {
     const data: PlanResponse = {
       ...DATA,
       order: {
@@ -226,22 +227,16 @@ describe("PlanView — 단계 보기(기본, 티켓 09 ③ 트랙마다 세로 �
     };
     renderPlan(data);
 
-    const webColumn = screen.getByText("web").closest("div")!;
-    const paymentsColumn = screen.getByText("payments").closest("div")!;
-    const gatewayColumn = screen.getByText("gateway").closest("div")!;
-
-    const labelsOf = (col: HTMLElement) => within(col).getAllByText(/^단계 \d+$/).map((el) => el.textContent);
-    // 🔴 세 칸 모두 같은 단계 목록을 같은 순서로 갖는다 — 그래야 같은 단계가 나란히 선다.
-    expect(labelsOf(webColumn)).toEqual(["단계 1", "단계 2"]);
-    expect(labelsOf(paymentsColumn)).toEqual(["단계 1", "단계 2"]);
-    expect(labelsOf(gatewayColumn)).toEqual(["단계 1", "단계 2"]);
-
-    // web·payments 엔 단계 2 티켓이 없어도 자리(빈 칸)는 유지된다.
-    expect(within(within(webColumn).getByText("단계 2").closest("div")!).getByText("—")).toBeInTheDocument();
-    expect(within(within(paymentsColumn).getByText("단계 2").closest("div")!).getByText("—")).toBeInTheDocument();
-    // gateway 엔 단계 1 티켓이 없어도 자리는 유지된다 — 단계 2 는 실제로 채워져 있다.
-    expect(within(within(gatewayColumn).getByText("단계 1").closest("div")!).getByText("—")).toBeInTheDocument();
-    expect(within(within(gatewayColumn).getByText("단계 2").closest("div")!).queryByText("—")).toBeNull();
+    const step1 = screen.getByText("단계 1").closest("section")!;
+    const step2 = screen.getByText("단계 2").closest("section")!;
+    // 단계 1 카드엔 web·payments 묶음만 있다 — gateway 는 아직 없다.
+    expect(within(step1).getByText("web")).toBeInTheDocument();
+    expect(within(step1).getByText("payments")).toBeInTheDocument();
+    expect(within(step1).queryByText("gateway")).toBeNull();
+    // 단계 2 카드엔 gateway 묶음만 있다.
+    expect(within(step2).getByText("gateway")).toBeInTheDocument();
+    expect(within(step2).queryByText("web")).toBeNull();
+    expect(within(step2).queryByText("payments")).toBeNull();
   });
 
   it("🔴 어긋남은 접히지 않고 바로 보인다 — 아무것도 안 눌러도 뜬다", () => {
@@ -350,8 +345,8 @@ describe("PlanView — 드래그(티켓 04, 🔴 첫 커버) → 쓰기 → 재�
   });
 });
 
-// 🔴 첫 커버(티켓 09 ③) — 단계 보기에서 다른 칸으로 끌면 기능 전체의 트랙이 바뀐다.
-describe("PlanView — 단계 보기에서 다른 칸으로 끌면 기능의 트랙이 바뀐다(티켓 09 ③, 🔴 첫 커버)", () => {
+// 🔴 첫 커버 — 단계 보기에서 다른 트랙 묶음으로 끌면 기능 전체의 트랙이 바뀐다.
+describe("PlanView — 단계 보기에서 다른 트랙 묶음으로 끌면 기능의 트랙이 바뀐다(🔴 첫 커버)", () => {
   beforeEach(() => vi.restoreAllMocks());
 
   it("끄는 동안 무엇이 바뀌는지 보이고, 놓으면 트랙과 단계가 함께 바뀐다", async () => {
@@ -361,16 +356,16 @@ describe("PlanView — 단계 보기에서 다른 칸으로 끌면 기능의 트
     renderPlan();
 
     const chip = screen.getByText("auth-login/02").closest("span")!; // 지금 트랙 = web
-    const paymentsColumn = screen.getByText("payments").closest("div")!;
-    const targetCell = within(paymentsColumn).getByText("단계 1").closest("div")!;
+    const step1Card = screen.getByText("단계 1").closest("section")!;
+    const paymentsGroup = within(step1Card).getByText("payments").closest("div")!;
     const dt = makeDataTransfer();
     fireEvent.dragStart(chip, { dataTransfer: dt });
-    fireEvent.dragOver(targetCell, { dataTransfer: dt });
+    fireEvent.dragOver(paymentsGroup, { dataTransfer: dt });
 
     // 🔴 놓기 전에 — 기능 전체가 이동한다는 것이 끄는 동안 보인다(티켓 04 캡틴 확인 1).
-    expect(within(targetCell).getByText("기능 전체가 「payments」로 이동합니다")).toBeInTheDocument();
+    expect(within(paymentsGroup).getByText("기능 전체가 「payments」로 이동합니다")).toBeInTheDocument();
 
-    fireEvent.drop(targetCell, { dataTransfer: dt });
+    fireEvent.drop(paymentsGroup, { dataTransfer: dt });
 
     await waitFor(() =>
       expect(api.moveFeatureRank).toHaveBeenCalledWith("alpha", {

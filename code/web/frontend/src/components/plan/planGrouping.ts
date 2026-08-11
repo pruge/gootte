@@ -23,58 +23,49 @@ export interface StepChip {
   whyNeedsReview: boolean;
 }
 
-export interface StepColumnRow {
-  step: number;
-  /** 이 트랙에 이 단계 티켓이 없어도 자리는 유지된다(빈 배열) — 비었다는 것도 정보다(티켓 09 ③). */
+export interface StepTrackGroup {
+  track: string;
   chips: StepChip[];
 }
 
-export interface StepColumn {
-  track: string;
-  rows: StepColumnRow[];
-}
-
-export interface StepColumns {
-  /** 전체 계획을 가로지르는 단계 목록(정렬됨) — 모든 칸이 **같은 이 목록**으로 행을 만들어야
-   * 같은 단계가 칸들 사이에서 같은 높이에 선다(spec §같은 단계 = 병렬). */
-  steps: readonly number[];
-  columns: StepColumn[];
+export interface StepRow {
+  step: number;
+  byTrack: StepTrackGroup[];
 }
 
 /**
- * 단계 보기(티켓 09 ③) — 기능 보기와 같은 얼개: 트랙마다 세로 칸. 칸 안에는 **단계별로** 티켓이 놓인다.
- * 어느 트랙에 그 단계가 비어 있어도 `rows` 에 빈 자리를 남긴다 — 화면이 이 자리로 subgrid 높이를 맞춘다.
- * 트랙을 한 줄로 펴지 않는다(티켓 03 금지 조항) — `groupByTrackFeature` 와 같은 트랙 발견 방식을 쓴다.
+ * 단계 보기 — 카드는 **단계**를 나타내고, 그 안에서 티켓을 **트랙별로 묶어** 보여준다(캡틴 지시
+ * 2026-08-11: "카드는 단계를 표시하고 그 안에 track 별 ticket으로 묶어 표시하라"). 트랙 이름은
+ * 칩과 같은 줄을 공유하지 않는다(라벨 위·칩 아래로 블록을 쌓는다) — 트랙 이름 칸을 칩이
+ * 침범하던 원래 버그는 "같은 줄에 라벨+칩을 나란히 두는 것" 자체가 원인이었다.
  */
-export function groupByTrackStep(features: readonly Feature[], order: PlanOrder): StepColumns {
+export function groupByStep(features: readonly Feature[], order: PlanOrder): StepRow[] {
   const trackByFeature = new Map(order.features.map((f) => [f.feature, f.track]));
   const docByKey = ticketDocByKey(features);
 
-  const steps = [...new Set(order.tickets.map((t) => t.step))].sort((a, b) => a - b);
-  const tracks = new Set<string>();
-  for (const f of order.features) tracks.add(f.track);
-  for (const t of order.tickets) tracks.add(trackByFeature.get(t.feature) ?? UNASSIGNED_TRACK);
-
-  const columns: StepColumn[] = [...tracks]
-    .sort((a, b) => a.localeCompare(b))
-    .map((track) => ({ track, rows: steps.map((step) => ({ step, chips: [] as StepChip[] })) }));
-  const columnByTrack = new Map(columns.map((c) => [c.track, c]));
-  const rowIndexByStep = new Map(steps.map((s, i) => [s, i]));
-
+  const stepMap = new Map<number, Map<string, StepChip[]>>();
   for (const o of order.tickets) {
     const track = trackByFeature.get(o.feature) ?? UNASSIGNED_TRACK;
-    const column = columnByTrack.get(track);
-    const rowIdx = rowIndexByStep.get(o.step);
-    if (!column || rowIdx === undefined) continue;
-    column.rows[rowIdx]?.chips.push({
+    const byTrack = stepMap.get(o.step) ?? new Map<string, StepChip[]>();
+    const chips = byTrack.get(track) ?? [];
+    chips.push({
       feature: o.feature,
       ticketNum: o.ticket,
       ticket: docByKey.get(`${o.feature}/${o.ticket}`) ?? null,
       whyNeedsReview: o.whyNeedsReview,
     });
+    byTrack.set(track, chips);
+    stepMap.set(o.step, byTrack);
   }
 
-  return { steps, columns };
+  return [...stepMap.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([step, byTrack]) => ({
+      step,
+      byTrack: [...byTrack.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([track, chips]) => ({ track, chips })),
+    }));
 }
 
 export interface FeatureLaneTicket {

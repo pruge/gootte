@@ -52,10 +52,10 @@ export function TicketChip({
       title={ticket ? ticket.title : `${feature}/${ticketNum} — 티켓 문서를 찾지 못함(어긋남)`}
       className={`mono inline-flex max-w-full cursor-grab items-center gap-1.5 rounded-md border px-2 py-1 text-sm active:cursor-grabbing ${toneClass(ticket, highlighted)}`}
     >
-      <span className="shrink-0">
+      <span className="min-w-0 shrink truncate">
         {feature}/{ticketNum}
       </span>
-      <span className="min-w-0 truncate text-fg/80">{ticket ? ticket.title : "(문서 없음)"}</span>
+      <span className="min-w-0 shrink truncate text-fg/80">{ticket ? ticket.title : "(문서 없음)"}</span>
       {whyNeedsReview && (
         <span className="mono shrink-0 rounded bg-partial/15 px-1 py-0.5 text-xs text-partial">확인 필요</span>
       )}
