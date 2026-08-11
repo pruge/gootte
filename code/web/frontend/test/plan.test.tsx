@@ -1,11 +1,18 @@
 import { useState } from "react";
 import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { PlanResponse } from "@gootte/contract";
 import { PlanView } from "../src/components/plan/PlanView";
 import { qk } from "../src/lib/query";
 import * as api from "../src/lib/api";
+
+// FeatureCard 의 드래그 유령(`setDragImage` 복제본)은 `document.body` 에 직접 붙었다 setTimeout(0)
+// 으로 스스로 지운다 — RTL 의 자동 cleanup(렌더 트리만 걷어낸다)은 이걸 못 본다. 동기 테스트는 그
+// setTimeout 이 돌기 전에 끝나므로, 표(`data-drag-ghost`)로 찾아 테스트마다 직접 치운다.
+afterEach(() => {
+  document.querySelectorAll("[data-drag-ghost]").forEach((el) => el.remove());
+});
 
 // 서버가 이미 계산해 보낸 값(막힘·착수 가능·next) — 화면은 재판정하지 않는다(INV-1).
 const DATA: PlanResponse = {
@@ -167,7 +174,8 @@ function renderPlan(data: PlanResponse = DATA, initialView: string | null = null
   return { ...result, qc };
 }
 
-/** jsdom 은 DataTransfer 를 구현하지 않는다 — setData/getData/types 를 갖는 최소 흉내를 직접 만든다. */
+/** jsdom 은 DataTransfer 를 구현하지 않는다 — setData/getData/types 를 갖는 최소 흉내를 직접 만든다.
+ * `setDragImage` 는 `vi.fn()` 으로 둬서 FeatureCard 의 커스텀 유령(ghost) 호출을 검증할 수 있게 한다. */
 function makeDataTransfer() {
   const store: Record<string, string> = {};
   return {
@@ -180,6 +188,7 @@ function makeDataTransfer() {
     },
     dropEffect: "",
     effectAllowed: "",
+    setDragImage: vi.fn(),
   };
 }
 
@@ -388,6 +397,79 @@ describe("PlanView — 드래그(티켓 04, 🔴 첫 커버) → 쓰기 → 재�
     fireEvent.dragEnd(card, { dataTransfer: dt });
     expect(card.className).toContain("bg-surface-2/40");
     expect(card.className).not.toContain("border-2");
+  });
+
+  // 🔴 첫 커버 — 캡틴 재차 피드백(2026-08-11: "feature는 투명도를 더 낮춰"). React state 로
+  // 남는 카드만 진하게 칠하는 것으로는 부족했다 — 손가락을 따라다니는 브라우저 네이티브 드래그
+  // 유령은 `dragstart` 가 끝나기 전에 이미 캡처돼 그 state 변화를 못 반영한다. 그래서
+  // `setDragImage()` 로 불투명·굵은 테두리 스타일을 미리 입힌 복제본을 직접 넘긴다.
+  it("끌기 시작하면 setDragImage 로 불투명한 복제본을 유령 미리보기로 넘긴다", () => {
+    renderPlan(DATA, "feature");
+    const card = screen.getByText("billing — 결제").closest("div[draggable]")!;
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(card, { dataTransfer: dt });
+
+    expect(dt.setDragImage).toHaveBeenCalledTimes(1);
+    const ghost = dt.setDragImage.mock.calls[0]![0] as HTMLElement;
+    expect(ghost.className).toContain("border-2 border-accent bg-surface");
+    expect(ghost.className).not.toContain("bg-surface-2/40");
+  });
+});
+
+// 🔴 첫 커버 — 캡틴 지시(2026-08-11): "track 이름을 내가 수정 가능하게 해. 이름 클릭하면
+// 수정모드, 나가면 바로 저장되게." 트랙 이름은 `renameTrack` API 왕복으로 저장된다(server 몫,
+// core-io 의 `renameTrack` 함수가 그 트랙의 모든 기능에 새 이름을 한꺼번에 건다).
+describe("PlanView — 트랙 이름을 눌러서 고친다(development-order/15 후속, 🔴 첫 커버)", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("이름을 누르면 입력칸이 뜨고, blur 하면 바뀐 값으로 renameTrack 이 불린다", async () => {
+    vi.spyOn(api, "renameTrack").mockResolvedValue({ order: DATA.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
+    renderPlan(DATA, "feature");
+
+    const label = screen.getByText("web");
+    fireEvent.click(label);
+    const input = screen.getByDisplayValue("web");
+    fireEvent.change(input, { target: { value: "frontend" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => expect(api.renameTrack).toHaveBeenCalledWith("alpha", { track: "web", newTrack: "frontend" }));
+  });
+
+  it("Enter 도 같은 값으로 저장한다(blur 를 부른다)", async () => {
+    vi.spyOn(api, "renameTrack").mockResolvedValue({ order: DATA.order, warnings: [] });
+    vi.spyOn(api, "fetchPlan").mockResolvedValue(DATA);
+    renderPlan(DATA, "feature");
+
+    fireEvent.click(screen.getByText("web"));
+    const input = screen.getByDisplayValue("web");
+    fireEvent.change(input, { target: { value: "frontend" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(api.renameTrack).toHaveBeenCalledWith("alpha", { track: "web", newTrack: "frontend" }));
+  });
+
+  it("Escape 는 취소한다 — renameTrack 이 안 불리고 원래 이름으로 돌아온다", () => {
+    const renameTrack = vi.spyOn(api, "renameTrack");
+    renderPlan(DATA, "feature");
+
+    fireEvent.click(screen.getByText("web"));
+    const input = screen.getByDisplayValue("web");
+    fireEvent.change(input, { target: { value: "frontend" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(screen.getByText("web")).toBeInTheDocument();
+    expect(renameTrack).not.toHaveBeenCalled();
+  });
+
+  it("안 바꾸고 그냥 나가면(blur) 아무 것도 안 불린다", () => {
+    const renameTrack = vi.spyOn(api, "renameTrack");
+    renderPlan(DATA, "feature");
+
+    fireEvent.click(screen.getByText("web"));
+    fireEvent.blur(screen.getByDisplayValue("web"));
+
+    expect(renameTrack).not.toHaveBeenCalled();
   });
 });
 

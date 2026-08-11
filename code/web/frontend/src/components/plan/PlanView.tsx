@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { IconArrowsShuffle } from "@tabler/icons-react";
-import { useInsertTicketStep, useMoveFeatureRank, useMoveTicketStep, usePlan } from "../../lib/query";
+import { useInsertTicketStep, useMoveFeatureRank, useMoveTicketStep, usePlan, useRenameTrack } from "../../lib/query";
 import { Loading, ErrorMsg } from "../common/states";
 import { MismatchList } from "./MismatchList";
 import { NextPanel } from "./NextPanel";
@@ -52,6 +52,7 @@ export function PlanView({ project, view, onView, doc, onDoc }: PlanViewProps) {
   const moveTicketStep = useMoveTicketStep(project);
   const insertTicketStep = useInsertTicketStep(project);
   const moveFeatureRank = useMoveFeatureRank(project);
+  const renameTrack = useRenameTrack(project);
 
   // development-order/15 ⑤ — 티켓 칩을 눌러 그 문서를 연다. `features` 탭(`FeaturesView`)과
   // 같은 서랍(`DocDrawer`)·같은 인코딩(`docView.ts`)을 그대로 부른다 — 두 번째 문서 보기를 짓지 않는다.
@@ -156,6 +157,7 @@ export function PlanView({ project, view, onView, doc, onDoc }: PlanViewProps) {
             onMoveFeature={(feature, track, beforeRank, afterRank) =>
               moveFeatureRank.mutate({ feature, track, beforeRank, afterRank })
             }
+            onRenameTrack={(track, newTrack) => renameTrack.mutate({ track, newTrack })}
             onOpenDoc={openDoc}
           />
         )}
