@@ -27,7 +27,7 @@ function usage(): number {
     [
       "usage: gootte <command> ...",
       "  discover [roots...]",
-      '  set         <프로젝트> <기능>/<번호> [--step n] [--kind 계획|틈틈이|순서밖] --why "…"',
+      '  set         <프로젝트> <기능>/<번호> [--step n] --why "…"',
       '  set-feature <프로젝트> <기능> --track <트랙> --rank <n> --why "…"',
       "  drop        <프로젝트> <기능>[/<번호>]",
       "  order       <프로젝트> [--json]",

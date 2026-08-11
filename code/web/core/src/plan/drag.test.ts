@@ -20,7 +20,7 @@ function ticket(num: string, overrides: Partial<FeatureTicket> = {}): FeatureTic
 }
 
 function ticketOrder(feature: string, ticketNum: string, step: number): TicketOrderEntry {
-  return { project: "p", feature, ticket: ticketNum, step, kind: "planned", why: "…", whyNeedsReview: false, updatedAt: "t" };
+  return { project: "p", feature, ticket: ticketNum, step, why: "…", whyNeedsReview: false, updatedAt: "t" };
 }
 
 describe("checkTicketDragWarnings — 놓는 순간 네 검사(spec 04 §놓는 순간, 🔴 첫 커버)", () => {

@@ -5,7 +5,6 @@ import type {
   OpinionRequest,
   PlanMismatch,
   PlanOrder,
-  TicketKind,
 } from "@gootte/contract";
 import { annotateExtraExistence, computeMismatches, computeNext } from "@gootte/core";
 import {
@@ -39,26 +38,6 @@ export function discoverText(roots: string[]): string {
 export function resolveProjectPath(project: string, cwd: string = process.cwd()): string | null {
   const found = discoverProjects([cwd, ...defaultProjectRoots()]);
   return found.find((p) => p.slug === project)?.path ?? null;
-}
-
-const KIND_KO_TO_EN: Record<string, TicketKind> = {
-  "계획": "planned",
-  "틈틈이": "interstitial",
-  "순서밖": "out_of_order",
-};
-const KIND_EN_TO_KO: Record<TicketKind, string> = {
-  planned: "계획",
-  interstitial: "틈틈이",
-  out_of_order: "순서밖",
-};
-const KIND_VALUES = new Set<string>(Object.values(KIND_KO_TO_EN));
-
-function parseKind(raw: string): TicketKind {
-  const kind = KIND_KO_TO_EN[raw] ?? raw;
-  if (!KIND_VALUES.has(kind)) {
-    throw new CliError(`--kind 값이 올바르지 않다: ${raw} (계획|틈틈이|순서밖)`);
-  }
-  return kind as TicketKind;
 }
 
 function requireWhy(flags: Record<string, string | boolean>): string {
@@ -99,16 +78,14 @@ export function setTicketText(argv: readonly string[], dataDir = defaultPlanData
   const parsed = ref ? parseTicketRef(ref) : null;
   if (!project || !parsed) {
     throw new CliError(
-      'usage: gootte set <프로젝트> <기능>/<번호> [--step 숫자] [--kind 계획|틈틈이|순서밖] --why "…"',
+      'usage: gootte set <프로젝트> <기능>/<번호> [--step 숫자] --why "…"',
     );
   }
   const why = requireWhy(flags);
   const step = flagNumber(flags, "step");
   if (step !== undefined && !Number.isInteger(step)) throw new CliError("--step 은 정수여야 한다");
-  const rawKind = flagString(flags, "kind");
-  const kind = rawKind === undefined ? undefined : parseKind(rawKind);
-  const entry = setTicketOrder(dataDir, { project, feature: parsed.feature, ticket: parsed.ticket, step, kind, why });
-  return `${entry.project} ${entry.feature}/${entry.ticket} → step=${entry.step} kind=${KIND_EN_TO_KO[entry.kind]} — ${entry.why}`;
+  const entry = setTicketOrder(dataDir, { project, feature: parsed.feature, ticket: parsed.ticket, step, why });
+  return `${entry.project} ${entry.feature}/${entry.ticket} → step=${entry.step} — ${entry.why}`;
 }
 
 export function dropText(argv: readonly string[], dataDir = defaultPlanDataDir()): string {
@@ -154,7 +131,7 @@ export function orderText(argv: readonly string[], dataDir = defaultPlanDataDir(
   lines.push("", "tickets:");
   if (result.tickets.length === 0) lines.push("  (없음)");
   for (const t of result.tickets) {
-    lines.push(`  step=${t.step} ${t.feature}/${t.ticket} [${KIND_EN_TO_KO[t.kind]}] — ${t.why}`);
+    lines.push(`  step=${t.step} ${t.feature}/${t.ticket} — ${t.why}`);
   }
   lines.push("", formatMismatches(result.mismatches));
   return lines.join("\n");

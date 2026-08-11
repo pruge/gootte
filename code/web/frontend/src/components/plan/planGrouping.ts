@@ -1,4 +1,4 @@
-import type { Feature, FeatureTicket, NextResult, PlanOrder, TicketKind } from "@gootte/contract";
+import type { Feature, FeatureTicket, NextResult, PlanOrder } from "@gootte/contract";
 
 /**
  * `plan` 탭(티켓 03) 표현 계산 — 이미 서버가 보낸 값을 **화면에 배치만** 한다.
@@ -67,7 +67,6 @@ export interface FeatureLaneTicket {
   ticketNum: string;
   ticket: FeatureTicket | null;
   step: number;
-  kind: TicketKind;
   why: string;
   whyNeedsReview: boolean;
 }
@@ -113,7 +112,6 @@ export function groupByTrackFeature(features: readonly Feature[], order: PlanOrd
           ticketNum: t.ticket,
           ticket: docTicketByNum.get(t.ticket) ?? null,
           step: t.step,
-          kind: t.kind,
           why: t.why,
           whyNeedsReview: t.whyNeedsReview,
         })),

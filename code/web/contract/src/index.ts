@@ -215,9 +215,9 @@ export type ApiError = z.infer<typeof ApiError>;
 // ── 계획(개발 순서) — INV-5 가 저장을 허락하는 유일한 종류의 값 ──────────
 // `docs/features/development-order/` 티켓 01·02. gootte 자기 저장소, 덮어쓰기만(이력 테이블 없음).
 
-/** 티켓 단계의 종류 — 계획대로 · 틈틈이(다른 작업과 곁들여) · 순서밖(계획에 없던 급한 일). */
-export const TicketKind = z.enum(["planned", "interstitial", "out_of_order"]);
-export type TicketKind = z.infer<typeof TicketKind>;
+// 🔴 티켓 "종류"(계획·틈틈이·순서밖)는 없다. 캡틴이 안 하기로 정하셨고 그 낱말도 안 쓴다
+// (2026-08-11). 순서와 병렬은 **트랙과 단계만으로** 표현된다 — 손잡이를 하나 더 두면
+// 아무 일도 안 하면서 뜻만 흐려진다. 되살리지 마라(spec §종류는 두지 않는다).
 
 /**
  * 기능 하나의 트랙·순위 — `feature_order` 표 1행. `why` 는 필수(빈 문자열이면 숫자만 남아
@@ -244,7 +244,6 @@ export const TicketOrderEntry = z.object({
   feature: z.string(),
   ticket: z.string(), // 티켓 번호("01") — `FeatureTicket.num` 과 같은 값
   step: z.number().int(),
-  kind: TicketKind,
   why: z.string().min(1),
   // `whyNeedsReview` 는 드래그(티켓 04)가 단계만 바꾸고 `why` 는 안 건드릴 때 붙는 표시 —
   // CLI(`set`) 경로에서는 항상 false(FeatureOrderEntry 와 같은 관례).

@@ -8,7 +8,6 @@ function ticketOrder(feature: string, ticket: string, step: number, overrides: P
     feature,
     ticket,
     step,
-    kind: "planned",
     why: "…",
     whyNeedsReview: false,
     updatedAt: "t",

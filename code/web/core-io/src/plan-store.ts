@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
-import type { Feature, FeatureOrderEntry, PlanOrder, TicketKind, TicketOrderEntry } from "@gootte/contract";
+import type { Feature, FeatureOrderEntry, PlanOrder, TicketOrderEntry } from "@gootte/contract";
 import { appendRank, computeMismatches, firstRank, insertBetween, insertStepAfter, renumberSparse } from "@gootte/core";
 
 /**
@@ -50,7 +50,6 @@ function open(dataDir: string): DatabaseSyncType {
       feature TEXT NOT NULL,
       ticket TEXT NOT NULL,
       step INTEGER NOT NULL,
-      kind TEXT NOT NULL,
       why TEXT NOT NULL,
       why_needs_review INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL,
@@ -63,6 +62,12 @@ function open(dataDir: string): DatabaseSyncType {
     db.exec(`ALTER TABLE ticket_order ADD COLUMN why_needs_review INTEGER NOT NULL DEFAULT 0`);
   } catch {
     // 컬럼이 이미 있다 — 정상.
+  }
+  // 종류(kind) 칸이 있던 DB — 캡틴이 종류를 안 두기로 정하셨다(2026-08-11). 지운다.
+  try {
+    db.exec(`ALTER TABLE ticket_order DROP COLUMN kind`);
+  } catch {
+    // 이미 없다 — 정상.
   }
   return db;
 }
@@ -138,7 +143,6 @@ interface TicketOrderRow {
   feature: string;
   ticket: string;
   step: number;
-  kind: TicketKind;
   why: string;
   whyNeedsReview: number;
   updatedAt: string;
@@ -148,7 +152,7 @@ function toTicketOrderEntry(row: TicketOrderRow): TicketOrderEntry {
   return { ...row, step: Number(row.step), whyNeedsReview: Boolean(row.whyNeedsReview) };
 }
 
-const TICKET_ORDER_COLUMNS = `project, feature, ticket, step, kind, why, why_needs_review as whyNeedsReview, updated_at as updatedAt`;
+const TICKET_ORDER_COLUMNS = `project, feature, ticket, step, why, why_needs_review as whyNeedsReview, updated_at as updatedAt`;
 
 function readTicketOrderRow(
   db: DatabaseSyncType,
@@ -168,8 +172,6 @@ export interface SetTicketOrderInput {
   ticket: string;
   /** 생략하면 기존 값을 유지 — 처음 등록할 때는 필수. */
   step?: number;
-  /** 생략하면 기존 값, 그마저 없으면 "planned"(계획대로). */
-  kind?: TicketKind;
   why: string;
 }
 
@@ -180,26 +182,24 @@ export function setTicketOrder(dataDir: string, input: SetTicketOrderInput): Tic
     if (!input.why.trim()) throw new Error("--why 가 필요하다");
     const existing = readTicketOrderRow(db, input.project, input.feature, input.ticket);
     const step = input.step ?? existing?.step;
-    const kind = input.kind ?? existing?.kind ?? "planned";
     if (step === undefined) throw new Error("--step 이 필요하다(처음 등록)");
     const updatedAt = new Date().toISOString();
     db.prepare(
-      `INSERT INTO ticket_order (project, feature, ticket, step, kind, why, why_needs_review, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+      `INSERT INTO ticket_order (project, feature, ticket, step, why, why_needs_review, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?)
        ON CONFLICT(project, feature, ticket) DO UPDATE SET
-         step = excluded.step, kind = excluded.kind, why = excluded.why,
+         step = excluded.step, why = excluded.why,
          why_needs_review = 0, updated_at = excluded.updated_at`,
-    ).run(input.project, input.feature, input.ticket, step, kind, input.why, updatedAt);
+    ).run(input.project, input.feature, input.ticket, step, input.why, updatedAt);
     appendHistory(
       dataDir,
-      `set ${input.project} ${input.feature}/${input.ticket} → step=${step} kind=${kind} — ${input.why}`,
+      `set ${input.project} ${input.feature}/${input.ticket} → step=${step} — ${input.why}`,
     );
     return {
       project: input.project,
       feature: input.feature,
       ticket: input.ticket,
       step,
-      kind,
       why: input.why,
       whyNeedsReview: false,
       updatedAt,

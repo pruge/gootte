@@ -43,7 +43,7 @@ gootte 는 지금까지 **아무것도 저장하지 않는 제품**이었다(INV
 | 표 | 키 | 칸 |
 |---|---|---|
 | `feature_order` | 프로젝트 · 기능 | 트랙 · 순위 · 왜 · 왜_확인필요 · `updated_at` |
-| `ticket_order` | 프로젝트 · 기능 · 티켓 | 단계 · 종류(`계획`\|`틈틈이`\|`순서밖`) · 왜 · `updated_at` |
+| `ticket_order` | 프로젝트 · 기능 · 티켓 | 단계 · 왜 · `updated_at` (🔴 종류 칸은 2026-08-11 에 걷어냈다 — 사양 §닫힌 것) |
 
 🔴 **저 표에 없는 칸을 추가하지 마라.** 상태·막힘·완료·제목은 원본에서 다시 읽는다(INV-5).
 **의존 관계도 적지 않는다** — 티켓의 `Blocked by:` 가 SoT 이고 이미 계산된다
@@ -68,7 +68,6 @@ gootte 는 지금까지 **아무것도 저장하지 않는 제품**이었다(INV
 
 ```
 gootte-axi set         <프로젝트> <기능>/<번호> --step 3 --why "…"
-gootte-axi set         <프로젝트> <기능>/<번호> --kind 틈틈이 --why "…"
 gootte-axi set-feature <프로젝트> <기능> --track web --rank 20 --why "…"
 gootte-axi drop        <프로젝트> <기능>[/<번호>]
 gootte-axi order       <프로젝트>                            (전부 --json)

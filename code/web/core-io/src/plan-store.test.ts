@@ -64,11 +64,9 @@ describe("plan-store — 덮어쓰기만(INV-5, 이력 테이블 없음)", () =>
       project: "p",
       feature: "a",
       ticket: "01",
-      kind: "interstitial",
-      why: "틈틈이로 바뀜",
+      why: "이유를 다시 적었다",
     });
     expect(updated.step).toBe(3);
-    expect(updated.kind).toBe("interstitial");
   });
 
   it("처음 등록인데 step 이 없으면 거절한다", () => {
