@@ -29,10 +29,15 @@ function CardList({ cards, empty }: { cards: PlanCard[]; empty: string }) {
     );
   }
   return (
-    <div className="flex h-full flex-col gap-2.5 overflow-y-auto p-3">
-      {cards.map((c) => (
-        <BoardCard key={c.feature.slug} card={c} />
-      ))}
+    // 🔴 칸 수는 **화면 폭이 아니라 이 칸의 폭**이 정한다(`@container`) — 판은 사이드바 옆에 있어
+    // 창 크기와 칸 폭이 같지 않다. 뷰포트로 재면 사이드바를 접었을 때 칸이 넓어져도 그대로 있다.
+    // 접힌 카드는 높이가 같아 줄이 가지런하고, 하나를 펼쳐도 `items-start` 라 옆 카드가 늘어나지 않는다.
+    <div className="@container h-full overflow-y-auto p-3">
+      <div className="grid grid-cols-1 items-start gap-2.5 @2xl:grid-cols-2 @5xl:grid-cols-3">
+        {cards.map((c) => (
+          <BoardCard key={c.feature.slug} card={c} />
+        ))}
+      </div>
     </div>
   );
 }
