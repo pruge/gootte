@@ -60,11 +60,12 @@ export function ProcessView({ project }: ProcessViewProps) {
                   높이(2.25rem = py-2 + text-sm 줄높이)와 같다. 🔴 첫 다발 앞에는 틈을 두지
                   않는다 — `gap` 은 다발 *사이*에만 생기고, 바깥 padding 을 더 얹지 않는다. */}
               <div className="flex flex-col gap-9">
-                {clusterByFeature(g.rows).map((cluster) => (
+                {clusterByFeature(g.rows).map((cluster, i) => (
                   <div key={cluster.feature}>
                     <FeatureHeader
                       feature={cluster.feature}
                       title={featureTitleOf.get(cluster.feature) ?? cluster.feature}
+                      first={i === 0}
                     />
                     <ul className="divide-y divide-border/30">
                       {cluster.rows.map((row) => (
@@ -113,12 +114,17 @@ function clusterByFeature(rows: readonly ProcessRow[]): { feature: string; rows:
 /**
  * 기능 다발의 머리 — **회색 헤더**(캡틴 지시)에 이름과 설명문구를 두 줄로 싣는다. `plan` 탭
  * 카드 머리(`BoardCard`)와 같은 자리다. 설명이 없는 기능(표제가 곧 폴더명)은 이름 한 줄만 선다.
- * 🔴 **테두리를 두른다**(캡틴 지시) — 배경색 차이만으로는 다발 머리와 티켓 줄의 경계가 흐리다.
+ *
+ * 🔴 **위·아래 테두리만** — 좌우는 긋지 않는다, 둥근 모서리도 쓰지 않는다(캡틴 지시).
+ * 🔴 **첫 다발의 윗변은 긋지 않는다**(캡틴 지시) — 단계 헤더의 아랫변과 겹쳐 두 줄이 겹쳐
+ * 두꺼워 보였다. 첫 다발만 위 테두리를 빼 단계 헤더의 선 하나로 충분하게 한다.
  */
-function FeatureHeader({ feature, title }: { feature: string; title: string }) {
+function FeatureHeader({ feature, title, first }: { feature: string; title: string; first: boolean }) {
   const description = featureDescription(title, feature);
   return (
-    <div className="flex flex-col gap-y-0.5 rounded-md border border-border bg-surface-2/60 px-4 py-1.5">
+    <div
+      className={`flex flex-col gap-y-0.5 border-b ${first ? "" : "border-t"} border-border bg-surface-2/60 px-4 py-1.5`}
+    >
       <span
         className={`mono text-sm ${description ? "text-muted" : "font-medium tracking-tight"}`}
       >
