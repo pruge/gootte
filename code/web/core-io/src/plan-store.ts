@@ -144,6 +144,37 @@ export function readSteps(dataDir: string, project: string): StoredStep[] {
 }
 
 /**
+ * `step` 명령이 티켓 하나에 단계를 매긴다(plan-board/05) — firstmate 가 쓰는 유일한 칸.
+ * 🔴 **판정은 여기 없다.** 이 기능이 작업 대상에 있는지, 이 티켓이 실제로 있는지는 호출자
+ * (`cli`)가 먼저 확인한다 — 저장소는 쓰기만 한다(`writePlanMove`와 같은 관례).
+ */
+export function writeStep(dataDir: string, project: string, feature: string, ticket: string, step: number): void {
+  const db = open(dataDir);
+  try {
+    db.prepare(
+      `INSERT INTO step (project, feature, ticket, step) VALUES (?, ?, ?, ?)
+       ON CONFLICT (project, feature, ticket) DO UPDATE SET step = excluded.step`,
+    ).run(project, feature, ticket, step);
+  } finally {
+    db.close();
+  }
+}
+
+/** `step --clear` — 단계 행 하나를 뗀다. 없는 행을 지워도 조용히 끝난다(멱등). */
+export function clearStep(dataDir: string, project: string, feature: string, ticket: string): void {
+  const db = open(dataDir);
+  try {
+    db.prepare(`DELETE FROM step WHERE project = ? AND feature = ? AND ticket = ?`).run(
+      project,
+      feature,
+      ticket,
+    );
+  } finally {
+    db.close();
+  }
+}
+
+/**
  * 캡틴이 옮긴 결과를 적는다(plan-board/03) — `core` 의 `planMove` 가 이미 정한 것을 **그대로** 쓴다.
  *
  * 🔴 이름은 "옮김" 이지만 이 함수가 `PlanWritePlan` 을 표에 앉히는 **유일한 자리**다 —

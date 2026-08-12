@@ -252,6 +252,12 @@ export const PlanCard = z.object({
   feature: Feature,
   seq: z.number().int().nullable().default(null), // 자리 행이 없으면 null
   closedAt: z.string().nullable().default(null),
+  /**
+   * 티켓 slug → 화면에 보일 단계(당김까지 끝난 값, plan-board/05). **작업 대상 카드에만 값이 있다**
+   * — 단계는 작업 대상에 있는 동안만 존재한다(spec §단계는 잠시 붙었다 사라지는 것이다).
+   * 값이 없는 티켓(빈 단계로 당겨져 사라졌거나 애초에 단계 행이 없는 티켓)은 이 표에 없다.
+   */
+  steps: z.record(z.string(), z.number().int()).optional(),
 });
 export type PlanCard = z.infer<typeof PlanCard>;
 

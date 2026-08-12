@@ -1,9 +1,18 @@
 import { useEffect, useRef } from "react";
 import { IconX } from "@tabler/icons-react";
-import type { PlanCard } from "@gootte/contract";
-import { documentCompletedOn, ticketChecked } from "@gootte/core/plan";
+import type { FeatureTicket, PlanCard } from "@gootte/contract";
+import { documentCompletedOn, ticketChecked, UNRANKED_STEP } from "@gootte/core/plan";
 import { featureDescription } from "./cardTitle";
 import { ticketDocPath } from "./planDoc";
+
+/**
+ * 표시 단계 순으로 줄 세운다(plan-board/05) — 값이 없는 티켓(작업 대상 밖 카드, 빈 단계로
+ * 당겨져 사라진 티켓)은 문서 순서 그대로 뒤에 남는다. 판정은 `card.steps`(서버가 이미
+ * `computeDisplaySteps` 로 계산해 실은 값) 하나뿐이다 — 여기서 다시 매기지 않는다.
+ */
+function orderByStep(tickets: readonly FeatureTicket[], steps: Record<string, number>): FeatureTicket[] {
+  return [...tickets].sort((a, b) => (steps[a.slug] ?? Infinity) - (steps[b.slug] ?? Infinity));
+}
 
 interface CardDialogProps {
   card: PlanCard;
@@ -32,6 +41,9 @@ export function CardDialog({ card, onClose, onOpenTicket }: CardDialogProps) {
   const description = featureDescription(feature.title, feature.slug);
   // 닫힌 시각과 문서의 완료 날짜 — **다른 값**이라 여기서도 각각 선다(04).
   const completedOn = documentCompletedOn(feature);
+  // 작업 대상 카드에만 값이 있다(05) — 나머지 칸의 카드는 빈 표라 순서·표시가 그대로다.
+  const steps = card.steps ?? {};
+  const orderedTickets = orderByStep(feature.tickets, steps);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -95,8 +107,9 @@ export function CardDialog({ card, onClose, onOpenTicket }: CardDialogProps) {
             <p className="px-5 py-4 text-sm text-muted">티켓이 없습니다.</p>
           ) : (
             <ul className="divide-y divide-border/50">
-              {feature.tickets.map((t) => {
+              {orderedTickets.map((t) => {
                 const checked = ticketChecked(t);
+                const step = steps[t.slug];
                 return (
                   <li key={t.slug}>
                     {/* 🔴 줄 전체가 단추다 — 원문을 여는 것 하나뿐이라 부분 클릭을 나눌 이유가 없다.
@@ -113,6 +126,15 @@ export function CardDialog({ card, onClose, onOpenTicket }: CardDialogProps) {
                         title={checked ? "문서가 완료라고 말한다" : "아직 완료가 아니다"}
                       >
                         {checked ? "[x]" : "[ ]"}
+                      </span>
+                      {/* firstmate 가 매긴 단계(05) — 작업 대상 밖 카드나 값이 없는 티켓은 칸이 비어도
+                          자리는 지킨다(같은 폭 유지, 값 있는 줄과 나란히 서게). */}
+                      <span
+                        className={`mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted ${
+                          step === undefined ? "invisible" : ""
+                        }`}
+                      >
+                        {step === UNRANKED_STEP ? "—단계" : `${step ?? 0}단계`}
                       </span>
                       <span className="mono shrink-0 text-sm tabular-nums text-muted">
                         {t.num || "—"}

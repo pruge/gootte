@@ -113,7 +113,10 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 | `pnpm test:ports` | 포트 해석기 테스트만 (`scripts/tests/ports.test.sh`) | 에이전트 가능 |
 | `pnpm discover <root>` | 로컬 관리대상 프로젝트 발견 · 읽기 전용 | 에이전트 가능 |
 | `pnpm gootte discover <…>` | 같은 것을 CLI 로 직접 호출 | 에이전트 가능 |
-| `pnpm gootte next <프로젝트>` | 자리만 비워 둔 상태 — "아직 없다"고 답한다(plan-board/01·05) | 에이전트 가능 |
+| `pnpm gootte step <프로젝트> <기능>/<티켓> <N>` | 티켓 하나에 단계를 매긴다(plan-board/05) | firstmate |
+| `pnpm gootte step --clear <프로젝트> <기능>/<티켓>` | 단계를 뗀다 | firstmate |
+| `pnpm gootte board <프로젝트>` | 다섯 칸 현황을 읽는다 — 읽기 전용, 자리·순서를 바꾸는 CLI 는 없다 | 누구나 |
+| `pnpm gootte next <프로젝트>` | 작업 대상에 있는 기능의, 표시 기준 1단계 티켓만 말한다(plan-board/05) | firstmate |
 | `pnpm dev:backend` | Hono API dev 서버 (`scripts/dev-backend.sh` → `tsx watch`) | **사용자가 띄운다** |
 | `pnpm dev:frontend` | Vite dev 서버 (`scripts/dev-frontend.sh`, `/api` → backend 프록시) | **사용자가 띄운다** |
 | `pnpm dev` | backend + frontend 동시 (`scripts/dev.sh`) | **사용자가 띄운다** |

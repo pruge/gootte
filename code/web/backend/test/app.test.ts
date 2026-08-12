@@ -13,7 +13,7 @@ import {
   ApiError,
   type Project,
 } from "@gootte/contract";
-import { migratePlanDb, readPlacements, readSteps } from "@gootte/core-io";
+import { migratePlanDb, readPlacements, readSteps, writeStep } from "@gootte/core-io";
 import { createApp } from "../src/app";
 import {
   clearDiscoverCache,
@@ -321,6 +321,26 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
       expect(body.active.map((c) => c.feature.slug)).toEqual(["auth-login"]);
       expect(body.active[0]?.seq).toBe(0);
       expect(body.waiting.map((c) => c.feature.slug)).toEqual(["doc-tree"]);
+    }));
+
+  test("작업 대상 카드는 티켓별 표시 단계를 싣는다(plan-board/05) — 판정은 core 함수 하나뿐", () =>
+    withDataDir(async (dataDir) => {
+      place(dataDir, "auth-login", "active", 0);
+      writeStep(dataDir, "alpha", "auth-login", "02-screen", 1);
+      writeStep(dataDir, "alpha", "auth-login", "03-social", 9999);
+      const body = PlanBoardResponse.parse(
+        await (await createApp({ ...APP, dataDir }).request("/api/plan/alpha")).json(),
+      );
+      const card = body.active.find((c) => c.feature.slug === "auth-login");
+      expect(card?.steps).toEqual({ "02-screen": 1, "03-social": 9999 });
+    }));
+
+  test("작업 대상 밖 카드는 단계가 실리지 않는다 — 단계는 작업 대상에 있는 동안만 존재한다", () =>
+    withDataDir(async (dataDir) => {
+      const body = PlanBoardResponse.parse(
+        await (await createApp({ ...APP, dataDir }).request("/api/plan/alpha")).json(),
+      );
+      expect(body.waiting.find((c) => c.feature.slug === "auth-login")?.steps).toBeUndefined();
     }));
 
   test("🔴 판을 읽어도 관리대상에는 한 글자도 쓰지 않는다(INV-2)", () =>

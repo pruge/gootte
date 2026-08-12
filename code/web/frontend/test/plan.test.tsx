@@ -38,10 +38,16 @@ function feature(slug: string, tickets: TicketSpec[] = []): Feature {
   };
 }
 
-const card = (f: Feature, seq: number | null = null, closedAt: string | null = null): PlanCard => ({
+const card = (
+  f: Feature,
+  seq: number | null = null,
+  closedAt: string | null = null,
+  steps?: Record<string, number>,
+): PlanCard => ({
   feature: f,
   seq,
   closedAt,
+  ...(steps ? { steps } : {}),
 });
 
 const EMPTY_BOARD: PlanBoardResponse = {
@@ -513,6 +519,64 @@ describe("PlanView — 티켓 상자와 닫힌 카드(plan-board/04)", () => {
     renderBoard({ ...EMPTY_BOARD, active: [card(feature("open", [["01", "하나"]]), 0)] });
     const c = screen.getByRole("article", { name: "open 제목" });
     expect(within(c).queryByText(/닫힘/)).toBeNull();
+  });
+});
+
+/**
+ * 단계를 매기고 빈 단계는 당겨진다. `next` 는 CLI 몫이라 여기서 재지 않는다(plan-board/05).
+ * 화면이 재는 것은 딱 하나 — **서버가 이미 계산해 보낸 `card.steps` 를 그대로 보여주는가**다.
+ * 당김 계산 자체는 `core/src/plan/step.test.ts` 가 덮는다(spec §판정 자리는 하나뿐).
+ */
+describe("PlanView — 카드 대화상자의 단계 표시(plan-board/05)", () => {
+  it("표시 단계 순으로 티켓이 줄 선다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      active: [
+        card(
+          feature("ordered", [["01", "나중"], ["02", "먼저"]]),
+          0,
+          null,
+          { "02-x": 1, "01-x": 2 },
+        ),
+      ],
+    });
+    const opened = openCard("ordered 제목");
+    const titles = within(opened)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+    expect(titles[0]).toContain("먼저");
+    expect(titles[1]).toContain("나중");
+  });
+
+  it("단계 숫자를 그대로 보여준다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      active: [card(feature("step1", [["01", "하나"]]), 0, null, { "01-x": 1 })],
+    });
+    const opened = openCard("step1 제목");
+    expect(within(opened).getByText("1단계")).toBeInTheDocument();
+  });
+
+  it("🔴 9999 단계는 숫자 대신 — 로 보여준다 — 아직 순서를 안 정했다는 뜻이다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      active: [card(feature("unranked", [["01", "하나"]]), 0, null, { "01-x": 9999 })],
+    });
+    const opened = openCard("unranked 제목");
+    expect(within(opened).getByText("—단계")).toBeInTheDocument();
+  });
+
+  it("작업 대상 밖 카드는 단계 값이 없다 — 문서 순서 그대로다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      waiting: [card(feature("idle", [["01", "가"], ["02", "나"]]))],
+    });
+    const opened = openCard("idle 제목");
+    const titles = within(opened)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+    expect(titles[0]).toContain("가");
+    expect(titles[1]).toContain("나");
   });
 });
 
