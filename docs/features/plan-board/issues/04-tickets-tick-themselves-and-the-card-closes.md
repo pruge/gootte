@@ -6,7 +6,7 @@
 
 **Blocked by:** 02 — 카드와 칸이 먼저 있어야 한다
 
-**Status:** draft
+**Status:** claimed
 
 ## 이 티켓이 없애는 문제
 
