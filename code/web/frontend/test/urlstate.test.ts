@@ -56,6 +56,20 @@ describe("useUrlState", () => {
     expect(result.current.tab).toBe("features");
   });
 
+  it("setTab process → URL `?tab=process`(plan-board/07)", () => {
+    window.history.pushState({}, "", "/?p=x&tab=features");
+    const { result } = renderHook(() => useUrlState());
+    act(() => result.current.setTab("process"));
+    expect(result.current.tab).toBe("process");
+    expect(new URLSearchParams(window.location.search).get("tab")).toBe("process");
+  });
+
+  it("`?tab=process` 를 북마크로 열면 process 탭으로 그대로 열린다 — 새로 고쳐도 열려 있다", () => {
+    window.history.pushState({}, "", "/?p=x&tab=process");
+    const { result } = renderHook(() => useUrlState());
+    expect(result.current.tab).toBe("process");
+  });
+
   it("setView → `?view=` 반영", () => {
     const { result } = renderHook(() => useUrlState());
     act(() => result.current.setView("board"));

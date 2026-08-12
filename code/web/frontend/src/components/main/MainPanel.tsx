@@ -2,6 +2,7 @@ import { IconTelescope } from "@tabler/icons-react";
 import type { Tab } from "../../hooks/useUrlState";
 import { FeaturesView } from "../features/FeaturesView";
 import { PlanView } from "../plan/PlanView";
+import { ProcessView } from "../process/ProcessView";
 import { Tabs } from "./Tabs";
 
 interface MainPanelProps {
@@ -54,6 +55,8 @@ export function MainPanel({
               project={project}
               onOpenFeatureDoc={onOpenFeatureDoc}
             />
+          ) : tab === "process" ? (
+            <ProcessView key={`${project}-process`} project={project} />
           ) : (
             <FeaturesView
               key={`${project}-features`}
