@@ -5,7 +5,7 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능**
 
-**Status:** draft
+**Status:** claimed
 
 ## 왜 먼저 걷어내나
 
