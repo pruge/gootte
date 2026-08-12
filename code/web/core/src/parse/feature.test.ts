@@ -195,16 +195,33 @@ describe("parseBlockedBy", () => {
     });
   });
 
-  describe("번호도 '없음' 도 없는 산문 — 막힘으로 세지 않되, 못 읽었다는 사실을 드러낸다(development-order/11)", () => {
-    it("🔴 산문만 있으면 blockedBy 는 비고 unreadable 에 verbatim 으로 실린다", () => {
+  describe("번호도 '없음' 도 없는 산문 — 막히면서 동시에 못 읽었다는 사실도 드러낸다(development-order/17, 11 의 결정 하나를 뒤집는다)", () => {
+    it("🔴 산문만 있으면 blockedBy 에도 unreadable 에도 같은 값이 verbatim 으로 실린다", () => {
       expect(parseBlockedByLine(ticket("ready-for-agent", "디자인 논의가 아직 안 끝났다"))).toEqual({
-        blockedBy: [],
+        blockedBy: ["디자인 논의가 아직 안 끝났다"],
         unreadable: ["디자인 논의가 아직 안 끝났다"],
       });
     });
 
-    it("parseBlockedBy 는 이 산문을 선행으로 세지 않는다 — 착수 가능을 막지 않는다", () => {
-      expect(parseBlockedBy(ticket("ready-for-agent", "디자인 논의가 아직 안 끝났다"))).toEqual([]);
+    it("🔴 parseBlockedBy 는 이제 이 산문을 선행으로 센다 — 착수 가능을 막는다(development-order/17 이 11 의 이 결정을 뒤집는다)", () => {
+      expect(parseBlockedBy(ticket("ready-for-agent", "디자인 논의가 아직 안 끝났다"))).toEqual([
+        "디자인 논의가 아직 안 끝났다",
+      ]);
+    });
+
+    it("🔴 같은 뜻인 산문에 우연히 숫자(날짜)가 섞여도 답이 같다 — 이 결함의 본체(development-order/17)", () => {
+      expect(
+        parseBlockedByLine(ticket("ready-for-agent", "스케줄 표면 재구축")),
+      ).toEqual({
+        blockedBy: ["스케줄 표면 재구축"],
+        unreadable: ["스케줄 표면 재구축"],
+      });
+      expect(
+        parseBlockedByLine(ticket("ready-for-agent", "스케줄 표면 재구축 (2026-07-09 계획)")),
+      ).toEqual({
+        blockedBy: ["스케줄 표면 재구축 (2026-07-09 계획)"],
+        unreadable: ["스케줄 표면 재구축 (2026-07-09 계획)"],
+      });
     });
 
     it("🔴 번호가 하나라도 있으면 나머지 산문은 사유(주석)로 보고 unreadable 에 안 올린다 — 느슨해지지 않는다", () => {

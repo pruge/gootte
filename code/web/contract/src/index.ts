@@ -293,8 +293,9 @@ export type ExtraListItem = z.infer<typeof ExtraListItem>;
  * - `ticket_without_step` — 티켓 문서는 있는데 계획에 단계가 없다(새로 썼는데 안 넣음)
  * - `step_without_ticket` — 계획엔 단계가 있는데 티켓 문서가 없다(사라졌거나 번호가 바뀜)
  * - `done_but_staged` — 티켓은 이미 끝났는데(`done`·`dropped`) 계획엔 아직 단계로 남아 있다
- * - `blocked_by_unreadable` — `Blocked by:` 줄에 번호도 "없음" 도 못 알아들은 산문이 있다
- *   (development-order/11) — 막지는 않되, 못 읽었다는 사실 자체를 드러낸다
+ * - `blocked_by_unreadable` — `Blocked by:` 줄에 번호도 "없음" 도 없는 산문이 있다 — 🔴 막는다
+ *   (선행이 끝나도 자동으로 안 풀린다) **그리고** 그 사실을 드러낸다(development-order/17,
+ *   11 의 "막지 않는다" 를 이 경우에 한해 뒤집는다)
  * - `unblocked_but_delayed` — 티켓은 막힘이 없다는데 계획은 그 트랙의 선두 단계가 아닌 곳에
  *   두었고, 그 단계의 계획 이유가 비어 있다(development-order/15 ①). 막힘이 아니다 — 계획이
  *   뒤로 둔 까닭이 티켓에는 안 적혀 있다는 사실만 말한다. 이유를 채우면 사라진다.

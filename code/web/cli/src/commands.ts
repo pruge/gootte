@@ -112,7 +112,7 @@ const MISMATCH_LABEL: Record<PlanMismatch["kind"], string> = {
   ticket_without_step: "단계 없는 티켓",
   step_without_ticket: "티켓 없는 단계",
   done_but_staged: "끝났는데 앞 단계에 남은 것",
-  blocked_by_unreadable: "Blocked by 못 읽음",
+  blocked_by_unreadable: "번호 없는 막힘",
   unblocked_but_delayed: "막힘 없는데 뒤 단계 — 이유 없음",
   stale_reason_wording: "이유 줄이 낡았을 수 있음",
 };
