@@ -34,26 +34,32 @@ export function BoardCard({ card }: { card: PlanCard }) {
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded((v) => !v)}
-          className="flex min-w-0 flex-1 items-start gap-x-3 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-accent"
+          className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-accent"
         >
           {/* 두 줄 — 첫 줄 기능 이름, 둘째 줄 설명문구(캡틴 결정). 설명이 없는 기능(표제가 곧
-              폴더명인 경우)은 이름 한 줄만 그린다 — 빈 줄로 자리를 채우지 않는다. */}
-          <h3 id={headingId} className="flex min-w-0 flex-1 flex-col gap-0.5">
+              폴더명인 경우)은 이름 한 줄만 그린다 — 빈 줄로 자리를 채우지 않는다.
+              🔴 곁다리(닫힌 시각·티켓 수)는 **첫 줄 옆**에만 선다. 두 줄 묶음 전체의 옆에 두면
+              짧은 이름 줄이 남기는 여백까지 설명 줄에서 빼앗아 설명이 카드 폭을 다 못 쓰고 잘린다.
+              그래서 자리를 격자로 못 박는다 — 이름과 곁다리가 첫 줄을 나눠 쓰고, **설명은 둘째 줄을
+              통째로** 갖는다. 제목(`h3`)은 `contents` 라 이름과 설명만 묶어 카드 이름이 되고,
+              곁다리는 그 이름에 섞이지 않는다. */}
+          <h3 id={headingId} className="contents">
             <span
-              className={`mono truncate ${
+              className={`mono col-start-1 row-start-1 min-w-0 truncate ${
                 description ? "text-sm text-muted" : "font-medium tracking-tight"
               }`}
             >
               {feature.slug}
             </span>
+            {/* 🔴 설명은 잘리지 않는다 — 폭이 모자라면 다음 줄로 넘어간다. 말줄임은 문구를
+                감추는 것이고, 카드가 무엇에 대한 것인지는 감출 값이 아니다. */}
             {description && (
-              // 칸이 좁아지면 잘리므로 원문을 title 로 달아 둔다 — 잘린 것이 사라진 것이 되지 않게.
-              <span className="truncate font-medium tracking-tight" title={description}>
+              <span className="col-span-2 col-start-1 row-start-2 font-medium tracking-tight break-words">
                 {description}
               </span>
             )}
           </h3>
-          <span className="flex shrink-0 items-baseline gap-x-2.5">
+          <span className="col-start-2 row-start-1 flex shrink-0 items-baseline gap-x-2.5">
             {/* 닫힌 시각은 문서에 없는 값이라 계획 DB 가 갖는다(INV-5 · F6) — 있을 때만 뜬다. */}
             {card.closedAt && (
               <span className="mono text-sm tabular-nums text-muted">{card.closedAt}</span>
