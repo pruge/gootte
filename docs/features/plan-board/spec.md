@@ -48,6 +48,11 @@
 티켓 `Status: resolved` 에 **날짜만이 아니라 시각까지 적는다.** 서식은 `YYYY-MM-DD HH:MM` 이고,
 날짜만 적힌 기존 문서 수백 장은 계속 유효하다. 작업자 지시서 쪽은 firstmate 가 이미 고쳤다.
 
+> (2026-08-12) “헤더에 feature | plan 이 있는데 여기에 process를 추가하고 화면은 process클릭했을때 보이게해.”
+
+그 화면이 무엇을 보여줄지는 캡틴 창에서 직접 여쭤 닫았다(2026-08-12) —
+**단계별 작업 순서**를 보여 주고, 티켓을 **기능으로 묶지 않으며**, **읽기 전용**이다.
+
 > “단계는 연속.”
 
 > “단계는 애초에 문서에 있으면 안되. db에 잠시붙었다가 사라지는거잖아.”
@@ -93,6 +98,8 @@
 | F5 | `Status:` 값이 `resolved` 면 완료, `wontfix` 면 폐기, 나머지는 미완으로 사상된다 | `core/src/parse/feature.ts` `mapFirstmateStatus` |
 | F6 | 완료일은 `resolved (YYYY-MM-DD)` 에서만 읽는다. **문서는 이제 시각까지 적는데(전달받은 결정 2026-08-12) 읽는 쪽이 그것을 버린다** — [06](issues/06-the-completion-time-is-read-to-the-minute.md) 이 이 틈을 메운다 | 같은 파일, `completedAt`·`DATE` |
 | F6b | 04 가 착지해 카드는 **두 값을 각각** 보여 준다 — 저장한 닫힘 시각과 문서가 말하는 완료 날짜. 저절로 닫힐 때 둘 다 쓰인다 | `core/src/plan/close.ts` `planAutoClose`·`documentCompletedOn` |
+| F6c | 헤더 탭은 `features | plan` 둘이고 **주소에 실린다** — 새 탭은 목록 한 곳과 주소 타입 한 곳에 더하면 된다 | `frontend/src/hooks/useUrlState.ts` `Tab`, `components/main/Tabs.tsx` |
+| F6d | 표시 단계(당김까지 끝난 값)를 계산하는 자리는 **하나**이고, 서버가 그 결과를 카드마다 실어 보낸다 | `core/src/plan/step.ts` `computeDisplaySteps`, `contract` `PlanCard.steps` (05) |
 | F7 | 프로젝트 자동 발견은 이미 있다(루트 `AGENTS.md` + `docs/features/` 둘 다 있으면 관리대상) | `core-io/src/discover.ts` |
 | F8 | 🔴 **기능을 계획에 넣는 자동 경로는 없다.** DB 쓰기 입구는 전부 사람의 CLI 또는 드래그다 | `core-io/src/plan-store.ts` |
 | F9 | 계획 DB 는 `트랙 + 순위(실수) + 왜` 와 `단계 + 왜` 두 표다 | 같은 파일 `SCHEMA_DDL` |
@@ -319,6 +326,7 @@ step (project, feature, ticket)          ← 열쇠
 | [04](issues/04-tickets-tick-themselves-and-the-card-closes.md) | 티켓이 스스로 체크되고, 다 되면 접힌 채 완료 칸으로 간다 | 02 |
 | [05](issues/05-steps-are-assigned-and-next-speaks-only-of-step-one.md) | 단계를 매기고 빈 단계는 당겨진다. `next` 는 작업 대상 1단계만 말한다 | 03 |
 | [06](issues/06-the-completion-time-is-read-to-the-minute.md) | 문서가 적은 완료 **시각**을 분까지 읽고, 카드의 닫힌 시각을 문서에 맡긴다 | 🟢 없음 — 지금 착수 가능 |
+| [07](issues/07-the-process-tab-shows-the-work-in-step-order.md) | `process` 탭이 모든 기능의 티켓을 단계 순서로 모아 보여 준다 — 읽기 전용 | 05 |
 
 03 과 04 는 나란히 갔고, 둘 다 착지했다. 06 은 04 위에서 간다 — 04 를 되감지 않는다.
 
@@ -331,7 +339,8 @@ step (project, feature, ticket)          ← 열쇠
 | 자리 판정(행 없음=대기, 완료 들고남) | `core/src/plan/close.test.ts` | 🟢 04 가 덮었다 |
 | `Status:` 줄의 완료 **시각** 읽기 | `core/src/parse/feature.test.ts` | 🟡 날짜만 덮여 있다 — 06 이 시각을 더한다 |
 | 닫힌 시각이 어디서 오는가(문서/저장값) | `core/src/plan/close.test.ts` 를 이어 쓴다 | 🟡 04 의 규칙으로 덮여 있다 — 06 이 다시 쓴다 |
-| 단계 표시 당김(빈 단계 걷어내기) | `core` 순수 함수 단위 테스트 | 🔴 새 코드 — 05 가 처음 덮는다 |
+| 단계 표시 당김(빈 단계 걷어내기) | `core/src/plan/step.test.ts` | 🟢 05 가 덮었다 |
+| 단계별로 모으기(기능을 가로질러) | `core` 순수 함수 단위 테스트 | 🔴 새 코드 — 07 이 처음 덮는다 |
 | `next` 계산 | `core/src/plan/next.test.ts` 자리를 새로 씀 | 🟡 옛 테스트 있음, 01 이 걷고 05 가 다시 씀 |
 | 저장소 읽기·쓰기 | `core-io/src/plan-store.test.ts` 자리를 새로 씀 | 🟡 같음, 01·02 |
 | 화면 | `frontend/test/plan.test.tsx` 자리를 새로 씀 | 🟡 같음, 02·03·04 |
