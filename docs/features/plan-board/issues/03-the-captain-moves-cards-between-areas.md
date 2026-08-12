@@ -6,7 +6,7 @@
 
 **Blocked by:** 02 — 옮길 판과 옮겨 담을 자리가 먼저 있어야 한다
 
-**Status:** claimed
+**Status:** resolved (2026-08-12)
 
 ## 만드는 것
 
