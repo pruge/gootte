@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
-import type { Feature } from "@gootte/contract";
+import type { Feature, PlanBoardResponse, PlanCard } from "@gootte/contract";
 import {
   AREA_DROP_ID,
   TAB_DROP_ID,
+  applyMoveToBoard,
   changesBoard,
   dropTargetArea,
   insertIndex,
@@ -84,6 +85,81 @@ describe("changesBoard — 제자리에 도로 놓은 것은 쓰지 않는다", 
 
   it("같은 칸이라도 자리가 달라지면 쓴다", () => {
     expect(changesBoard("active", "active", dest, ["b"], 0)).toBe(true);
+  });
+});
+
+/**
+ * 놓는 순간의 한 프레임 — **연출이지 판정이 아니다.** 서버의 답이 오면 통째로 덮인다.
+ * 그래서 여기서 재는 것은 하나뿐이다: **새로 지어내는 값이 없는가.**
+ */
+describe("applyMoveToBoard — 놓은 자리로 카드를 옮겨 놓은 한 프레임", () => {
+  const card = (slug: string, seq: number | null = null, closedAt: string | null = null): PlanCard =>
+    ({ feature: { slug } as Feature, seq, closedAt });
+
+  const board = (over: Partial<PlanBoardResponse> = {}): PlanBoardResponse => ({
+    project: "alpha",
+    waiting: [],
+    active: [],
+    reserved: [],
+    discarded: [],
+    done: [],
+    ...over,
+  });
+
+  const slugs = (cards: readonly PlanCard[]) => cards.map((c) => c.feature.slug);
+
+  it("옮긴 칸에서 빠지고 놓은 칸의 그 자리에 들어간다", () => {
+    const next = applyMoveToBoard(
+      board({ waiting: [card("a")], active: [card("x", 0), card("y", 1)] }),
+      { features: ["a"], area: "active", index: 1 },
+    );
+    expect(slugs(next.active)).toEqual(["x", "a", "y"]);
+    expect(next.waiting).toEqual([]);
+  });
+
+  it("여러 장도 집은 순서 그대로 한 덩어리로 들어간다", () => {
+    const next = applyMoveToBoard(board({ waiting: [card("a"), card("b"), card("c")] }), {
+      features: ["c", "a"],
+      area: "active",
+      index: 0,
+    });
+    expect(slugs(next.active)).toEqual(["c", "a"]);
+    expect(slugs(next.waiting)).toEqual(["b"]);
+  });
+
+  it("🔴 대기(null)로 보내면 대기 칸으로 간다 — 자리 값을 지어내지 않는다", () => {
+    const next = applyMoveToBoard(board({ active: [card("a", 0)] }), {
+      features: ["a"],
+      area: null,
+      index: 0,
+    });
+    expect(slugs(next.waiting)).toEqual(["a"]);
+    expect(next.active).toEqual([]);
+  });
+
+  it("🔴 카드 객체를 그대로 옮겨 담는다 — seq·closedAt 을 새로 계산하지 않는다", () => {
+    const shipped = card("shipped", 3, "2026-08-01 09:00");
+    const next = applyMoveToBoard(board({ done: [shipped] }), {
+      features: ["shipped"],
+      area: "active",
+      index: 0,
+    });
+    // 이 값들이 맞는지는 서버가 정한다 — 이 프레임은 판정하지 않으므로 손대지 않는다.
+    expect(next.active[0]).toBe(shipped);
+  });
+
+  it("판에 없는 기능이면 판을 그대로 돌려준다 — 없는 카드를 만들지 않는다", () => {
+    const before = board({ waiting: [card("a")] });
+    expect(applyMoveToBoard(before, { features: ["ghost"], area: "active", index: 0 })).toBe(before);
+  });
+
+  it("건드리지 않은 칸은 그대로다", () => {
+    const next = applyMoveToBoard(
+      board({ waiting: [card("a")], reserved: [card("r")], done: [card("d")] }),
+      { features: ["a"], area: "active", index: 0 },
+    );
+    expect(slugs(next.reserved)).toEqual(["r"]);
+    expect(slugs(next.done)).toEqual(["d"]);
   });
 });
 

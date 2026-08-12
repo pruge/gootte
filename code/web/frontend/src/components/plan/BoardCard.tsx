@@ -52,9 +52,15 @@ export function BoardCard({
 
   // 🔴 `role` 을 카드 자신의 것으로 못 박는다 — dnd-kit 기본값(`button`)이 붙으면 카드가
   // 카드가 아니게 되고, 안에 있는 머리글 버튼이 버튼 속 버튼이 된다.
+  //
+  // 🔴 `animateLayoutChanges: false` — 카드가 **제자리에 그냥 나타난다**(캡틴 지시).
+  // dnd-kit 기본값은 자리 이동을 옛 측정값에서 새 자리로 미끄러뜨리는데, 다른 칸에서 온 카드는
+  // 옛 측정값이 저 멀리라 화면 왼쪽에서 날아 들어오는 것처럼 보인다. 놓은 자리에서 제자리로
+  // 가는 연출은 손끝의 사본(`DragOverlay`)이 맡는다 — 두 연출이 겹치면 어디서 온 건지 알 수 없다.
   const sortable = useSortable({
     id: feature.slug,
     disabled: overlay,
+    animateLayoutChanges: () => false,
     attributes: { role: "article", roleDescription: "카드 — 끌어서 다른 칸으로 옮깁니다" },
   });
 
@@ -137,7 +143,7 @@ export function BoardCard({
               onClick={() => onOpenDoc?.(feature.slug)}
               aria-label={`${feature.slug} 문서 열기`}
               title="features 탭에서 이 기능 문서를 연다"
-              className="cursor-pointer rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+              className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
             >
               <IconFileText size={17} stroke={1.6} />
             </button>
@@ -146,7 +152,7 @@ export function BoardCard({
               onClick={() => onRequestMove?.(feature.slug)}
               aria-label={`${feature.slug} 다른 칸으로 보내기`}
               title="어느 칸으로 보낼지 고른다"
-              className="cursor-pointer rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+              className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
             >
               <IconArrowMoveRight size={17} stroke={1.6} />
             </button>

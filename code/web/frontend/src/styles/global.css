@@ -80,6 +80,22 @@
     background: color-mix(in oklch, var(--color-accent) 28%, transparent);
     color: var(--color-fg);
   }
+  /* 🔴 누를 수 있는 것 위에서는 손 모양 — **전역**이다(캡틴 지시).
+     Tailwind v4 는 버튼의 기본 커서를 `default` 로 되돌려 놓았다. 그대로 두면 누를 수 있는
+     것과 없는 것이 마우스로는 구분되지 않는다. 여기 한 줄이 그 판정을 갖는다 —
+     컴포넌트마다 `cursor-pointer` 를 붙이면 붙이는 걸 잊은 곳이 곧 거짓말이 된다.
+     끌기 손잡이처럼 다른 커서를 써야 하는 자리는 유틸리티 한 클래스로 덮는다(판 위의 카드). */
+  button:not(:disabled),
+  summary,
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
   /* focus 는 항상 보이게 — 의도적 접근성 상태 */
   :focus-visible {
     outline: 2px solid var(--color-accent);

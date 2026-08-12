@@ -5,11 +5,16 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  pointerWithin,
+  rectIntersection,
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
+  type DropAnimation,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type { PlanBoardResponse, PlanCard } from "@gootte/contract";
@@ -44,6 +49,16 @@ const TABS = [
 const EMPTY_SET: ReadonlySet<string> = new Set();
 
 /**
+ * 놓은 자리 → 새 자리로 날아가는 연출(캡틴 지시). 짧고 끝이 느려져 어디에 내려앉는지 눈이 따라간다.
+ * 🔴 놓은 카드를 흐리게 만드는 기본 부작용은 쓰지 않는다 — 카드는 이미 새 자리에 앉아 있고,
+ * 그것을 흐리게 하면 방금 옮긴 것이 유령처럼 보인다.
+ */
+const DROP_ANIMATION: DropAnimation = {
+  duration: 200,
+  easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+};
+
+/**
  * 끌기를 소리로 듣는 캡틴에게 하는 말 — dnd-kit 기본값은 영어라 그대로 두면 이 화면에서
  * 여기만 다른 언어가 된다. 안내는 **끌기 조작만** 말한다 — 어디에 놓으면 안 되는지 같은
  * 경고는 없다(INV-B3).
@@ -61,6 +76,24 @@ const A11Y = {
       over ? `${dropLabel(over.id)} 자리에 놓았습니다.` : "제자리로 돌아왔습니다.",
     onDragCancel: () => "끌기를 되돌렸습니다.",
   },
+};
+
+/**
+ * 어디에 놓이는가 — 🔴 **포인터가 들어가 있는 칸이 그 칸이다**(캡틴 지시).
+ *
+ * dnd-kit 기본값 `closestCenter` 는 포인터가 칸 **안**에 있는지를 보지 않고 droppable 중심까지의
+ * 거리로만 고른다. 칸이 크고 카드가 작은 이 판에서는 그게 곧 "칸 가운데 좁은 띠에서만 잡힌다" 가
+ * 된다 — 칸의 아래쪽 빈 자리에 놓으면 아래 칸의 중심이 더 가까워 엉뚱한 칸이 이긴다.
+ * 다섯 칸 전부가 **제 넓이 전체로** 카드를 받아야 한다.
+ *
+ * 그래서 순서가 셋이다: 포인터가 들어간 것 → (포인터가 아무 데도 안 들어갔으면) 겹친 것 →
+ * 키보드 끌기처럼 포인터가 아예 없을 때만 중심 거리.
+ */
+const collideByPointer: CollisionDetection = (args) => {
+  const inside = pointerWithin(args);
+  if (inside.length > 0) return inside;
+  const overlapping = rectIntersection(args);
+  return overlapping.length > 0 ? overlapping : closestCenter(args);
 };
 
 /** 놓을 자리를 사람의 말로 — 안내에 `tab:reserved` 같은 내부 식별자가 새어 나가지 않게. */
@@ -84,14 +117,17 @@ function TabButton({
   id,
   count,
   selected,
+  highlighted,
   onSelect,
 }: {
   id: BoardAreaId;
   count: number;
   selected: boolean;
+  /** 이 칸으로 향하고 있다 — 탭 머리 위든 열려 있는 그 칸의 어디든. */
+  highlighted: boolean;
   onSelect: () => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: TAB_DROP_ID(id) });
+  const { setNodeRef } = useDroppable({ id: TAB_DROP_ID(id) });
   return (
     <button
       ref={setNodeRef}
@@ -101,7 +137,7 @@ function TabButton({
       onClick={onSelect}
       className={`mono flex items-baseline gap-1.5 rounded-md px-3 py-1 text-sm transition-colors ${
         selected ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg"
-      } ${isOver ? "ring-1 ring-accent bg-accent/12 text-accent" : ""} focus-visible:outline-2 focus-visible:outline-accent`}
+      } ${highlighted ? "bg-accent/15 text-accent ring-2 ring-accent" : ""} focus-visible:outline-2 focus-visible:outline-accent`}
     >
       {AREA_LABEL[id]}
       <Count n={count} />
@@ -144,6 +180,8 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
     slugs: [],
   });
   const [dragging, setDragging] = useState<string | null>(null);
+  // 지금 향하고 있는 칸 — 그 칸 **전체**와 그 탭 머리가 함께 밝아진다(캡틴 지시).
+  const [overArea, setOverArea] = useState<BoardAreaId | null>(null);
   const [dialog, setDialog] = useState<{ area: BoardAreaId; slugs: string[] } | null>(null);
 
   const sensors = useSensors(
@@ -172,7 +210,7 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
   const submit = (from: BoardAreaId, to: BoardAreaId, features: string[], index: number) => {
     setPicked({ area: to, slugs: [] });
     if (!changesBoard(from, to, slugsOf(to), features, index)) return;
-    move.mutate({ features, area: storedArea(to), index });
+    move.move({ features, area: storedArea(to), index });
   };
 
   const toggleSelect = (area: BoardAreaId, slug: string) =>
@@ -197,8 +235,19 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
     if (area && !(picked.area === area && pickedSet.has(slug))) setPicked({ area, slugs: [] });
   };
 
-  const onDragEnd = (e: DragEndEvent) => {
+  /** 놓을 자리 → 어느 칸인가. 끌고 있는 동안의 강조와 놓았을 때의 판정이 **같은 한 줄**을 쓴다. */
+  const areaUnder = (overId: string | undefined): BoardAreaId | null =>
+    overId ? dropTargetArea(overId, areaOfCard(board, overId)) : null;
+
+  const onDragOver = (e: DragOverEvent) => setOverArea(areaUnder(e.over ? String(e.over.id) : undefined));
+
+  const stopDrag = () => {
     setDragging(null);
+    setOverArea(null);
+  };
+
+  const onDragEnd = (e: DragEndEvent) => {
+    stopDrag();
     const slug = String(e.active.id);
     const from = areaOfCard(board, slug);
     if (!e.over || !from) return;
@@ -223,10 +272,11 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
     <DndContext
       accessibility={A11Y}
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={collideByPointer}
       onDragStart={onDragStart}
+      onDragOver={onDragOver}
       onDragEnd={onDragEnd}
-      onDragCancel={() => setDragging(null)}
+      onDragCancel={stopDrag}
     >
       <div className="flex h-full min-h-0 flex-col gap-4">
         {/* ── 위: 작업 대상 — 지금 붙들고 갈 것. accent 가 이 칸 하나에만 붙는다 ── */}
@@ -255,6 +305,7 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
             areaId="active"
             cards={board.active}
             empty="작업 대상이 비어 있습니다."
+            highlighted={overArea === "active"}
             selected={picked.area === "active" ? pickedSet : EMPTY_SET}
             onToggleSelect={toggleSelect}
             onOpenDoc={openDoc}
@@ -275,6 +326,7 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
                 id={t.id}
                 count={board[t.id].length}
                 selected={t.id === tab}
+                highlighted={overArea === t.id}
                 onSelect={() => setTab(t.id)}
               />
             ))}
@@ -284,6 +336,7 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
               areaId={current.id}
               cards={board[current.id]}
               empty={current.empty}
+              highlighted={overArea === current.id}
               selected={picked.area === current.id ? pickedSet : EMPTY_SET}
               onToggleSelect={toggleSelect}
               onOpenDoc={openDoc}
@@ -293,8 +346,11 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
         </section>
       </div>
 
-      {/* 끌고 있는 동안 손끝에 붙어 오는 사본 — 여러 장이면 몇 장인지 말한다. */}
-      <DragOverlay>
+      {/* 끌고 있는 동안 손끝에 붙어 오는 사본 — 여러 장이면 몇 장인지 말한다.
+          🔴 놓으면 사본이 **놓은 자리에서 새 자리를 찾아간다**(캡틴 지시). 그게 가능한 것은
+          카드가 이미 그 칸에 옮겨져 있기 때문이다(`usePlanMove` 의 한 프레임) — 옛 칸에 남아
+          있으면 사본이 옛 자리로 되돌아가 붙어 방금 한 일을 취소한 것처럼 보인다. */}
+      <DragOverlay dropAnimation={DROP_ANIMATION}>
         {draggingCard && (
           <div className="relative w-[min(420px,80vw)]">
             <BoardCard card={draggingCard} overlay selected />
