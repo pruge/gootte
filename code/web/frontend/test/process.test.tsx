@@ -214,7 +214,7 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
     expect(row).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("🔴 놓을 수 있는 자리가 집기 전에도 DOM 에 있다 — 맨 앞·사이·맨 뒤(spec §놓을 수 있는 자리)", () => {
+  it("🔴 놓을 수 있는 자리가 집기 전에도 DOM 에 있다 — 카드마다 위·아래가 늘 있다(캡틴 지적: 있다가 없다가 헷갈린다)", () => {
     renderProcess({
       ...EMPTY_BOARD,
       active: [
@@ -223,8 +223,10 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
       ],
     });
     const gaps = screen.getAllByRole("note");
+    // 1단계: 위(맨 앞) · 아래(사이). 2단계: 위(사이) · 아래(맨 뒤) — 카드마다 위·아래 둘 다 있다.
     expect(gaps.map((g) => g.getAttribute("aria-label"))).toEqual([
       "여기에 놓으면 새 단계가 맨 앞에 생긴다",
+      "여기에 놓으면 사이에 새 단계가 생긴다",
       "여기에 놓으면 사이에 새 단계가 생긴다",
       "여기에 놓으면 번호 매겨진 단계들 맨 뒤에 새 단계가 생긴다",
     ]);

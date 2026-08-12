@@ -13,6 +13,7 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
@@ -22,7 +23,13 @@ import { ticketDocPath } from "../plan/planDoc";
 import { featureDescription } from "../plan/cardTitle";
 import { DocDrawer } from "../features/DocDrawer";
 import { Loading, ErrorMsg } from "../common/states";
-import { dragId, findRow, parseDropTarget, ON_STEP_ID, GAP_ID, UNRANKED_ID } from "./dnd";
+import { dragId, findRow, resolveStepDrop, ON_STEP_ID, UNRANKED_ID, type ResolvedStepDrop } from "./dnd";
+
+/** 놓을 자리를 카드 좌표에서 가르는 데 쓰는, 지금 끄는 항목의 세로 위치 근사값. */
+function pointerYOf(e: DragMoveEvent | DragEndEvent): number | null {
+  const r = e.active.rect.current.translated;
+  return r ? r.top + r.height / 2 : null;
+}
 
 interface ProcessViewProps {
   project: string;
@@ -63,6 +70,10 @@ export function ProcessView({ project }: ProcessViewProps) {
   const stepMove = useStepMove(project);
   const [ticketDoc, setTicketDoc] = useState<{ feature: string; path: string } | null>(null);
   const [dragging, setDragging] = useState<ProcessRow | null>(null);
+  // 지금 손끝이 가리키는 자리 — 카드마다 위/아래 가장자리를 **똑같이** 갖도록 좌표로 가른다
+  // (캡틴 지적 2026-08-12: "각 단계마다 위아래로 새로운단계를 만드는 곳을 놓아줘. 있다가
+  // 없다가 일정하지 않으니 헷갈려" — 카드마다 있고 없고가 갈리던 것을 없앤다).
+  const [overZone, setOverZone] = useState<ResolvedStepDrop | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -82,14 +93,26 @@ export function ProcessView({ project }: ProcessViewProps) {
 
   const onDragStart = (e: DragStartEvent) => setDragging(findRow(groups, String(e.active.id)));
 
+  const resolve = (e: DragMoveEvent | DragEndEvent): ResolvedStepDrop | null =>
+    e.over
+      ? resolveStepDrop(String(e.over.id), e.over.rect, pointerYOf(e), numbered.length)
+      : null;
+
+  const onDragMove = (e: DragMoveEvent) => setOverZone(resolve(e));
+
   const onDragEnd = (e: DragEndEvent) => {
     setDragging(null);
-    if (!e.over) return;
-    const target = parseDropTarget(String(e.over.id));
-    if (!target) return;
+    setOverZone(null);
+    const resolved = resolve(e);
+    if (!resolved) return;
     const row = findRow(groups, String(e.active.id));
     if (!row) return;
-    stepMove.move({ feature: row.feature, ticket: row.ticket, target });
+    stepMove.move({ feature: row.feature, ticket: row.ticket, target: resolved.target });
+  };
+
+  const stopDrag = () => {
+    setDragging(null);
+    setOverZone(null);
   };
 
   const openDoc = (row: ProcessRow) =>
@@ -101,47 +124,39 @@ export function ProcessView({ project }: ProcessViewProps) {
       sensors={sensors}
       collisionDetection={collideByPointer}
       onDragStart={onDragStart}
+      onDragMove={onDragMove}
       onDragEnd={onDragEnd}
-      onDragCancel={() => setDragging(null)}
+      onDragCancel={stopDrag}
     >
       <div className="@container h-full min-h-0 overflow-y-auto">
         {groups.length === 0 ? (
           <p className="text-base text-muted">작업 대상에 올라온 것이 없다</p>
         ) : (
           // `plan` 탭 칸(`CardList`)과 같은 격자 — 칸 폭에 따라 한 줄에 최대 세 묶음까지 나란히 선다.
-          // 🔴 틈(`GapZone`)은 격자 항목을 따로 두지 않고 **그 단계 카드 안**(위 가장자리,
-          // 마지막 카드는 아래 가장자리도)에 붙인다 — 틈을 격자 항목으로 두면(`col-span-full`)
-          // 카드 사이마다 한 줄을 통째로 끊어 몇 칸이든 한 줄에 하나씩만 서는 꼴이 된다
-          // (캡틴 지적 2026-08-12: "3 column인데 1 column에 모두 몰려 있어").
+          // 🔴 카드마다 droppable 은 **하나뿐**이다(카드 전체) — 놓을 자리(위 가장자리 "사이/맨
+          // 앞", 아래 가장자리 "사이/맨 뒤", 나머지 "이 단계 위")는 좌표로 가른다(`resolveStepDrop`).
+          // 가장자리를 별도의 좁은 droppable 로 두면(옛 설계) 손이 거의 못 맞혀 "사이" 가 이웃
+          // 단계 위로 샜다(캡틴 지적 2026-08-12: "지금은 마지막 단계만 새롭게 추가되는데").
           <div className="grid grid-cols-1 items-start gap-4 @2xl:grid-cols-2 @5xl:grid-cols-3">
-            {numbered.map((g, i) => (
+            {numbered.map((g) => (
               <StepSection
                 key={g.step}
                 group={g}
                 featureTitleOf={featureTitleOf}
-                dragging={dragging}
+                dragging={dragging !== null}
+                zone={overZone?.card.step === g.step ? overZone.card.edge : null}
+                numberedCount={numbered.length}
                 onOpen={openDoc}
-                beforeGap={{
-                  index: i,
-                  hint: i === 0 ? "여기에 놓으면 새 단계가 맨 앞에 생긴다" : "여기에 놓으면 사이에 새 단계가 생긴다",
-                }}
-                afterGap={
-                  i === numbered.length - 1
-                    ? { index: numbered.length, hint: "여기에 놓으면 번호 매겨진 단계들 맨 뒤에 새 단계가 생긴다" }
-                    : null
-                }
               />
             ))}
             {unranked && (
               <StepSection
                 group={unranked}
                 featureTitleOf={featureTitleOf}
-                dragging={dragging}
+                dragging={dragging !== null}
+                zone={overZone?.card.step === 0 ? overZone.card.edge : null}
+                numberedCount={numbered.length}
                 onOpen={openDoc}
-                beforeGap={
-                  numbered.length === 0 ? { index: 0, hint: "여기에 놓으면 새 단계가 생긴다" } : null
-                }
-                afterGap={null}
               />
             )}
           </div>
@@ -167,65 +182,82 @@ export function ProcessView({ project }: ProcessViewProps) {
 }
 
 /**
- * 놓을 수 있는 틈 — 번호 매겨진 단계들 **사이**, 그리고 그 앞·뒤(spec §놓을 수 있는 자리).
- * 🔴 그 단계 카드의 가장자리에 붙는 **얇은 띠**다 — 격자 항목으로 따로 두지 않는다(위 §격자
- * 참고). 안 끌고 있을 때는 얇게 접혀 있다가, 끄는 동안 눈에 띄게 펼쳐진다(캡틴 확인
- * §보여야 할 것: "놓을 수 있는 자리가 집기 전에 눈에 보이는가").
+ * 카드 위·아래 가장자리의 띠 — "사이/맨 앞/맨 뒤에 새 단계" 를 알리는 **표시일 뿐**이다.
+ * 실제 놓을 자리 판정은 카드 하나짜리 droppable(`StepSection`)과 좌표(`resolveStepDrop`)가
+ * 하고, 이 띠 자체는 droppable 이 아니다 — 번호 매겨진 카드는 **위·아래 전부** 갖는다
+ * (캡틴 지적 2026-08-12: "각 단계마다 위아래로 새로운단계를 만드는 곳을 놓아줘. 있다가
+ * 없다가 일정하지 않으니 헷갈려").
+ *
+ * 🔴 **손대기 전에도 살짝 보인다**(`h-2`, 옅은 선) — 캡틴 확인 §보여야 할 것("놓을 수 있는
+ * 자리가 집기 전에 눈에 보이는가"). 끄는 동안은 두꺼워지고, 지금 손끝이 여기를 가리키면
+ * (`armed`) 글자까지 뜬다.
  */
-function GapZone({ index, dragging, hint }: { index: number; dragging: boolean; hint: string }) {
-  const { isOver, setNodeRef } = useDroppable({ id: GAP_ID(index) });
-  // 🔴 안 끌고 있을 때도 높이 0 이 아니다(`h-2`) — dnd-kit 은 이 요소의 **실제 사각형**으로
-  // 충돌을 재므로, 높이를 0 으로 접으면 손을 대기 전에 사각형이 없어 놓기가 이웃 단계로
-  // 새어 나간다. 대신 테두리·글자를 죽여 시각적으로만 접혀 보이게 한다.
+function EdgeHint({ hint, dragging, armed }: { hint: string; dragging: boolean; armed: boolean }) {
   return (
     <div
-      ref={setNodeRef}
       role="note"
       aria-label={hint}
-      className={`flex items-center justify-center border-2 border-dashed transition-all ${
-        isOver
-          ? "h-9 border-accent bg-accent/10 text-sm text-accent"
+      className={`flex items-center justify-center overflow-hidden text-xs transition-all ${
+        armed
+          ? "h-8 bg-accent/15 text-accent"
           : dragging
-            ? "h-3 border-border/60 text-transparent"
-            : "h-2 border-transparent text-transparent"
+            ? "h-3 bg-accent/10 text-transparent"
+            : "h-2 bg-border/20 text-transparent"
       }`}
     >
-      {isOver && hint}
+      {armed && hint}
     </div>
   );
 }
 
-/** 단계 묶음 하나 — 통째로 **놓을 자리**다(9999 무더기 포함, "이미 있는 단계 위"). */
+/**
+ * 단계 묶음 하나 — 통째로 **놓을 자리**다(9999 무더기 포함, "이미 있는 단계 위").
+ * 🔴 droppable 은 카드 **하나**뿐이다 — 위·아래 가장자리는 별도 droppable 이 아니라 좌표로
+ * 가른다(`resolveStepDrop`, `ProcessView` §손끝이 가리키는 자리). 가장자리마다 좁은 droppable
+ * 을 따로 두면(옛 설계) 손이 거의 못 맞혀 "사이" 가 이웃 단계 위로 샜다.
+ */
 function StepSection({
   group,
   featureTitleOf,
   dragging,
+  zone,
+  numberedCount,
   onOpen,
-  beforeGap,
-  afterGap,
 }: {
   group: ProcessStepGroup;
   featureTitleOf: ReadonlyMap<string, string>;
-  dragging: ProcessRow | null;
+  dragging: boolean;
+  /** 지금 손끝이 이 카드의 어디를 가리키는가 — 이 카드가 대상이 아니면 `null`. */
+  zone: "before" | "after" | "whole" | null;
+  numberedCount: number;
   onOpen: (row: ProcessRow) => void;
-  /** 이 카드 **위**의 틈 — 번호 매겨진 단계에는 늘 있다(맨 앞이거나 앞 단계와의 사이). */
-  beforeGap: { index: number; hint: string } | null;
-  /** 이 카드 **아래**의 틈 — 번호 매겨진 단계들 중 **마지막 카드에만** 있다(9999 앞자리). */
-  afterGap: { index: number; hint: string } | null;
 }) {
   const unranked = group.step === UNRANKED_STEP;
-  const { isOver, setNodeRef } = useDroppable({
-    id: unranked ? UNRANKED_ID : ON_STEP_ID(group.step),
-  });
-  const isDragging = dragging !== null;
+  const { setNodeRef } = useDroppable({ id: unranked ? UNRANKED_ID : ON_STEP_ID(group.step) });
+  // 9999 카드는 번호 매겨진 단계가 하나도 없을 때만 위 가장자리가 "새 단계 만들기" 를 겸한다
+  // (그 자리 말고는 번호를 매길 카드가 아예 없다, spec §놓을 수 있는 자리).
+  const showBefore = !unranked || numberedCount === 0;
+  const showAfter = !unranked;
   return (
     <section
       aria-labelledby={`process-step-${group.step}`}
       className={`overflow-hidden rounded-lg border bg-surface transition-colors ${
-        isDragging && isOver ? "border-accent ring-2 ring-accent/40" : "border-border"
+        zone === "whole" ? "border-accent ring-2 ring-accent/40" : "border-border"
       }`}
     >
-      {beforeGap && <GapZone index={beforeGap.index} dragging={isDragging} hint={beforeGap.hint} />}
+      {showBefore && (
+        <EdgeHint
+          dragging={dragging}
+          armed={zone === "before"}
+          hint={
+            unranked
+              ? "여기에 놓으면 새 단계가 생긴다"
+              : group.step === 1
+                ? "여기에 놓으면 새 단계가 맨 앞에 생긴다"
+                : "여기에 놓으면 사이에 새 단계가 생긴다"
+          }
+        />
+      )}
       <div ref={setNodeRef}>
         <header className="border-b border-border bg-surface-2/40 px-4 py-2">
           <h2 id={`process-step-${group.step}`} className="mono font-medium tracking-tight">
@@ -257,7 +289,17 @@ function StepSection({
           ))}
         </div>
       </div>
-      {afterGap && <GapZone index={afterGap.index} dragging={isDragging} hint={afterGap.hint} />}
+      {showAfter && (
+        <EdgeHint
+          dragging={dragging}
+          armed={zone === "after"}
+          hint={
+            group.step === numberedCount
+              ? "여기에 놓으면 번호 매겨진 단계들 맨 뒤에 새 단계가 생긴다"
+              : "여기에 놓으면 사이에 새 단계가 생긴다"
+          }
+        />
+      )}
     </section>
   );
 }
