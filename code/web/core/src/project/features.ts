@@ -1,5 +1,5 @@
 import type { Feature, FeatureDocNode, FeatureTicket, TodoStatus } from "@gootte/contract";
-import type { FeatureSpecDoc, TicketDoc } from "../parse/feature";
+import { parseCrossFeatureRef, type FeatureSpecDoc, type TicketDoc } from "../parse/feature";
 
 /**
  * 기능 폴더 하나에서 읽어온 문서들 — core-io 가 read 하고 core 파서가 구조로 만든 결과.
@@ -31,6 +31,34 @@ function byNum(a: TicketDoc, b: TicketDoc): number {
   return x === y ? a.slug.localeCompare(b.slug) : x - y;
 }
 
+/** 기능 하나의 번호 현황 — 다른 기능의 티켓을 가리키는 선행을 풀 때 함께 쓰인다. */
+interface FeatureTicketIndex {
+  /** 그 기능에 실재하는 티켓 번호 전부(있다/없다 판정용). */
+  readonly all: ReadonlySet<number>;
+  /** 그중 완료(`done`)인 것(해제 판정용). */
+  readonly done: ReadonlySet<number>;
+}
+
+/** 기능 slug → 그 기능의 번호 현황. 다른 기능의 티켓을 가리키는 선행을 풀 때 찾아본다. */
+type CrossFeatureIndex = ReadonlyMap<string, FeatureTicketIndex>;
+
+/** 여러 기능 문서에서 `CrossFeatureIndex` 를 만든다 — `buildFeatures` 가 한 번 만들어 전체에 돌린다. */
+function buildCrossFeatureIndex(docsList: readonly FeatureDocs[]): CrossFeatureIndex {
+  const index = new Map<string, FeatureTicketIndex>();
+  for (const docs of docsList) {
+    const all = new Set<number>();
+    const done = new Set<number>();
+    for (const t of docs.tickets) {
+      const n = numKey(t.num);
+      if (n === null) continue;
+      all.add(n);
+      if (t.status === "done") done.add(n);
+    }
+    index.set(docs.slug, { all, done });
+  }
+  return index;
+}
+
 /**
  * 막힘 해제 계산 — `Blocked by:` 에 나열된 번호가 **전부 완료(resolved)** 면 착수 가능(F5).
  * 파일 어디에도 그렇게 적혀 있지 않다. 볼 때마다 다시 계산하고 어디에도 저장하지 않는다(INV-1).
@@ -38,18 +66,31 @@ function byNum(a: TicketDoc, b: TicketDoc): number {
  * - `wontfix` 선행은 해제하지 않는다 — 관례가 "전부 `resolved`" 라고 못박는다(issue-tracker §Blocked by).
  * - 존재하지 않는 번호를 가리키면 해제하지 않는다 — 완료를 증명할 수 없으므로 계속 기다린다(INV-4).
  *   그 번호는 `waitingOn` 에 그대로 남아 화면에서 보인다.
- * - 번호가 아닌 산문 선행(다른 기능의 티켓을 가리키는 문구)도 해제하지 않고 문구 그대로 남긴다 —
- *   이 기능의 같은 숫자에 갖다 붙이는 추정이 INV-4 위반이다. 사람이 읽어 판단하도록 드러낸다.
+ * - 번호가 아닌 산문 선행(다른 기능의 티켓을 가리키는 문구)도 원칙적으로 해제하지 않고 문구 그대로
+ *   남긴다 — 이 기능의 같은 숫자에 갖다 붙이는 추정이 INV-4 위반이다.
+ * - 🔴 단, 그 산문이 markdown 링크로 **다른 기능의 실재하는 티켓**을 가리키면(경로에서 기능·번호를
+ *   둘 다 읽는다, `parseCrossFeatureRef`) 추정이 필요 없다 — 그 티켓이 완료면 해제한다
+ *   (cross-feature-blocker 티켓). 기능이 없다·티켓이 없다·경로가 애매하면 지금처럼 계속 막는다.
  */
-function waitingOn(ticket: TicketDoc, doneNums: ReadonlySet<number>): string[] {
+function waitingOn(
+  ticket: TicketDoc,
+  doneNums: ReadonlySet<number>,
+  crossIndex: CrossFeatureIndex,
+): string[] {
   return ticket.blockedBy.filter((b) => {
     const n = numKey(b);
-    return n === null || !doneNums.has(n);
+    if (n !== null) return !doneNums.has(n);
+    const ref = parseCrossFeatureRef(b);
+    if (ref === null) return true;
+    const refNum = numKey(ref.num);
+    const target = refNum === null ? undefined : crossIndex.get(ref.feature);
+    if (refNum === null || !target || !target.all.has(refNum)) return true;
+    return !target.done.has(refNum);
   });
 }
 
-function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>): FeatureTicket {
-  const waiting = waitingOn(doc, doneNums);
+function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>, crossIndex: CrossFeatureIndex): FeatureTicket {
+  const waiting = waitingOn(doc, doneNums, crossIndex);
   // 임자 있음 = 문서가 claimed 라고 말한다. 처리중을 만들지는 않는다(그건 applyInProgress 의 몫) —
   // 여기서는 착수 가능 판정에서만 뺀다(work-claims-its-ticket/01 §C).
   const claimed = doc.sourceStatus === "claimed";
@@ -73,20 +114,26 @@ function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>): FeatureTicket 
   };
 }
 
-/** 기능 폴더 하나 → 계약 형태. 티켓은 번호순. */
-export function buildFeature(docs: FeatureDocs): Feature {
+/**
+ * 기능 폴더 하나 → 계약 형태. 티켓은 번호순.
+ * `crossIndex` 를 안 주면(단독 호출 — 대부분 테스트) 이 기능 자신만으로 만든 색인을 쓴다 —
+ * 그러면 다른 기능을 가리키는 링크는 항상 "그 기능을 모른다" 가 되어 지금처럼 막힌 채 남는다.
+ * `buildFeatures` 는 전체 문서로 만든 색인을 넘겨 기능을 넘는 선행도 풀 수 있게 한다.
+ */
+export function buildFeature(docs: FeatureDocs, crossIndex?: CrossFeatureIndex): Feature {
   const doneNums = new Set<number>();
   for (const t of docs.tickets) {
     const n = numKey(t.num);
     if (n !== null && t.status === "done") doneNums.add(n);
   }
+  const index = crossIndex ?? buildCrossFeatureIndex([docs]);
   return {
     slug: docs.slug,
     title: docs.spec?.title ?? docs.slug,
     status: docs.spec?.status ?? "pending",
     sourceStatus: docs.spec?.sourceStatus ?? null,
     statusKnown: docs.spec?.statusKnown ?? false,
-    tickets: [...docs.tickets].sort(byNum).map((t) => toTicket(t, doneNums)),
+    tickets: [...docs.tickets].sort(byNum).map((t) => toTicket(t, doneNums, index)),
     docs: docs.tree,
   };
 }
@@ -118,7 +165,8 @@ export function countOpenFeatures(features: readonly Feature[]): number {
  * 기능 자신의 `status`(spec)는 쓰지 않는다 — 판정은 오직 티켓으로 한다.
  */
 export function buildFeatures(docs: FeatureDocs[]): Feature[] {
-  return docs.map(buildFeature);
+  const crossIndex = buildCrossFeatureIndex(docs);
+  return docs.map((d) => buildFeature(d, crossIndex));
 }
 
 /** 정렬 계층 — 작을수록 위. 세 무리의 순서 자체가 이 상수들의 값이다. */
