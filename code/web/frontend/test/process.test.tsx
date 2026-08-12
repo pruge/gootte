@@ -77,7 +77,7 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
     expect(screen.getByText("한곳으로 모은다")).toBeInTheDocument();
   });
 
-  it("🔴 기능으로 묶지 않는다 — 서로 다른 기능의 티켓이 같은 단계 밑에 나란히 선다", () => {
+  it("🔴 같은 단계 안에서 기능별로 나뉜다 — 서로 다른 기능이 같은 단계 밑에 각자 다발로 선다(캡틴 지시)", () => {
     renderProcess({
       ...EMPTY_BOARD,
       active: [
@@ -86,39 +86,55 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
       ],
     });
     const group = screen.getByRole("heading", { name: "1단계" }).closest("section") as HTMLElement;
-    const rows = within(group).getAllByRole("listitem").map((li) => li.textContent);
-    expect(rows.some((r) => r?.includes("a") && r.includes("가"))).toBe(true);
-    expect(rows.some((r) => r?.includes("b") && r.includes("나"))).toBe(true);
+    expect(within(group).getByText("a")).toBeInTheDocument();
+    expect(within(group).getByText("가")).toBeInTheDocument();
+    expect(within(group).getByText("b")).toBeInTheDocument();
+    expect(within(group).getByText("나")).toBeInTheDocument();
   });
 
-  it("줄마다 어느 기능의 몇 번 티켓인지와 제목이 보인다", () => {
+  it("줄마다 몇 번 티켓인지와 제목이 보이고, 어느 기능인지는 그 다발의 회색 헤더가 말한다", () => {
     renderProcess({
       ...EMPTY_BOARD,
       active: [card(feature("auth-login", [["03", "세션 발급"]]), { "03-x": 1 })],
     });
+    expect(screen.getByText("auth-login")).toBeInTheDocument();
     const li = screen.getByRole("listitem");
-    expect(within(li).getByText("auth-login")).toBeInTheDocument();
     expect(within(li).getByText("03")).toBeInTheDocument();
     expect(within(li).getByText("세션 발급")).toBeInTheDocument();
+    // 기능 이름은 다발 머리에만 있고, 티켓 줄 자체에는 되풀이되지 않는다.
+    expect(within(li).queryByText("auth-login")).toBeNull();
   });
 
-  it("🔴 기능 이름과 설명문구는 두 줄이다 — plan 탭 카드 머리와 같은 자리(캡틴 지시)", () => {
+  it("🔴 기능 다발 머리는 이름과 설명문구를 두 줄로 싣는다 — plan 탭 카드 머리와 같은 자리(캡틴 지시)", () => {
     renderProcess({
       ...EMPTY_BOARD,
       active: [card(feature("auth-login", [["01", "세션 발급"]]), { "01-x": 1 })],
     });
-    const li = screen.getByRole("listitem");
     // 픽스처 표제는 `auth-login — 제목` — 이름과 설명이 겹치지 않고 각자 한 줄씩이다.
-    expect(within(li).getByText("auth-login")).toBeInTheDocument();
-    expect(within(li).getByText("제목")).toBeInTheDocument();
-    expect(within(li).queryByText("auth-login — 제목")).toBeNull();
+    expect(screen.getByText("auth-login")).toBeInTheDocument();
+    expect(screen.getByText("제목")).toBeInTheDocument();
+    expect(screen.queryByText("auth-login — 제목")).toBeNull();
   });
 
-  it("설명이 없는 기능(표제가 곧 폴더명)은 이름 한 줄만 선다", () => {
+  it("설명이 없는 기능(표제가 곧 폴더명)은 다발 머리에 이름 한 줄만 선다", () => {
     const bare: Feature = { ...feature("bare", [["01", "하나"]]), title: "bare" };
     renderProcess({ ...EMPTY_BOARD, active: [card(bare, { "01-x": 1 })] });
-    const li = screen.getByRole("listitem");
-    expect(within(li).getByText("bare")).toBeInTheDocument();
+    expect(screen.getByText("bare")).toBeInTheDocument();
+  });
+
+  it("각 기능 다발 밑에는 그 기능의 티켓만 선다 — 다른 기능 줄이 섞이지 않는다", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [
+        card(feature("a", [["01", "가1"], ["02", "가2"]]), { "01-x": 1, "02-x": 1 }),
+        card(feature("b", [["01", "나1"]]), { "01-x": 1 }),
+      ],
+    });
+    const bHeaderDiv = screen.getByText("b").closest("div") as HTMLElement;
+    const bCluster = bHeaderDiv.parentElement as HTMLElement;
+    expect(within(bCluster).getByText("나1")).toBeInTheDocument();
+    expect(within(bCluster).queryByText("가1")).toBeNull();
+    expect(within(bCluster).queryByText("가2")).toBeNull();
   });
 
   it("표시 단계가 1부터 연속이다 — 빈 단계가 걷혀 있다", () => {
@@ -236,10 +252,10 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
     };
     renderProcess(board);
 
+    // 기능 이름은 다발 머리에, 번호·제목은 줄에 나뉘어 있으니 묶음 전체 글자로 비교한다.
     const stepOneGroup = screen.getByRole("heading", { name: "1단계" }).closest("section") as HTMLElement;
-    const shownStepOne = within(stepOneGroup)
-      .getAllByRole("listitem")
-      .map((li) => li.textContent ?? "");
+    const shownStepOneRows = within(stepOneGroup).getAllByRole("listitem");
+    const shownStepOneText = stepOneGroup.textContent ?? "";
 
     const placements = [
       { feature: "a", area: "active" as const, seq: 0, closedAt: null },
@@ -251,9 +267,10 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
     ];
     const next = computeNext([a, b], placements, steps);
 
-    expect(shownStepOne).toHaveLength(next.length);
+    expect(shownStepOneRows).toHaveLength(next.length);
     for (const n of next) {
-      expect(shownStepOne.some((row) => row.includes(n.feature) && row.includes(n.title))).toBe(true);
+      expect(shownStepOneText).toContain(n.feature);
+      expect(shownStepOneText).toContain(n.title);
     }
   });
 });
