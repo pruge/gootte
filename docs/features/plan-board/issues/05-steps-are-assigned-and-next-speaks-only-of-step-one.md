@@ -6,7 +6,7 @@
 
 **Blocked by:** 03 — 작업 대상에 카드가 올라가야 단계를 매길 것이 생긴다
 
-**Status:** draft
+**Status:** claimed
 
 ## 만드는 것
 
