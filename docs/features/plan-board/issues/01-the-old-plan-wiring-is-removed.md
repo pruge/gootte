@@ -5,7 +5,7 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능**
 
-**Status:** draft
+**Status:** resolved (2026-08-12)
 
 ## 왜 먼저 걷어내나
 
@@ -48,13 +48,13 @@
 
 ## 인수 기준
 
-- [ ] 어긋남 관련 타입·계산·화면이 저장소에서 사라진다. `Mismatch` 로 검색해 나오는 것이 없다.
-- [ ] 드래그 경고 관련 타입·계산·화면이 사라진다.
-- [ ] 계획 DB 에서 트랙·순위·왜·왜 닻 칸이 사라지고, `opinion_request`·`extra` 표를 만드는 코드가 사라진다.
-- [ ] `history.md` 를 쓰는 코드가 사라진다.
-- [ ] `set` · `set-feature` · `drop` · `order` · `extra` 명령이 사라지고, `AGENTS.md` 의 명령 표에서도 빠진다.
-- [ ] `discover` 와 `db migrate` 는 그대로 동작한다.
-- [ ] `features` 탭의 동작이 하나도 바뀌지 않는다.
+- [x] 어긋남 관련 타입·계산·화면이 저장소에서 사라진다. `Mismatch` 로 검색해 나오는 것이 없다.
+- [x] 드래그 경고 관련 타입·계산·화면이 사라진다.
+- [x] 계획 DB 에서 트랙·순위·왜·왜 닻 칸이 사라지고, `opinion_request`·`extra` 표를 만드는 코드가 사라진다.
+- [x] `history.md` 를 쓰는 코드가 사라진다.
+- [x] `set` · `set-feature` · `drop` · `order` · `extra` 명령이 사라지고, `AGENTS.md` 의 명령 표에서도 빠진다.
+- [x] `discover` 와 `db migrate` 는 그대로 동작한다.
+- [x] `features` 탭의 동작이 하나도 바뀌지 않는다.
 
 ## 테스트
 
