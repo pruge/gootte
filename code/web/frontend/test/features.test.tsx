@@ -163,16 +163,20 @@ function manyTickets(n: number): FeatureTicket[] {
 describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티켓 01 §설계 2)", () => {
   it("기본 상태 — 머리글만 보이고 티켓은 안 보인다", () => {
     renderFeatures();
-    expect(screen.getByRole("heading", { name: "auth-login — 로그인" })).toBeInTheDocument();
+    // 🔴 표제가 `<이름> — <설명>` 꼴이면 이름이 두 번 뜨지 않는다 — h2 는 겹친 앞부분을 뗀
+    // 설명만, 슬러그는 옆 배지가 이미 말한다(같은 규칙을 쓰는 `plan` 탭 카드와 동형).
+    expect(screen.getByRole("heading", { name: "로그인" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "auth-login — 로그인" })).toBeNull();
+    expect(screen.getByText("auth-login")).toBeInTheDocument();
     expect(screen.queryByText("세션 발급")).toBeNull();
-    const button = screen.getByRole("heading", { name: "auth-login — 로그인" }).closest("button")!;
+    const button = screen.getByRole("heading", { name: "로그인" }).closest("button")!;
     expect(button).toHaveAttribute("aria-expanded", "false");
   });
 
   it("머리글을 누르면 열리고, check 가 이미 펼쳐진 채로 티켓이 다 보인다 — 한 번 더 누르지 않는다", () => {
     renderFeatures();
-    openCard("auth-login — 로그인");
-    const button = screen.getByRole("heading", { name: "auth-login — 로그인" }).closest("button")!;
+    openCard("로그인");
+    const button = screen.getByRole("heading", { name: "로그인" }).closest("button")!;
     expect(button).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("세션 발급")).toBeInTheDocument();
     expect(screen.getByText("로그인 화면")).toBeInTheDocument();
@@ -196,18 +200,18 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
       ],
     };
     renderView(data);
-    openCard("big — 많음");
+    openCard("많음");
     for (let i = 1; i <= 20; i++) {
       expect(screen.getByText(`티켓 ${i}`)).toBeInTheDocument();
     }
     // 카드가 flex 부모 안에서 눌리지 않게 하는 클래스 — 없으면 F1 이 재현된다.
-    const card = screen.getByRole("heading", { name: "big — 많음" }).closest("section")!;
+    const card = screen.getByRole("heading", { name: "많음" }).closest("section")!;
     expect(card.className).toContain("shrink-0");
   });
 
   it("선행이 남은 티켓은 무엇을 기다리는지 보이고, 풀린 티켓은 착수 가능으로 보인다", () => {
     renderFeatures();
-    openCard("auth-login — 로그인");
+    openCard("로그인");
     const blocked = screen.getByText("소셜 로그인").closest("li")!;
     expect(within(blocked).getByText("대기")).toBeInTheDocument();
     expect(within(blocked).getByText("→ 02")).toBeInTheDocument();
@@ -217,7 +221,7 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
 
   it("원문 상태가 뭉개지지 않고 그대로 뜬다 — needs-info 와 blocked 를 구분할 수 있다", () => {
     renderFeatures();
-    openCard("auth-login — 로그인");
+    openCard("로그인");
     expect(screen.getByText("needs-info")).toBeInTheDocument();
     expect(screen.getByText("resolved")).toBeInTheDocument();
     expect(screen.getByText("2026-08-08")).toBeInTheDocument();
@@ -225,14 +229,14 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
 
   it("🔴 알 수 없는 상태의 티켓이 사라지지 않고, 무엇이 이상한지 드러난다", () => {
     renderFeatures();
-    openCard("auth-login — 로그인");
+    openCard("로그인");
     expect(screen.getByText("정체불명")).toBeInTheDocument();
     expect(screen.getByText(/알 수 없는 상태: 진행중/)).toBeInTheDocument();
   });
 
   it("지금 붙들려 있는 티켓에만 진행중 단계가 붙는다 — 어느 가지가 붙들었는지까지", () => {
     renderFeatures();
-    openCard("auth-login — 로그인");
+    openCard("로그인");
     const working = screen.getByText("OAuth 교환").closest("li")!;
     expect(within(working).getByText("진행중")).toBeInTheDocument();
     expect(within(working).getByText("fm/alpha-oauth")).toBeInTheDocument();

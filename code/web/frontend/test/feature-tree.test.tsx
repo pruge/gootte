@@ -34,8 +34,9 @@ function renderCard(feature: Feature, onOpenDoc = vi.fn()) {
   return { onOpenDoc, onGoToPlan };
 }
 
+// 🔴 표제 앞부분이 슬러그 배지와 겹쳐 h2 는 뗀 설명만 보여준다(`FeatureCard`, `featureDescription`).
 function open() {
-  fireEvent.click(screen.getByRole("heading", { name: "auth-login — 로그인" }).closest("button")!);
+  fireEvent.click(screen.getByRole("heading", { name: "로그인" }).closest("button")!);
 }
 
 describe("FeatureTree — check 는 파싱된 현황판, 나머지는 폴더에 실제로 있는 것만(INV-4)", () => {

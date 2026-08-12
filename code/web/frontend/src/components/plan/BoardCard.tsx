@@ -1,17 +1,19 @@
-import { useState, type MouseEvent } from "react";
+import type { MouseEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { IconArrowMoveRight, IconFileText } from "@tabler/icons-react";
 import type { PlanCard } from "@gootte/contract";
-import { documentCompletedOn, ticketChecked } from "@gootte/core/plan";
+import { documentCompletedOn } from "@gootte/core/plan";
 import { featureDescription } from "./cardTitle";
 
 export interface BoardCardProps {
   card: PlanCard;
   /** 여러 장 고르기 — 고른 카드는 테두리로 드러나고, 그중 하나를 끌면 전부 따라간다. */
   selected?: boolean;
-  /** 머리글을 ⌘/Ctrl/Shift 와 함께 누른 것 — 펼치는 대신 고른다. */
+  /** 머리글을 ⌘/Ctrl/Shift 와 함께 누른 것 — 여는 대신 고른다. */
   onToggleSelect?: (slug: string) => void;
+  /** 머리글을 그냥 누른 것 — 티켓 목록을 대화상자로 연다(캡틴 결정). */
+  onOpenCard?: (slug: string) => void;
   /** 문서 아이콘 — `features` 탭의 기존 통로로 간다(두 번째 문서 보기를 짓지 않는다). */
   onOpenDoc?: (slug: string) => void;
   /** 이동 아이콘 — "어느 칸으로 보낼까요" 대화상자. */
@@ -21,8 +23,9 @@ export interface BoardCardProps {
 }
 
 /**
- * 판 위의 카드 하나 — **기본은 머리만 보이게 접혀 있고, 눌러야 티켓 줄이 펼쳐진다**(캡틴 결정).
- * 접힘은 **화면의 상태**이지 저장하지 않는다(spec §완료 카드는 접혀 있다).
+ * 판 위의 카드 하나 — **머리만 보인다.** 머리글을 누르면 티켓 목록이 **대화상자로** 열린다
+ * (캡틴 결정 2026-08-12: "영역이 작으니 한번에 보기 힘들다 … dialog 로 떠서 카드를 펼쳐서
+ * 보여준다. 확인을 누르면 닫히게 하자"). 무엇이 열려 있는지는 **화면의 상태**이지 저장하지 않는다.
  *
  * 🔴 여기 보이는 것은 전부 **문서에서 온 것**이다(INV-5) — 제목도, 티켓 번호·제목·상태도.
  * 계획 DB 가 아는 것은 이 카드가 어느 칸에 있는가와 그 순서뿐이라, 둘이 갈라질 수 없다.
@@ -30,10 +33,10 @@ export interface BoardCardProps {
  * 🔴 접힌 카드도 **티켓 수는 머리에 이고 있다** — 감추면 카드가 제 크기를 말하지 않게 되고,
  * 캡틴이 판을 훑는 동안 하나하나 열어 봐야 한다.
  *
- * 머리글 토글은 `<button>` **하나**이고, 아이콘 둘은 그 버튼 **안**이 아니라 **옆(형제)** 에 선다 —
+ * 머리글 단추는 `<button>` **하나**이고, 아이콘 둘은 그 버튼 **안**이 아니라 **옆(형제)** 에 선다 —
  * 버튼 안의 버튼은 무효 HTML 이다(features 탭 `FeatureCard` 와 같은 규율).
  *
- * 끌기는 카드 전체가 손잡이다(03). 6px 움직여야 끌기로 치므로 머리글 토글과 아이콘 둘은 그대로
+ * 끌기는 카드 전체가 손잡이다(03). 6px 움직여야 끌기로 치므로 머리글 단추와 아이콘 둘은 그대로
  * 눌린다 — 따로 손잡이 아이콘을 세우지 않는다(캡틴이 정한 아이콘은 둘뿐이다).
  *
  * 🔴 티켓 줄의 상자(04)는 **저장된 값이 아니다** — 문서 상태 한 칸에서 계산한다(`ticketChecked`,
@@ -44,11 +47,11 @@ export function BoardCard({
   card,
   selected = false,
   onToggleSelect,
+  onOpenCard,
   onOpenDoc,
   onRequestMove,
   overlay = false,
 }: BoardCardProps) {
-  const [expanded, setExpanded] = useState(false);
   const { feature } = card;
   const headingId = `board-card-${feature.slug}`;
   // 표제 앞에 겹쳐 붙은 기능 이름은 뗀다 — 같은 이름이 한 카드에 두 번 뜨지 않게(캡틴 결정).
@@ -75,7 +78,7 @@ export function BoardCard({
       onToggleSelect(feature.slug);
       return;
     }
-    setExpanded((v) => !v);
+    onOpenCard?.(feature.slug);
   };
 
   return (
@@ -99,7 +102,7 @@ export function BoardCard({
       <div className="flex w-full items-stretch bg-surface-2/50">
         <button
           type="button"
-          aria-expanded={expanded}
+          aria-haspopup="dialog"
           onClick={onHeaderClick}
           className="grid min-w-0 flex-1 cursor-[inherit] grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-accent"
         >
@@ -178,47 +181,6 @@ export function BoardCard({
         )}
       </div>
 
-      {expanded &&
-        (feature.tickets.length === 0 ? (
-          // 티켓이 없는 기능도 감추지 않는다 — 열었는데 빈 칸이면 화면이 이유를 말해야 한다.
-          <p className="border-t border-border/70 px-3 py-2 text-sm text-muted">
-            티켓이 없습니다.
-          </p>
-        ) : (
-          <ul className="divide-y divide-border/50 border-t border-border/70">
-            {feature.tickets.map((t) => {
-              const checked = ticketChecked(t);
-              return (
-              <li
-                key={t.slug}
-                className={`flex flex-wrap items-baseline gap-x-2.5 gap-y-1 px-3 py-1.5 ${
-                  t.status === "done" || t.status === "dropped" ? "text-muted" : ""
-                }`}
-              >
-                {/* 🔴 상자는 **문서에서 읽는다**(INV-5) — 눌러서 바꾸는 것이 아니라서 입력이 아니다.
-                    폐기 티켓도 빈 상자다: 끝난 것과 안 하는 것은 다르고, 원문 상태가 그 줄 끝에
-                    verbatim 으로 서서 어느 쪽인지 말한다(INV-4). */}
-                <span
-                  className={`mono shrink-0 text-sm ${checked ? "text-accent" : "text-muted"}`}
-                  title={checked ? "문서가 완료라고 말한다" : "아직 완료가 아니다"}
-                >
-                  {checked ? "[x]" : "[ ]"}
-                </span>
-                <span className="mono shrink-0 text-sm tabular-nums text-muted">{t.num || "—"}</span>
-                <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
-                {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게. */}
-                <span
-                  className={`mono shrink-0 rounded px-1.5 py-0.5 text-sm ${
-                    t.statusKnown ? "bg-surface-2 text-muted" : "bg-drop/15 text-drop"
-                  }`}
-                >
-                  {t.sourceStatus ?? "상태 줄 없음"}
-                </span>
-              </li>
-              );
-            })}
-          </ul>
-        ))}
     </article>
   );
 }

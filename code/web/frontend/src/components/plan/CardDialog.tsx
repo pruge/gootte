@@ -1,0 +1,150 @@
+import { useEffect, useRef } from "react";
+import { IconX } from "@tabler/icons-react";
+import type { PlanCard } from "@gootte/contract";
+import { documentCompletedOn, ticketChecked } from "@gootte/core/plan";
+import { featureDescription } from "./cardTitle";
+import { ticketDocPath } from "./planDoc";
+
+interface CardDialogProps {
+  card: PlanCard;
+  onClose: () => void;
+  /** 티켓 줄을 누른 것 — 그 티켓 원문을 연다(캡틴 결정 2026-08-12: "ticket 클릭하면 문서 보이게해"). */
+  onOpenTicket: (path: string) => void;
+}
+
+/**
+ * 카드 한 장을 **펼쳐 보는 대화상자**(캡틴 결정 2026-08-12: "카드 헤더를 클릭하면 dialog 로 떠서
+ * 카드를 펼쳐서 보여준다. 확인을 누르면 닫히게 하자").
+ *
+ * 🔴 판에서 **제자리 펼침을 대신한다.** 아래 칸은 카드 2.5줄 높이로 못 박혀 있어(02) 티켓이 다섯
+ * 장만 돼도 펼친 줄이 칸 밖으로 밀려 한 번에 보이지 않았다 — 판의 크기를 건드리지 않고 목록을
+ * 통째로 보여 주는 자리가 여기다.
+ *
+ * 🔴 **상태를 고치는 창이 아니다.** 상자를 눌러 값을 바꾸는 길은 없다 — 티켓 상태의 SoT 는 문서이고
+ * (INV-2·INV-5), 여기서 고칠 수 있게 하면 그 순간 두 번째 SoT 가 생긴다. 줄을 누르면 그 티켓의
+ * **원문이 열린다**(캡틴 결정) — 고치는 게 아니라 문서로 가는 또 하나의 길이다. 새 문서 뷰어를
+ * 짓지 않고 이미 있는 `DocDrawer`(`features` 탭)를 그대로 재사용한다 — 여는 자리만 `PlanView`가
+ * 하나 더 갖는다.
+ */
+export function CardDialog({ card, onClose, onOpenTicket }: CardDialogProps) {
+  const okRef = useRef<HTMLButtonElement>(null);
+  const { feature } = card;
+  const description = featureDescription(feature.title, feature.slug);
+  // 닫힌 시각과 문서의 완료 날짜 — **다른 값**이라 여기서도 각각 선다(04).
+  const completedOn = documentCompletedOn(feature);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => okRef.current?.focus(), []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+      <button
+        type="button"
+        aria-label="대화상자 닫기"
+        className="absolute inset-0 bg-fg/25 backdrop-blur-[1px]"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="card-dialog-heading"
+        className="relative flex max-h-[80vh] w-[min(720px,92vw)] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-xl"
+      >
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-3.5">
+          <div className="min-w-0">
+            <h2 id="card-dialog-heading" className="min-w-0">
+              <span className="mono block truncate text-sm text-muted">{feature.slug}</span>
+              {description && (
+                <span className="mt-0.5 block font-medium tracking-tight break-words">
+                  {description}
+                </span>
+              )}
+            </h2>
+            {/* 카드 머리가 이고 있던 곁다리를 그대로 옮겨 온다 — 창을 열었다고 사실이 사라지지 않게. */}
+            <p className="mono mt-1.5 flex flex-wrap items-baseline gap-x-2.5 text-sm tabular-nums text-muted">
+              <span>티켓 {feature.tickets.length}</span>
+              {card.closedAt && (
+                <>
+                  <span>닫힘 {card.closedAt}</span>
+                  <span>{completedOn ? `문서 완료 ${completedOn}` : "문서 완료일 없음"}</span>
+                </>
+              )}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="닫기"
+            className="shrink-0 rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <IconX size={18} />
+          </button>
+        </header>
+
+        {/* 티켓이 많은 기능도 한 창에서 끝까지 읽힌다 — 목록만 스크롤하고 머리와 확인 단추는 선다. */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {feature.tickets.length === 0 ? (
+            // 티켓이 없는 기능도 감추지 않는다 — 열었는데 빈 창이면 화면이 이유를 말해야 한다.
+            <p className="px-5 py-4 text-sm text-muted">티켓이 없습니다.</p>
+          ) : (
+            <ul className="divide-y divide-border/50">
+              {feature.tickets.map((t) => {
+                const checked = ticketChecked(t);
+                return (
+                  <li key={t.slug}>
+                    {/* 🔴 줄 전체가 단추다 — 원문을 여는 것 하나뿐이라 부분 클릭을 나눌 이유가 없다.
+                        상자는 여전히 문서에서 읽을 뿐 여기서 바뀌지 않는다(INV-5). */}
+                    <button
+                      type="button"
+                      onClick={() => onOpenTicket(ticketDocPath(t))}
+                      className={`flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 px-5 py-2 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+                        t.status === "done" || t.status === "dropped" ? "text-muted" : ""
+                      }`}
+                    >
+                      <span
+                        className={`mono shrink-0 text-sm ${checked ? "text-accent" : "text-muted"}`}
+                        title={checked ? "문서가 완료라고 말한다" : "아직 완료가 아니다"}
+                      >
+                        {checked ? "[x]" : "[ ]"}
+                      </span>
+                      <span className="mono shrink-0 text-sm tabular-nums text-muted">
+                        {t.num || "—"}
+                      </span>
+                      <span className="min-w-0 flex-1 break-words text-sm">{t.title}</span>
+                      {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게. */}
+                      <span
+                        className={`mono shrink-0 rounded px-1.5 py-0.5 text-sm ${
+                          t.statusKnown ? "bg-surface-2 text-muted" : "bg-drop/15 text-drop"
+                        }`}
+                      >
+                        {t.sourceStatus ?? "상태 줄 없음"}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <footer className="flex shrink-0 justify-end border-t border-border px-5 py-3">
+          <button
+            ref={okRef}
+            type="button"
+            onClick={onClose}
+            className="rounded-md bg-accent px-4 py-1.5 font-medium tracking-tight text-accent-fg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            확인
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}

@@ -157,7 +157,7 @@ describe("DocDrawer — 열린 문서는 URL 에 실린다(F8, 티켓 01 §설�
 
   it("닫으면 포커스가 눌렀던 자리로 돌아온다", () => {
     renderApp();
-    fireEvent.click(screen.getByRole("heading", { name: "auth-login — 로그인" }).closest("button")!);
+    fireEvent.click(screen.getByRole("heading", { name: "로그인" }).closest("button")!);
     const trigger = screen.getByText("spec.md");
     fireEvent.click(trigger);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
