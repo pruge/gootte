@@ -39,7 +39,7 @@ export function MainPanel({ project, tab, onTab, view, onView, onGoToPlanFeature
       ) : (
         <div className="flex-1 overflow-hidden pl-4 pr-6 py-5">
           {tab === "plan" ? (
-            <PlanView key={`${project}-plan`} />
+            <PlanView key={`${project}-plan`} project={project} />
           ) : (
             <FeaturesView
               key={`${project}-features`}

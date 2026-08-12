@@ -3,8 +3,17 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, wr
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
+import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import { beforeEach, describe, expect, test } from "vitest";
-import { ProjectsResponse, FeaturesResponse, FeatureDocResponse, ApiError, type Project } from "@gootte/contract";
+import {
+  ProjectsResponse,
+  FeaturesResponse,
+  FeatureDocResponse,
+  PlanBoardResponse,
+  ApiError,
+  type Project,
+} from "@gootte/contract";
+import { migratePlanDb } from "@gootte/core-io";
 import { createApp } from "../src/app";
 import {
   clearDiscoverCache,
@@ -245,6 +254,88 @@ describe("GET /api/features/:slug/:feature/doc — 문서 본문(read-only, INV-
     const res = await app.request("/api/features/does-not-exist/doc-tree/doc?path=spec.md");
     expect(res.status).toBe(404);
   });
+});
+
+/**
+ * `plan` 탭 — 다섯 자리 판(plan-board/02). 자리를 가르는 규칙 자체는 core 가 덮는다
+ * (`core/src/plan/board.test.ts`). 여기서 보는 것은 **라우트가 문서와 자리 행을 이어 싣는가**다.
+ */
+describe("GET /api/plan/:slug — 다섯 자리 판", () => {
+  type DatabaseSyncCtor = new (path: string) => DatabaseSyncType;
+  const { DatabaseSync } = process.getBuiltinModule("node:sqlite") as {
+    DatabaseSync: DatabaseSyncCtor;
+  };
+
+  const withDataDir = <T>(fn: (dataDir: string) => Promise<T> | T): Promise<T> | T => {
+    const dir = mkdtempSync(join(tmpdir(), "gootte-app-plan-"));
+    const done = () => rmSync(dir, { recursive: true, force: true });
+    try {
+      const out = fn(dir);
+      return out instanceof Promise ? out.finally(done) : (done(), out);
+    } catch (err) {
+      done();
+      throw err;
+    }
+  };
+
+  const place = (dataDir: string, feature: string, area: string, seq: number): void => {
+    migratePlanDb(dataDir);
+    const db = new DatabaseSync(join(dataDir, "plan.db"));
+    try {
+      db.prepare(
+        `INSERT INTO placement (project, feature, area, seq, closed_at) VALUES (?, ?, ?, ?, NULL)`,
+      ).run("alpha", feature, area, seq);
+    } finally {
+      db.close();
+    }
+  };
+
+  test("🔴 자리 행이 하나도 없으면 기능 문서 전부가 대기 칸에 뜬다 — 등록 절차가 없다(INV-B1)", () =>
+    withDataDir(async (dataDir) => {
+      const res = await createApp({ ...APP, dataDir }).request("/api/plan/alpha");
+      expect(res.status).toBe(200);
+      const body = PlanBoardResponse.parse(await res.json());
+      expect(body.project).toBe("alpha");
+      expect(body.waiting.map((c) => c.feature.slug)).toEqual(["auth-login", "doc-tree"]);
+      expect([body.active, body.reserved, body.discarded, body.done]).toEqual([[], [], [], []]);
+    }));
+
+  test("카드는 문서에서 온 제목과 티켓 줄을 싣는다 — 저장된 사본이 아니다(INV-5)", () =>
+    withDataDir(async (dataDir) => {
+      const body = PlanBoardResponse.parse(
+        await (await createApp({ ...APP, dataDir }).request("/api/plan/alpha")).json(),
+      );
+      const card = body.waiting.find((c) => c.feature.slug === "auth-login");
+      expect(card?.feature.title).toBe("auth-login — 로그인");
+      expect(card?.feature.tickets.map((t) => t.num)).toEqual(["01", "02", "03"]);
+      // 대기 카드는 저장된 것이 하나도 없다.
+      expect(card).toMatchObject({ seq: null, closedAt: null });
+    }));
+
+  test("자리 행이 있으면 그 칸에 실린다 — 나머지는 그대로 대기", () =>
+    withDataDir(async (dataDir) => {
+      place(dataDir, "auth-login", "active", 0);
+      const body = PlanBoardResponse.parse(
+        await (await createApp({ ...APP, dataDir }).request("/api/plan/alpha")).json(),
+      );
+      expect(body.active.map((c) => c.feature.slug)).toEqual(["auth-login"]);
+      expect(body.active[0]?.seq).toBe(0);
+      expect(body.waiting.map((c) => c.feature.slug)).toEqual(["doc-tree"]);
+    }));
+
+  test("🔴 판을 읽어도 관리대상에는 한 글자도 쓰지 않는다(INV-2)", () =>
+    withDataDir(async (dataDir) => {
+      const before = treeSnapshot(FIXTURES);
+      await createApp({ ...APP, dataDir }).request("/api/plan/alpha");
+      expect(treeSnapshot(FIXTURES)).toEqual(before);
+    }));
+
+  test("미해소 slug → 404 ApiError", () =>
+    withDataDir(async (dataDir) => {
+      const res = await createApp({ ...APP, dataDir }).request("/api/plan/does-not-exist");
+      expect(res.status).toBe(404);
+      expect(ApiError.parse(await res.json()).error).toContain("does-not-exist");
+    }));
 });
 
 describe("discover 캐시 (W2)", () => {

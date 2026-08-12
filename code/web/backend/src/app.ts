@@ -2,9 +2,23 @@ import { basename } from "node:path";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { ProjectsResponse, FeaturesResponse, FeatureDocResponse, type ApiError } from "@gootte/contract";
-import { applyInProgress, countOpenFeatures } from "@gootte/core";
-import { readFeatures, readFeatureDoc, scanWorkingCopies, defaultProjectRoots, defaultTreehouseRoot } from "@gootte/core-io";
+import {
+  ProjectsResponse,
+  FeaturesResponse,
+  FeatureDocResponse,
+  PlanBoardResponse,
+  type ApiError,
+} from "@gootte/contract";
+import { applyInProgress, countOpenFeatures, splitIntoAreas } from "@gootte/core";
+import {
+  readFeatures,
+  readFeatureDoc,
+  readPlacements,
+  scanWorkingCopies,
+  defaultPlanDataDir,
+  defaultProjectRoots,
+  defaultTreehouseRoot,
+} from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
 /** env `GOOTTE_ROOTS`(콜론 구분) → discover 루트. 기본 `~/Documents/ai2/projects`. */
@@ -19,6 +33,11 @@ export function treehouseRoot(): string {
   return process.env.GOOTTE_TREEHOUSE?.trim() || defaultTreehouseRoot();
 }
 
+/** env `GOOTTE_DATA_DIR` → 계획(INV-5) 저장 자리. CLI(`cli/src/main.ts`)와 같은 관례. */
+export function planDataDir(): string {
+  return process.env.GOOTTE_DATA_DIR?.trim() || defaultPlanDataDir();
+}
+
 const slugParam = z.object({ slug: z.string().min(1) });
 const featureDocParam = z.object({ slug: z.string().min(1), feature: z.string().min(1) });
 const featureDocQuery = z.object({ path: z.string().min(1) });
@@ -27,6 +46,8 @@ export interface AppOptions {
   roots?: string[];
   /** 격리 사본 뿌리 (테스트 주입). 없으면 treehouseRoot(). */
   treehouse?: string;
+  /** 계획 저장소 경로 (테스트 주입). 없으면 planDataDir(). */
+  dataDir?: string;
 }
 
 /**
@@ -36,6 +57,7 @@ export interface AppOptions {
 export function createApp(options: AppOptions = {}): Hono {
   const roots = options.roots ?? defaultRoots();
   const treehouse = options.treehouse ?? treehouseRoot();
+  const dataDir = options.dataDir ?? planDataDir();
   const app = new Hono();
 
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
@@ -68,8 +90,29 @@ export function createApp(options: AppOptions = {}): Hono {
     return c.json(FeaturesResponse.parse({ project, ...observed }));
   });
 
-  // `plan` 탭(plan-board) API — 옛 트랙·순위·드래그·어긋남 배선은 plan-board/01 이 걷어냈다.
-  // 02 가 다섯 자리 모델의 새 라우트로 다시 세운다.
+  // GET /api/plan/:slug → PlanBoardResponse (`plan` 탭 — 다섯 자리 판, plan-board/02)
+  //
+  // 두 입력이 만난다: 관리대상 문서(INV-2 read-only, 매 요청 다시 읽는다)와 gootte 자기 계획
+  // 저장소의 자리 행(INV-5 — 캡틴이 정한 것만). 가르는 것은 `core` 순수 함수 하나뿐이라
+  // 화면과 CLI 가 같은 판정을 본다(spec §판정 자리는 하나뿐).
+  //
+  // 🔴 이 라우트는 **아무것도 쓰지 않는다** — 관리대상에도(INV-2), 계획 DB 에도. 문서를 새로 써도
+  // 등록 절차가 없으므로(INV-B1) 그 기능은 자리 행이 없는 채로 곧장 대기 칸에 나타난다.
+  app.get("/api/plan/:slug", zValidator("param", slugParam), (c) => {
+    const { slug } = c.req.valid("param");
+    const proj = resolveSlug(roots, slug);
+    if (!proj) return c.json(notFound(slug), 404);
+    const project = basename(proj.path);
+    let areas: ReturnType<typeof splitIntoAreas>;
+    try {
+      areas = splitIntoAreas(readFeatures(proj.path), readPlacements(dataDir, project));
+    } catch (err) {
+      // 계획 DB 를 못 읽는 것은 빈 판이 아니다 — 빈 판으로 그리면 화면이 "아무 계획도 없다" 고
+      // 거짓말한다. 무엇이 막혔는지 그대로 올린다.
+      return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 500);
+    }
+    return c.json(PlanBoardResponse.parse({ project, ...areas }));
+  });
 
   // GET /api/features/:slug/:feature/doc?path= → FeatureDocResponse (기능 문서 본문, INV-2 read-only)
   // 🔴 요청받은 path 는 readFeatureDoc 이 그 기능 폴더 안으로 해소되는지 판정한 뒤에야 읽는다 —

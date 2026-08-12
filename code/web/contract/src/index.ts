@@ -215,5 +215,59 @@ export const ApiError = z.object({
 });
 export type ApiError = z.infer<typeof ApiError>;
 
-// 계획(개발 순서)의 옛 배선(트랙·순위·왜·어긋남·드래그 경고·extra 큐)은 여기 있었다.
-// plan-board/01 이 걷어냈다 — 02 가 다섯 자리 모델로 다시 세운다(docs/features/plan-board/spec.md).
+// ── 계획 판(plan-board) — 다섯 자리 ──────────────────────
+// 옛 배선(트랙·순위·왜·어긋남·드래그 경고·extra 큐)은 여기 있었고 plan-board/01 이 걷어냈다.
+// 아래가 그 자리에 서는 다섯 자리 모델이다(docs/features/plan-board/spec.md §저장 형태).
+
+/**
+ * `placement` 표에 **저장되는** 자리 넷.
+ *
+ * 🔴 **대기가 이 목록에 없는 것이 설계다.** 자리 행이 없다는 것이 곧 대기이고(spec §다섯 자리),
+ * 대기를 뜻하는 값을 이 칸에 두는 순간 "행 없음" 과 "값이 대기" 라는 **같은 뜻의 두 표현**이 생겨
+ * 반드시 갈라진다. 그래서 등록이라는 행위가 없고, 없는 행위는 빠뜨릴 수 없다(INV-B1).
+ */
+export const PlanArea = z.enum(["active", "reserved", "discarded", "done"]);
+export type PlanArea = z.infer<typeof PlanArea>;
+
+/**
+ * `placement` 표 한 줄 — 캡틴이 정한 것과 gootte 가 닫으며 적은 것뿐이다(INV-5).
+ * 🔴 **문서를 다시 읽어 같은 값이 나오는 것은 하나도 없다** — 제목·티켓·상태·완료 여부는 전부
+ * 매 요청 문서에서 다시 온다. 그래서 이 표와 문서는 갈라질 두 축이 되지 않는다(spec §신선함).
+ */
+export const Placement = z.object({
+  feature: z.string(), // 기능 폴더명
+  area: PlanArea,
+  seq: z.number().int(), // 작업 대상 안에서의 카드 순서
+  closedAt: z.string().nullable().default(null), // 완료 칸에 들어간 시각(날짜+시간). 문서엔 날짜뿐이라 저장 자격이 있다(F6)
+});
+export type Placement = z.infer<typeof Placement>;
+
+/**
+ * 판 위의 카드 하나 = **기능 문서**(제목·티켓 — 매 요청 다시 읽는다, INV-5) + 캡틴이 정한 것(`seq`·`closedAt`).
+ *
+ * 🔴 카드는 **자기 자리를 값으로 들고 있지 않다.** 어느 칸에 담겨 있는가가 곧 그 카드의 자리다 —
+ * 카드에 `area` 를 실으면 대기 카드가 실을 값이 없어 다시 "대기" 라는 값을 발명하게 된다.
+ */
+export const PlanCard = z.object({
+  feature: Feature,
+  seq: z.number().int().nullable().default(null), // 자리 행이 없으면 null
+  closedAt: z.string().nullable().default(null),
+});
+export type PlanCard = z.infer<typeof PlanCard>;
+
+/**
+ * 다섯 칸 — `plan` 탭이 그대로 그린다. 위에 **작업 대상**(`active`) 하나, 아래에
+ * **대기 · 예약 · 폐기 · 완료** 네 탭(spec §모델, 티켓 02 §만드는 것).
+ *
+ * 🔴 `waiting` 은 저장된 것이 아니다 — **자리 행이 없는 기능 전부**다. 서버도 화면도 이 값을
+ * 저장하지 않고, 볼 때마다 문서 목록과 자리 행에서 다시 갈라 낸다(INV-1·INV-3).
+ */
+export const PlanBoardResponse = z.object({
+  project: z.string(),
+  waiting: z.array(PlanCard).default([]),
+  active: z.array(PlanCard).default([]),
+  reserved: z.array(PlanCard).default([]),
+  discarded: z.array(PlanCard).default([]),
+  done: z.array(PlanCard).default([]),
+});
+export type PlanBoardResponse = z.infer<typeof PlanBoardResponse>;
