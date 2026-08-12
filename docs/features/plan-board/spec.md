@@ -1,6 +1,6 @@
 # 계획은 판 위에서 움직인다
 
-**Status:** 진행 중 (2026-08-12) — 01~07 착지. 08·09 가 지금 착수 가능하다.
+**Status:** resolved (2026-08-12)
 
 기능 카드를 **다섯 자리** 사이로 옮기는 판 하나가 계획의 전부다.
 자리는 캡틴이 정하고, 나머지는 전부 문서에서 저절로 나온다.
@@ -427,19 +427,28 @@ firstmate 가 명령으로 단계를 매겼는데 캡틴 화면이 그대로였�
 
 ---
 
+## Progress
+
+- **2026-08-12** — 티켓 아홉 장이 전부 착지했다(01~09). 05 가 세운 단계 계산 위에 06·07 이 얹혔고,
+  08 이 07 의 읽기 전용을 캡틴 지시대로 뒤집었으며, 09 가 화면을 저절로 갱신되게 했다.
+- 🟡 **캡틴 실기 확인이 남아 있다** — 08 의 "단계와 단계 사이에 끼워 넣기" 는 캡틴이 여러 번
+  직접 놓아 보셔야 한다(08 §캡틴 확인). 확인 결과는 그 티켓의 `## Comments` 로 간다.
+
+---
+
 ## 티켓
 
 | # | 무엇이 되나 | 막힘 |
 |---|---|---|
-| [01](issues/01-the-old-plan-wiring-is-removed.md) | 옛 계획 배선을 걷어낸다 — 어긋남·트랙·순위·왜·드래그 경고·죽은 표 | 🟢 없음 — 지금 착수 가능 |
-| [02](issues/02-a-written-document-appears-on-the-board.md) | 문서를 쓰면 대기 칸에 저절로 나타난다. 다섯 자리가 그려진다 | 01 |
-| [03](issues/03-the-captain-moves-cards-between-areas.md) | 카드를 끌어 옮긴다. 카드 머리 아이콘 둘 | 02 |
-| [04](issues/04-tickets-tick-themselves-and-the-card-closes.md) | 티켓이 스스로 체크되고, 다 되면 접힌 채 완료 칸으로 간다 | 02 |
-| [05](issues/05-steps-are-assigned-and-next-speaks-only-of-step-one.md) | 단계를 매기고 빈 단계는 당겨진다. `next` 는 작업 대상 1단계만 말한다 | 03 |
+| [01](issues/01-the-old-plan-wiring-is-removed.md) | 옛 계획 배선을 걷어낸다 — 어긋남·트랙·순위·왜·드래그 경고·죽은 표 | 🟢 착지 |
+| [02](issues/02-a-written-document-appears-on-the-board.md) | 문서를 쓰면 대기 칸에 저절로 나타난다. 다섯 자리가 그려진다 | 🟢 착지 |
+| [03](issues/03-the-captain-moves-cards-between-areas.md) | 카드를 끌어 옮긴다. 카드 머리 아이콘 둘 | 🟢 착지 |
+| [04](issues/04-tickets-tick-themselves-and-the-card-closes.md) | 티켓이 스스로 체크되고, 다 되면 접힌 채 완료 칸으로 간다 | 🟢 착지 |
+| [05](issues/05-steps-are-assigned-and-next-speaks-only-of-step-one.md) | 단계를 매기고 빈 단계는 당겨진다. `next` 는 작업 대상 1단계만 말한다 | 🟢 착지 |
 | [06](issues/06-the-completion-time-is-read-to-the-minute.md) | 문서가 적은 완료 **시각**을 분까지 읽고, 카드의 닫힌 시각을 문서에 맡긴다 | 🟢 착지 |
 | [07](issues/07-the-process-tab-shows-the-work-in-step-order.md) | `process` 탭이 모든 기능의 티켓을 단계 순서로 모아 보여 준다 — 읽기 전용 | 🟢 착지 |
-| [08](issues/08-the-captain-drags-a-ticket-to-set-its-step.md) | `process` 탭에서 티켓을 끌어 놓아 캡틴이 직접 단계를 정한다 | 🟢 없음 — 지금 착수 가능 |
-| [09](issues/09-a-plan-change-elsewhere-reaches-the-screen.md) | 다른 곳에서 계획이 바뀌어도 새로 고침 없이 화면이 안다 | 🟢 없음 — 지금 착수 가능 |
+| [08](issues/08-the-captain-drags-a-ticket-to-set-its-step.md) | `process` 탭에서 티켓을 끌어 놓아 캡틴이 직접 단계를 정한다 | 🟢 착지 |
+| [09](issues/09-a-plan-change-elsewhere-reaches-the-screen.md) | 다른 곳에서 계획이 바뀌어도 새로 고침 없이 화면이 안다 | 🟢 착지 |
 
 03 과 04 는 나란히 갔고, 둘 다 착지했다. 06 은 04 위에서 간다 — 04 를 되감지 않는다.
 08 은 07 이 세운 화면을 손대는 자리로 바꾼다 — 07 의 "읽기 전용" 은 08 이 **의도적으로 뒤집는다**
