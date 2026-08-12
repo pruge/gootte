@@ -1,5 +1,6 @@
-import { QueryClient, useQuery } from "@tanstack/react-query";
-import { fetchProjects, fetchFeatures, fetchFeatureDoc, fetchPlanBoard } from "./api";
+import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { PlanMoveRequest } from "@gootte/contract";
+import { fetchProjects, fetchFeatures, fetchFeatureDoc, fetchPlanBoard, movePlanCards } from "./api";
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
 export function makeQueryClient(): QueryClient {
@@ -42,6 +43,21 @@ export function usePlanBoard(slug: string | null) {
     queryKey: qk.plan(slug ?? ""),
     queryFn: () => fetchPlanBoard(slug as string),
     enabled: slug !== null,
+  });
+}
+
+/**
+ * 카드를 옮긴다(plan-board/03) — 캡틴의 손이 계획 DB 에 닿는 유일한 길.
+ *
+ * 🔴 서버가 돌려준 판을 **그대로** 캐시에 앉힌다 — 화면이 옮긴 결과를 자기 손으로 조립하면
+ * 그것이 곧 서버 판정의 2차 사본이다(INV-1). 실패하면 캐시를 건드리지 않으므로 카드가 제자리에
+ * 남는다 — 옮겨진 척하지 않는다.
+ */
+export function usePlanMove(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (move: PlanMoveRequest) => movePlanCards(slug, move),
+    onSuccess: (board) => qc.setQueryData(qk.plan(slug), board),
   });
 }
 

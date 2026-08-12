@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { encodeDocView } from "../components/features/docView";
 
 export type Tab = "features" | "plan";
 const TABS: readonly Tab[] = ["features", "plan"];
@@ -73,6 +74,22 @@ export function useUrlState() {
     /** development-order/16 ④ — `features` 탭의 `plan` 버튼으로 `plan` 탭 기능 보기, 그 자리로 돌아간다. */
     goToPlanFeature: useCallback(
       (feature: string) => update({ tab: "plan", view: "feature", doc: null, focus: feature }),
+      [update],
+    ),
+    /**
+     * plan-board/03 — 판 위 카드의 문서 아이콘. `features` 탭의 **기존 통로**로 간다:
+     * 여는 방법도 주소 서식도 그 탭이 이미 쓰던 것 그대로다(`view` = `docView.ts` 인코딩).
+     * 🔴 두 번째 문서 보기를 짓지 않는다 — 이 함수가 하는 일은 탭과 주소를 바꾸는 것뿐이다.
+     * 열 문서가 없으면(`path === null`) 탭만 건너간다 — 없는 문서를 지어내지 않는다.
+     */
+    goToFeatureDoc: useCallback(
+      (feature: string, path: string | null) =>
+        update({
+          tab: "features",
+          view: path ? encodeDocView(feature, path) : null,
+          doc: null,
+          focus: null,
+        }),
       [update],
     ),
   };

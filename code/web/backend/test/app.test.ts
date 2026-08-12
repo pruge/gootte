@@ -13,7 +13,7 @@ import {
   ApiError,
   type Project,
 } from "@gootte/contract";
-import { migratePlanDb } from "@gootte/core-io";
+import { migratePlanDb, readPlacements, readSteps } from "@gootte/core-io";
 import { createApp } from "../src/app";
 import {
   clearDiscoverCache,
@@ -336,6 +336,119 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
       expect(res.status).toBe(404);
       expect(ApiError.parse(await res.json()).error).toContain("does-not-exist");
     }));
+
+  /**
+   * 카드를 옮긴다(plan-board/03) — **계획 DB 에 쓰는 유일한 입구**.
+   * 무엇을 쓸지 정하는 규칙은 `core/src/plan/move.test.ts` 가, 실제 표에 앉는지는
+   * `core-io/src/plan-store.test.ts` 가 덮는다. 여기서 보는 것은 **라우트가 그 둘을 잇고 새 판을
+   * 다시 읽어 돌려주는가**, 그리고 **관리대상에 아무것도 쓰지 않는가**다.
+   */
+  describe("POST /api/plan/:slug/move — 캡틴이 옮긴다", () => {
+    const NOW = "2026-08-12 17:40";
+    const app = (dataDir: string) => createApp({ ...APP, dataDir, now: () => NOW });
+    const post = (dataDir: string, body: unknown, slug = "alpha") =>
+      app(dataDir).request(`/api/plan/${slug}/move`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const board = async (res: Response) => PlanBoardResponse.parse(await res.json());
+
+    test("대기 카드를 작업 대상으로 올리면 옮긴 판이 그대로 돌아온다", () =>
+      withDataDir(async (dataDir) => {
+        const res = await post(dataDir, { features: ["auth-login"], area: "active", index: 0 });
+        expect(res.status).toBe(200);
+        const body = await board(res);
+        expect(body.active.map((c) => c.feature.slug)).toEqual(["auth-login"]);
+        expect(body.waiting.map((c) => c.feature.slug)).toEqual(["doc-tree"]);
+      }));
+
+    test("새로 고쳐도 그대로다 — GET 이 같은 판을 말한다", () =>
+      withDataDir(async (dataDir) => {
+        await post(dataDir, { features: ["auth-login", "doc-tree"], area: "active", index: 0 });
+        const body = PlanBoardResponse.parse(
+          await (await app(dataDir).request("/api/plan/alpha")).json(),
+        );
+        expect(body.active.map((c) => c.feature.slug)).toEqual(["auth-login", "doc-tree"]);
+        expect(body.waiting).toEqual([]);
+      }));
+
+    test("🔴 작업 대상으로 올라온 기능의 티켓 전부가 9999 단계로 붙는다", () =>
+      withDataDir(async (dataDir) => {
+        await post(dataDir, { features: ["auth-login"], area: "active", index: 0 });
+        expect(readSteps(dataDir, "alpha")).toEqual([
+          { feature: "auth-login", ticket: "01-session", step: 9999 },
+          { feature: "auth-login", ticket: "02-screen", step: 9999 },
+          { feature: "auth-login", ticket: "03-social", step: 9999 },
+        ]);
+      }));
+
+    test("🔴 작업 대상을 떠나면 그 단계 행이 사라진다", () =>
+      withDataDir(async (dataDir) => {
+        await post(dataDir, { features: ["auth-login"], area: "active", index: 0 });
+        await post(dataDir, { features: ["auth-login"], area: "reserved", index: 0 });
+        expect(readSteps(dataDir, "alpha")).toEqual([]);
+      }));
+
+    test("🔴 남은 티켓이 있어도 완료로 간다 — 이유를 묻지 않고 닫힌 시각이 찍힌다(캡틴 결정)", () =>
+      withDataDir(async (dataDir) => {
+        const body = await board(
+          await post(dataDir, { features: ["auth-login"], area: "done", index: 0 }),
+        );
+        expect(body.done.map((c) => c.feature.slug)).toEqual(["auth-login"]);
+        expect(body.done[0]?.closedAt).toBe(NOW);
+        // 남은 티켓은 완료로 위장되지 않는다(INV-B4) — 문서에서 온 상태 그대로다.
+        expect(body.done[0]?.feature.tickets.some((t) => t.status !== "done")).toBe(true);
+      }));
+
+    test("대기로 돌려보내면 자리 행이 사라진다 — 대기 칸에서 다시 보인다", () =>
+      withDataDir(async (dataDir) => {
+        await post(dataDir, { features: ["auth-login"], area: "active", index: 0 });
+        const body = await board(await post(dataDir, { features: ["auth-login"], area: null }));
+        expect(body.waiting.map((c) => c.feature.slug)).toEqual(["auth-login", "doc-tree"]);
+        expect(body.active).toEqual([]);
+      }));
+
+    test("작업 대상 안에서 순서를 바꾼다", () =>
+      withDataDir(async (dataDir) => {
+        await post(dataDir, { features: ["auth-login", "doc-tree"], area: "active", index: 0 });
+        const body = await board(
+          await post(dataDir, { features: ["doc-tree"], area: "active", index: 0 }),
+        );
+        expect(body.active.map((c) => c.feature.slug)).toEqual(["doc-tree", "auth-login"]);
+      }));
+
+    test("🔴 옮겨도 관리대상에는 한 글자도 쓰지 않는다(INV-2)", () =>
+      withDataDir(async (dataDir) => {
+        const before = treeSnapshot(FIXTURES);
+        await post(dataDir, { features: ["auth-login"], area: "done", index: 0 });
+        expect(treeSnapshot(FIXTURES)).toEqual(before);
+      }));
+
+    test("문서가 없는 기능 이름은 400 — 조용히 버리면 화면이 옮겨진 척한다", () =>
+      withDataDir(async (dataDir) => {
+        const res = await post(dataDir, { features: ["ghost"], area: "active", index: 0 });
+        expect(res.status).toBe(400);
+        expect(ApiError.parse(await res.json()).error).toContain("ghost");
+        expect(readPlacements(dataDir, "alpha")).toEqual([]);
+      }));
+
+    test("옮길 기능이 하나도 없는 요청은 계약이 거절한다", () =>
+      withDataDir(async (dataDir) => {
+        expect((await post(dataDir, { features: [], area: "active" })).status).toBe(400);
+      }));
+
+    test("정규 자리가 아닌 값은 계약이 거절한다 — '대기' 라는 값은 없다(INV-B1)", () =>
+      withDataDir(async (dataDir) => {
+        expect((await post(dataDir, { features: ["auth-login"], area: "waiting" })).status).toBe(400);
+      }));
+
+    test("미해소 slug → 404 ApiError", () =>
+      withDataDir(async (dataDir) => {
+        const res = await post(dataDir, { features: ["auth-login"], area: "active" }, "nope");
+        expect(res.status).toBe(404);
+      }));
+  });
 });
 
 describe("discover 캐시 (W2)", () => {

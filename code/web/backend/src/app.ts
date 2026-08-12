@@ -7,13 +7,15 @@ import {
   FeaturesResponse,
   FeatureDocResponse,
   PlanBoardResponse,
+  PlanMoveRequest,
   type ApiError,
 } from "@gootte/contract";
-import { applyInProgress, countOpenFeatures, splitIntoAreas } from "@gootte/core";
+import { applyInProgress, countOpenFeatures, planMove, splitIntoAreas } from "@gootte/core";
 import {
   readFeatures,
   readFeatureDoc,
   readPlacements,
+  writePlanMove,
   scanWorkingCopies,
   defaultPlanDataDir,
   defaultProjectRoots,
@@ -38,6 +40,9 @@ export function planDataDir(): string {
   return process.env.GOOTTE_DATA_DIR?.trim() || defaultPlanDataDir();
 }
 
+/** 계획 DB 가 막힌 이유는 뭉개지 않고 그대로 올린다(INV-4 릴레이) — 빈 판으로 감추지 않는다. */
+const planError = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
 const slugParam = z.object({ slug: z.string().min(1) });
 const featureDocParam = z.object({ slug: z.string().min(1), feature: z.string().min(1) });
 const featureDocQuery = z.object({ path: z.string().min(1) });
@@ -48,6 +53,19 @@ export interface AppOptions {
   treehouse?: string;
   /** 계획 저장소 경로 (테스트 주입). 없으면 planDataDir(). */
   dataDir?: string;
+  /** 완료 칸에 찍을 시각 (테스트 주입). 없으면 `nowStamp()`. */
+  now?: () => string;
+}
+
+/**
+ * 완료 칸에 들어간 시각 — `YYYY-MM-DD HH:mm`, 이 기계의 시간.
+ * 🔴 이 값을 저장하는 이유는 하나다: **문서에는 완료 날짜만 있고 시각이 없다**(spec F6). 캡틴이
+ * 시각을 요구하셨으므로 저장 자격이 있다(INV-5) — 다른 어디서도 다시 읽어 낼 수 없는 값이다.
+ * 카드가 그대로 그리는 문자열이라 사람이 읽는 서식으로 만든다.
+ */
+export function nowStamp(at: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
 
 /**
@@ -58,6 +76,7 @@ export function createApp(options: AppOptions = {}): Hono {
   const roots = options.roots ?? defaultRoots();
   const treehouse = options.treehouse ?? treehouseRoot();
   const dataDir = options.dataDir ?? planDataDir();
+  const now = options.now ?? (() => nowStamp());
   const app = new Hono();
 
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
@@ -103,16 +122,58 @@ export function createApp(options: AppOptions = {}): Hono {
     const proj = resolveSlug(roots, slug);
     if (!proj) return c.json(notFound(slug), 404);
     const project = basename(proj.path);
-    let areas: ReturnType<typeof splitIntoAreas>;
     try {
-      areas = splitIntoAreas(readFeatures(proj.path), readPlacements(dataDir, project));
+      const areas = splitIntoAreas(readFeatures(proj.path), readPlacements(dataDir, project));
+      return c.json(PlanBoardResponse.parse({ project, ...areas }));
     } catch (err) {
       // 계획 DB 를 못 읽는 것은 빈 판이 아니다 — 빈 판으로 그리면 화면이 "아무 계획도 없다" 고
       // 거짓말한다. 무엇이 막혔는지 그대로 올린다.
-      return c.json({ error: err instanceof Error ? err.message : String(err) } satisfies ApiError, 500);
+      return c.json({ error: planError(err) } satisfies ApiError, 500);
     }
-    return c.json(PlanBoardResponse.parse({ project, ...areas }));
   });
+
+  // POST /api/plan/:slug/move → PlanBoardResponse (캡틴이 카드를 옮긴다, plan-board/03)
+  //
+  // 🔴 계획 DB 에 **쓰는 유일한 입구**다. 자리를 옮기는 CLI 는 두지 않는다(spec §자리를 옮기는
+  // 명령은 두지 않는다) — 열어 두면 firstmate 나 planner 가 슬쩍 자리를 옮기고, 그것이 캡틴이
+  // 지적하신 문제 ①이 반대 방향으로 되살아나는 모양이다.
+  //
+  // 🔴 **관리대상에는 여전히 한 글자도 쓰지 않는다**(INV-2). 처리중 표시도, 옮긴 이유도 티켓
+  // 문서에 적지 않는다 — 쓰기는 gootte 자기 저장소의 `plan.db` 안에서 끝난다.
+  //
+  // 🔴 **놓을 수 있는지 검사하지 않는다**(INV-B3). 여기서 거절하는 것은 딱 하나, **문서가 없는
+  // 기능 이름**이다 — 그것은 캡틴의 판단이 아니라 요청이 이미 낡았다는 뜻이고, 조용히 버리면
+  // 화면이 옮겨진 척한다.
+  app.post(
+    "/api/plan/:slug/move",
+    zValidator("param", slugParam),
+    zValidator("json", PlanMoveRequest),
+    (c) => {
+      const { slug } = c.req.valid("param");
+      const move = c.req.valid("json");
+      const proj = resolveSlug(roots, slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      const project = basename(proj.path);
+      try {
+        const features = readFeatures(proj.path);
+        const known = new Set(features.map((f) => f.slug));
+        const missing = move.features.filter((f) => !known.has(f));
+        if (missing.length > 0) {
+          return c.json(
+            { error: `문서가 없는 기능입니다: ${missing.join(", ")}` } satisfies ApiError,
+            400,
+          );
+        }
+        writePlanMove(dataDir, project, planMove(features, readPlacements(dataDir, project), move, now()));
+        // 옮긴 뒤의 판은 **다시 읽어** 만든다 — 방금 쓴 값으로 응답을 조립하면 그것이 곧 DB 의
+        // 2차 사본이고, 한 번이라도 어긋나면 화면이 옮겨진 척한다(INV-1·INV-3).
+        const areas = splitIntoAreas(features, readPlacements(dataDir, project));
+        return c.json(PlanBoardResponse.parse({ project, ...areas }));
+      } catch (err) {
+        return c.json({ error: planError(err) } satisfies ApiError, 500);
+      }
+    },
+  );
 
   // GET /api/features/:slug/:feature/doc?path= → FeatureDocResponse (기능 문서 본문, INV-2 read-only)
   // 🔴 요청받은 path 는 readFeatureDoc 이 그 기능 폴더 안으로 해소되는지 판정한 뒤에야 읽는다 —

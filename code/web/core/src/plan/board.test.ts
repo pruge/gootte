@@ -1,39 +1,7 @@
 import { describe, expect, test } from "vitest";
-import type { Feature, Placement } from "@gootte/contract";
+import type { Feature } from "@gootte/contract";
 import { splitIntoAreas } from "./board";
-
-/** 문서에서 온 기능 하나 — 이 테스트가 보는 것은 자리 판정뿐이라 티켓은 최소로 둔다. */
-function feature(slug: string, tickets: string[] = []): Feature {
-  return {
-    slug,
-    title: `${slug} — 제목`,
-    status: "pending",
-    sourceStatus: "draft",
-    statusKnown: true,
-    docs: [],
-    tickets: tickets.map((num) => ({
-      num,
-      slug: `${num}-x`,
-      title: `티켓 ${num}`,
-      status: "pending",
-      sourceStatus: "draft",
-      statusKnown: true,
-      blockedBy: [],
-      unreadableBlockedBy: [],
-      waitingOn: [],
-      startable: true,
-      workedBy: [],
-      needsCaptainEye: false,
-    })),
-  };
-}
-
-const row = (
-  featureSlug: string,
-  area: Placement["area"],
-  seq = 0,
-  closedAt: string | null = null,
-): Placement => ({ feature: featureSlug, area, seq, closedAt });
+import { feature, row } from "./fixtures";
 
 const slugs = (cards: { feature: Feature }[]): string[] => cards.map((c) => c.feature.slug);
 

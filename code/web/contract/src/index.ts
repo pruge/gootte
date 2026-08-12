@@ -271,3 +271,26 @@ export const PlanBoardResponse = z.object({
   done: z.array(PlanCard).default([]),
 });
 export type PlanBoardResponse = z.infer<typeof PlanBoardResponse>;
+
+/**
+ * 카드를 옮긴다(plan-board/03) — **캡틴의 손이 유일한 입구**다.
+ * 자리를 옮기는 CLI 는 두지 않으므로(spec §자리를 옮기는 명령은 두지 않는다) 이 요청 하나가
+ * `placement` 표에 닿는 유일한 길이다.
+ *
+ * 🔴 **놓을 때 검사하지 않는다**(INV-B3). 여기에는 "옮겨도 되는가" 를 묻는 칸이 없다 —
+ * 캡틴이 놓은 자리가 곧 정답이고, 옛 판의 드래그 경고 넷은 01 이 걷어냈다.
+ * 🔴 **이유를 받는 칸도 없다.** 남은 티켓을 안고 완료로 옮겨도 묻지 않는다(캡틴 결정) —
+ * 왜 남기고 닫았는지는 그 티켓 문서에 적힌다.
+ */
+export const PlanMoveRequest = z.object({
+  /** 옮길 기능들 — 캡틴이 집은 순서 그대로. 여러 장 한 번에 간다(캡틴 제안 2 "여러개 가능"). */
+  features: z.array(z.string().min(1)).min(1),
+  /**
+   * 목적지. 🔴 **`null` 이 대기다** — 대기를 뜻하는 값을 만들지 않는다(INV-B1).
+   * 대기로 보내는 일은 자리 행을 **지우는** 것이라 애초에 저장할 값이 없다.
+   */
+  area: PlanArea.nullable(),
+  /** 목적지 칸에서 끼워 넣을 자리 — 옮길 카드들을 뺀 나머지 기준 0-based. 넘치면 맨 뒤. */
+  index: z.number().int().nonnegative().default(0),
+});
+export type PlanMoveRequest = z.infer<typeof PlanMoveRequest>;
