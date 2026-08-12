@@ -3,7 +3,45 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { clearStep, migratePlanDb, readPlacements, readSteps, writePlanMove, writeStep } from "./plan-store";
+import type { Feature } from "@gootte/contract";
+import {
+  clearStep,
+  migratePlanDb,
+  readPlacements,
+  readPlacementsWithAutoClose,
+  readSteps,
+  writePlanMove,
+  writeStep,
+} from "./plan-store";
+
+/** 티켓 하나짜리 기능 — `done` 이면 상자가 채워진 것(04, `ticketChecked`). */
+function feature(slug: string, ticketStatus: "done" | "pending"): Feature {
+  return {
+    slug,
+    title: `${slug} — 제목`,
+    status: "pending",
+    sourceStatus: null,
+    statusKnown: true,
+    docs: [],
+    tickets: [
+      {
+        num: "01",
+        slug: "01-x",
+        path: "issues/01-x.md",
+        title: "티켓 01",
+        status: ticketStatus,
+        sourceStatus: null,
+        statusKnown: true,
+        blockedBy: [],
+        unreadableBlockedBy: [],
+        waitingOn: [],
+        startable: true,
+        workedBy: [],
+        needsCaptainEye: false,
+      },
+    ],
+  };
+}
 
 /**
  * 계획 저장소 — 임시 디렉토리 픽스처(이 저장소 자신의 `~/.gootte` 를 건드리지 않는다).
@@ -250,6 +288,35 @@ describe("writePlanMove — 덮어쓰기뿐(이력 없음)", () => {
     expect(readPlacements(dataDir, "alpha")).toEqual([
       { feature: "a", area: "active", seq: 0, closedAt: null },
     ]);
+  });
+});
+
+/**
+ * `readPlacementsWithAutoClose` — 판을 보는 모든 길(HTTP `readBoard` 도 CLI `board`·`next` 도)이
+ * 지나는 자동 닫힘(04) 자리. 판정(`planAutoClose`)은 core 테스트가 이미 재므로, 여기서는
+ * 이 함수가 그 판정을 **쓰고 다시 읽는가**만 잰다.
+ */
+describe("readPlacementsWithAutoClose — 04 를 태우고 다시 읽는 자리(HTTP 도 CLI 도 여기를 지난다)", () => {
+  test("상자가 전부 채워진 기능은 완료 칸으로 닫힌다", () => {
+    migratePlanDb(dataDir);
+    const placements = readPlacementsWithAutoClose(dataDir, "alpha", [feature("done-one", "done")]);
+    expect(placements).toEqual([{ feature: "done-one", area: "done", seq: 0, closedAt: null }]);
+    // 쓴 값이 실제로 DB 에 남았다 — 다음 read 도 같은 판을 본다.
+    expect(readPlacements(dataDir, "alpha")).toEqual(placements);
+  });
+
+  test("상자가 남은 기능은 닫지 않는다", () => {
+    migratePlanDb(dataDir);
+    insert("alpha", "half-done", "active", 0);
+    const placements = readPlacementsWithAutoClose(dataDir, "alpha", [feature("half-done", "pending")]);
+    expect(placements).toEqual([{ feature: "half-done", area: "active", seq: 0, closedAt: null }]);
+  });
+
+  test("이미 완료 칸에 있는 카드는 다시 쓰지 않는다(멱등)", () => {
+    migratePlanDb(dataDir);
+    const first = readPlacementsWithAutoClose(dataDir, "alpha", [feature("done-one", "done")]);
+    const second = readPlacementsWithAutoClose(dataDir, "alpha", [feature("done-one", "done")]);
+    expect(second).toEqual(first);
   });
 });
 

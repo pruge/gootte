@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, it, expect } from "vitest";
-import { discoverProjects, readSteps, writePlanMove } from "@gootte/core-io";
+import { discoverProjects, readPlacements, readSteps, writePlanMove } from "@gootte/core-io";
 import { CliError } from "./args";
 import { boardText, discoverText, nextText, stepClearText, stepText } from "./commands";
 
@@ -142,6 +142,40 @@ describe("cli — step · step --clear · board · next(plan-board/05)", () => {
 
   it("board — 🔴 어떤 플래그도 받지 않는다", () => {
     expect(() => boardText([slug(), "--why"], dataDir, proj)).toThrow(/받지 않는다/);
+  });
+
+  /**
+   * 실측 장면(gootte-card-close-cli) 회귀 — 04 의 자동 닫힘이 HTTP `readBoard` 뿐 아니라 CLI 도
+   * 지난다. HTTP 를 **한 번도 부르지 않고** `boardText` 만으로 다 끝난 카드가 완료 칸에 보이고,
+   * 계획 DB 에도 실제로 닫힘이 남는다(이 갈래는 "닫힘 쓰기를 CLI 경로에도 태운다" 쪽을 골랐다).
+   */
+  it("board — 🔴 HTTP 를 부르지 않아도 티켓이 전부 완료된 기능은 완료 칸으로 넘어간다", () => {
+    w(
+      proj,
+      "docs/features/done-feature/issues/01-x.md",
+      "# 01 — x\n\n**Status:** resolved (2026-08-01)\n\n**Blocked by:** 없음\n",
+    );
+    activate(dataDir, slug(), "done-feature");
+
+    const out = boardText([slug()], dataDir, proj);
+    expect(out).toContain("## 완료 (1)");
+    expect(out).toContain("- done-feature");
+    expect(out).not.toContain("## 작업 대상 (1)");
+
+    // 화면(HTTP)을 켜지 않아도 계획 DB 에 닫힘이 실제로 남는다 — CLI 만 쓰는 세션이 같은 판을 본다.
+    expect(readPlacements(dataDir, slug())).toContainEqual({
+      feature: "done-feature",
+      area: "done",
+      seq: 0,
+      closedAt: null,
+    });
+  });
+
+  it("board — 아직 안 끝난 기능은 CLI 로도 닫히지 않는다", () => {
+    activate(dataDir, slug(), "f");
+    const out = boardText([slug()], dataDir, proj);
+    expect(out).toContain("## 작업 대상 (1)");
+    expect(out).not.toContain("## 완료 (1)");
   });
 
   it("next — 프로젝트 없이 거절한다", () => {

@@ -7,6 +7,7 @@ import {
   migratePlanDb,
   readFeatures,
   readPlacements,
+  readPlacementsWithAutoClose,
   readSteps,
   writeStep,
 } from "@gootte/core-io";
@@ -132,6 +133,10 @@ const AREA_LABEL: Record<AreaId, string> = {
  * 않는다) — 여기서 자리나 순서를 바꾸는 길은 없다.
  *
  * 🔴 판정 자리는 `splitIntoAreas`·`computeDisplaySteps` 둘뿐이다 — 화면과 같은 함수를 쓴다.
+ *
+ * 🔴 화면과 같은 자리에서 자동 닫힘(04)도 태운다(`readPlacementsWithAutoClose`, core-io) — 다
+ * 끝난 카드가 화면을 한 번도 켜지 않고도 완료 칸으로 넘어간다. 판정(`planAutoClose`)은 그대로
+ * core 하나뿐이고, 여기는 화면이 지나는 것과 같은 쓰기·재읽기 자리를 지날 뿐이다.
  */
 export function boardText(
   argv: readonly string[],
@@ -143,7 +148,7 @@ export function boardText(
   if (!project) throw new CliError("usage: gootte board <프로젝트>");
   const path = requireProjectPath(project, cwd);
   const features = readFeatures(path);
-  const placements = readPlacements(dataDir, project);
+  const placements = readPlacementsWithAutoClose(dataDir, project, features);
   const areas = splitIntoAreas(features, placements);
   const displaySteps = computeDisplaySteps(features, placements, readSteps(dataDir, project));
 
@@ -169,6 +174,9 @@ export function boardText(
  * plan-board/05). 트랙 묶음도 어긋남도 없다(INV-B3).
  *
  * 🔴 판정 자리는 `computeNext`(core) 하나뿐이다 — 화면(카드)과 같은 함수를 쓴다.
+ *
+ * 🔴 `board` 와 같이, 자동 닫힘(04)도 같은 자리(`readPlacementsWithAutoClose`)를 지난다 — 다
+ * 끝난 기능은 작업 대상을 떠나므로 `computeNext` 가 더 이상 그 티켓을 말하지 않는다.
  */
 export function nextText(
   argv: readonly string[],
@@ -180,7 +188,7 @@ export function nextText(
   if (!project) throw new CliError("usage: gootte next <프로젝트>");
   const path = requireProjectPath(project, cwd);
   const features = readFeatures(path);
-  const placements = readPlacements(dataDir, project);
+  const placements = readPlacementsWithAutoClose(dataDir, project, features);
   const steps = readSteps(dataDir, project);
   const tickets = computeNext(features, placements, steps);
   if (tickets.length === 0) return "(1단계 없음)";
