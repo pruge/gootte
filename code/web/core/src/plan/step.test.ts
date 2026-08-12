@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { UNRANKED_STEP, type StepRow } from "./move";
-import { computeDisplaySteps } from "./step";
+import { computeDisplaySteps, placeStep } from "./step";
 import { feature, resolved, row, wontfix } from "./fixtures";
 
 const s = (feat: string, ticket: string, step: number): StepRow => ({
@@ -90,5 +90,76 @@ describe("computeDisplaySteps — 당김은 표시 계산이다(INV-B2, plan-boa
     const placements = [row("a", "active", 0)];
     const steps = [s("a", "01", 1), s("a", "99", 2)];
     expect(computeDisplaySteps(features, placements, steps)).toEqual({ a: { "01-x": 1 } });
+  });
+});
+
+describe("placeStep — 놓은 자리 → 저장 숫자(plan-board/08)", () => {
+  it("이미 있는 단계 위 — 그 단계가 원래 쓰던 저장 숫자를 그대로 돌려준다", () => {
+    const features = [feature("a", ["01"]), feature("b", ["02"])];
+    const placements = [row("a", "active", 0), row("b", "active", 1)];
+    const steps = [s("a", "01", 1), s("b", "02", 2)];
+    expect(placeStep(features, placements, steps, { kind: "onStep", displayStep: 2 })).toBe(2);
+  });
+
+  it("단계와 단계 사이 — 앞뒤 저장 숫자의 중간값", () => {
+    const features = [feature("a", ["01"]), feature("b", ["02"])];
+    const placements = [row("a", "active", 0), row("b", "active", 1)];
+    const steps = [s("a", "01", 1), s("b", "02", 2)];
+    expect(placeStep(features, placements, steps, { kind: "gap", index: 1 })).toBe(1.5);
+  });
+
+  it("맨 앞 — 가장 작은 저장 숫자 − 1", () => {
+    const features = [feature("a", ["01"]), feature("b", ["02"])];
+    const placements = [row("a", "active", 0), row("b", "active", 1)];
+    const steps = [s("a", "01", 1), s("b", "02", 2)];
+    expect(placeStep(features, placements, steps, { kind: "gap", index: 0 })).toBe(0);
+  });
+
+  it("번호 매겨진 단계들 맨 뒤 — 가장 큰 저장 숫자 + 1, 9999 무더기 앞", () => {
+    const features = [feature("a", ["01"]), feature("b", ["02"])];
+    const placements = [row("a", "active", 0), row("b", "active", 1)];
+    const steps = [s("a", "01", 1), s("b", "02", 2), s("a", "02", UNRANKED_STEP)];
+    expect(placeStep(features, placements, steps, { kind: "gap", index: 2 })).toBe(3);
+  });
+
+  it("번호 매겨진 단계가 하나도 없을 때 맨 뒤 — 1", () => {
+    const features = [feature("a", ["01"])];
+    const placements = [row("a", "active", 0)];
+    const steps = [s("a", "01", UNRANKED_STEP)];
+    expect(placeStep(features, placements, steps, { kind: "gap", index: 0 })).toBe(1);
+  });
+
+  it("9999 무더기 위 — 늘 9999", () => {
+    const features = [feature("a", ["01"])];
+    const placements = [row("a", "active", 0)];
+    const steps = [s("a", "01", 1)];
+    expect(placeStep(features, placements, steps, { kind: "unranked" })).toBe(UNRANKED_STEP);
+  });
+
+  it("🔴 전부 완료돼 화면에서 걷힌 단계가 중간에 있어도 맨 뒤 숫자가 그 숫자와 안 부딪친다", () => {
+    // a-01 은 1단계에서 완료돼 화면에서 걷혔지만 저장 숫자 1은 여전히 살아 있다.
+    // b 는 표시 1단계(저장 2), c 는 표시 2단계(저장 3) — 화면만 보면 "맨 뒤 + 1" 이 3+1=4 지만
+    // 저장 전부를 보면 이미 3까지 쓰였으므로 여전히 4 — 이 테스트는 저장 1이 안 부딪치는 경계를 잰다.
+    const features = [
+      feature("a", [resolved("01", "2026-08-01")]),
+      feature("b", ["02"]),
+      feature("c", ["03"]),
+    ];
+    const placements = [row("a", "active", 0), row("b", "active", 1), row("c", "active", 2)];
+    const steps = [s("a", "01", 1), s("b", "02", 2), s("c", "03", 3)];
+    expect(placeStep(features, placements, steps, { kind: "gap", index: 2 })).toBe(4);
+    expect(placeStep(features, placements, steps, { kind: "gap", index: 0 })).toBe(0);
+  });
+
+  it("🔴 맨 앞도 저장 전부에서 가장 작은 것을 본다 — 걷힌 단계가 가장 작을 때", () => {
+    const features = [
+      feature("a", [resolved("01", "2026-08-01")]),
+      feature("b", ["02"]),
+    ];
+    const placements = [row("a", "active", 0), row("b", "active", 1)];
+    const steps = [s("a", "01", 1), s("b", "02", 2)];
+    // a-01 은 완료돼 화면에서 걷혔다(표시로는 b 만 1단계) — 그래도 저장 1은 여전히 살아 있어
+    // 맨 앞은 1 - 1 = 0 이어야지, 화면에 보이는 값(2) 기준의 1 이 되면 안 된다.
+    expect(placeStep(features, placements, steps, { kind: "gap", index: 0 })).toBe(0);
   });
 });

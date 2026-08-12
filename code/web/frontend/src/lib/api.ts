@@ -6,6 +6,7 @@ import {
   PlanBoardResponse,
   ApiError,
   type PlanMoveRequest,
+  type StepMoveRequest,
   type Project,
 } from "@gootte/contract";
 
@@ -52,6 +53,18 @@ export const movePlanCards = (
   move: PlanMoveRequest,
 ): Promise<PlanBoardResponse> =>
   send(`/api/plan/${encodeURIComponent(slug)}/move`, PlanBoardResponse, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(move),
+  });
+
+/**
+ * 캡틴이 `process` 탭에서 티켓을 끌어 단계를 정한다(plan-board/08) — 응답은 **옮긴 뒤의 판 전체**다.
+ * 🔴 화면은 "어느 자리에 놓았다" 만 보낸다 — 저장 숫자를 고르는 것은 서버의 `placeStep`(core)
+ * 하나뿐이다(spec §판정 자리는 하나뿐).
+ */
+export const moveStep = (slug: string, move: StepMoveRequest): Promise<PlanBoardResponse> =>
+  send(`/api/plan/${encodeURIComponent(slug)}/step`, PlanBoardResponse, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(move),

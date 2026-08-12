@@ -8,6 +8,7 @@ import {
   FeatureDocResponse,
   PlanBoardResponse,
   PlanMoveRequest,
+  StepMoveRequest,
   type ApiError,
   type Feature,
 } from "@gootte/contract";
@@ -15,6 +16,7 @@ import {
   applyInProgress,
   computeDisplaySteps,
   countOpenFeatures,
+  placeStep,
   planAutoClose,
   planMove,
   splitIntoAreas,
@@ -26,6 +28,7 @@ import {
   readPlacements,
   readSteps,
   writePlanMove,
+  writeStep,
   scanWorkingCopies,
   defaultPlanDataDir,
   defaultProjectRoots,
@@ -213,6 +216,55 @@ export function createApp(options: AppOptions = {}): Hono {
         // 2차 사본이고, 한 번이라도 어긋나면 화면이 옮겨진 척한다(INV-1·INV-3).
         // 그 길에 자동 닫힘도 함께 선다(04) — 상자가 다 채워진 카드를 캡틴이 다른 칸으로 옮겨도
         // 판을 그리는 규칙은 하나여야 한다. 옮기는 자리와 닫는 자리가 갈리면 화면이 둘을 다르게 본다.
+        const areas = readBoard(project, features);
+        return c.json(PlanBoardResponse.parse({ project, ...areas }));
+      } catch (err) {
+        return c.json({ error: planError(err) } satisfies ApiError, 500);
+      }
+    },
+  );
+
+  // POST /api/plan/:slug/step → PlanBoardResponse (캡틴이 `process` 탭에서 티켓을 끌어 단계를
+  // 정한다, plan-board/08)
+  //
+  // 🔴 놓은 자리 → 저장 숫자 계산은 `core` 의 `placeStep` 하나뿐이다(spec §놓은 자리를 저장
+  // 숫자로 옮기는 계산) — 화면은 "어느 자리에 놓았다" 만 보낸다.
+  //
+  // 🔴 쓰는 자리는 `writeStep` 하나 — `step` 명령(cli)이 이미 쓰던 그 칸이다(spec §명령과
+  // 화면이 같은 자리를 쓴다). 여기서 새로 쓰기 경로를 만들지 않는다.
+  //
+  // 🔴 **놓을 수 있는지 검사하지 않는다**(INV-B3). 거절하는 것은 문서가 없는 기능·티켓 이름과
+  // 작업 대상 밖의 기능뿐이다 — 그것들은 캡틴의 판단이 아니라 요청이 이미 낡았다는 뜻이다.
+  app.post(
+    "/api/plan/:slug/step",
+    zValidator("param", slugParam),
+    zValidator("json", StepMoveRequest),
+    (c) => {
+      const { slug } = c.req.valid("param");
+      const { feature, ticket, target } = c.req.valid("json");
+      const proj = resolveSlug(roots, slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      const project = basename(proj.path);
+      try {
+        const features = readFeatures(proj.path);
+        const f = features.find((x) => x.slug === feature);
+        if (!f) return c.json({ error: `문서가 없는 기능입니다: ${feature}` } satisfies ApiError, 400);
+        if (!f.tickets.some((t) => t.slug === ticket)) {
+          return c.json(
+            { error: `문서가 없는 티켓입니다: ${feature}/${ticket}` } satisfies ApiError,
+            400,
+          );
+        }
+        const placements = readPlacements(dataDir, project);
+        if (!placements.some((p) => p.feature === feature && p.area === "active")) {
+          return c.json(
+            { error: `작업 대상 밖의 기능입니다: ${feature}` } satisfies ApiError,
+            400,
+          );
+        }
+        const step = placeStep(features, placements, readSteps(dataDir, project), target);
+        writeStep(dataDir, project, feature, ticket, step);
+        // 옮긴 뒤의 판은 **다시 읽어** 만든다 — /move 와 같은 규율이다(INV-1·INV-3).
         const areas = readBoard(project, features);
         return c.json(PlanBoardResponse.parse({ project, ...areas }));
       } catch (err) {
