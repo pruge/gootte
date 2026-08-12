@@ -68,6 +68,26 @@ describe("parseStatusLine — 값 뒤에 붙는 것에 넘어가지 않는다", 
     });
   });
 
+  it("🔴 06 — 시각까지 적힌 완료일은 분까지 읽는다", () => {
+    expect(parseStatusLine(ticket("resolved (2026-08-12 14:30)"))).toEqual({
+      raw: "resolved",
+      value: "resolved",
+      completedAt: "2026-08-12 14:30",
+    });
+  });
+
+  it("🔴 06 — 시각이 없으면 날짜만 읽는다, 00:00 을 지어내지 않는다", () => {
+    expect(parseStatusLine(ticket("resolved (2026-08-09)")).completedAt).toBe("2026-08-09");
+  });
+
+  it("🔴 06 — resolved 뿐이면(날짜도 시각도 없음) 완료일은 없음이다", () => {
+    expect(parseStatusLine(ticket("resolved")).completedAt).toBeNull();
+  });
+
+  it("🔴 06 — 완료가 아닌 상태의 괄호 시각은 완료 시각으로 읽히지 않는다", () => {
+    expect(parseStatusLine(ticket("ready-for-agent (2026-08-12 14:30)")).completedAt).toBeNull();
+  });
+
   it("괄호 사유가 붙어도 값만 뽑는다", () => {
     const line = parseStatusLine(ticket("blocked — 02 착지 후"));
     expect(line.value).toBe("blocked");
@@ -265,6 +285,11 @@ describe("parseTicket — 번호·제목·상태·선행 네 가지", () => {
     expect(t.status).toBe("done");
     expect(t.sourceStatus).toBe("resolved");
     expect(t.completedAt).toBe("2026-08-09");
+  });
+
+  it("🔴 06 — 완료 티켓은 시각까지 있으면 분까지 싣는다", () => {
+    const t = parseTicket("01-discover.md", ticket("resolved (2026-08-12 14:30)"));
+    expect(t.completedAt).toBe("2026-08-12 14:30");
   });
 
   it("🔴 알 수 없는 상태의 티켓도 살아남는다 — statusKnown=false 로 이상함이 드러난다", () => {

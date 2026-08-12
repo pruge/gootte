@@ -371,7 +371,12 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
       <DragOverlay dropAnimation={DROP_ANIMATION}>
         {draggingCard && (
           <div className="relative w-[min(420px,80vw)]">
-            <BoardCard card={draggingCard} overlay selected />
+            <BoardCard
+              card={draggingCard}
+              closed={dragging ? areaOfCard(board, dragging) === "done" : false}
+              overlay
+              selected
+            />
             {draggingCount > 1 && (
               <span className="mono absolute -right-2 -top-2 rounded-full bg-accent px-2 py-0.5 text-sm text-accent-fg shadow">
                 {draggingCount}장
@@ -387,6 +392,7 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
       {opened && cardOf(opened) && (
         <CardDialog
           card={cardOf(opened) as PlanCard}
+          closed={areaOfCard(board, opened) === "done"}
           onClose={() => setOpened(null)}
           onOpenTicket={(path) => setTicketDoc({ feature: opened, path })}
         />

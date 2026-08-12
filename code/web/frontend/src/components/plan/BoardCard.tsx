@@ -3,11 +3,14 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { IconArrowMoveRight, IconFileText } from "@tabler/icons-react";
 import type { PlanCard } from "@gootte/contract";
-import { documentCompletedOn } from "@gootte/core/plan";
+import { closedDisplayAt } from "@gootte/core/plan";
 import { featureDescription } from "./cardTitle";
 
 export interface BoardCardProps {
   card: PlanCard;
+  /** 이 카드가 완료 칸에 있는가 — 닫힌 시각을 보여줄지 판단하는 데만 쓴다(06). 어느 칸에 담겨
+   * 있는지는 카드 자신이 모른다(`PlanCard` 는 `area` 를 싣지 않는다) — 호출자(`CardList`)가 안다. */
+  closed?: boolean;
   /** 여러 장 고르기 — 고른 카드는 테두리로 드러나고, 그중 하나를 끌면 전부 따라간다. */
   selected?: boolean;
   /** 머리글을 ⌘/Ctrl/Shift 와 함께 누른 것 — 여는 대신 고른다. */
@@ -45,6 +48,7 @@ export interface BoardCardProps {
  */
 export function BoardCard({
   card,
+  closed = false,
   selected = false,
   onToggleSelect,
   onOpenCard,
@@ -56,8 +60,10 @@ export function BoardCard({
   const headingId = `board-card-${feature.slug}`;
   // 표제 앞에 겹쳐 붙은 기능 이름은 뗀다 — 같은 이름이 한 카드에 두 번 뜨지 않게(캡틴 결정).
   const description = featureDescription(feature.title, feature.slug);
-  // 문서가 말하는 완료 날짜 — 닫힌 시각과 **다른 값**이라 따로 계산해 따로 보여 준다(core).
-  const completedOn = documentCompletedOn(feature);
+  // 완료 칸 카드가 보여줄 닫힌 시각 하나 — 저절로 닫혔으면 문서에서, 손으로 닫았으면 저장값에서
+  // (core `closedDisplayAt`, 06). 완료 칸이 아닌 카드에는 묻지 않는다 — 부분 완료 날짜를 "닫힘"으로
+  // 잘못 읽지 않기 위해서다.
+  const closedDisplay = closed ? closedDisplayAt(card.closedAt, feature) : null;
 
   // 🔴 `role` 을 카드 자신의 것으로 못 박는다 — dnd-kit 기본값(`button`)이 붙으면 카드가
   // 카드가 아니게 되고, 안에 있는 머리글 버튼이 버튼 속 버튼이 된다.
@@ -135,19 +141,13 @@ export function BoardCard({
             </span>
           </span>
 
-          {/* 🔴 **두 시각을 한 값으로 뭉개지 않는다**(티켓 04). `닫힘` 은 gootte 가 완료 칸에 넣은
-              것으로 기록한 시각(날짜+시간, 계획 DB 가 갖는 유일한 이유 — 문서엔 시각이 없다, F6),
-              `문서 완료` 는 티켓 문서가 가진 날짜 그대로다. 뭉치는 순간 어느 쪽도 사실이 아니게 된다.
+          {/* 닫힌 시각 하나 — 저절로 닫혔으면 문서가 말하는 완료 시각, 손으로 닫았으면 저장값
+              그대로다(06). 판정은 `closedDisplayAt`(core) 하나뿐, 화면은 받아 쓰기만 한다.
               닫힌 카드에만 뜨고, 첫 줄 옆이 아니라 제 줄을 갖는다 — 짧은 이름 줄의 여백을
               설명 줄에서 빼앗지 않기 위해서다(위 격자 설명과 같은 이유). */}
-          {card.closedAt && (
-            <span
-              className="mono col-span-2 col-start-1 row-start-3 flex flex-wrap items-baseline gap-x-2 text-sm tabular-nums text-muted"
-              title="닫힘 = gootte 가 완료 칸에 넣은 시각 · 문서 완료 = 티켓 문서가 말하는 마지막 완료 날짜"
-            >
-              <span>닫힘 {card.closedAt}</span>
-              <span aria-hidden>·</span>
-              <span>{completedOn ? `문서 완료 ${completedOn}` : "문서 완료일 없음"}</span>
+          {closedDisplay && (
+            <span className="mono col-span-2 col-start-1 row-start-3 text-sm tabular-nums text-muted">
+              닫힘 {closedDisplay}
             </span>
           )}
         </button>

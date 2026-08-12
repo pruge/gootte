@@ -16,7 +16,10 @@ export interface StatusLine {
   raw: string | null;
   /** 아홉 값 중 하나면 그 값, 아니면 null. */
   value: Status | null;
-  /** `resolved` 에 동반된 완료일(YYYY-MM-DD). 다른 상태의 괄호 날짜는 읽지 않는다. */
+  /**
+   * `resolved` 에 동반된 완료일 — `YYYY-MM-DD` 또는 `YYYY-MM-DD HH:MM`(캡틴 결정 2026-08-12, 06).
+   * 시각이 없으면 날짜만 담긴다 — 지어내지 않는다. 다른 상태의 괄호 날짜는 읽지 않는다.
+   */
   completedAt: string | null;
 }
 
@@ -26,7 +29,8 @@ const BLOCKED_LINE = /^[ \t]*(?:\*\*)?Blocked by:(?:\*\*)?[ \t]*(.*)$/m;
 const H1 = /^#[ \t]+(.+)$/m;
 // 제목 앞의 번호 접두("02 — ", "02 - ", "02. ") — 번호는 파일명이 준다.
 const TITLE_NUM_PREFIX = /^\d+\s*[—–.-]\s*/;
-const DATE = /(\d{4}-\d{2}-\d{2})/;
+// 날짜 뒤에 시각이 붙을 수도(06) — `(?: HH:MM)?` 는 없으면 그냥 날짜만 잡는다. 없는 시각을 지어내지 않는다.
+const DATE = /(\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?)/;
 
 function isStatus(v: string): v is Status {
   return (FIRSTMATE_STATUSES as readonly string[]).includes(v);

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { IconX } from "@tabler/icons-react";
 import type { FeatureTicket, PlanCard } from "@gootte/contract";
-import { documentCompletedOn, ticketChecked, UNRANKED_STEP } from "@gootte/core/plan";
+import { closedDisplayAt, ticketChecked, UNRANKED_STEP } from "@gootte/core/plan";
 import { featureDescription } from "./cardTitle";
 import { ticketDocPath } from "./planDoc";
 
@@ -16,6 +16,8 @@ function orderByStep(tickets: readonly FeatureTicket[], steps: Record<string, nu
 
 interface CardDialogProps {
   card: PlanCard;
+  /** 이 카드가 완료 칸에 있는가 — 닫힌 시각을 보여줄지 판단하는 데만 쓴다(06, `BoardCard`와 같은 이유). */
+  closed?: boolean;
   onClose: () => void;
   /** 티켓 줄을 누른 것 — 그 티켓 원문을 연다(캡틴 결정 2026-08-12: "ticket 클릭하면 문서 보이게해"). */
   onOpenTicket: (path: string) => void;
@@ -35,12 +37,12 @@ interface CardDialogProps {
  * 짓지 않고 이미 있는 `DocDrawer`(`features` 탭)를 그대로 재사용한다 — 여는 자리만 `PlanView`가
  * 하나 더 갖는다.
  */
-export function CardDialog({ card, onClose, onOpenTicket }: CardDialogProps) {
+export function CardDialog({ card, closed = false, onClose, onOpenTicket }: CardDialogProps) {
   const okRef = useRef<HTMLButtonElement>(null);
   const { feature } = card;
   const description = featureDescription(feature.title, feature.slug);
-  // 닫힌 시각과 문서의 완료 날짜 — **다른 값**이라 여기서도 각각 선다(04).
-  const completedOn = documentCompletedOn(feature);
+  // 닫힌 시각 하나 — 카드 머리와 같은 판정을 쓴다(`closedDisplayAt`, 06).
+  const closedDisplay = closed ? closedDisplayAt(card.closedAt, feature) : null;
   // 작업 대상 카드에만 값이 있다(05) — 나머지 칸의 카드는 빈 표라 순서·표시가 그대로다.
   const steps = card.steps ?? {};
   const orderedTickets = orderByStep(feature.tickets, steps);
@@ -82,12 +84,7 @@ export function CardDialog({ card, onClose, onOpenTicket }: CardDialogProps) {
             {/* 카드 머리가 이고 있던 곁다리를 그대로 옮겨 온다 — 창을 열었다고 사실이 사라지지 않게. */}
             <p className="mono mt-1.5 flex flex-wrap items-baseline gap-x-2.5 text-sm tabular-nums text-muted">
               <span>티켓 {feature.tickets.length}</span>
-              {card.closedAt && (
-                <>
-                  <span>닫힘 {card.closedAt}</span>
-                  <span>{completedOn ? `문서 완료 ${completedOn}` : "문서 완료일 없음"}</span>
-                </>
-              )}
+              {closedDisplay && <span>닫힘 {closedDisplay}</span>}
             </p>
           </div>
           <button
