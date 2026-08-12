@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { defaultPlanDataDir, defaultProjectRoots } from "@gootte/core-io";
 import { CliError } from "./args";
-import { dbMigrateText, discoverText, nextText } from "./commands";
+import { boardText, dbMigrateText, discoverText, nextText, stepClearText, stepText } from "./commands";
 
 /** 계획 저장 자리 — env `GOOTTE_DATA_DIR` 로 덮어쓴다(기계마다 다를 수 있다, `GOOTTE_ROOTS`·`GOOTTE_TREEHOUSE` 와 같은 관례). */
 function planDataDir(): string {
@@ -14,7 +14,10 @@ function usage(): number {
       "usage: gootte <command> ...",
       "  discover [roots...]",
       "  db migrate  — 계획 DB(~/.gootte/plan.db) 를 지금 스키마로 올린다(멱등)",
-      "  next        <프로젝트>  — 아직 없다(05 가 새 규칙으로 다시 쓴다)",
+      "  step        <프로젝트> <기능>/<티켓> <N>  — 단계를 매긴다",
+      "  step --clear <프로젝트> <기능>/<티켓>      — 단계를 뗀다",
+      "  board       <프로젝트>  — 다섯 칸 현황을 읽는다(읽기 전용)",
+      "  next        <프로젝트>  — 작업 대상의 표시 1단계 티켓만 말한다",
       "",
     ].join("\n"),
   );
@@ -39,8 +42,18 @@ function run(argv: string[]): number {
         }
         return usage();
       }
+      case "step": {
+        const [first, ...more] = rest;
+        process.stdout.write(
+          (first === "--clear" ? stepClearText(more, planDataDir()) : stepText(rest, planDataDir())) + "\n",
+        );
+        return 0;
+      }
+      case "board":
+        process.stdout.write(boardText(rest, planDataDir()) + "\n");
+        return 0;
       case "next":
-        process.stdout.write(nextText(rest) + "\n");
+        process.stdout.write(nextText(rest, planDataDir()) + "\n");
         return 0;
       default:
         return usage();

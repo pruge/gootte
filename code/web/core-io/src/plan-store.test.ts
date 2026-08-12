@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { migratePlanDb, readPlacements, readSteps, writePlanMove } from "./plan-store";
+import { clearStep, migratePlanDb, readPlacements, readSteps, writePlanMove, writeStep } from "./plan-store";
 
 /**
  * 계획 저장소 — 임시 디렉토리 픽스처(이 저장소 자신의 `~/.gootte` 를 건드리지 않는다).
@@ -219,5 +219,42 @@ describe("writePlanMove — 덮어쓰기뿐(이력 없음)", () => {
     expect(readPlacements(dataDir, "alpha")).toEqual([
       { feature: "a", area: "active", seq: 0, closedAt: null },
     ]);
+  });
+});
+
+/**
+ * `step` · `step --clear` 가 실제로 닿는 칸(plan-board/05) — 판정(누가 매길 수 있는지)은
+ * `cli` 몫이고, 여기서는 값이 표에 그대로 앉는가만 잰다.
+ */
+describe("writeStep / clearStep — firstmate 가 매기고 떼는 칸", () => {
+  test("없던 행을 새로 매긴다", () => {
+    writeStep(dataDir, "alpha", "f", "01-x", 1);
+    expect(readSteps(dataDir, "alpha")).toEqual([{ feature: "f", ticket: "01-x", step: 1 }]);
+  });
+
+  test("이미 있는 행은 덮어쓴다 — 두 번째 매김이 이긴다", () => {
+    writeStep(dataDir, "alpha", "f", "01-x", 9999);
+    writeStep(dataDir, "alpha", "f", "01-x", 1);
+    expect(readSteps(dataDir, "alpha")).toEqual([{ feature: "f", ticket: "01-x", step: 1 }]);
+  });
+
+  test("clearStep 은 그 행 하나만 뗀다", () => {
+    writeStep(dataDir, "alpha", "f", "01-x", 1);
+    writeStep(dataDir, "alpha", "f", "02-x", 2);
+    clearStep(dataDir, "alpha", "f", "01-x");
+    expect(readSteps(dataDir, "alpha")).toEqual([{ feature: "f", ticket: "02-x", step: 2 }]);
+  });
+
+  test("없는 행을 지워도 조용히 끝난다(멱등)", () => {
+    migratePlanDb(dataDir);
+    expect(() => clearStep(dataDir, "alpha", "f", "01-x")).not.toThrow();
+  });
+
+  test("다른 프로젝트의 행은 건드리지 않는다", () => {
+    writeStep(dataDir, "alpha", "f", "01-x", 1);
+    writeStep(dataDir, "bravo", "f", "01-x", 1);
+    clearStep(dataDir, "alpha", "f", "01-x");
+    expect(readSteps(dataDir, "alpha")).toEqual([]);
+    expect(readSteps(dataDir, "bravo")).toEqual([{ feature: "f", ticket: "01-x", step: 1 }]);
   });
 });

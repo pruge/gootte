@@ -13,6 +13,7 @@ import {
 } from "@gootte/contract";
 import {
   applyInProgress,
+  computeDisplaySteps,
   countOpenFeatures,
   planAutoClose,
   planMove,
@@ -23,6 +24,7 @@ import {
   readFeatures,
   readFeatureDoc,
   readPlacements,
+  readSteps,
   writePlanMove,
   scanWorkingCopies,
   defaultPlanDataDir,
@@ -108,7 +110,15 @@ export function createApp(options: AppOptions = {}): Hono {
   const readBoard = (project: string, features: Feature[]): BoardAreas => {
     const closing = planAutoClose(features, readPlacements(dataDir, project), now());
     if (closing) writePlanMove(dataDir, project, closing);
-    return splitIntoAreas(features, readPlacements(dataDir, project));
+    const placements = readPlacements(dataDir, project);
+    const areas = splitIntoAreas(features, placements);
+    // 표시 단계(당김까지 끝난 값, plan-board/05) — 판정 자리는 `computeDisplaySteps` 하나뿐이다.
+    // 작업 대상 카드에만 값을 싣는다 — 단계는 작업 대상에 있는 동안만 존재한다.
+    const displaySteps = computeDisplaySteps(features, placements, readSteps(dataDir, project));
+    return {
+      ...areas,
+      active: areas.active.map((c) => ({ ...c, steps: displaySteps[c.feature.slug] ?? {} })),
+    };
   };
 
   // GET /api/projects → ProjectsResponse (discover, W2 캐시).
