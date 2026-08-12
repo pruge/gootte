@@ -147,8 +147,12 @@ export function BoardCard({
           )}
         </h3>
         {/* 🔴 오른쪽 끝을 아이콘 줄과 맞춘다 — 아이콘 칸(다음 줄)이 이 칸의 폭을 정하므로
-            (같은 격자 열), 이 텍스트를 왼쪽에 그냥 두면 아이콘 오른쪽 끝보다 짧아 어긋나 보인다. */}
-        <span className="col-start-2 row-start-1 flex shrink-0 items-baseline justify-end gap-x-2.5">
+            (같은 격자 열), 이 텍스트를 왼쪽에 그냥 두면 아이콘 오른쪽 끝보다 짧아 어긋나 보인다.
+            🔴 `pr-1.5` 는 장식이 아니다 — 아이콘 버튼 자신의 패딩(`p-1.5`)만큼 클릭 상자가 눈에
+            보이는 그림보다 오른쪽으로 더 나가 있어, 상자 끝(칸의 오른쪽 끝)에 맞추면 오히려
+            "이동" 아이콘의 실제 화살표보다 티켓 수가 더 오른쪽으로 삐져나와 보인다. 같은 폭만큼
+            물러나 **눈에 보이는 아이콘 끝**과 맞춘다. */}
+        <span className="col-start-2 row-start-1 flex shrink-0 items-baseline justify-end gap-x-2.5 pr-1.5">
           <span className="mono text-sm tabular-nums text-muted">
             티켓 {feature.tickets.length}
           </span>
