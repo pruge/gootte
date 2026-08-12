@@ -32,6 +32,7 @@ const DATA: FeaturesResponse = {
         {
           num: "01",
           slug: "01-session",
+          path: "issues/01-session.md",
           title: "세션 발급",
           status: "done",
           sourceStatus: "resolved",
@@ -47,6 +48,7 @@ const DATA: FeaturesResponse = {
         {
           num: "02",
           slug: "02-screen",
+          path: "issues/02-screen.md",
           title: "로그인 화면",
           status: "pending",
           sourceStatus: "ready-for-agent",
@@ -61,6 +63,7 @@ const DATA: FeaturesResponse = {
         {
           num: "03",
           slug: "03-social",
+          path: "issues/03-social.md",
           title: "소셜 로그인",
           status: "pending",
           sourceStatus: "needs-info",
@@ -75,6 +78,7 @@ const DATA: FeaturesResponse = {
         {
           num: "04",
           slug: "04-mystery",
+          path: "issues/04-mystery.md",
           title: "정체불명",
           status: "pending",
           sourceStatus: "진행중",
@@ -90,6 +94,7 @@ const DATA: FeaturesResponse = {
           // 처리중 — 문서가 아니라 격리 사본 관측이 준 값이다. 원문 상태는 그대로 남는다.
           num: "05",
           slug: "05-oauth",
+          path: "issues/05-oauth.md",
           title: "OAuth 교환",
           status: "in_progress",
           sourceStatus: "ready-for-agent",
@@ -147,6 +152,7 @@ function manyTickets(n: number): FeatureTicket[] {
   return Array.from({ length: n }, (_, i) => ({
     num: String(i + 1).padStart(2, "0"),
     slug: `${String(i + 1).padStart(2, "0")}-t`,
+    path: `issues/${String(i + 1).padStart(2, "0")}-t.md`,
     title: `티켓 ${i + 1}`,
     status: "pending",
     sourceStatus: "ready-for-agent",
@@ -263,6 +269,7 @@ describe("FeaturesView — 머리글 네 수는 항상 뜬다(티켓 01 §설계
             {
               num: "01",
               slug: "01-a",
+              path: "issues/01-a.md",
               title: "완료된 것 하나",
               status: "done",
               sourceStatus: "resolved",
@@ -313,6 +320,7 @@ describe("FeaturesView — 남은 일이 있으면 plan 버튼이 뜬다(develop
             {
               num: "01",
               slug: "01-a",
+              path: "issues/01-a.md",
               title: "끝난 것",
               status: "done",
               sourceStatus: "resolved",

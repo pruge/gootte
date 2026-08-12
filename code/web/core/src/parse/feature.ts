@@ -171,6 +171,8 @@ export function parseNeedsCaptainEye(content: string): boolean {
 export interface TicketDoc {
   num: string;
   slug: string;
+  /** 기능 폴더 기준 상대 경로("issues/01-x.md") — `fileName` 은 언제나 `issues/` 안의 파일이다. */
+  path: string;
   title: string;
   status: TodoStatus;
   sourceStatus: string | null;
@@ -212,6 +214,7 @@ export function parseTicket(fileName: string, content: string): TicketDoc {
   return {
     num,
     slug,
+    path: `issues/${fileName}`,
     title: heading(content)?.replace(TITLE_NUM_PREFIX, "").trim() || slug,
     status: mapFirstmateStatus(value),
     sourceStatus: raw,

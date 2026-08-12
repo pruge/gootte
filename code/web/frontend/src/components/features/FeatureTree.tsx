@@ -21,38 +21,52 @@ function splitDocs(docs: Feature["docs"]) {
 }
 
 /**
- * 기능 카드 안의 폴더 트리. `check` 는 실제 폴더가 아니라 화면이 만든 현황판 —
- * 파싱된 제목·원문 상태·처리중·대기 선행을 보여준다(예전 화면이 보여주던 것을 잃지 않는다).
- * 기본 펼침(캡틴 피드백 — issues 자리는 실제 파일 목록으로 남기고, 요약은 여기로 옮겼다).
+ * `issues/` 안에서 티켓(.md)이 아닌 것 — 하위 폴더거나 `.md` 가 아닌 파일. 감추지 않고
+ * 목록 끝에 그대로 띄운다(INV-4, feature-doc-browser/04 §숨기지 않는다). `.md` 판정은
+ * core-io 의 티켓 필터(`core-io/src/features.ts`)와 같은 규칙(대소문자 무시)이어야
+ * 1:1 이 어긋나지 않는다.
+ */
+function nonTicketEntries(issues: FeatureDocNode | null): FeatureDocNode[] {
+  if (!issues) return [];
+  return (issues.children ?? []).filter(
+    (c) => !(c.kind === "file" && c.name.toLowerCase().endsWith(".md")),
+  );
+}
+
+/**
+ * 기능 카드 안의 폴더 트리. `issues` 칸 하나가 **파일 이름과 파싱된 값을 함께** 보여준다 —
+ * 번호·제목·원문 상태·단계·완료일·막힘·작업 가지(예전 "check" 가 보여주던 전부)에 더해
+ * 누르면 그 티켓 원문이 드로어로 열린다(feature-doc-browser/04, 캡틴 지시 2026-08-12).
+ * `issues/` 안에 티켓이 아닌 파일이 있으면 목록 끝에 파일 이름만 한 줄로 띄운다(같은 지시).
+ * 기본 펼침(캡틴 피드백 — 예전 "check" 와 같다).
  *
- * 순서는 **adr → issues → check → 나머지 낱장 문서**(spec.md 등) 로 고정한다(캡틴 지시) —
+ * 순서는 **adr → issues → 나머지 낱장 문서**(spec.md 등) 로 고정한다(캡틴 지시) —
  * 없는 칸은 그 자리가 빈다(INV-4, 폴더에 없는 걸 그려 넣지 않는다).
- * `issues/` 도 `feature.docs` 에 포함돼 있어서 진짜 파일 이름으로 뜬다. 눌러서 원문을 읽는다.
  */
 export function FeatureTree({ feature, onOpenDoc }: FeatureTreeProps) {
-  const [checkOpen, setCheckOpen] = useState(true);
+  const [issuesOpen, setIssuesOpen] = useState(true);
   const { adr, issues, rest } = splitDocs(feature.docs);
+  const extras = nonTicketEntries(issues);
 
   return (
     <ul className="divide-y divide-border">
       {adr && <DocTreeNode node={adr} depth={0} featureSlug={feature.slug} onOpenDoc={onOpenDoc} />}
-      {issues && <DocTreeNode node={issues} depth={0} featureSlug={feature.slug} onOpenDoc={onOpenDoc} />}
       <li>
         <button
           type="button"
-          aria-expanded={checkOpen}
-          onClick={() => setCheckOpen((v) => !v)}
+          aria-expanded={issuesOpen}
+          onClick={() => setIssuesOpen((v) => !v)}
           className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-sm font-medium text-muted hover:bg-surface-2/60"
         >
           <IconChevronRight
             size={14}
-            className={`shrink-0 transition-transform ${checkOpen ? "rotate-90" : ""}`}
+            className={`shrink-0 transition-transform ${issuesOpen ? "rotate-90" : ""}`}
           />
           <IconListCheck size={15} className="shrink-0" />
-          check
+          issues
         </button>
-        {checkOpen &&
-          (feature.tickets.length === 0 ? (
+        {issuesOpen &&
+          (feature.tickets.length === 0 && extras.length === 0 ? (
             <p
               style={treeIndentStyle(TICKET_LIST_DEPTH)}
               className="py-3 pr-4 text-base text-muted"
@@ -62,7 +76,16 @@ export function FeatureTree({ feature, onOpenDoc }: FeatureTreeProps) {
           ) : (
             <ul className="divide-y divide-border border-t border-border/60">
               {feature.tickets.map((t) => (
-                <TicketRow key={t.slug} ticket={t} />
+                <TicketRow key={t.slug} ticket={t} featureSlug={feature.slug} onOpenDoc={onOpenDoc} />
+              ))}
+              {extras.map((node) => (
+                <DocTreeNode
+                  key={node.path}
+                  node={node}
+                  depth={TICKET_LIST_DEPTH}
+                  featureSlug={feature.slug}
+                  onOpenDoc={onOpenDoc}
+                />
               ))}
             </ul>
           ))}

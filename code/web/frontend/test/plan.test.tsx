@@ -23,6 +23,7 @@ function feature(slug: string, tickets: TicketSpec[] = []): Feature {
     tickets: tickets.map(([num, title, status = "pending", completedAt]) => ({
       num,
       slug: `${num}-x`,
+      path: `issues/${num}-x.md`,
       title,
       status,
       sourceStatus: status === "done" ? `resolved (${completedAt})` : status === "dropped" ? "wontfix" : "draft",

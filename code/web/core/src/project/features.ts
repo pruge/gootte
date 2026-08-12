@@ -56,6 +56,7 @@ function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>): FeatureTicket 
   return {
     num: doc.num,
     slug: doc.slug,
+    path: doc.path,
     title: doc.title,
     status: doc.status,
     sourceStatus: doc.sourceStatus,
