@@ -146,7 +146,9 @@ export function BoardCard({
             </span>
           )}
         </h3>
-        <span className="col-start-2 row-start-1 flex shrink-0 items-baseline gap-x-2.5">
+        {/* 🔴 오른쪽 끝을 아이콘 줄과 맞춘다 — 아이콘 칸(다음 줄)이 이 칸의 폭을 정하므로
+            (같은 격자 열), 이 텍스트를 왼쪽에 그냥 두면 아이콘 오른쪽 끝보다 짧아 어긋나 보인다. */}
+        <span className="col-start-2 row-start-1 flex shrink-0 items-baseline justify-end gap-x-2.5">
           <span className="mono text-sm tabular-nums text-muted">
             티켓 {feature.tickets.length}
           </span>
