@@ -57,6 +57,9 @@ export type FirstmateStatus = z.infer<typeof FirstmateStatus>;
 export const FeatureTicket = z.object({
   num: z.string(), // 파일명 앞 번호("01"). 번호 없는 파일이면 빈 문자열
   slug: z.string(), // 파일 basename(확장자 제거) — "01-discover-firstmate"
+  // 기능 폴더 기준 상대 경로("issues/01-x.md") — 문서 읽기 API 의 `path` 로 그대로 쓴다.
+  // 화면이 조립하지 않는다 — 읽어 오는 쪽(core)이 이미 안다(feature-doc-browser/04).
+  path: z.string(),
   title: z.string(),
   status: TodoStatus, // 사상된 다섯 값 (resolved→done · wontfix→dropped · 나머지→pending)
   sourceStatus: z.string().nullable().default(null), // 원문 verbatim. `Status:` 줄이 없으면 null

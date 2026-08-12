@@ -8,6 +8,7 @@ import {
 } from "@tabler/icons-react";
 import type { FeatureTicket } from "@gootte/contract";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
+import type { OpenDocFn } from "./FeatureTree";
 
 /** 트리 나머지가 쓰는 문서 아이콘 폭(15px) — 상태 아이콘도 여기 맞춘다(F20). 뜻·색은 그대로다. */
 const STATE_ICON_SIZE = 15;
@@ -89,73 +90,88 @@ function StageCell({ stage }: { stage: Stage }) {
  * 단계 칸과 완료일 칸은 값이 없어도 자리를 지킨다(같은 너비의 빈 칸) — 그 뒤에 오는
  * **가지 이름 · 기다리는 대상**(딸린 상세)만 줄마다 폭이 다르고, 맨 끝에 있어 고정 칸을 밀지 않는다
  * (ticket-row-repair/03).
+ *
+ * 🔴 줄 전체가 버튼이다 — 누르면(또는 키보드로) `ticket.path`(서버가 준 경로, 화면이 조립하지
+ * 않는다) 로 드로어가 열린다(feature-doc-browser/04). 문서 트리 파일 줄과 같은 방식이다.
  */
-export function TicketRow({ ticket }: { ticket: FeatureTicket }) {
+export function TicketRow({
+  ticket,
+  featureSlug,
+  onOpenDoc,
+}: {
+  ticket: FeatureTicket;
+  featureSlug: string;
+  onOpenDoc: OpenDocFn;
+}) {
   const stage = stageOf(ticket);
 
   return (
-    <li
-      style={treeIndentStyle(TICKET_LIST_DEPTH)}
-      className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 pr-4 py-2.5 ${
-        ticket.status === "done" || ticket.status === "dropped" ? "text-muted" : ""
-      }`}
-    >
-      <StateIcon ticket={ticket} />
-      <span className="mono shrink-0 text-sm tabular-nums text-muted">{ticket.num || "—"}</span>
-      <span className={`min-w-0 flex-1 truncate ${stage === "waiting" ? "text-muted" : ""}`}>
-        {ticket.title}
-      </span>
-
-      {ticket.statusKnown ? (
-        <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-          {ticket.sourceStatus}
-        </span>
-      ) : (
-        // 알 수 없는 상태 = 조용히 버리는 대신 눈에 띄게. 원문을 그대로 보여준다(INV-4 릴레이).
-        <span
-          role="status"
-          className="mono flex shrink-0 items-center gap-1 rounded bg-drop/15 px-1.5 py-0.5 text-sm text-drop"
-          title="정규 아홉 값이 아닙니다"
-        >
-          <IconAlertTriangle size={13} />
-          {ticket.sourceStatus === null
-            ? "상태 줄 없음"
-            : `알 수 없는 상태: ${ticket.sourceStatus}`}
-        </span>
-      )}
-
-      <StageCell stage={stage} />
-
-      {/* 완료일 칸은 값이 없어도 늘 그린다 — 값이 있을 때와 같은 자리표시 문자열을 같은 글꼴로
-          렌더링해 폭을 맞추고(글자 수로 계산하지 않는다), invisible 로 보이지만 않게 한다.
-          `—` 같은 대체 문자는 넣지 않는다 — 이 목록에서 `—` 는 이미 번호 없는 티켓을 뜻한다. */}
-      <span
-        className={`mono shrink-0 text-sm tabular-nums text-muted ${
-          ticket.completedAt ? "" : "invisible"
+    <li>
+      <button
+        type="button"
+        style={treeIndentStyle(TICKET_LIST_DEPTH)}
+        onClick={(e) => onOpenDoc(featureSlug, ticket.path, e.currentTarget)}
+        className={`flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 pr-4 py-2.5 text-left hover:bg-surface-2/60 ${
+          ticket.status === "done" || ticket.status === "dropped" ? "text-muted" : ""
         }`}
       >
-        {ticket.completedAt ?? "0000-00-00"}
-      </span>
-
-      {stage === "in_progress" && (
-        // 어느 가지가 붙들고 있는지 verbatim 으로 싣는다 — 감추지 않는다.
-        <span
-          className="mono max-w-full truncate text-sm text-active"
-          title={`작업 가지: ${ticket.workedBy.join(", ")}`}
-        >
-          {ticket.workedBy.join(", ")}
+        <StateIcon ticket={ticket} />
+        <span className="mono shrink-0 text-sm tabular-nums text-muted">{ticket.num || "—"}</span>
+        <span className={`min-w-0 flex-1 truncate ${stage === "waiting" ? "text-muted" : ""}`}>
+          {ticket.title}
         </span>
-      )}
 
-      {stage === "waiting" && (
-        // 번호로 해소되지 않은 선행(다른 기능을 가리키는 문구 등)도 그대로 보인다 — verbatim 릴레이(INV-4).
+        {ticket.statusKnown ? (
+          <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
+            {ticket.sourceStatus}
+          </span>
+        ) : (
+          // 알 수 없는 상태 = 조용히 버리는 대신 눈에 띄게. 원문을 그대로 보여준다(INV-4 릴레이).
+          <span
+            role="status"
+            className="mono flex shrink-0 items-center gap-1 rounded bg-drop/15 px-1.5 py-0.5 text-sm text-drop"
+            title="정규 아홉 값이 아닙니다"
+          >
+            <IconAlertTriangle size={13} />
+            {ticket.sourceStatus === null
+              ? "상태 줄 없음"
+              : `알 수 없는 상태: ${ticket.sourceStatus}`}
+          </span>
+        )}
+
+        <StageCell stage={stage} />
+
+        {/* 완료일 칸은 값이 없어도 늘 그린다 — 값이 있을 때와 같은 자리표시 문자열을 같은 글꼴로
+            렌더링해 폭을 맞추고(글자 수로 계산하지 않는다), invisible 로 보이지만 않게 한다.
+            `—` 같은 대체 문자는 넣지 않는다 — 이 목록에서 `—` 는 이미 번호 없는 티켓을 뜻한다. */}
         <span
-          className="mono max-w-full truncate text-sm text-muted"
-          title={ticket.waitingOn.join(", ")}
+          className={`mono shrink-0 text-sm tabular-nums text-muted ${
+            ticket.completedAt ? "" : "invisible"
+          }`}
         >
-          → {ticket.waitingOn.join(", ")}
+          {ticket.completedAt ?? "0000-00-00"}
         </span>
-      )}
+
+        {stage === "in_progress" && (
+          // 어느 가지가 붙들고 있는지 verbatim 으로 싣는다 — 감추지 않는다.
+          <span
+            className="mono max-w-full truncate text-sm text-active"
+            title={`작업 가지: ${ticket.workedBy.join(", ")}`}
+          >
+            {ticket.workedBy.join(", ")}
+          </span>
+        )}
+
+        {stage === "waiting" && (
+          // 번호로 해소되지 않은 선행(다른 기능을 가리키는 문구 등)도 그대로 보인다 — verbatim 릴레이(INV-4).
+          <span
+            className="mono max-w-full truncate text-sm text-muted"
+            title={ticket.waitingOn.join(", ")}
+          >
+            → {ticket.waitingOn.join(", ")}
+          </span>
+        )}
+      </button>
     </li>
   );
 }

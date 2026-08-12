@@ -33,6 +33,7 @@ export function feature(slug: string, tickets: readonly (string | TicketSpec)[] 
       return {
         num: spec.num,
         slug: `${spec.num}-x`,
+        path: `issues/${spec.num}-x.md`,
         title: `티켓 ${spec.num}`,
         status: spec.status ?? "pending",
         sourceStatus: spec.sourceStatus ?? "draft",

@@ -14,6 +14,7 @@ const BASE: Omit<Feature, "docs"> = {
     {
       num: "01",
       slug: "01-session",
+      path: "issues/01-session.md",
       title: "세션 발급",
       status: "pending",
       sourceStatus: "ready-for-agent",
@@ -39,16 +40,8 @@ function open() {
   fireEvent.click(screen.getByRole("heading", { name: "로그인" }).closest("button")!);
 }
 
-describe("FeatureTree — check 는 파싱된 현황판, 나머지는 폴더에 실제로 있는 것만(INV-4)", () => {
-  it("check 는 진입점으로 고정, 기본 펼침 — 파싱된 제목·상태로 뜬다(파일명이 아니다)", () => {
-    const feature: Feature = { ...BASE, docs: [] };
-    renderCard(feature);
-    open();
-    expect(screen.getByText("check")).toBeInTheDocument();
-    expect(screen.getByText("세션 발급")).toBeInTheDocument(); // 파싱된 제목 — 파일명("01-session.md")이 아니다
-  });
-
-  it("issues/ 는 실제 파일 목록으로 뜬다 — 파일을 누르면 원문을 읽을 수 있다(캡틴 피드백)", () => {
+describe("FeatureTree — issues 는 티켓 목록 하나뿐이다(feature-doc-browser/04, 같은 것을 두 벌 두지 않는다)", () => {
+  it("🔴 카드 안 티켓 목록이 하나다 — issues 폴더 칸과 이전 check 칸이 나란히 있지 않다", () => {
     const feature: Feature = {
       ...BASE,
       docs: [
@@ -60,15 +53,67 @@ describe("FeatureTree — check 는 파싱된 현황판, 나머지는 폴더에 
         },
       ],
     };
+    renderCard(feature);
+    open();
+    // "issues" 라는 이름의 목록 진입점은 하나뿐이다.
+    expect(screen.getAllByText("issues")).toHaveLength(1);
+    expect(screen.queryByText("check")).toBeNull();
+  });
+
+  it("남는 목록의 이름은 issues 다 — 기본 펼침, 파싱된 제목으로 뜬다(파일명이 아니다)", () => {
+    const feature: Feature = { ...BASE, docs: [] };
+    renderCard(feature);
+    open();
+    expect(screen.getByText("issues")).toBeInTheDocument();
+    expect(screen.getByText("세션 발급")).toBeInTheDocument(); // 파싱된 제목 — 파일명("01-session.md")이 아니다
+  });
+
+  it("🔴 줄을 누르면 그 티켓 경로로 드로어가 열린다 — issues/ + 이름을 화면이 조립하지 않는다, 서버가 준 path 그대로", () => {
+    const feature: Feature = {
+      ...BASE,
+      tickets: [{ ...BASE.tickets[0]!, path: "issues/01-session.md" }],
+      docs: [],
+    };
     const { onOpenDoc } = renderCard(feature);
     open();
-    expect(screen.getByText("issues")).toBeInTheDocument(); // check 와 별개로 실제 폴더도 뜬다
-    fireEvent.click(screen.getByText("issues")); // 기본 접힘 — 눌러 편다
-    fireEvent.click(screen.getByText("01-session.md"));
+    fireEvent.click(screen.getByText("세션 발급"));
     expect(onOpenDoc).toHaveBeenCalledWith("auth-login", "issues/01-session.md", expect.any(HTMLElement));
   });
 
-  it("spec.md + issues/ + adr/ 이 있으면 셋 다 트리에 뜬다", () => {
+  it("키보드로도 열린다 — 문서 줄과 같은 방식(진짜 <button>이라 Enter 로 클릭된다)", () => {
+    const feature: Feature = { ...BASE, docs: [] };
+    const { onOpenDoc } = renderCard(feature);
+    open();
+    const row = screen.getByText("세션 발급").closest("button")!;
+    row.focus();
+    expect(document.activeElement).toBe(row);
+    fireEvent.click(row); // jsdom 은 Enter → click 자동 디스패치를 안 하므로, 버튼임을 확인하고 click 으로 검증한다
+    expect(onOpenDoc).toHaveBeenCalledWith("auth-login", "issues/01-session.md", expect.any(HTMLElement));
+  });
+
+  it("🔴 티켓 아닌 파일도 목록에 뜬다 — issues/ 안의 .md 아닌 파일이 목록 끝에 파일 이름만 한 줄로 뜬다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [
+        {
+          kind: "dir",
+          name: "issues",
+          path: "issues",
+          children: [
+            { kind: "file", name: "01-session.md", path: "issues/01-session.md" },
+            { kind: "file", name: "notes.txt", path: "issues/notes.txt" },
+          ],
+        },
+      ],
+    };
+    const { onOpenDoc } = renderCard(feature);
+    open();
+    expect(screen.getByText("notes.txt")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("notes.txt"));
+    expect(onOpenDoc).toHaveBeenCalledWith("auth-login", "issues/notes.txt", expect.any(HTMLElement));
+  });
+
+  it("adr 과 spec.md 는 그대로 있다 — issues 옆자리를 안 건드렸다", () => {
     const feature: Feature = {
       ...BASE,
       docs: [
@@ -84,7 +129,7 @@ describe("FeatureTree — check 는 파싱된 현황판, 나머지는 폴더에 
     expect(screen.getByText("spec.md")).toBeInTheDocument();
   });
 
-  it("순서는 adr → issues → check → 나머지 낱장 문서로 고정된다(캡틴 지시)", () => {
+  it("순서는 adr → issues → 나머지 낱장 문서로 고정된다(캡틴 지시)", () => {
     const feature: Feature = {
       ...BASE,
       docs: [
@@ -97,7 +142,7 @@ describe("FeatureTree — check 는 파싱된 현황판, 나머지는 폴더에 
     };
     renderCard(feature);
     open();
-    const labels = ["adr", "issues", "check", "architecture.md", "spec.md"];
+    const labels = ["adr", "issues", "architecture.md", "spec.md"];
     for (let i = 0; i < labels.length - 1; i++) {
       const a = screen.getByText(labels[i]!);
       const b = screen.getByText(labels[i + 1]!);
@@ -154,7 +199,7 @@ describe("FeatureTree — check 는 파싱된 현황판, 나머지는 폴더에 
     expect(onOpenDoc).toHaveBeenCalledWith("auth-login", "spec.md", expect.any(HTMLElement));
   });
 
-  it("티켓이 없는 기능도 check 칸엔 '티켓이 없습니다' 가 뜬다", () => {
+  it("티켓이 없는 기능도 issues 칸엔 '티켓이 없습니다' 가 뜬다", () => {
     const feature: Feature = { ...BASE, tickets: [], docs: [] };
     renderCard(feature);
     open();
@@ -162,8 +207,8 @@ describe("FeatureTree — check 는 파싱된 현황판, 나머지는 폴더에 
   });
 });
 
-describe("check 목록이 issues 목록과 같은 자리에서 시작한다(feature-doc-browser/02)", () => {
-  it("issues 를 편 파일 줄과 check 아래 티켓 줄의 왼쪽 값이 같다", () => {
+describe("issues 목록의 티켓 줄과 파일 줄이 같은 자리에서 시작한다(feature-doc-browser/02, 살아 있는 규칙)", () => {
+  it("issues 안의 티켓 아닌 파일 줄과 티켓 줄의 왼쪽 값이 같다 — 손으로 적은 값이 아니라 같은 출처에서 나온다", () => {
     const feature: Feature = {
       ...BASE,
       docs: [
@@ -171,20 +216,22 @@ describe("check 목록이 issues 목록과 같은 자리에서 시작한다(feat
           kind: "dir",
           name: "issues",
           path: "issues",
-          children: [{ kind: "file", name: "01-session.md", path: "issues/01-session.md" }],
+          children: [
+            { kind: "file", name: "01-session.md", path: "issues/01-session.md" },
+            { kind: "file", name: "notes.txt", path: "issues/notes.txt" },
+          ],
         },
       ],
     };
     renderCard(feature);
     open();
-    fireEvent.click(screen.getByText("issues")); // 기본 접힘 — 눌러 편다
 
-    const fileButton = screen.getByText("01-session.md").closest("button")!;
-    const ticketRow = screen.getByText("세션 발급").closest("li")!;
+    const fileButton = screen.getByText("notes.txt").closest("button")!;
+    const ticketButton = screen.getByText("세션 발급").closest("button")!;
     const expected = treeIndentStyle(TICKET_LIST_DEPTH).paddingLeft;
 
     expect(fileButton.style.paddingLeft).toBe(expected);
-    expect(ticketRow.style.paddingLeft).toBe(expected);
+    expect(ticketButton.style.paddingLeft).toBe(expected);
   });
 
   it("티켓이 없는 기능의 빈 문구도 같은 왼쪽 값에서 시작한다", () => {
@@ -195,7 +242,7 @@ describe("check 목록이 issues 목록과 같은 자리에서 시작한다(feat
     expect(empty.style.paddingLeft).toBe(treeIndentStyle(TICKET_LIST_DEPTH).paddingLeft);
   });
 
-  it("🔴 머리글(check·issues)은 서로 같은 깊이(0)로 남는다 — 손대지 않는다(F17)", () => {
+  it("🔴 머리글(issues)은 depth 0 에 남는다 — 손대지 않는다(F17)", () => {
     const feature: Feature = {
       ...BASE,
       docs: [{ kind: "dir", name: "issues", path: "issues", children: [] }],
@@ -203,11 +250,8 @@ describe("check 목록이 issues 목록과 같은 자리에서 시작한다(feat
     renderCard(feature);
     open();
     const issuesHeader = screen.getByText("issues").closest("button")!;
-    const checkHeader = screen.getByText("check").closest("button")!;
-    const expected = treeIndentStyle(0).paddingLeft;
-
-    expect(issuesHeader.style.paddingLeft).toBe(expected);
-    expect(checkHeader.style.paddingLeft).toBe(""); // check 버튼은 트리 들여쓰기를 쓰지 않는다(px-4 그대로)
+    // issues 머리글 버튼은 트리 들여쓰기를 쓰지 않는다(px-4 그대로) — depth 0 과 같은 시작점.
+    expect(issuesHeader.style.paddingLeft).toBe("");
   });
 });
 
@@ -220,7 +264,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     };
     renderCard(feature);
     open();
-    const row = screen.getByText("세션 발급").closest("li")!;
+    const row = screen.getByText("세션 발급").closest("button")!;
     // 세 후보 라벨이 전부 DOM 에 있다(폭 계산용) — 그러나 셋 다 비어 보인다. 대체 문자는 없다.
     for (const label of ["착수 가능", "진행중", "대기"]) {
       expect(within(row).getByText(label)).toHaveClass("invisible");
@@ -235,7 +279,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     };
     renderCard(feature);
     open();
-    const row = screen.getByText("세션 발급").closest("li")!;
+    const row = screen.getByText("세션 발급").closest("button")!;
     for (const label of ["착수 가능", "진행중", "대기"]) {
       expect(within(row).getByText(label)).toHaveClass("invisible");
     }
@@ -245,7 +289,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     const feature: Feature = { ...BASE, docs: [] };
     renderCard(feature);
     open();
-    const row = screen.getByText("세션 발급").closest("li")!;
+    const row = screen.getByText("세션 발급").closest("button")!;
     expect(within(row).getByText("착수 가능")).not.toHaveClass("invisible");
   });
 
@@ -257,7 +301,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     };
     renderCard(feature);
     open();
-    const row = screen.getByText("세션 발급").closest("li")!;
+    const row = screen.getByText("세션 발급").closest("button")!;
     expect(within(row).getByText("진행중")).not.toHaveClass("invisible");
     expect(within(row).getByText("fm/session-work")).toBeInTheDocument();
   });
@@ -272,7 +316,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     };
     renderCard(feature);
     open();
-    const row = screen.getByText("세션 발급").closest("li")!;
+    const row = screen.getByText("세션 발급").closest("button")!;
     expect(within(row).getByText("대기")).not.toHaveClass("invisible");
     expect(within(row).getByText("→ 02")).toBeInTheDocument();
   });
@@ -282,11 +326,12 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
       ...BASE,
       docs: [],
       tickets: [
-        { ...BASE.tickets[0]!, num: "01", slug: "01-a", title: "완료", status: "done" },
+        { ...BASE.tickets[0]!, num: "01", slug: "01-a", path: "issues/01-a.md", title: "완료", status: "done" },
         {
           ...BASE.tickets[0]!,
           num: "02",
           slug: "02-b",
+          path: "issues/02-b.md",
           title: "진행중인 것",
           status: "in_progress",
           workedBy: ["fm/x"],
@@ -295,18 +340,19 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
           ...BASE.tickets[0]!,
           num: "03",
           slug: "03-c",
+          path: "issues/03-c.md",
           title: "대기중인 것",
           startable: false,
           blockedBy: ["02"],
           waitingOn: ["02"],
         },
-        { ...BASE.tickets[0]!, num: "04", slug: "04-d", title: "착수 가능한 것" },
+        { ...BASE.tickets[0]!, num: "04", slug: "04-d", path: "issues/04-d.md", title: "착수 가능한 것" },
       ],
     };
     renderCard(feature);
     open();
     for (const title of ["완료", "진행중인 것", "대기중인 것", "착수 가능한 것"]) {
-      const row = screen.getByText(title).closest("li")!;
+      const row = screen.getByText(title).closest("button")!;
       // 세 후보 모두 DOM 에 있다 — 칸의 존재 자체는 상태와 무관하게 늘 그려진다.
       for (const label of ["착수 가능", "진행중", "대기"]) {
         expect(within(row).getByText(label)).toBeInTheDocument();
@@ -324,9 +370,32 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     };
     renderCard(feature);
     open();
-    const row = screen.getByText("세션 발급").closest("li")!;
+    const row = screen.getByText("세션 발급").closest("button")!;
     for (const label of ["착수 가능", "진행중", "대기"]) {
       expect(within(row).getByText(label)).toHaveClass("invisible");
     }
+  });
+
+  it("🔴 상태를 못 읽은 티켓도 숨기지 않는다 — 원문을 그대로 보여준다(INV-4 릴레이)", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [],
+      tickets: [{ ...BASE.tickets[0]!, sourceStatus: "진행중", statusKnown: false }],
+    };
+    renderCard(feature);
+    open();
+    expect(screen.getByText("알 수 없는 상태: 진행중")).toBeInTheDocument();
+  });
+
+  it("완료일이 있으면 그 칸에 값이 뜬다 — 없으면 자리만 남는다(대체 문자 없음)", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [],
+      tickets: [{ ...BASE.tickets[0]!, status: "done", sourceStatus: "resolved", completedAt: "2026-08-08" }],
+    };
+    renderCard(feature);
+    open();
+    const row = screen.getByText("세션 발급").closest("button")!;
+    expect(within(row).getByText("2026-08-08")).not.toHaveClass("invisible");
   });
 });

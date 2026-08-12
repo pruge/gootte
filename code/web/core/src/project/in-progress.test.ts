@@ -6,6 +6,7 @@ import { applyInProgress, type CopyState, type ObservedCopy } from "./in-progres
 const ticket = (num: string, slug: string, over: Partial<FeatureTicket> = {}): FeatureTicket => ({
   num,
   slug,
+  path: `issues/${slug}.md`,
   title: slug,
   status: "pending",
   sourceStatus: "ready-for-agent",

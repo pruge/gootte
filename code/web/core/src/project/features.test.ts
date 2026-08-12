@@ -232,6 +232,7 @@ describe("sortFeatures — 화면 순서(무리 → 처리중 → 폴더명, 티
   const t = (status: FeatureTicket["status"], over: Partial<FeatureTicket> = {}): FeatureTicket => ({
     num: "01",
     slug: "01-x",
+    path: "issues/01-x.md",
     title: "x",
     status,
     sourceStatus: null,
