@@ -51,7 +51,7 @@ export function CardList({
       data-drop-area={areaId}
       data-drop-over={highlighted || undefined}
       aria-label={`${AREA_LABEL[areaId]} 칸`}
-      className={`@container h-full overflow-y-auto p-3 transition-colors ${
+      className={`@container h-full overflow-y-auto p-[var(--plan-list-pad)] transition-colors ${
         highlighted ? "bg-accent/10 ring-2 ring-inset ring-accent/50" : ""
       }`}
     >
@@ -62,7 +62,7 @@ export function CardList({
         </div>
       ) : (
         <SortableContext items={cards.map((c) => c.feature.slug)} strategy={rectSortingStrategy}>
-          <div className="grid grid-cols-1 items-start gap-2.5 @2xl:grid-cols-2 @5xl:grid-cols-3">
+          <div className="grid grid-cols-1 items-start gap-[var(--plan-card-gap)] @2xl:grid-cols-2 @5xl:grid-cols-3">
             {cards.map((c) => (
               <BoardCard
                 key={c.feature.slug}

@@ -280,6 +280,10 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
     >
       <div className="flex h-full min-h-0 flex-col gap-4">
         {/* ── 위: 작업 대상 — 지금 붙들고 갈 것. accent 가 이 칸 하나에만 붙는다 ── */}
+        {/* 🔴 아래 칸은 **카드 2.5줄**로 못 박고, 작업 대상이 남은 높이를 전부 갖는다(캡틴 지시).
+            비율로 나누면 창 높이에 따라 아래 칸이 한 줄로 쪼그라들었다 두 줄로 늘었다 한다 —
+            서랍은 늘 같은 크기여야 몇 장이 보이는지 눈이 기억한다. 높이의 근거값은
+            `global.css` 의 `--plan-drawer-h` 하나가 갖는다. */}
         <section
           aria-labelledby="board-active-heading"
           className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-accent/35 bg-surface"
@@ -314,7 +318,7 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
         </section>
 
         {/* ── 아래: 네 탭 한 칸. 탭 머리도 놓을 자리다 ── */}
-        <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
+        <section className="flex shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-surface">
           <div
             role="tablist"
             aria-label="자리"
@@ -331,7 +335,11 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
               />
             ))}
           </div>
-          <div role="tabpanel" aria-label={AREA_LABEL[current.id]} className="min-h-0 flex-1">
+          <div
+            role="tabpanel"
+            aria-label={AREA_LABEL[current.id]}
+            className="h-[var(--plan-drawer-h)] shrink-0"
+          >
             <CardList
               areaId={current.id}
               cards={board[current.id]}
