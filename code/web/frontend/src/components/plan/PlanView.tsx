@@ -18,6 +18,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type { PlanBoardResponse, PlanCard } from "@gootte/contract";
+import { useResizableSplit } from "../../hooks/useResizableSplit";
 import { usePlanBoard, usePlanMove } from "../../lib/query";
 import { Loading, ErrorMsg } from "../common/states";
 import { DocDrawer } from "../features/DocDrawer";
@@ -49,6 +50,15 @@ const TABS = [
 
 /** 고른 것이 없는 칸에 넘기는 빈 묶음 — 렌더마다 새 Set 을 만들지 않는다. */
 const EMPTY_SET: ReadonlySet<string> = new Set();
+
+/**
+ * 위(작업 대상) · 아래(네 탭) 손잡이 치수(캡틴 지시) — 아래 칸 높이를 캡틴이 끌어 정하고
+ * (`useResizableSplit`), 위 칸은 `flex-1` 이 남는 자리를 그대로 흡수한다.
+ * 저장 키가 프로젝트별이 아닌 이유: 화면 배치 취향이지 프로젝트 데이터가 아니다(INV-5 밖).
+ */
+const DRAWER_HEIGHT_KEY = "gootte-plan-drawer-h";
+const DRAWER_DEFAULT_HEIGHT = 192; // 옛 --plan-drawer-h(카드 2.5줄) 와 같은 값 — 첫 방문 기본값
+const DRAWER_MIN_HEIGHT = 96; // 완전히 접히면 다시 늘릴 손잡이를 잃는다 — 최소 한 줄 반은 남긴다
 
 /**
  * 놓은 자리 → 새 자리로 날아가는 연출(캡틴 지시). 짧고 끝이 느려져 어디에 내려앉는지 눈이 따라간다.
@@ -192,6 +202,12 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
   // 달리 이 길은 판을 떠나지 않는다.
   const [ticketDoc, setTicketDoc] = useState<{ feature: string; path: string } | null>(null);
 
+  // 위·아래 손잡이 — 아래 칸 높이만 여기서 정하고 위 칸(작업 대상)은 `flex-1` 이 나머지를 먹는다.
+  const split = useResizableSplit(DRAWER_HEIGHT_KEY, {
+    defaultHeight: DRAWER_DEFAULT_HEIGHT,
+    min: DRAWER_MIN_HEIGHT,
+  });
+
   const sensors = useSensors(
     // 6px 움직여야 끌기 — 그 아래는 클릭이라 머리글 토글과 아이콘 둘이 그대로 눌린다.
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -286,12 +302,11 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
       onDragEnd={onDragEnd}
       onDragCancel={stopDrag}
     >
-      <div className="flex h-full min-h-0 flex-col gap-4">
+      <div ref={split.containerRef} className="flex h-full min-h-0 flex-col">
         {/* ── 위: 작업 대상 — 지금 붙들고 갈 것. accent 가 이 칸 하나에만 붙는다 ── */}
-        {/* 🔴 아래 칸은 **카드 2.5줄**로 못 박고, 작업 대상이 남은 높이를 전부 갖는다(캡틴 지시).
-            비율로 나누면 창 높이에 따라 아래 칸이 한 줄로 쪼그라들었다 두 줄로 늘었다 한다 —
-            서랍은 늘 같은 크기여야 몇 장이 보이는지 눈이 기억한다. 높이의 근거값은
-            `global.css` 의 `--plan-drawer-h` 하나가 갖는다. */}
+        {/* 🔴 아래 칸 높이는 캡틴이 손잡이로 끌어 정한다(캡틴 지시) — 작업 대상은 `flex-1` 로
+            남는 높이를 그대로 흡수한다, 따로 계산하지 않는다. 끈 자리는 기억된다(아래 손잡이,
+            `useResizableSplit`). */}
         <section
           aria-labelledby="board-active-heading"
           className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-accent/35 bg-surface"
@@ -326,6 +341,26 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
           />
         </section>
 
+        {/* ── 손잡이 — 끌면 아래 칸 높이가 바뀌고 위 칸이 나머지를 자동으로 먹는다(캡틴 지시).
+            `role="separator"` + `aria-orientation` 로 스크린리더가 조절 가능한 경계임을 안다.
+            화살표 키(위/아래)·Home·End 로도 조절된다 — 마우스가 없어도 손잡이를 쓸 수 있다. */}
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="작업 대상과 아래 칸의 경계 — 끌거나 화살표 키로 크기를 조절합니다"
+          aria-valuenow={Math.round(split.height)}
+          aria-valuemin={split.min}
+          aria-valuemax={split.max !== undefined ? Math.round(split.max) : undefined}
+          tabIndex={0}
+          onPointerDown={split.onPointerDown}
+          onPointerMove={split.onPointerMove}
+          onPointerUp={split.onPointerUp}
+          onKeyDown={split.onKeyDown}
+          className="group flex shrink-0 cursor-row-resize touch-none items-center justify-center py-2 focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          <div className="h-1 w-10 rounded-full bg-border transition-colors group-hover:bg-accent/60" />
+        </div>
+
         {/* ── 아래: 네 탭 한 칸. 탭 머리도 놓을 자리다 ── */}
         <section className="flex shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-surface">
           <div
@@ -347,7 +382,8 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
           <div
             role="tabpanel"
             aria-label={AREA_LABEL[current.id]}
-            className="h-[var(--plan-drawer-h)] shrink-0"
+            style={{ height: split.height }}
+            className="shrink-0"
           >
             <CardList
               areaId={current.id}
@@ -371,7 +407,12 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
       <DragOverlay dropAnimation={DROP_ANIMATION}>
         {draggingCard && (
           <div className="relative w-[min(420px,80vw)]">
-            <BoardCard card={draggingCard} overlay selected />
+            <BoardCard
+              card={draggingCard}
+              closed={dragging ? areaOfCard(board, dragging) === "done" : false}
+              overlay
+              selected
+            />
             {draggingCount > 1 && (
               <span className="mono absolute -right-2 -top-2 rounded-full bg-accent px-2 py-0.5 text-sm text-accent-fg shadow">
                 {draggingCount}장
@@ -387,6 +428,7 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
       {opened && cardOf(opened) && (
         <CardDialog
           card={cardOf(opened) as PlanCard}
+          closed={areaOfCard(board, opened) === "done"}
           onClose={() => setOpened(null)}
           onOpenTicket={(path) => setTicketDoc({ feature: opened, path })}
         />

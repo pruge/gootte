@@ -485,35 +485,46 @@ describe("PlanView — 티켓 상자와 닫힌 카드(plan-board/04)", () => {
     expect(within(c).getByText("남은 것")).toBeInTheDocument();
   });
 
-  it("🔴 닫은 시각과 문서의 완료 날짜를 각각 보여 준다 — 한 값으로 뭉개지 않는다", () => {
+  it("🔴 06 — 저절로 닫힌 카드(closedAt 없음)는 문서가 말하는 완료 시각 하나를 보여준다", () => {
     renderBoard({
       ...EMPTY_BOARD,
       done: [
         card(
-          feature("two-times", [
+          feature("auto-closed", [
             ["01", "먼저", "done", "2026-08-02"],
-            ["02", "나중", "done", "2026-08-09"],
+            ["02", "나중", "done", "2026-08-09 14:30"],
           ]),
           0,
-          "2026-08-12 17:40",
+          null, // 저절로 닫혔다 — closed_at 을 찍지 않는다(06)
         ),
       ],
     });
     openTab("완료");
-    const c = screen.getByRole("article", { name: "two-times 제목" });
-    expect(within(c).getByText("닫힘 2026-08-12 17:40")).toBeInTheDocument();
-    // 문서 쪽은 마지막 티켓이 끝난 날 — 날짜뿐이고 시각이 없다(spec F6).
-    expect(within(c).getByText("문서 완료 2026-08-09")).toBeInTheDocument();
+    const c = screen.getByRole("article", { name: "auto-closed 제목" });
+    expect(within(c).getByText("닫힘 2026-08-09 14:30")).toBeInTheDocument();
   });
 
-  it("문서에 완료 날짜가 없는 채로 닫힌 카드는 없다고 말한다 — 지어내지 않는다", () => {
+  it("🔴 06 — 캡틴이 손으로 닫은 카드는 저장된 닫힘 시각을 그대로 보여준다, 문서 날짜를 참고하지 않는다", () => {
     renderBoard({
       ...EMPTY_BOARD,
-      done: [card(feature("bare", [["01", "남은 것"]]), 0, "2026-08-12 17:40")],
+      done: [
+        card(feature("manual-close", [["01", "하나", "done", "2026-08-02"]]), 0, "2026-08-12 17:40"),
+      ],
+    });
+    openTab("완료");
+    const c = screen.getByRole("article", { name: "manual-close 제목" });
+    expect(within(c).getByText("닫힘 2026-08-12 17:40")).toBeInTheDocument();
+    expect(within(c).queryByText(/2026-08-02/)).toBeNull();
+  });
+
+  it("🔴 06 — 저절로 닫혔는데 문서에 완료 시각이 없으면 닫힘 줄을 보이지 않는다, 지어내지 않는다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      done: [card(feature("bare", [["01", "하나", "done"]]), 0, null)],
     });
     openTab("완료");
     const c = screen.getByRole("article", { name: "bare 제목" });
-    expect(within(c).getByText("문서 완료일 없음")).toBeInTheDocument();
+    expect(within(c).queryByText(/닫힘/)).toBeNull();
   });
 
   it("닫히지 않은 카드에는 시각 줄이 없다 — 없는 값을 자리로 만들지 않는다", () => {

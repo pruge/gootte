@@ -18,3 +18,13 @@ if (!window.matchMedia) {
     dispatchEvent: vi.fn(),
   }));
 }
+
+// jsdom 은 ResizeObserver 미구현 → useResizableSplit(plan-board 손잡이) 용 최소 스텁.
+// 실제로 재지는 않는다 — 테스트는 컨테이너 실측 높이가 필요 없고, 관찰만 조용히 성립하면 된다.
+if (!window.ResizeObserver) {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}

@@ -568,7 +568,8 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
       const body = await get(ctx);
       expect(body.done.map((c) => c.feature.slug)).toEqual(["shipped"]);
       expect(body.waiting).toEqual([]);
-      expect(body.done[0]?.closedAt).toBe(NOW);
+      // 🔴 06 — 저절로 닫을 때는 closed_at 을 찍지 않는다. 화면이 보여줄 시각은 문서에서 온다.
+      expect(body.done[0]?.closedAt).toBeNull();
     }));
 
   test("일부만 완료면 그대로 대기에 남는다 — 빈 상자가 하나라도 있으면 닫히지 않는다", () =>
@@ -594,11 +595,11 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
       },
     ));
 
-  test("🔴 닫은 시각은 처음 값 그대로다 — 볼 때마다 갱신하면 아무 사실도 아니게 된다", () =>
+  test("🔴 저절로 닫힌 카드는 다시 봐도 closed_at 이 없다 — 볼 때마다 다시 쓰지 않는다", () =>
     withProject({ shipped: ALL_DONE }, async (ctx) => {
       await get(ctx);
       const again = await get(ctx, "2026-08-13 09:00");
-      expect(again.done[0]?.closedAt).toBe(NOW);
+      expect(again.done[0]?.closedAt).toBeNull();
     }));
 
   test("🔴 캡틴이 손으로 정한 자리(예약·폐기)는 덮지 않는다 — 기계가 몰래 옮기지 않는다", () =>
@@ -619,11 +620,11 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
       expect(readSteps(ctx.dataDir, "beta")).toEqual([]);
     }));
 
-  test("🔴 계획 DB 에 쓰는 것은 자리와 닫은 시각뿐 — 체크 상태는 한 칸도 저장되지 않는다(INV-5)", () =>
+  test("🔴 계획 DB 에 쓰는 것은 자리뿐 — 체크 상태도 닫은 시각도 저장되지 않는다(INV-5, 06)", () =>
     withProject({ shipped: ALL_DONE }, async (ctx) => {
       await get(ctx);
       expect(readPlacements(ctx.dataDir, "beta")).toEqual([
-        { feature: "shipped", area: "done", seq: 0, closedAt: NOW },
+        { feature: "shipped", area: "done", seq: 0, closedAt: null },
       ]);
     }));
 
@@ -644,7 +645,7 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
       );
       const body = await get(ctx, "2026-08-13 09:00");
       expect(body.done.map((c) => c.feature.slug)).toEqual(["shipped"]);
-      expect(body.done[0]?.closedAt).toBe(NOW); // 처음 닫힌 시각 그대로
+      expect(body.done[0]?.closedAt).toBeNull(); // 저절로 닫힌 카드라 애초에 찍히지 않는다(06)
       expect(body.done[0]?.feature.tickets.map((t) => t.status)).toEqual(["done", "done", "pending"]);
     }));
 });

@@ -25,18 +25,12 @@
   --text-hero: clamp(1.75rem, 1.2rem + 2vw, 2.5rem);
 }
 
-/* ── 판(plan 탭)의 치수 — 아래 칸이 "카드 2.5줄" 을 보이게 잡는 근거값(캡틴 지시) ──
-   🔴 숫자의 집은 여기 하나다. `CardList` 의 여백·줄 간격도 이 변수를 쓰므로, 카드 서식이
-   바뀌어 한 줄 높이가 달라지면 `--plan-card-row` 만 고치면 아래 칸 높이가 따라온다.
-   따로 적어 두면 그 사본이 먼저 낡아 "2.5줄" 이 2.5줄이 아니게 된다. */
+/* ── 판(plan 탭)의 치수 ── 아래 칸 높이는 더 이상 여기 못 박힌 값이 아니다 — 캡틴이 손잡이로
+   끌어 정하고 `useResizableSplit`(frontend/src/hooks) 가 그 값을 들고 있다(캡틴 지시,
+   plan-board). 카드 한 줄·간격·안쪽 여백만 남는다. */
 :root {
-  --plan-card-row: 4rem; /* 접힌 카드 한 줄(머리글 두 줄 + py-2) 실측 높이 */
   --plan-card-gap: 0.625rem; /* 카드 사이 간격 */
   --plan-list-pad: 0.75rem; /* 칸 안쪽 여백 */
-  /* 2.5줄 = 두 줄 + 그 사이 간격 둘 + 반 줄. 반 줄이 보여야 아래에 더 있다는 것이 드러난다. */
-  --plan-drawer-h: calc(
-    var(--plan-list-pad) + 2.5 * var(--plan-card-row) + 2 * var(--plan-card-gap)
-  );
 }
 
 /* light = 에디토리얼: 고대비 타이포, 종이 느낌 */

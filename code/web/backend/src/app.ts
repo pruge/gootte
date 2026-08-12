@@ -97,7 +97,8 @@ export function createApp(options: AppOptions = {}): Hono {
    * 판 하나를 그린다 — **판을 보는 모든 길이 이 한 자리를 지난다**(GET 도, 옮긴 뒤의 응답도).
    *
    * 🔴 여기서 **자동 닫힘**이 일어난다(plan-board/04): 상자가 전부 채워진 기능을 처음 보는 순간
-   * `area=완료` 와 `closed_at` 을 적는다. 누가 알려 주어서가 아니라 **볼 때마다 다시 판정**하기
+   * `area=완료` 를 적는다 — `closed_at` 은 찍지 않는다(06, `planAutoClose`). 누가 알려 주어서가
+   * 아니라 **볼 때마다 다시 판정**하기
    * 때문에(INV-3), 작업자가 티켓 문서를 완료로 바꾸면 다음 read 에서 저절로 닫힌다 — 새 감시기도,
    * 새 전송로도 만들지 않는다(문서 변경은 이미 있는 워처가 WS 로 밀고, 화면은 이 라우트를 다시 묻는다).
    *
@@ -108,7 +109,7 @@ export function createApp(options: AppOptions = {}): Hono {
    * 2차 사본이고, 한 번이라도 어긋나면 화면이 닫힌 척한다(INV-1).
    */
   const readBoard = (project: string, features: Feature[]): BoardAreas => {
-    const closing = planAutoClose(features, readPlacements(dataDir, project), now());
+    const closing = planAutoClose(features, readPlacements(dataDir, project));
     if (closing) writePlanMove(dataDir, project, closing);
     const placements = readPlacements(dataDir, project);
     const areas = splitIntoAreas(features, placements);

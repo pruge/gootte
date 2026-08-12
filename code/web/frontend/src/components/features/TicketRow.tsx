@@ -142,14 +142,17 @@ export function TicketRow({
         <StageCell stage={stage} />
 
         {/* 완료일 칸은 값이 없어도 늘 그린다 — 값이 있을 때와 같은 자리표시 문자열을 같은 글꼴로
-            렌더링해 폭을 맞추고(글자 수로 계산하지 않는다), invisible 로 보이지만 않게 한다.
-            `—` 같은 대체 문자는 넣지 않는다 — 이 목록에서 `—` 는 이미 번호 없는 티켓을 뜻한다. */}
+            렌더링해 폭을 맞추고, invisible 로 보이지만 않게 한다.
+            `—` 같은 대체 문자는 넣지 않는다 — 이 목록에서 `—` 는 이미 번호 없는 티켓을 뜻한다.
+            🔴 시각까지 있는 완료일(`YYYY-MM-DD HH:MM`)과 날짜만 있는 완료일(`YYYY-MM-DD`)이 섞여도
+            칸이 어긋나지 않게, 폭을 **가장 긴 서식**(`w-[16ch]`)으로 고정한다(06) — 글자 수가
+            줄마다 달라도 이 칸의 왼쪽 시작점은 늘 같은 자리다. */}
         <span
-          className={`mono shrink-0 text-sm tabular-nums text-muted ${
+          className={`mono inline-block w-[16ch] shrink-0 text-sm tabular-nums text-muted ${
             ticket.completedAt ? "" : "invisible"
           }`}
         >
-          {ticket.completedAt ?? "0000-00-00"}
+          {ticket.completedAt ?? "0000-00-00 00:00"}
         </span>
 
         {stage === "in_progress" && (

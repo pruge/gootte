@@ -71,6 +71,7 @@ export function CardList({
               <BoardCard
                 key={c.feature.slug}
                 card={c}
+                closed={areaId === "done"}
                 selected={selected.has(c.feature.slug)}
                 onToggleSelect={(slug) => onToggleSelect(areaId, slug)}
                 onOpenCard={onOpenCard}

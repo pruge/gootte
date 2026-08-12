@@ -36,12 +36,10 @@ export function featureFullyChecked(feature: {
 }
 
 /**
- * **문서가 말하는** 완료 날짜 — 완료 티켓들의 `resolved (YYYY-MM-DD)` 중 가장 늦은 것.
- * 날짜뿐이고 시각은 없다(spec F6). 하나도 없으면 null 이다 — 지어내지 않는다.
+ * **문서가 말하는** 완료 시각 — 완료 티켓들의 `resolved (YYYY-MM-DD[ HH:MM])` 중 가장 늦은 것.
+ * 문서에 시각이 없으면 날짜만 담긴다 — 지어내지 않는다(06). 하나도 없으면 null 이다.
  *
- * 🔴 이 값을 `closed_at`(gootte 가 닫은 것으로 기록한 시각)과 **한 값으로 뭉개지 않는다.**
- * 뭉치는 순간 어느 쪽도 사실이 아니게 된다 — 카드는 둘을 각각 보여 준다(티켓 04).
- * ISO 날짜라 문자열 비교가 곧 시간 비교다.
+ * ISO 날짜(+시각)라 문자열 비교가 곧 시간 비교다.
  */
 export function documentCompletedOn(feature: {
   readonly tickets: readonly { readonly completedAt?: string }[];
@@ -72,21 +70,21 @@ const DONE: PlanArea = "done";
  * 없으면 `null`(= 아무것도 쓰지 않는다)을 돌려준다.
  *
  * 🔴 **gootte 가 스스로 계획 DB 에 쓰는 유일한 자리다**(spec §gootte 가 스스로 쓰는 단 한 순간).
- * 쓰는 것은 `area=완료` 와 `closed_at` 둘뿐 — 체크 상태는 한 칸도 저장하지 않는다(INV-5).
+ * 쓰는 것은 `area=완료` **하나뿐** — 체크 상태도, 닫힌 시각도 저장하지 않는다(INV-5, 06).
+ * 🔴 **`closedAt` 을 찍지 않는다.** 저절로 닫힐 때 gootte 가 아는 시각은 "지금 알아챈 때" 이지
+ * "일이 끝난 때" 가 아니다 — 문서의 `resolved (YYYY-MM-DD[ HH:MM])` 이 더 정확하다(06).
+ * 화면이 보여줄 닫힌 시각은 `closedDisplayAt` 이 문서에서 채운다.
  *
  * 🔴 **되돌아 나오는 길을 만들지 않는다**(INV-B5). 닫을 때 티켓 목록을 기억하지도, 새 번호가
  * 붙었는지 감시하지도 않는다. 닫힌 뒤 규율을 어겨 티켓이 하나 붙으면 그 카드는 완료 칸에 머문 채
  * 빈 상자를 하나 보여 준다 — 여기서 다시 대기로 되돌리는 계산은 없다.
  *
- * 🔴 이미 완료 칸에 있는 카드는 **다시 쓰지 않는다.** `closed_at` 은 처음 닫힌 시각이고,
- * 볼 때마다 갱신하면 그 값은 "마지막으로 판을 열어 본 시각" 이 되어 아무 사실도 아니게 된다.
- *
- * @param now 닫히는 카드에 찍을 시각. 호출자가 준다 — 계산을 시계에서 떼어 놓는다(`planMove` 와 같은 관례).
+ * 🔴 이미 완료 칸에 있는 카드는 **다시 쓰지 않는다** — 캡틴이 손으로 닫아 `closedAt` 을 가진
+ * 카드도, 저절로 닫혀 `closedAt` 이 없는 카드도, 볼 때마다 다시 upsert 하지 않는다.
  */
 export function planAutoClose(
   features: readonly Feature[],
   placements: readonly Placement[],
-  now: string,
 ): PlanWritePlan | null {
   const rowOf = new Map(placements.map((p) => [p.feature, p]));
   const closing = features
@@ -100,10 +98,26 @@ export function planAutoClose(
   let seq = placements.reduce((max, p) => (p.area === DONE ? Math.max(max, p.seq) : max), -1);
 
   return {
-    upsert: closing.map((feature) => ({ feature, area: DONE, seq: ++seq, closedAt: now })),
+    upsert: closing.map((feature) => ({ feature, area: DONE, seq: ++seq, closedAt: null })),
     remove: [],
     // 작업 대상을 떠났으므로 단계 행은 사라진다(spec §단계는 잠시 붙었다 사라지는 것이다).
     clearSteps: closing.filter((slug) => rowOf.get(slug)?.area === "active"),
     setSteps: [],
   };
+}
+
+/**
+ * 완료 칸 카드가 보여줄 닫힌 시각 **하나** — 저절로 닫혔으면(`closedAt` 없음) 문서가 말하는
+ * 완료 시각에서, 캡틴이 손으로 닫았으면 저장된 `closedAt` 그대로(06).
+ *
+ * 🔴 **판정 자리는 여기 하나다** — `BoardCard`·`CardDialog` 둘 다 이 함수를 부를 뿐, 화면이
+ * 스스로 `closedAt` 과 문서 날짜 중 하나를 고르지 않는다(spec §판정 자리는 하나뿐).
+ * 🔴 완료 칸 밖의 카드에는 부르지 않는다 — 부분 완료 상태의 문서 날짜를 "닫힘"으로 잘못 읽지
+ * 않도록, 호출자가 완료 칸 카드에만 쓴다.
+ */
+export function closedDisplayAt(
+  closedAt: string | null,
+  feature: { readonly tickets: readonly { readonly completedAt?: string }[] },
+): string | null {
+  return closedAt ?? documentCompletedOn(feature);
 }

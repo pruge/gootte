@@ -64,7 +64,7 @@ export const FeatureTicket = z.object({
   status: TodoStatus, // 사상된 다섯 값 (resolved→done · wontfix→dropped · 나머지→pending)
   sourceStatus: z.string().nullable().default(null), // 원문 verbatim. `Status:` 줄이 없으면 null
   statusKnown: z.boolean(), // 원문이 여덟 값에 없거나 줄이 없으면 false — 🔴 조용히 버리지 않는다
-  completedAt: z.string().optional(), // `resolved (YYYY-MM-DD)` 의 완료일
+  completedAt: z.string().optional(), // `resolved (YYYY-MM-DD[ HH:MM])` 의 완료 시각 — 시각이 없으면 날짜만(06)
   // `Blocked by:` 한 항목 = 한 원소. 번호("01") 아니면 번호로 특정되지 않은 문구(verbatim).
   blockedBy: z.array(z.string()).default([]),
   // 번호도 "없음" 도 못 알아들은 산문 — verbatim. 막지 않되(startable 계산에서 빠진다) 감추지도 않는다
@@ -241,7 +241,9 @@ export const Placement = z.object({
   feature: z.string(), // 기능 폴더명
   area: PlanArea,
   seq: z.number().int(), // 작업 대상 안에서의 카드 순서
-  closedAt: z.string().nullable().default(null), // 완료 칸에 들어간 시각(날짜+시간). 문서엔 날짜뿐이라 저장 자격이 있다(F6)
+  // 캡틴이 손으로 완료 칸에 넣은 시각(날짜+시간). 저절로 닫힐 때는 찍지 않는다 — 그 시각은
+  // 문서의 `resolved (YYYY-MM-DD[ HH:MM])` 이 더 정확하다(06, F6).
+  closedAt: z.string().nullable().default(null),
 });
 export type Placement = z.infer<typeof Placement>;
 
