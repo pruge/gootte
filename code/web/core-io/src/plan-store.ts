@@ -146,6 +146,9 @@ export function readSteps(dataDir: string, project: string): StoredStep[] {
 /**
  * 캡틴이 옮긴 결과를 적는다(plan-board/03) — `core` 의 `planMove` 가 이미 정한 것을 **그대로** 쓴다.
  *
+ * 🔴 이름은 "옮김" 이지만 이 함수가 `PlanWritePlan` 을 표에 앉히는 **유일한 자리**다 —
+ * 저절로 닫히는 순간(04, `planAutoClose`)도 여기를 지난다. 쓰는 자리를 둘로 만들지 않는다.
+ *
  * 🔴 **여기에는 판정이 한 줄도 없다.** 어느 칸으로 갈지, 순서가 몇 번인지, 단계를 지울지 붙일지는
  * 전부 순수 함수가 정한 값이다(spec §판정 자리는 하나뿐) — 저장소가 조금이라도 다시 정하면
  * 그 순간 화면과 CLI 가 서로 다른 판을 본다.

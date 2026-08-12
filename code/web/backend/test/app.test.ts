@@ -480,3 +480,151 @@ describe("slug 충돌 (W1)", () => {
     expect(pickBySlug(projects, "none").project).toBeNull();
   });
 });
+
+/**
+ * 티켓이 스스로 체크되고, 다 되면 카드가 닫힌다(plan-board/04).
+ *
+ * 🔴 여기서 재는 것은 **라우트가 그 판정을 실제로 계획 DB 에 적는가**다 — 무엇이 닫히는지의
+ * 규칙은 `core/src/plan/close.test.ts` 가 덮는다. 문서는 임시 디렉토리에 합성한다(이 저장소의
+ * `docs/` 를 픽스처로 쓰지 않는다). 공용 픽스처(`alpha`)에 기능을 더하면 다른 테스트의 칸 목록이
+ * 흔들리므로 이 절만의 뿌리를 따로 세운다.
+ */
+describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸으로 간다(plan-board/04)", () => {
+  const NOW = "2026-08-12 17:40";
+
+  /** 티켓 파일 한 장 — 상단 두 줄이 서식의 전부다(관리대상 `docs/agents/triage-labels.md`). */
+  const ticket = (num: string, status: string): string =>
+    [`# ${num} — 티켓 ${num}`, "", "**Blocked by:** 없음 — 즉시 착수 가능", `**Status:** ${status}`, ""].join("\n");
+
+  /** 관리대상 하나를 임시 디렉토리에 합성한다 — 뿌리 `AGENTS.md` + `docs/features/`(discover 조건). */
+  const withProject = <T>(
+    features: Record<string, Record<string, string>>,
+    fn: (ctx: { roots: string[]; dataDir: string; projectRoot: string }) => Promise<T> | T,
+  ): Promise<T> | T => {
+    const root = mkdtempSync(join(tmpdir(), "gootte-app-close-"));
+    const projectRoot = join(root, "beta");
+    mkdirSync(projectRoot, { recursive: true });
+    writeFileSync(join(projectRoot, "AGENTS.md"), "# beta\n");
+    for (const [feature, tickets] of Object.entries(features)) {
+      const dir = join(projectRoot, "docs", "features", feature);
+      mkdirSync(join(dir, "issues"), { recursive: true });
+      writeFileSync(join(dir, "spec.md"), `# ${feature} — 제목\n`);
+      for (const [file, body] of Object.entries(tickets)) writeFileSync(join(dir, "issues", file), body);
+    }
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-close-db-"));
+    const done = () => {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true });
+      clearDiscoverCache();
+    };
+    clearDiscoverCache();
+    try {
+      const out = fn({ roots: [root], dataDir, projectRoot });
+      return out instanceof Promise ? out.finally(done) : (done(), out);
+    } catch (err) {
+      done();
+      throw err;
+    }
+  };
+
+  const ALL_DONE = { "01-a.md": ticket("01", "resolved (2026-08-08)"), "02-b.md": ticket("02", "resolved (2026-08-09)") };
+  const HALF = { "01-a.md": ticket("01", "resolved (2026-08-08)"), "02-b.md": ticket("02", "ready-for-agent") };
+
+  const get = async (ctx: { roots: string[]; dataDir: string }, now = NOW) =>
+    PlanBoardResponse.parse(
+      await (
+        await createApp({ ...ctx, treehouse: NO_TREEHOUSE, now: () => now }).request("/api/plan/beta")
+      ).json(),
+    );
+  const post = (ctx: { roots: string[]; dataDir: string }, body: unknown) =>
+    createApp({ ...ctx, treehouse: NO_TREEHOUSE, now: () => NOW }).request("/api/plan/beta/move", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  test("🔴 상자가 전부 채워진 기능은 처음 본 순간 완료 칸으로 간다 — 아무도 gootte 에 알리지 않았다", () =>
+    withProject({ shipped: ALL_DONE }, async (ctx) => {
+      const body = await get(ctx);
+      expect(body.done.map((c) => c.feature.slug)).toEqual(["shipped"]);
+      expect(body.waiting).toEqual([]);
+      expect(body.done[0]?.closedAt).toBe(NOW);
+    }));
+
+  test("일부만 완료면 그대로 대기에 남는다 — 빈 상자가 하나라도 있으면 닫히지 않는다", () =>
+    withProject({ half: HALF }, async (ctx) => {
+      const body = await get(ctx);
+      expect(body.waiting.map((c) => c.feature.slug)).toEqual(["half"]);
+      expect(body.done).toEqual([]);
+      expect(readPlacements(ctx.dataDir, "beta")).toEqual([]);
+    }));
+
+  test("🔴 티켓이 0장인 기능은 닫히지 않는다 — 끝났다는 증거가 없다", () =>
+    withProject({ empty: {} }, async (ctx) => {
+      expect((await get(ctx)).waiting.map((c) => c.feature.slug)).toEqual(["empty"]);
+      expect(readPlacements(ctx.dataDir, "beta")).toEqual([]);
+    }));
+
+  test("🔴 폐기 티켓이 섞인 기능은 닫히지 않는다 — 빈 상자로 남고 캡틴이 정하신다", () =>
+    withProject(
+      { mixed: { "01-a.md": ticket("01", "resolved (2026-08-08)"), "02-b.md": ticket("02", "wontfix") } },
+      async (ctx) => {
+        expect((await get(ctx)).waiting.map((c) => c.feature.slug)).toEqual(["mixed"]);
+        expect(readPlacements(ctx.dataDir, "beta")).toEqual([]);
+      },
+    ));
+
+  test("🔴 닫은 시각은 처음 값 그대로다 — 볼 때마다 갱신하면 아무 사실도 아니게 된다", () =>
+    withProject({ shipped: ALL_DONE }, async (ctx) => {
+      await get(ctx);
+      const again = await get(ctx, "2026-08-13 09:00");
+      expect(again.done[0]?.closedAt).toBe(NOW);
+    }));
+
+  test("🔴 캡틴이 손으로 정한 자리(예약·폐기)는 덮지 않는다 — 기계가 몰래 옮기지 않는다", () =>
+    withProject({ shipped: ALL_DONE }, async (ctx) => {
+      await post(ctx, { features: ["shipped"], area: "reserved", index: 0 });
+      const body = await get(ctx);
+      expect(body.reserved.map((c) => c.feature.slug)).toEqual(["shipped"]);
+      expect(body.done).toEqual([]);
+    }));
+
+  test("작업 대상에 올린 완료 기능은 그 자리에서 닫히고 단계 행이 남지 않는다(INV-B6)", () =>
+    withProject({ shipped: ALL_DONE }, async (ctx) => {
+      const body = PlanBoardResponse.parse(
+        await (await post(ctx, { features: ["shipped"], area: "active", index: 0 })).json(),
+      );
+      expect(body.active).toEqual([]);
+      expect(body.done.map((c) => c.feature.slug)).toEqual(["shipped"]);
+      expect(readSteps(ctx.dataDir, "beta")).toEqual([]);
+    }));
+
+  test("🔴 계획 DB 에 쓰는 것은 자리와 닫은 시각뿐 — 체크 상태는 한 칸도 저장되지 않는다(INV-5)", () =>
+    withProject({ shipped: ALL_DONE }, async (ctx) => {
+      await get(ctx);
+      expect(readPlacements(ctx.dataDir, "beta")).toEqual([
+        { feature: "shipped", area: "done", seq: 0, closedAt: NOW },
+      ]);
+    }));
+
+  test("🔴 저절로 닫아도 관리대상에는 한 글자도 쓰지 않는다(INV-2)", () =>
+    withProject({ shipped: ALL_DONE }, async (ctx) => {
+      const before = treeSnapshot(ctx.projectRoot);
+      await get(ctx);
+      expect(treeSnapshot(ctx.projectRoot)).toEqual(before);
+    }));
+
+  test("🔴 닫힌 기능에 티켓이 더 붙어도 대기로 되돌아가지 않는다 — 완료 칸에서 빈 상자를 보여 준다(INV-B5)", () =>
+    withProject({ shipped: ALL_DONE }, async (ctx) => {
+      await get(ctx);
+      // 규율을 어겨 티켓 한 장이 더 붙었다(spec §닫힌 기능에는 티켓을 더하지 않는다).
+      writeFileSync(
+        join(ctx.projectRoot, "docs", "features", "shipped", "issues", "03-late.md"),
+        ticket("03", "ready-for-agent"),
+      );
+      const body = await get(ctx, "2026-08-13 09:00");
+      expect(body.done.map((c) => c.feature.slug)).toEqual(["shipped"]);
+      expect(body.done[0]?.closedAt).toBe(NOW); // 처음 닫힌 시각 그대로
+      expect(body.done[0]?.feature.tickets.map((t) => t.status)).toEqual(["done", "done", "pending"]);
+    }));
+});

@@ -9,8 +9,16 @@ import {
   PlanBoardResponse,
   PlanMoveRequest,
   type ApiError,
+  type Feature,
 } from "@gootte/contract";
-import { applyInProgress, countOpenFeatures, planMove, splitIntoAreas } from "@gootte/core";
+import {
+  applyInProgress,
+  countOpenFeatures,
+  planAutoClose,
+  planMove,
+  splitIntoAreas,
+  type BoardAreas,
+} from "@gootte/core";
 import {
   readFeatures,
   readFeatureDoc,
@@ -70,7 +78,9 @@ export function nowStamp(at: Date = new Date()): string {
 
 /**
  * Hono 앱 팩토리 — CORE projections 를 CONTRACT envelope 로 서빙(INV-4 릴레이).
- * backend 는 read-only(INV-2): core-io read + core 순수 계산만, write 없음.
+ * **관리대상에는 한 글자도 쓰지 않는다**(INV-2) — core-io read + core 순수 계산뿐이다.
+ * 쓰기는 gootte 자기 계획 저장소(`plan.db`)에만 있고 둘뿐이다: 캡틴이 옮길 때(03)와
+ * 상자가 전부 채워진 기능을 처음 볼 때(04, `planAutoClose`).
  */
 export function createApp(options: AppOptions = {}): Hono {
   const roots = options.roots ?? defaultRoots();
@@ -80,6 +90,26 @@ export function createApp(options: AppOptions = {}): Hono {
   const app = new Hono();
 
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
+
+  /**
+   * 판 하나를 그린다 — **판을 보는 모든 길이 이 한 자리를 지난다**(GET 도, 옮긴 뒤의 응답도).
+   *
+   * 🔴 여기서 **자동 닫힘**이 일어난다(plan-board/04): 상자가 전부 채워진 기능을 처음 보는 순간
+   * `area=완료` 와 `closed_at` 을 적는다. 누가 알려 주어서가 아니라 **볼 때마다 다시 판정**하기
+   * 때문에(INV-3), 작업자가 티켓 문서를 완료로 바꾸면 다음 read 에서 저절로 닫힌다 — 새 감시기도,
+   * 새 전송로도 만들지 않는다(문서 변경은 이미 있는 워처가 WS 로 밀고, 화면은 이 라우트를 다시 묻는다).
+   *
+   * 🔴 판정은 한 줄도 여기 없다 — 무엇이 닫히는지는 `planAutoClose`(core), 어느 칸에 담기는지는
+   * `splitIntoAreas`(core)가 정한다(spec §판정 자리는 하나뿐).
+   *
+   * 🔴 쓴 뒤에는 **자리 행을 다시 읽어** 판을 만든다 — 방금 쓴 값으로 조립하면 그것이 곧 DB 의
+   * 2차 사본이고, 한 번이라도 어긋나면 화면이 닫힌 척한다(INV-1).
+   */
+  const readBoard = (project: string, features: Feature[]): BoardAreas => {
+    const closing = planAutoClose(features, readPlacements(dataDir, project), now());
+    if (closing) writePlanMove(dataDir, project, closing);
+    return splitIntoAreas(features, readPlacements(dataDir, project));
+  };
 
   // GET /api/projects → ProjectsResponse (discover, W2 캐시).
   // 🔴 남은 일이 있는 기능 수는 **캐시하지 않는다** — 발견 결과와 달리 문서가 바뀔 때마다 변하는
@@ -115,15 +145,18 @@ export function createApp(options: AppOptions = {}): Hono {
   // 저장소의 자리 행(INV-5 — 캡틴이 정한 것만). 가르는 것은 `core` 순수 함수 하나뿐이라
   // 화면과 CLI 가 같은 판정을 본다(spec §판정 자리는 하나뿐).
   //
-  // 🔴 이 라우트는 **아무것도 쓰지 않는다** — 관리대상에도(INV-2), 계획 DB 에도. 문서를 새로 써도
-  // 등록 절차가 없으므로(INV-B1) 그 기능은 자리 행이 없는 채로 곧장 대기 칸에 나타난다.
+  // 🔴 **관리대상에는 한 글자도 쓰지 않는다**(INV-2). 문서를 새로 써도 등록 절차가 없으므로
+  // (INV-B1) 그 기능은 자리 행이 없는 채로 곧장 대기 칸에 나타난다.
+  //
+  // 🔴 계획 DB 에는 **딱 한 가지**를 쓴다 — 상자가 전부 채워진 기능을 처음 보는 순간의 닫힘
+  // (04, `readBoard`). 그것이 gootte 가 스스로 쓰는 유일한 자리다(spec §gootte 가 스스로 쓰는 단 한 순간).
   app.get("/api/plan/:slug", zValidator("param", slugParam), (c) => {
     const { slug } = c.req.valid("param");
     const proj = resolveSlug(roots, slug);
     if (!proj) return c.json(notFound(slug), 404);
     const project = basename(proj.path);
     try {
-      const areas = splitIntoAreas(readFeatures(proj.path), readPlacements(dataDir, project));
+      const areas = readBoard(project, readFeatures(proj.path));
       return c.json(PlanBoardResponse.parse({ project, ...areas }));
     } catch (err) {
       // 계획 DB 를 못 읽는 것은 빈 판이 아니다 — 빈 판으로 그리면 화면이 "아무 계획도 없다" 고
@@ -167,7 +200,9 @@ export function createApp(options: AppOptions = {}): Hono {
         writePlanMove(dataDir, project, planMove(features, readPlacements(dataDir, project), move, now()));
         // 옮긴 뒤의 판은 **다시 읽어** 만든다 — 방금 쓴 값으로 응답을 조립하면 그것이 곧 DB 의
         // 2차 사본이고, 한 번이라도 어긋나면 화면이 옮겨진 척한다(INV-1·INV-3).
-        const areas = splitIntoAreas(features, readPlacements(dataDir, project));
+        // 그 길에 자동 닫힘도 함께 선다(04) — 상자가 다 채워진 카드를 캡틴이 다른 칸으로 옮겨도
+        // 판을 그리는 규칙은 하나여야 한다. 옮기는 자리와 닫는 자리가 갈리면 화면이 둘을 다르게 본다.
+        const areas = readBoard(project, features);
         return c.json(PlanBoardResponse.parse({ project, ...areas }));
       } catch (err) {
         return c.json({ error: planError(err) } satisfies ApiError, 500);

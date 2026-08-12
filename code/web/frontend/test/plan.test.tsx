@@ -1,12 +1,18 @@
 import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { Feature, PlanBoardResponse, PlanCard } from "@gootte/contract";
+import type { Feature, FeatureTicket, PlanBoardResponse, PlanCard } from "@gootte/contract";
 import { PlanView } from "../src/components/plan/PlanView";
 import { qk } from "../src/lib/query";
 
+/**
+ * 티켓 한 장 — `[번호, 제목]` 이면 미완이고, 상태와 완료일까지 주면 문서가 그렇게 말하는 것이다.
+ * 🔴 상자 값은 여기 없다 — 상자는 이 상태에서 **계산된다**(04, `ticketChecked`).
+ */
+type TicketSpec = [num: string, title: string, status?: FeatureTicket["status"], completedAt?: string];
+
 /** 서버가 이미 다섯 칸으로 갈라 보낸 값 — 화면은 다시 가르지 않는다(spec §판정 자리는 하나뿐). */
-function feature(slug: string, tickets: [string, string][] = []): Feature {
+function feature(slug: string, tickets: TicketSpec[] = []): Feature {
   return {
     slug,
     title: `${slug} — 제목`,
@@ -14,13 +20,14 @@ function feature(slug: string, tickets: [string, string][] = []): Feature {
     sourceStatus: "draft",
     statusKnown: true,
     docs: [{ kind: "file", name: "spec.md", path: "spec.md" }],
-    tickets: tickets.map(([num, title]) => ({
+    tickets: tickets.map(([num, title, status = "pending", completedAt]) => ({
       num,
       slug: `${num}-x`,
       title,
-      status: "pending",
-      sourceStatus: "draft",
+      status,
+      sourceStatus: status === "done" ? `resolved (${completedAt})` : status === "dropped" ? "wontfix" : "draft",
       statusKnown: true,
+      ...(completedAt ? { completedAt } : {}),
       blockedBy: [],
       unreadableBlockedBy: [],
       waitingOn: [],
@@ -175,7 +182,8 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     openTab("완료");
     const done = screen.getByRole("article", { name: "shipped 제목" });
     // 닫힌 시각은 문서에 없는 값이라 계획 DB 가 갖는다(INV-5) — 접힌 머리에서도 보인다.
-    expect(within(done).getByText("2026-08-12T09:30:00+09:00")).toBeInTheDocument();
+    // 무엇의 시각인지 이름표를 달고 선다(04) — 문서의 완료 날짜와 나란히 서기 때문이다.
+    expect(within(done).getByText("닫힘 2026-08-12T09:30:00+09:00")).toBeInTheDocument();
   });
 
   it("각 탭이 자기 칸의 카드 수를 달고 있다 — 화면이 세지 않고 목록 길이를 읽는다", () => {
@@ -366,5 +374,135 @@ describe("PlanView — 카드 머리 아이콘 둘과 이동 대화상자(plan-b
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 티켓이 스스로 체크되고, 다 되면 카드가 닫힌다(plan-board/04).
+ *
+ * 🔴 여기서 재는 것은 **상자와 접힘**뿐이다 — 무엇이 닫히는지는 `core/src/plan/close.test.ts` 가,
+ * 그것이 계획 DB 에 앉는지는 backend 가 덮는다. 화면은 판정하지 않는다(spec §판정 자리는 하나뿐).
+ */
+describe("PlanView — 티켓 상자와 닫힌 카드(plan-board/04)", () => {
+  const boxesIn = (card: HTMLElement): string[] =>
+    within(card)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent?.slice(0, 3) ?? "");
+
+  it("티켓 줄마다 상태에 맞는 상자가 선다 — 완료면 [x], 아니면 [ ]", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      active: [
+        card(
+          feature("mixed", [
+            ["01", "끝난 것", "done", "2026-08-01"],
+            ["02", "남은 것"],
+          ]),
+          0,
+        ),
+      ],
+    });
+    expect(boxesIn(openCard("mixed 제목"))).toEqual(["[x]", "[ ]"]);
+  });
+
+  it("🔴 폐기 티켓은 빈 상자다 — 끝난 것과 안 하는 것을 같게 그리지 않는다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      active: [card(feature("wf", [["01", "안 할 것", "dropped"]]), 0)],
+    });
+    const c = openCard("wf 제목");
+    expect(boxesIn(c)).toEqual(["[ ]"]);
+    // 원문 상태는 그 줄에 verbatim 으로 남아 어느 쪽인지 말한다(INV-4).
+    expect(within(c).getByText("wontfix")).toBeInTheDocument();
+  });
+
+  it("🔴 문서가 바뀌면 새로 고치지 않아도 상자가 바뀐다 — 판을 다시 받는 것으로 족하다", async () => {
+    const open = feature("live", [["01", "하나"]]);
+    const { qc } = renderBoard({ ...EMPTY_BOARD, active: [card(open, 0)] });
+    expect(boxesIn(openCard("live 제목"))).toEqual(["[ ]"]);
+
+    // 실시간 배선(WS → plan 쿼리 invalidate)이 가져오는 것과 같은 새 판을 앉힌다.
+    qc.setQueryData(qk.plan("alpha"), {
+      ...EMPTY_BOARD,
+      active: [card(feature("live", [["01", "하나", "done", "2026-08-12"]]), 0)],
+    });
+
+    // 🔴 다시 그리라고 아무도 시키지 않는다 — 판이 바뀌었으니 카드가 스스로 따라온다.
+    await waitFor(() =>
+      expect(boxesIn(screen.getByRole("article", { name: "live 제목" }))).toEqual(["[x]"]),
+    );
+  });
+
+  it("완료 칸의 카드는 접혀 있고, 누르면 펼쳐지고, 다시 누르면 접힌다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      done: [card(feature("shut", [["01", "끝난 것", "done", "2026-08-02"]]), 0, "2026-08-12 17:40")],
+    });
+    openTab("완료");
+    const c = screen.getByRole("article", { name: "shut 제목" });
+    expect(within(c).queryByText("끝난 것")).toBeNull();
+
+    fireEvent.click(within(c).getByRole("button", { expanded: false }));
+    expect(within(c).getByText("끝난 것")).toBeInTheDocument();
+
+    fireEvent.click(within(c).getByRole("button", { expanded: true }));
+    expect(within(c).queryByText("끝난 것")).toBeNull();
+  });
+
+  it("🔴 남은 티켓을 안고 닫힌 카드는 빈 상자를 그대로 보여 준다(INV-B4)", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      done: [
+        card(
+          feature("covered", [
+            ["01", "끝난 것", "done", "2026-08-02"],
+            ["02", "남은 것"],
+          ]),
+          0,
+          "2026-08-12 17:40",
+        ),
+      ],
+    });
+    openTab("완료");
+    const c = openCard("covered 제목");
+    expect(boxesIn(c)).toEqual(["[x]", "[ ]"]);
+    expect(within(c).getByText("남은 것")).toBeInTheDocument();
+  });
+
+  it("🔴 닫은 시각과 문서의 완료 날짜를 각각 보여 준다 — 한 값으로 뭉개지 않는다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      done: [
+        card(
+          feature("two-times", [
+            ["01", "먼저", "done", "2026-08-02"],
+            ["02", "나중", "done", "2026-08-09"],
+          ]),
+          0,
+          "2026-08-12 17:40",
+        ),
+      ],
+    });
+    openTab("완료");
+    const c = screen.getByRole("article", { name: "two-times 제목" });
+    expect(within(c).getByText("닫힘 2026-08-12 17:40")).toBeInTheDocument();
+    // 문서 쪽은 마지막 티켓이 끝난 날 — 날짜뿐이고 시각이 없다(spec F6).
+    expect(within(c).getByText("문서 완료 2026-08-09")).toBeInTheDocument();
+  });
+
+  it("문서에 완료 날짜가 없는 채로 닫힌 카드는 없다고 말한다 — 지어내지 않는다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      done: [card(feature("bare", [["01", "남은 것"]]), 0, "2026-08-12 17:40")],
+    });
+    openTab("완료");
+    const c = screen.getByRole("article", { name: "bare 제목" });
+    expect(within(c).getByText("문서 완료일 없음")).toBeInTheDocument();
+  });
+
+  it("닫히지 않은 카드에는 시각 줄이 없다 — 없는 값을 자리로 만들지 않는다", () => {
+    renderBoard({ ...EMPTY_BOARD, active: [card(feature("open", [["01", "하나"]]), 0)] });
+    const c = screen.getByRole("article", { name: "open 제목" });
+    expect(within(c).queryByText(/닫힘/)).toBeNull();
   });
 });

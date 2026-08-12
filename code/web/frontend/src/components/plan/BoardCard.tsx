@@ -3,6 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { IconArrowMoveRight, IconFileText } from "@tabler/icons-react";
 import type { PlanCard } from "@gootte/contract";
+import { documentCompletedOn, ticketChecked } from "@gootte/core/plan";
 import { featureDescription } from "./cardTitle";
 
 export interface BoardCardProps {
@@ -34,7 +35,10 @@ export interface BoardCardProps {
  *
  * 끌기는 카드 전체가 손잡이다(03). 6px 움직여야 끌기로 치므로 머리글 토글과 아이콘 둘은 그대로
  * 눌린다 — 따로 손잡이 아이콘을 세우지 않는다(캡틴이 정한 아이콘은 둘뿐이다).
- * 체크상자·자동 완료는 04 다.
+ *
+ * 🔴 티켓 줄의 상자(04)는 **저장된 값이 아니다** — 문서 상태 한 칸에서 계산한다(`ticketChecked`,
+ * core). 작업자가 문서를 완료로 바꾸면 아무도 gootte 에 알리지 않아도 다음 read 에서 채워진다.
+ * 화면은 판정하지 않고 core 의 판정을 그대로 그린다(spec §판정 자리는 하나뿐).
  */
 export function BoardCard({
   card,
@@ -49,6 +53,8 @@ export function BoardCard({
   const headingId = `board-card-${feature.slug}`;
   // 표제 앞에 겹쳐 붙은 기능 이름은 뗀다 — 같은 이름이 한 카드에 두 번 뜨지 않게(캡틴 결정).
   const description = featureDescription(feature.title, feature.slug);
+  // 문서가 말하는 완료 날짜 — 닫힌 시각과 **다른 값**이라 따로 계산해 따로 보여 준다(core).
+  const completedOn = documentCompletedOn(feature);
 
   // 🔴 `role` 을 카드 자신의 것으로 못 박는다 — dnd-kit 기본값(`button`)이 붙으면 카드가
   // 카드가 아니게 되고, 안에 있는 머리글 버튼이 버튼 속 버튼이 된다.
@@ -121,14 +127,26 @@ export function BoardCard({
             )}
           </h3>
           <span className="col-start-2 row-start-1 flex shrink-0 items-baseline gap-x-2.5">
-            {/* 닫힌 시각은 문서에 없는 값이라 계획 DB 가 갖는다(INV-5 · F6) — 있을 때만 뜬다. */}
-            {card.closedAt && (
-              <span className="mono text-sm tabular-nums text-muted">{card.closedAt}</span>
-            )}
             <span className="mono text-sm tabular-nums text-muted">
               티켓 {feature.tickets.length}
             </span>
           </span>
+
+          {/* 🔴 **두 시각을 한 값으로 뭉개지 않는다**(티켓 04). `닫힘` 은 gootte 가 완료 칸에 넣은
+              것으로 기록한 시각(날짜+시간, 계획 DB 가 갖는 유일한 이유 — 문서엔 시각이 없다, F6),
+              `문서 완료` 는 티켓 문서가 가진 날짜 그대로다. 뭉치는 순간 어느 쪽도 사실이 아니게 된다.
+              닫힌 카드에만 뜨고, 첫 줄 옆이 아니라 제 줄을 갖는다 — 짧은 이름 줄의 여백을
+              설명 줄에서 빼앗지 않기 위해서다(위 격자 설명과 같은 이유). */}
+          {card.closedAt && (
+            <span
+              className="mono col-span-2 col-start-1 row-start-3 flex flex-wrap items-baseline gap-x-2 text-sm tabular-nums text-muted"
+              title="닫힘 = gootte 가 완료 칸에 넣은 시각 · 문서 완료 = 티켓 문서가 말하는 마지막 완료 날짜"
+            >
+              <span>닫힘 {card.closedAt}</span>
+              <span aria-hidden>·</span>
+              <span>{completedOn ? `문서 완료 ${completedOn}` : "문서 완료일 없음"}</span>
+            </span>
+          )}
         </button>
 
         {/* 🔴 아이콘 **둘** — 캡틴 제안 9. 머리글 버튼의 형제이고, 끌기가 시작되지 않도록
@@ -168,13 +186,24 @@ export function BoardCard({
           </p>
         ) : (
           <ul className="divide-y divide-border/50 border-t border-border/70">
-            {feature.tickets.map((t) => (
+            {feature.tickets.map((t) => {
+              const checked = ticketChecked(t);
+              return (
               <li
                 key={t.slug}
                 className={`flex flex-wrap items-baseline gap-x-2.5 gap-y-1 px-3 py-1.5 ${
                   t.status === "done" || t.status === "dropped" ? "text-muted" : ""
                 }`}
               >
+                {/* 🔴 상자는 **문서에서 읽는다**(INV-5) — 눌러서 바꾸는 것이 아니라서 입력이 아니다.
+                    폐기 티켓도 빈 상자다: 끝난 것과 안 하는 것은 다르고, 원문 상태가 그 줄 끝에
+                    verbatim 으로 서서 어느 쪽인지 말한다(INV-4). */}
+                <span
+                  className={`mono shrink-0 text-sm ${checked ? "text-accent" : "text-muted"}`}
+                  title={checked ? "문서가 완료라고 말한다" : "아직 완료가 아니다"}
+                >
+                  {checked ? "[x]" : "[ ]"}
+                </span>
                 <span className="mono shrink-0 text-sm tabular-nums text-muted">{t.num || "—"}</span>
                 <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
                 {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게. */}
@@ -186,7 +215,8 @@ export function BoardCard({
                   {t.sourceStatus ?? "상태 줄 없음"}
                 </span>
               </li>
-            ))}
+              );
+            })}
           </ul>
         ))}
     </article>

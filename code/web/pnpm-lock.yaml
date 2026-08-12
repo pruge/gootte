@@ -123,6 +123,9 @@ importers:
       '@gootte/contract':
         specifier: workspace:*
         version: link:../contract
+      '@gootte/core':
+        specifier: workspace:*
+        version: link:../core
       '@tabler/icons-react':
         specifier: ^3.24.0
         version: 3.45.0(react@18.3.1)
