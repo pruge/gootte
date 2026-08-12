@@ -17,7 +17,6 @@ import {
   computeDisplaySteps,
   countOpenFeatures,
   placeStep,
-  planAutoClose,
   planMove,
   splitIntoAreas,
   type BoardAreas,
@@ -26,6 +25,7 @@ import {
   readFeatures,
   readFeatureDoc,
   readPlacements,
+  readPlacementsWithAutoClose,
   readSteps,
   writePlanMove,
   writeStep,
@@ -106,15 +106,12 @@ export function createApp(options: AppOptions = {}): Hono {
    * 새 전송로도 만들지 않는다(문서 변경은 이미 있는 워처가 WS 로 밀고, 화면은 이 라우트를 다시 묻는다).
    *
    * 🔴 판정은 한 줄도 여기 없다 — 무엇이 닫히는지는 `planAutoClose`(core), 어느 칸에 담기는지는
-   * `splitIntoAreas`(core)가 정한다(spec §판정 자리는 하나뿐).
-   *
-   * 🔴 쓴 뒤에는 **자리 행을 다시 읽어** 판을 만든다 — 방금 쓴 값으로 조립하면 그것이 곧 DB 의
-   * 2차 사본이고, 한 번이라도 어긋나면 화면이 닫힌 척한다(INV-1).
+   * `splitIntoAreas`(core)가 정한다(spec §판정 자리는 하나뿐). 자동 닫힘을 태우고 자리 행을
+   * 다시 읽는 것 자체는 `readPlacementsWithAutoClose`(core-io) 하나뿐 — CLI `board`·`next` 도
+   * 같은 자리를 지난다(카드 완료 칸 넘김이 화면을 안 켜도 일어나는 이유).
    */
   const readBoard = (project: string, features: Feature[]): BoardAreas => {
-    const closing = planAutoClose(features, readPlacements(dataDir, project));
-    if (closing) writePlanMove(dataDir, project, closing);
-    const placements = readPlacements(dataDir, project);
+    const placements = readPlacementsWithAutoClose(dataDir, project, features);
     const areas = splitIntoAreas(features, placements);
     // 표시 단계(당김까지 끝난 값, plan-board/05) — 판정 자리는 `computeDisplaySteps` 하나뿐이다.
     // 작업 대상 카드에만 값을 싣는다 — 단계는 작업 대상에 있는 동안만 존재한다.
