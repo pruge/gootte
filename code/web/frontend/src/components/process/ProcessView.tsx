@@ -56,8 +56,10 @@ export function ProcessView({ project }: ProcessViewProps) {
                 </h2>
               </header>
               {/* 기능 다발 사이는 선이 아니라 빈틈으로 나눈다(캡틴 지시) — 한 단계 안에서도 어느
-                  다발이 끝나고 다음 다발이 시작되는지 눈에 바로 잡히게. */}
-              <div className="flex flex-col gap-3 py-2">
+                  다발이 끝나고 다음 다발이 시작되는지 눈에 바로 잡히게. 틈의 크기는 티켓 한 줄
+                  높이(2.25rem = py-2 + text-sm 줄높이)와 같다. 🔴 첫 다발 앞에는 틈을 두지
+                  않는다 — `gap` 은 다발 *사이*에만 생기고, 바깥 padding 을 더 얹지 않는다. */}
+              <div className="flex flex-col gap-9">
                 {clusterByFeature(g.rows).map((cluster) => (
                   <div key={cluster.feature}>
                     <FeatureHeader
@@ -111,11 +113,12 @@ function clusterByFeature(rows: readonly ProcessRow[]): { feature: string; rows:
 /**
  * 기능 다발의 머리 — **회색 헤더**(캡틴 지시)에 이름과 설명문구를 두 줄로 싣는다. `plan` 탭
  * 카드 머리(`BoardCard`)와 같은 자리다. 설명이 없는 기능(표제가 곧 폴더명)은 이름 한 줄만 선다.
+ * 🔴 **테두리를 두른다**(캡틴 지시) — 배경색 차이만으로는 다발 머리와 티켓 줄의 경계가 흐리다.
  */
 function FeatureHeader({ feature, title }: { feature: string; title: string }) {
   const description = featureDescription(title, feature);
   return (
-    <div className="flex flex-col gap-y-0.5 bg-surface-2/60 px-4 py-1.5">
+    <div className="flex flex-col gap-y-0.5 rounded-md border border-border bg-surface-2/60 px-4 py-1.5">
       <span
         className={`mono text-sm ${description ? "text-muted" : "font-medium tracking-tight"}`}
       >
