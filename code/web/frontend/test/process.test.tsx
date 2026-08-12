@@ -96,8 +96,29 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
       ...EMPTY_BOARD,
       active: [card(feature("auth-login", [["03", "세션 발급"]]), { "03-x": 1 })],
     });
-    expect(screen.getByText("auth-login / 03")).toBeInTheDocument();
-    expect(screen.getByText("세션 발급")).toBeInTheDocument();
+    const li = screen.getByRole("listitem");
+    expect(within(li).getByText("auth-login")).toBeInTheDocument();
+    expect(within(li).getByText("03")).toBeInTheDocument();
+    expect(within(li).getByText("세션 발급")).toBeInTheDocument();
+  });
+
+  it("🔴 기능 이름과 설명문구는 두 줄이다 — plan 탭 카드 머리와 같은 자리(캡틴 지시)", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(feature("auth-login", [["01", "세션 발급"]]), { "01-x": 1 })],
+    });
+    const li = screen.getByRole("listitem");
+    // 픽스처 표제는 `auth-login — 제목` — 이름과 설명이 겹치지 않고 각자 한 줄씩이다.
+    expect(within(li).getByText("auth-login")).toBeInTheDocument();
+    expect(within(li).getByText("제목")).toBeInTheDocument();
+    expect(within(li).queryByText("auth-login — 제목")).toBeNull();
+  });
+
+  it("설명이 없는 기능(표제가 곧 폴더명)은 이름 한 줄만 선다", () => {
+    const bare: Feature = { ...feature("bare", [["01", "하나"]]), title: "bare" };
+    renderProcess({ ...EMPTY_BOARD, active: [card(bare, { "01-x": 1 })] });
+    const li = screen.getByRole("listitem");
+    expect(within(li).getByText("bare")).toBeInTheDocument();
   });
 
   it("표시 단계가 1부터 연속이다 — 빈 단계가 걷혀 있다", () => {
@@ -137,8 +158,10 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
         ),
       ],
     });
-    const rows = screen.getAllByRole("listitem").map((li) => li.textContent?.slice(0, 3));
-    expect(rows).toEqual(["[x]", "[ ]"]);
+    const boxes = screen
+      .getAllByTitle(/문서가 완료라고 말한다|아직 완료가 아니다/)
+      .map((el) => el.textContent);
+    expect(boxes).toEqual(["[x]", "[ ]"]);
   });
 
   it("작업 대상 밖(대기·예약·폐기·완료)의 티켓은 하나도 나오지 않는다", () => {

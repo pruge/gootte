@@ -2,6 +2,7 @@ import { useState } from "react";
 import { groupProcessSteps, UNRANKED_STEP, type ProcessRow } from "@gootte/core/plan";
 import { usePlanBoard } from "../../lib/query";
 import { ticketDocPath } from "../plan/planDoc";
+import { featureDescription } from "../plan/cardTitle";
 import { DocDrawer } from "../features/DocDrawer";
 import { Loading, ErrorMsg } from "../common/states";
 
@@ -28,6 +29,9 @@ export function ProcessView({ project }: ProcessViewProps) {
   if (!data) return null;
 
   const groups = groupProcessSteps(data.active);
+  // 이름 둘째 줄에 쓸 설명문구는 기능 표제에서 온다(plan 탭 BoardCard 와 같은 자리) — `steps`
+  // 계산과 달리 core 의 판정이 아니라 화면 서식이라 여기서 조회한다(카드는 이미 있다, INV-1).
+  const featureTitleOf = new Map(data.active.map((c) => [c.feature.slug, c.feature.title]));
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto">
@@ -50,6 +54,7 @@ export function ProcessView({ project }: ProcessViewProps) {
                 <ProcessTicketLine
                   key={`${row.feature}/${row.ticket}`}
                   row={row}
+                  featureTitle={featureTitleOf.get(row.feature) ?? row.feature}
                   onOpen={() => setTicketDoc({ feature: row.feature, path: ticketDocPath({ slug: row.ticket }) })}
                 />
               ))}
@@ -68,24 +73,54 @@ export function ProcessView({ project }: ProcessViewProps) {
   );
 }
 
-function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => void }) {
+/**
+ * 티켓 한 줄 — **기능 이름과 설명문구는 두 줄**, `plan` 탭 카드 머리(`BoardCard`)와 같은
+ * 격자(`grid-cols-[minmax(0,1fr)_auto]`)를 쓴다(캡틴 지시). 첫 줄이 기능 이름 + 곁다리(티켓
+ * 번호), 둘째 줄이 설명문구 — 설명이 없는 기능(표제가 곧 폴더명)은 이름 한 줄만 선다.
+ * 상자와 티켓 제목은 그 아래 제 줄을 갖는다 — `BoardCard`의 `닫힘` 줄과 같은 자리다.
+ */
+function ProcessTicketLine({
+  row,
+  featureTitle,
+  onOpen,
+}: {
+  row: ProcessRow;
+  featureTitle: string;
+  onOpen: () => void;
+}) {
+  const description = featureDescription(featureTitle, row.feature);
+
   return (
     <li>
       <button
         type="button"
         onClick={onOpen}
-        className="flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 px-4 py-2 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2.5 gap-y-0.5 px-4 py-2 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
       >
         <span
-          className={`mono shrink-0 text-sm ${row.checked ? "text-accent" : "text-muted"}`}
-          title={row.checked ? "문서가 완료라고 말한다" : "아직 완료가 아니다"}
+          className={`mono col-start-1 row-start-1 min-w-0 truncate text-sm ${
+            description ? "text-muted" : "font-medium tracking-tight"
+          }`}
         >
-          {row.checked ? "[x]" : "[ ]"}
+          {row.feature}
         </span>
-        <span className="mono shrink-0 text-sm text-muted">
-          {row.feature} / {row.num || "—"}
+        {description && (
+          <span className="col-span-2 col-start-1 row-start-2 break-words text-sm font-medium tracking-tight">
+            {description}
+          </span>
+        )}
+        <span className="col-start-2 row-start-1 mono shrink-0 text-sm tabular-nums text-muted">
+          {row.num || "—"}
         </span>
-        <span className="min-w-0 flex-1 truncate text-sm">{row.title}</span>
+        <span className="col-span-2 col-start-1 row-start-3 flex items-baseline gap-x-2.5 text-sm">
+          <span
+            className={`mono shrink-0 ${row.checked ? "text-accent" : "text-muted"}`}
+            title={row.checked ? "문서가 완료라고 말한다" : "아직 완료가 아니다"}
+          >
+            {row.checked ? "[x]" : "[ ]"}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-muted">{row.title}</span>
+        </span>
       </button>
     </li>
   );
