@@ -3,6 +3,7 @@ import type { Tab } from "../../hooks/useUrlState";
 const TABS: { id: Tab; label: string }[] = [
   { id: "features", label: "features" },
   { id: "plan", label: "plan" },
+  { id: "process", label: "process" },
 ];
 
 interface TabsProps {

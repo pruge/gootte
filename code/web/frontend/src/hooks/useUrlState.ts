@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { encodeDocView } from "../components/features/docView";
 
-export type Tab = "features" | "plan";
-const TABS: readonly Tab[] = ["features", "plan"];
+export type Tab = "features" | "plan" | "process";
+const TABS: readonly Tab[] = ["features", "plan", "process"];
 export interface UrlState {
   project: string | null;
   tab: Tab;
