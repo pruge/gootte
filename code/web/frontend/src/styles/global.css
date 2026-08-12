@@ -25,6 +25,20 @@
   --text-hero: clamp(1.75rem, 1.2rem + 2vw, 2.5rem);
 }
 
+/* ── 판(plan 탭)의 치수 — 아래 칸이 "카드 2.5줄" 을 보이게 잡는 근거값(캡틴 지시) ──
+   🔴 숫자의 집은 여기 하나다. `CardList` 의 여백·줄 간격도 이 변수를 쓰므로, 카드 서식이
+   바뀌어 한 줄 높이가 달라지면 `--plan-card-row` 만 고치면 아래 칸 높이가 따라온다.
+   따로 적어 두면 그 사본이 먼저 낡아 "2.5줄" 이 2.5줄이 아니게 된다. */
+:root {
+  --plan-card-row: 4rem; /* 접힌 카드 한 줄(머리글 두 줄 + py-2) 실측 높이 */
+  --plan-card-gap: 0.625rem; /* 카드 사이 간격 */
+  --plan-list-pad: 0.75rem; /* 칸 안쪽 여백 */
+  /* 2.5줄 = 두 줄 + 그 사이 간격 둘 + 반 줄. 반 줄이 보여야 아래에 더 있다는 것이 드러난다. */
+  --plan-drawer-h: calc(
+    var(--plan-list-pad) + 2.5 * var(--plan-card-row) + 2 * var(--plan-card-gap)
+  );
+}
+
 /* light = 에디토리얼: 고대비 타이포, 종이 느낌 */
 :root {
   --bg: oklch(98.5% 0.004 260);
@@ -80,6 +94,22 @@
     background: color-mix(in oklch, var(--color-accent) 28%, transparent);
     color: var(--color-fg);
   }
+  /* 🔴 누를 수 있는 것 위에서는 손 모양 — **전역**이다(캡틴 지시).
+     Tailwind v4 는 버튼의 기본 커서를 `default` 로 되돌려 놓았다. 그대로 두면 누를 수 있는
+     것과 없는 것이 마우스로는 구분되지 않는다. 여기 한 줄이 그 판정을 갖는다 —
+     컴포넌트마다 `cursor-pointer` 를 붙이면 붙이는 걸 잊은 곳이 곧 거짓말이 된다.
+     끌기 손잡이처럼 다른 커서를 써야 하는 자리는 유틸리티 한 클래스로 덮는다(판 위의 카드). */
+  button:not(:disabled),
+  summary,
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
   /* focus 는 항상 보이게 — 의도적 접근성 상태 */
   :focus-visible {
     outline: 2px solid var(--color-accent);

@@ -86,6 +86,9 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 - **CSS = Tailwind.** (v4, `@tailwindcss/vite`)
 - **아이콘 = Tabler 전용.** `@tabler/icons-react` 외 **다른 아이콘 라이브러리 금지.**
 - **폰트 = Pretendard.** (`code/web/frontend/index.html` 로드 · `src/styles/global.css` 의 `--font-sans`)
+- **끌어 놓기 = dnd-kit.** (`@dnd-kit/core`·`sortable`·`utilities`) HTML5 네이티브 drag 이벤트나
+  다른 DnD 라이브러리로 갈아타지 않는다 — **포인터 기반**이라 `chrome-devtools-axi drag` 로 실제
+  브라우저에서 끌어 볼 수 있고, 네이티브 drag 로 바꾸면 그 확인 경로가 통째로 사라진다.
 
 ## Track 통제 어휘 — 은퇴했다
 

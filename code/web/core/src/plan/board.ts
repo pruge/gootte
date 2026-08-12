@@ -10,12 +10,22 @@ export type BoardAreas = Omit<PlanBoardResponse, "project">;
 const STORED_AREAS = ["active", "reserved", "discarded", "done"] as const;
 
 /**
- * 카드 순서 — 캡틴이 정한 `seq` 먼저, 없거나 같으면 폴더명.
+ * 칸 안의 카드 순서 — 캡틴이 정한 `seq` 먼저, 없거나 같으면 폴더명.
  * 자리 행이 없는 카드(`seq === null`)는 뒤로 밀되 그들끼리는 폴더명순이라 순서가 널뛰지 않는다.
+ *
+ * 🔴 **순서 규칙은 이 함수 하나뿐이다** — 판을 그릴 때(`splitIntoAreas`)와 카드를 끼워 넣을 때
+ * (`planMove`)가 같은 규칙을 봐야 캡틴이 화면에서 센 자리와 서버가 계산한 자리가 어긋나지 않는다.
  */
-function bySeqThenSlug(a: PlanCard, b: PlanCard): number {
+export function compareBySeq(
+  a: { seq: number | null; slug: string },
+  b: { seq: number | null; slug: string },
+): number {
   const [x, y] = [a.seq ?? Number.MAX_SAFE_INTEGER, b.seq ?? Number.MAX_SAFE_INTEGER];
-  return x === y ? a.feature.slug.localeCompare(b.feature.slug) : x - y;
+  return x === y ? a.slug.localeCompare(b.slug) : x - y;
+}
+
+function bySeqThenSlug(a: PlanCard, b: PlanCard): number {
+  return compareBySeq({ seq: a.seq, slug: a.feature.slug }, { seq: b.seq, slug: b.feature.slug });
 }
 
 /**

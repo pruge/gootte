@@ -1,6 +1,6 @@
-import { render, screen, within, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Feature, PlanBoardResponse, PlanCard } from "@gootte/contract";
 import { PlanView } from "../src/components/plan/PlanView";
 import { qk } from "../src/lib/query";
@@ -13,7 +13,7 @@ function feature(slug: string, tickets: [string, string][] = []): Feature {
     status: "pending",
     sourceStatus: "draft",
     statusKnown: true,
-    docs: [],
+    docs: [{ kind: "file", name: "spec.md", path: "spec.md" }],
     tickets: tickets.map(([num, title]) => ({
       num,
       slug: `${num}-x`,
@@ -46,14 +46,23 @@ const EMPTY_BOARD: PlanBoardResponse = {
   done: [],
 };
 
+const openFeatureDoc = vi.fn();
+
 function renderBoard(board: PlanBoardResponse) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // 판은 이미 심어 둔 것을 그린다 — `staleTime: Infinity` 라 마운트 때 다시 받아오지 않는다.
+  // 그래서 아래 fetch 감시가 잡는 것은 **캡틴이 옮긴 요청뿐**이다.
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } },
+  });
   qc.setQueryData(qk.plan("alpha"), board);
-  return render(
-    <QueryClientProvider client={qc}>
-      <PlanView project="alpha" />
-    </QueryClientProvider>,
-  );
+  return {
+    qc,
+    ...render(
+      <QueryClientProvider client={qc}>
+        <PlanView project="alpha" onOpenFeatureDoc={openFeatureDoc} />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 /** 아래 칸의 탭 하나를 눌러 그 칸을 연다. */
@@ -190,5 +199,172 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     renderBoard(EMPTY_BOARD);
     expect(screen.getByText("작업 대상이 비어 있습니다.")).toBeInTheDocument();
     expect(screen.getByText("docs/features/ 아래 기능이 없습니다.")).toBeInTheDocument();
+  });
+});
+
+/**
+ * 캡틴이 카드를 옮긴다(plan-board/03).
+ * 끌기 자체는 손에 붙는지 봐야 아는 일이라 **캡틴 확인**이 맡는다(티켓 03 §테스트).
+ * 여기서 재는 것은 아이콘 둘·이동 대화상자·여러 장 고르기, 그리고 **묻지 않는다는 사실**이다.
+ */
+describe("PlanView — 카드 머리 아이콘 둘과 이동 대화상자(plan-board/03)", () => {
+  const cardOf = (name: string) => screen.getByRole("article", { name });
+  const clickIcon = (name: string, label: RegExp) =>
+    fireEvent.click(within(cardOf(name)).getByRole("button", { name: label }));
+
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    openFeatureDoc.mockClear();
+    fetchMock = vi.fn(async (_url: string, init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => moved(JSON.parse(String(init?.body))),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** 서버가 돌려주는 "옮긴 뒤의 판" 흉내 — 화면은 이것을 **그대로** 받아 그린다(INV-1). */
+  const moved = (body: { features: string[]; area: string | null }): PlanBoardResponse => ({
+    ...EMPTY_BOARD,
+    [body.area ?? "waiting"]: body.features.map((slug) => card(feature(slug), 0)),
+  });
+
+  const sent = () => JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+
+  it("문서 아이콘은 features 탭의 기존 통로로 보낸다 — 두 번째 문서 보기를 짓지 않는다", () => {
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("auth-login"))] });
+    clickIcon("auth-login 제목", /문서 열기/);
+    expect(openFeatureDoc).toHaveBeenCalledWith("auth-login", "spec.md");
+  });
+
+  it("문서가 하나도 없는 기능은 열 문서가 없다고 말한다 — 없는 주소를 지어내지 않는다", () => {
+    const bare = { ...feature("no-docs"), docs: [] };
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(bare)] });
+    clickIcon("no-docs 제목", /문서 열기/);
+    expect(openFeatureDoc).toHaveBeenCalledWith("no-docs", null);
+  });
+
+  it("이동 아이콘은 대화상자를 띄우고, 🔴 지금 있는 칸은 고를 수 없다", () => {
+    renderBoard({ ...EMPTY_BOARD, active: [card(feature("moving"), 0)] });
+    clickIcon("moving 제목", /다른 칸으로 보내기/);
+    const dialog = screen.getByRole("dialog", { name: "어느 칸으로 보낼까요" });
+    const options = within(dialog)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
+    expect(options).toContain("예약");
+    expect(options).toContain("완료");
+    expect(options).not.toContain("작업 대상");
+  });
+
+  it("대화상자에서 칸을 고르면 그 칸으로 간다 — 판은 서버가 돌려준 것을 그대로 그린다", async () => {
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("auth-login"))] });
+    clickIcon("auth-login 제목", /다른 칸으로 보내기/);
+    fireEvent.click(screen.getByRole("button", { name: "작업 대상" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/plan/alpha/move");
+    expect(sent()).toEqual({ features: ["auth-login"], area: "active", index: 0 });
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("region", { name: "작업 대상" })).getByRole("heading", {
+          name: "auth-login 제목",
+        }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("🔴 대기로 돌려보내는 요청은 자리 값이 null 이다 — 대기를 뜻하는 값이 없다(INV-B1)", async () => {
+    renderBoard({ ...EMPTY_BOARD, active: [card(feature("back"), 0)] });
+    clickIcon("back 제목", /다른 칸으로 보내기/);
+    fireEvent.click(screen.getByRole("button", { name: /대기/ }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(sent().area).toBeNull();
+  });
+
+  it("🔴 남은 티켓이 있어도 완료로 옮겨진다 — 이유를 묻는 입력창이 뜨지 않는다(캡틴 결정)", async () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      active: [card(feature("half", [["01", "남은 일"]]), 0)],
+    });
+    clickIcon("half 제목", /다른 칸으로 보내기/);
+    fireEvent.click(screen.getByRole("button", { name: "완료" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(sent()).toMatchObject({ features: ["half"], area: "done" });
+    // 대화상자는 닫혔고, 이유를 받는 입력칸도 확인창도 어디에도 없다.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("⌘+클릭으로 여러 장을 고르면 한 번에 옮겨진다(캡틴 제안 2)", async () => {
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("a")), card(feature("b"))] });
+    fireEvent.click(within(cardOf("a 제목")).getByRole("button", { expanded: false }), {
+      metaKey: true,
+    });
+    fireEvent.click(within(cardOf("b 제목")).getByRole("button", { expanded: false }), {
+      metaKey: true,
+    });
+    // 고른 것은 눈에 보인다 — 몇 장인지 화면이 말한다.
+    expect(screen.getByText(/대기 2장 고름/)).toBeInTheDocument();
+
+    clickIcon("a 제목", /다른 칸으로 보내기/);
+    fireEvent.click(screen.getByRole("button", { name: "작업 대상" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(sent().features).toEqual(["a", "b"]);
+  });
+
+  it("⌘+클릭은 카드를 펼치지 않는다 — 고르는 것과 여는 것이 섞이지 않는다", () => {
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("a", [["01", "티켓 하나"]]))] });
+    fireEvent.click(within(cardOf("a 제목")).getByRole("button", { expanded: false }), {
+      metaKey: true,
+    });
+    expect(screen.queryByText("티켓 하나")).toBeNull();
+  });
+
+  it("다른 칸의 카드를 고르면 묶음이 그 칸으로 옮겨간다 — 안 보이는 카드가 딸려 가지 않게", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      active: [card(feature("up"), 0)],
+      waiting: [card(feature("down"))],
+    });
+    const pick = (name: string) =>
+      fireEvent.click(within(cardOf(name)).getByRole("button", { expanded: false }), {
+        metaKey: true,
+      });
+    pick("up 제목");
+    expect(screen.getByText(/작업 대상 1장 고름/)).toBeInTheDocument();
+    pick("down 제목");
+    expect(screen.getByText(/대기 1장 고름/)).toBeInTheDocument();
+  });
+
+  it("옮기지 못하면 그렇게 말한다 — 옮겨진 척하지 않는다", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: "문서가 없는 기능입니다: ghost" }),
+    });
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("ghost"))] });
+    clickIcon("ghost 제목", /다른 칸으로 보내기/);
+    fireEvent.click(screen.getByRole("button", { name: "작업 대상" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("문서가 없는 기능입니다: ghost"),
+    );
+    // 카드는 제자리에 남는다.
+    expect(
+      within(screen.getByRole("region", { name: "작업 대상" })).queryByRole("heading", {
+        name: "ghost 제목",
+      }),
+    ).toBeNull();
+  });
+
+  it("대화상자는 ESC 로 닫히고 아무것도 옮기지 않는다", () => {
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("a"))] });
+    clickIcon("a 제목", /다른 칸으로 보내기/);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

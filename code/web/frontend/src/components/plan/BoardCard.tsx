@@ -1,6 +1,23 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { IconArrowMoveRight, IconFileText } from "@tabler/icons-react";
 import type { PlanCard } from "@gootte/contract";
 import { featureDescription } from "./cardTitle";
+
+export interface BoardCardProps {
+  card: PlanCard;
+  /** 여러 장 고르기 — 고른 카드는 테두리로 드러나고, 그중 하나를 끌면 전부 따라간다. */
+  selected?: boolean;
+  /** 머리글을 ⌘/Ctrl/Shift 와 함께 누른 것 — 펼치는 대신 고른다. */
+  onToggleSelect?: (slug: string) => void;
+  /** 문서 아이콘 — `features` 탭의 기존 통로로 간다(두 번째 문서 보기를 짓지 않는다). */
+  onOpenDoc?: (slug: string) => void;
+  /** 이동 아이콘 — "어느 칸으로 보낼까요" 대화상자. */
+  onRequestMove?: (slug: string) => void;
+  /** 끌기 오버레이용 사본 — 끌기 배선 없이 모양만 그린다. */
+  overlay?: boolean;
+}
 
 /**
  * 판 위의 카드 하나 — **기본은 머리만 보이게 접혀 있고, 눌러야 티켓 줄이 펼쳐진다**(캡틴 결정).
@@ -12,29 +29,73 @@ import { featureDescription } from "./cardTitle";
  * 🔴 접힌 카드도 **티켓 수는 머리에 이고 있다** — 감추면 카드가 제 크기를 말하지 않게 되고,
  * 캡틴이 판을 훑는 동안 하나하나 열어 봐야 한다.
  *
- * 머리글 토글은 `<button>` **하나**다. 03 이 카드 머리에 아이콘 둘을 붙일 때는 이 버튼 **안**이
- * 아니라 **옆(형제)** 에 둔다 — 버튼 안의 버튼은 무효 HTML 이다(features 탭 `FeatureCard` 와 같은 규율).
+ * 머리글 토글은 `<button>` **하나**이고, 아이콘 둘은 그 버튼 **안**이 아니라 **옆(형제)** 에 선다 —
+ * 버튼 안의 버튼은 무효 HTML 이다(features 탭 `FeatureCard` 와 같은 규율).
  *
- * 이 티켓에서는 **읽기만** 한다 — 끌어 옮기는 것은 03, 체크상자는 04, 단계는 05.
+ * 끌기는 카드 전체가 손잡이다(03). 6px 움직여야 끌기로 치므로 머리글 토글과 아이콘 둘은 그대로
+ * 눌린다 — 따로 손잡이 아이콘을 세우지 않는다(캡틴이 정한 아이콘은 둘뿐이다).
+ * 체크상자·자동 완료는 04 다.
  */
-export function BoardCard({ card }: { card: PlanCard }) {
+export function BoardCard({
+  card,
+  selected = false,
+  onToggleSelect,
+  onOpenDoc,
+  onRequestMove,
+  overlay = false,
+}: BoardCardProps) {
   const [expanded, setExpanded] = useState(false);
   const { feature } = card;
   const headingId = `board-card-${feature.slug}`;
   // 표제 앞에 겹쳐 붙은 기능 이름은 뗀다 — 같은 이름이 한 카드에 두 번 뜨지 않게(캡틴 결정).
   const description = featureDescription(feature.title, feature.slug);
 
+  // 🔴 `role` 을 카드 자신의 것으로 못 박는다 — dnd-kit 기본값(`button`)이 붙으면 카드가
+  // 카드가 아니게 되고, 안에 있는 머리글 버튼이 버튼 속 버튼이 된다.
+  //
+  // 🔴 `animateLayoutChanges: false` — 카드가 **제자리에 그냥 나타난다**(캡틴 지시).
+  // dnd-kit 기본값은 자리 이동을 옛 측정값에서 새 자리로 미끄러뜨리는데, 다른 칸에서 온 카드는
+  // 옛 측정값이 저 멀리라 화면 왼쪽에서 날아 들어오는 것처럼 보인다. 놓은 자리에서 제자리로
+  // 가는 연출은 손끝의 사본(`DragOverlay`)이 맡는다 — 두 연출이 겹치면 어디서 온 건지 알 수 없다.
+  const sortable = useSortable({
+    id: feature.slug,
+    disabled: overlay,
+    animateLayoutChanges: () => false,
+    attributes: { role: "article", roleDescription: "카드 — 끌어서 다른 칸으로 옮깁니다" },
+  });
+
+  const onHeaderClick = (e: MouseEvent<HTMLButtonElement>) => {
+    if (onToggleSelect && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+      onToggleSelect(feature.slug);
+      return;
+    }
+    setExpanded((v) => !v);
+  };
+
   return (
     <article
+      {...(overlay ? {} : sortable.attributes)}
+      {...(overlay ? {} : sortable.listeners)}
+      ref={overlay ? undefined : sortable.setNodeRef}
+      style={
+        overlay
+          ? undefined
+          : { transform: CSS.Translate.toString(sortable.transform), transition: sortable.transition }
+      }
       aria-labelledby={headingId}
-      className="overflow-hidden rounded-md border border-border bg-bg"
+      data-selected={selected || undefined}
+      className={`touch-none overflow-hidden rounded-md border bg-bg focus-visible:outline-2 focus-visible:outline-accent ${
+        selected ? "border-accent ring-1 ring-accent/40" : "border-border"
+      } ${overlay ? "cursor-grabbing shadow-xl" : "cursor-grab"} ${
+        sortable.isDragging ? "opacity-40" : ""
+      }`}
     >
       <div className="flex w-full items-stretch bg-surface-2/50">
         <button
           type="button"
           aria-expanded={expanded}
-          onClick={() => setExpanded((v) => !v)}
-          className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-accent"
+          onClick={onHeaderClick}
+          className="grid min-w-0 flex-1 cursor-[inherit] grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-accent"
         >
           {/* 두 줄 — 첫 줄 기능 이름, 둘째 줄 설명문구(캡틴 결정). 설명이 없는 기능(표제가 곧
               폴더명인 경우)은 이름 한 줄만 그린다 — 빈 줄로 자리를 채우지 않는다.
@@ -69,6 +130,34 @@ export function BoardCard({ card }: { card: PlanCard }) {
             </span>
           </span>
         </button>
+
+        {/* 🔴 아이콘 **둘** — 캡틴 제안 9. 머리글 버튼의 형제이고, 끌기가 시작되지 않도록
+            pointerdown 을 여기서 멈춘다(누르려던 아이콘이 끌기로 새지 않게). */}
+        {!overlay && (
+          <div
+            className="flex shrink-0 items-center gap-0.5 pr-1.5"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => onOpenDoc?.(feature.slug)}
+              aria-label={`${feature.slug} 문서 열기`}
+              title="features 탭에서 이 기능 문서를 연다"
+              className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <IconFileText size={17} stroke={1.6} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onRequestMove?.(feature.slug)}
+              aria-label={`${feature.slug} 다른 칸으로 보내기`}
+              title="어느 칸으로 보낼지 고른다"
+              className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <IconArrowMoveRight size={17} stroke={1.6} />
+            </button>
+          </div>
+        )}
       </div>
 
       {expanded &&

@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import { Placement } from "@gootte/contract";
+import type { PlanWritePlan } from "@gootte/core";
 
 /**
  * 계획 저장소 — SQLite, gootte 자기 저장소(INV-2 — 관리대상에는 아무것도 안 쓴다. INV-2 가
@@ -116,6 +117,75 @@ export function readPlacements(dataDir: string, project: string): Placement[] {
     return rows.map((r) =>
       Placement.parse({ feature: r.feature, area: r.area, seq: r.seq, closedAt: r.closed_at }),
     );
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * 한 프로젝트의 단계 행 전부 — 05 가 읽어 쓸 자리이고, 지금은 03 의 쓰기가 실제로 닿았는지
+ * 테스트가 확인하는 데 쓴다.
+ */
+export interface StoredStep {
+  feature: string;
+  ticket: string;
+  step: number;
+}
+
+export function readSteps(dataDir: string, project: string): StoredStep[] {
+  const db = open(dataDir);
+  try {
+    return db
+      .prepare(`SELECT feature, ticket, step FROM step WHERE project = ? ORDER BY feature, ticket`)
+      .all(project) as unknown as StoredStep[];
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * 캡틴이 옮긴 결과를 적는다(plan-board/03) — `core` 의 `planMove` 가 이미 정한 것을 **그대로** 쓴다.
+ *
+ * 🔴 **여기에는 판정이 한 줄도 없다.** 어느 칸으로 갈지, 순서가 몇 번인지, 단계를 지울지 붙일지는
+ * 전부 순수 함수가 정한 값이다(spec §판정 자리는 하나뿐) — 저장소가 조금이라도 다시 정하면
+ * 그 순간 화면과 CLI 가 서로 다른 판을 본다.
+ *
+ * 🔴 **덮어쓰기뿐 — 이력을 남기지 않는다**(티켓 03 §이 티켓이 하지 않는다).
+ *
+ * 한 트랜잭션이다. 자리는 옮겼는데 단계가 남거나 그 반대인 중간 상태가 보이면, 그 순간의 판은
+ * 아무도 정하지 않은 계획이 된다.
+ */
+export function writePlanMove(dataDir: string, project: string, plan: PlanWritePlan): void {
+  const db = open(dataDir);
+  try {
+    db.exec("BEGIN");
+    try {
+      const removePlacement = db.prepare(
+        `DELETE FROM placement WHERE project = ? AND feature = ?`,
+      );
+      const upsertPlacement = db.prepare(
+        `INSERT INTO placement (project, feature, area, seq, closed_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (project, feature) DO UPDATE SET area = excluded.area, seq = excluded.seq, closed_at = excluded.closed_at`,
+      );
+      const clearSteps = db.prepare(`DELETE FROM step WHERE project = ? AND feature = ?`);
+      const setStep = db.prepare(
+        `INSERT INTO step (project, feature, ticket, step) VALUES (?, ?, ?, ?)
+         ON CONFLICT (project, feature, ticket) DO UPDATE SET step = excluded.step`,
+      );
+
+      for (const feature of plan.remove) removePlacement.run(project, feature);
+      for (const p of plan.upsert) upsertPlacement.run(project, p.feature, p.area, p.seq, p.closedAt);
+      for (const feature of plan.clearSteps) clearSteps.run(project, feature);
+      // 붙이기 전에 먼저 턴다 — 문서에서 사라진 티켓의 옛 단계 행이 남아 새 계획인 척하지 않게.
+      for (const feature of new Set(plan.setSteps.map((s) => s.feature))) {
+        clearSteps.run(project, feature);
+      }
+      for (const s of plan.setSteps) setStep.run(project, s.feature, s.ticket, s.step);
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw err;
+    }
   } finally {
     db.close();
   }

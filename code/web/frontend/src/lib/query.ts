@@ -1,5 +1,9 @@
-import { QueryClient, useQuery } from "@tanstack/react-query";
-import { fetchProjects, fetchFeatures, fetchFeatureDoc, fetchPlanBoard } from "./api";
+import { useCallback } from "react";
+import { flushSync } from "react-dom";
+import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { PlanBoardResponse, PlanMoveRequest } from "@gootte/contract";
+import { applyMoveToBoard } from "../components/plan/areas";
+import { fetchProjects, fetchFeatures, fetchFeatureDoc, fetchPlanBoard, movePlanCards } from "./api";
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
 export function makeQueryClient(): QueryClient {
@@ -43,6 +47,47 @@ export function usePlanBoard(slug: string | null) {
     queryFn: () => fetchPlanBoard(slug as string),
     enabled: slug !== null,
   });
+}
+
+/**
+ * 카드를 옮긴다(plan-board/03) — 캡틴의 손이 계획 DB 에 닿는 유일한 길.
+ *
+ * 🔴 서버가 돌려준 판을 **그대로** 캐시에 앉힌다 — 화면이 옮긴 결과를 자기 손으로 조립하면
+ * 그것이 곧 서버 판정의 2차 사본이다(INV-1).
+ *
+ * 놓는 **순간**에는 카드를 놓은 칸으로 옮겨 놓은 한 프레임을 먼저 보여준다
+ * (`applyMoveToBoard`) — 손끝의 사본이 날아갈 목적지가 있어야 하기 때문이다(캡틴 지시).
+ * 🔴 그 프레임은 **연출이지 판정이 아니다**: 서버의 답이 오면 통째로 덮이고, 실패하면 이전 판이
+ * 그대로 되돌아온다 — 옮겨진 척한 채로 남지 않는다.
+ */
+export function usePlanMove(slug: string) {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (request: PlanMoveRequest) => movePlanCards(slug, request),
+    onSuccess: (board) => qc.setQueryData(qk.plan(slug), board),
+  });
+
+  const move = useCallback(
+    (request: PlanMoveRequest) => {
+      const previous = qc.getQueryData<PlanBoardResponse>(qk.plan(slug));
+      // 🔴 **동기로** 앞당긴다. dnd-kit 은 놓기 콜백이 끝나자마자 목적지를 재고, 그때 카드가
+      // 아직 옛 칸에 있으면 손끝의 사본이 **옛 자리로 되돌아가 붙는다** — 방금 한 일을 취소한
+      // 것처럼 보인다(캡틴 지시). `onMutate` 로 하면 `await` 한 번에 마이크로태스크로 밀려
+      // 그 측정보다 늦는다. `flushSync` 가 그 한 박자를 없앤다.
+      if (previous) {
+        flushSync(() => qc.setQueryData(qk.plan(slug), applyMoveToBoard(previous, request)));
+      }
+      mutation.mutate(request, {
+        // 실패하면 놓기 전의 판이 그대로 돌아온다 — 옮겨진 척한 채로 남지 않는다.
+        onError: () => {
+          if (previous) qc.setQueryData(qk.plan(slug), previous);
+        },
+      });
+    },
+    [qc, slug, mutation],
+  );
+
+  return { move, isError: mutation.isError, error: mutation.error };
 }
 
 /** 드로어에 연 기능 문서 본문 — 셋 다 있어야 fetch(카드 트리에서 문서를 눌렀을 때만). */
