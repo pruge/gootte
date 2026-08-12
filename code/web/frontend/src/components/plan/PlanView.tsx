@@ -43,6 +43,33 @@ const TABS = [
 /** 고른 것이 없는 칸에 넘기는 빈 묶음 — 렌더마다 새 Set 을 만들지 않는다. */
 const EMPTY_SET: ReadonlySet<string> = new Set();
 
+/**
+ * 끌기를 소리로 듣는 캡틴에게 하는 말 — dnd-kit 기본값은 영어라 그대로 두면 이 화면에서
+ * 여기만 다른 언어가 된다. 안내는 **끌기 조작만** 말한다 — 어디에 놓으면 안 되는지 같은
+ * 경고는 없다(INV-B3).
+ */
+const A11Y = {
+  screenReaderInstructions: {
+    draggable:
+      "스페이스바로 카드를 집습니다. 집은 뒤에는 화살표 키로 옮기고, 스페이스바로 놓거나 Esc 로 되돌립니다.",
+  },
+  announcements: {
+    onDragStart: ({ active }: { active: { id: string | number } }) => `${active.id} 카드를 집었습니다.`,
+    onDragOver: ({ over }: { over: { id: string | number } | null }) =>
+      over ? `${dropLabel(over.id)} 위에 있습니다.` : "놓을 자리 밖입니다.",
+    onDragEnd: ({ over }: { over: { id: string | number } | null }) =>
+      over ? `${dropLabel(over.id)} 자리에 놓았습니다.` : "제자리로 돌아왔습니다.",
+    onDragCancel: () => "끌기를 되돌렸습니다.",
+  },
+};
+
+/** 놓을 자리를 사람의 말로 — 안내에 `tab:reserved` 같은 내부 식별자가 새어 나가지 않게. */
+function dropLabel(overId: string | number): string {
+  const id = String(overId);
+  const area = id.startsWith("area:") || id.startsWith("tab:") ? id.split(":")[1] : null;
+  return area ? `${AREA_LABEL[area as BoardAreaId]} 칸` : id;
+}
+
 /** 칸 하나의 카드 수 — 화면이 세는 것이 아니라 서버가 갈라 준 목록의 길이다(INV-1). */
 function Count({ n }: { n: number }) {
   return <span className="mono shrink-0 text-sm tabular-nums text-muted">{n}</span>;
@@ -194,6 +221,7 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
 
   return (
     <DndContext
+      accessibility={A11Y}
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={onDragStart}

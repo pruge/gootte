@@ -89,7 +89,7 @@ export function BoardCard({
           type="button"
           aria-expanded={expanded}
           onClick={onHeaderClick}
-          className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-accent"
+          className="grid min-w-0 flex-1 cursor-[inherit] grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-accent"
         >
           {/* 두 줄 — 첫 줄 기능 이름, 둘째 줄 설명문구(캡틴 결정). 설명이 없는 기능(표제가 곧
               폴더명인 경우)은 이름 한 줄만 그린다 — 빈 줄로 자리를 채우지 않는다.
@@ -137,7 +137,7 @@ export function BoardCard({
               onClick={() => onOpenDoc?.(feature.slug)}
               aria-label={`${feature.slug} 문서 열기`}
               title="features 탭에서 이 기능 문서를 연다"
-              className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+              className="cursor-pointer rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
             >
               <IconFileText size={17} stroke={1.6} />
             </button>
@@ -146,7 +146,7 @@ export function BoardCard({
               onClick={() => onRequestMove?.(feature.slug)}
               aria-label={`${feature.slug} 다른 칸으로 보내기`}
               title="어느 칸으로 보낼지 고른다"
-              className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+              className="cursor-pointer rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
             >
               <IconArrowMoveRight size={17} stroke={1.6} />
             </button>
