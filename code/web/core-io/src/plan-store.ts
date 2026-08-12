@@ -37,8 +37,13 @@ function dbFile(dataDir: string): string {
  * 값을 이 칸에 두지 않는다. CHECK 이 그것을 스키마 수준에서 못 박는다 — 손으로 고친 DB 라도
  * "waiting" 같은 값이 들어앉아 두 번째 표현이 되는 일은 없다.
  *
- * `step` 표는 firstmate 가 티켓마다 매기는 정수 하나다(spec §단계). 매기고 떼는 것은 05 가 쓴다 —
- * 표는 여기서 함께 세운다(스키마 자리가 두 군데로 갈라지지 않게).
+ * `step` 표는 firstmate 와 캡틴(08, `process` 탭 끌어 놓기)이 티켓마다 매기는 단계 하나다
+ * (spec §단계). 매기고 떼는 것은 05 가, 사이에 끼워 넣는 것은 08 이 쓴다 — 표는 여기서 함께
+ * 세운다(스키마 자리가 두 군데로 갈라지지 않게).
+ *
+ * 🔴 **`step.step` 은 REAL 이다(08).** 1단계와 2단계 사이에 새 단계를 끼워 넣으려면 그 자리에
+ * 쓸 숫자가 있어야 하는데 정수에는 1 과 2 사이가 없다(spec §사이에 끼워 넣으려면 저장 숫자가
+ * 정수여선 안 된다) — 화면은 이미 압축해 보여주므로(05) 성긴 저장이 캡틴 눈에 비치지 않는다.
  */
 const SCHEMA_DDL = `
   CREATE TABLE IF NOT EXISTS placement (
@@ -53,7 +58,7 @@ const SCHEMA_DDL = `
     project TEXT NOT NULL,
     feature TEXT NOT NULL,
     ticket  TEXT NOT NULL,
-    step    INTEGER NOT NULL,
+    step    REAL NOT NULL,
     PRIMARY KEY (project, feature, ticket)
   );
 `;
@@ -82,14 +87,37 @@ export interface SchemaMigrationResult {
   droppedColumns: string[];
 }
 
+/** `step` 표의 `step` 칸이 지금 어떤 선언 타입을 갖는가 — 표가 아직 없으면 null. */
+function declaredStepColumnType(db: DatabaseSyncType): string | null {
+  const rows = db.prepare(`PRAGMA table_info(step)`).all() as unknown as { name: string; type: string }[];
+  return rows.find((r) => r.name === "step")?.type ?? null;
+}
+
 /**
  * `db migrate` — 표가 없으면 만든다. 이미 있으면 바뀐 것이 없다고 그대로 말한다(멱등).
  * DB 는 잃어도 되는 물건이라(spec §범위 밖 — 옛 16행은 버린다) 버전 이력 없이 지금 스키마에
  * 맞추는 이 한 자리로 충분하다.
+ *
+ * 🔴 **08 이 `step.step` 을 INTEGER → REAL 로 바꾼다.** SQLite 는 선언 타입이 INTEGER 여도
+ * 실수를 잃지 않고 담지만(타입 유사성), 스키마는 정직해야 하므로 옛 칸을 만나면 표를
+ * 통째로 다시 만든다 — 계획 DB 는 잃어도 되는 물건이라 옛 단계 값은 되살리지 않는다
+ * (spec §스키마 변경은 이미 있는 `db migrate` 가 받는다).
  */
 export function migratePlanDb(dataDir: string): SchemaMigrationResult {
-  open(dataDir).close();
-  return { addedColumns: [], droppedColumns: [] };
+  mkdirSync(dataDir, { recursive: true });
+  const db = new DatabaseSync(dbFile(dataDir));
+  try {
+    const before = declaredStepColumnType(db);
+    if (before !== null && before.toUpperCase() !== "REAL") {
+      db.exec(`DROP TABLE step`);
+      db.exec(SCHEMA_DDL);
+      return { addedColumns: [], droppedColumns: [`step.step (${before} → REAL, 옛 단계 값은 버렸다)`] };
+    }
+    db.exec(SCHEMA_DDL);
+    return { addedColumns: [], droppedColumns: [] };
+  } finally {
+    db.close();
+  }
 }
 
 interface PlacementRow {

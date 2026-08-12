@@ -59,6 +59,37 @@ describe("migratePlanDb — 표 둘(spec §저장 형태)", () => {
     migratePlanDb(dataDir);
     expect(migratePlanDb(dataDir)).toEqual({ addedColumns: [], droppedColumns: [] });
   });
+
+  test("🔴 08 — 옛 INTEGER `step.step` 칸을 만나면 REAL 로 다시 만든다", () => {
+    const db = new DatabaseSync(join(dataDir, "plan.db"));
+    db.exec(`
+      CREATE TABLE placement (
+        project TEXT NOT NULL, feature TEXT NOT NULL,
+        area TEXT NOT NULL CHECK (area IN ('active','reserved','discarded','done')),
+        seq INTEGER NOT NULL, closed_at TEXT, PRIMARY KEY (project, feature)
+      );
+      CREATE TABLE step (
+        project TEXT NOT NULL, feature TEXT NOT NULL, ticket TEXT NOT NULL,
+        step INTEGER NOT NULL, PRIMARY KEY (project, feature, ticket)
+      );
+    `);
+    db.prepare(`INSERT INTO step (project, feature, ticket, step) VALUES (?, ?, ?, ?)`).run(
+      "alpha",
+      "f",
+      "01-x",
+      1,
+    );
+    db.close();
+
+    const result = migratePlanDb(dataDir);
+    expect(result.droppedColumns).toHaveLength(1);
+    expect(result.droppedColumns[0]).toContain("INTEGER → REAL");
+    // 옛 단계 값은 잃어도 되는 물건이다(spec §범위 밖) — 표는 비어서 다시 시작한다.
+    expect(readSteps(dataDir, "alpha")).toEqual([]);
+    // 새 칸은 정수 아닌 값도 그대로 받는다.
+    writeStep(dataDir, "alpha", "f", "01-x", 1.5);
+    expect(readSteps(dataDir, "alpha")).toEqual([{ feature: "f", ticket: "01-x", step: 1.5 }]);
+  });
 });
 
 describe("readPlacements — 있는 행만 돌려준다", () => {
@@ -230,6 +261,11 @@ describe("writeStep / clearStep — firstmate 가 매기고 떼는 칸", () => {
   test("없던 행을 새로 매긴다", () => {
     writeStep(dataDir, "alpha", "f", "01-x", 1);
     expect(readSteps(dataDir, "alpha")).toEqual([{ feature: "f", ticket: "01-x", step: 1 }]);
+  });
+
+  test("🔴 08 — 실수 단계도 그대로 담는다(사이에 끼워 넣기)", () => {
+    writeStep(dataDir, "alpha", "f", "01-x", 1.5);
+    expect(readSteps(dataDir, "alpha")).toEqual([{ feature: "f", ticket: "01-x", step: 1.5 }]);
   });
 
   test("이미 있는 행은 덮어쓴다 — 두 번째 매김이 이긴다", () => {

@@ -1,32 +1,73 @@
-import { useState } from "react";
-import { groupProcessSteps, UNRANKED_STEP, type ProcessRow } from "@gootte/core/plan";
-import { usePlanBoard } from "../../lib/query";
+import { Fragment, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  pointerWithin,
+  rectIntersection,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { groupProcessSteps, UNRANKED_STEP, type ProcessRow, type ProcessStepGroup } from "@gootte/core/plan";
+import { usePlanBoard, useStepMove } from "../../lib/query";
 import { ticketDocPath } from "../plan/planDoc";
 import { featureDescription } from "../plan/cardTitle";
 import { DocDrawer } from "../features/DocDrawer";
 import { Loading, ErrorMsg } from "../common/states";
+import { dragId, findRow, parseDropTarget, ON_STEP_ID, GAP_ID, UNRANKED_ID } from "./dnd";
 
 interface ProcessViewProps {
   project: string;
 }
 
 /**
- * `process` 탭 — 작업 대상 티켓을 단계 순서로 줄 세운다(plan-board/07).
+ * 어디에 놓이는가 — `plan` 탭과 같은 순서(캡틴 지시): 포인터가 들어간 것 → 겹친 것 →
+ * 키보드 끌기처럼 포인터가 없을 때만 중심 거리(`PlanView.tsx` §어디에 놓이는가).
+ */
+const collideByPointer: CollisionDetection = (args) => {
+  const inside = pointerWithin(args);
+  if (inside.length > 0) return inside;
+  const overlapping = rectIntersection(args);
+  return overlapping.length > 0 ? overlapping : closestCenter(args);
+};
+
+const A11Y = {
+  screenReaderInstructions: {
+    draggable:
+      "스페이스바로 티켓을 집습니다. 집은 뒤에는 화살표 키로 옮기고, 스페이스바로 놓거나 Esc 로 되돌립니다.",
+  },
+};
+
+/**
+ * `process` 탭 — 작업 대상 티켓을 단계 순서로 줄 세우고(plan-board/07), 캡틴이 끌어 단계를
+ * 정한다(plan-board/08).
  *
  * 🔴 **단계 판정 자리는 그대로 하나다.** `groupProcessSteps`(core)가 서버가 이미 실어 보낸
  * 표시 단계(`PlanCard.steps`, plan-board/05)를 모아 줄 뿐이고, 여기서 다시 계산하지 않는다.
- * **기능별로 묶어 보여주는 것은 그 위의 화면 서식**이다(캡틴 지시 2026-08-12: "feature 단위로
- * 그룹을 만들어 표시하자, 이름을 회색 헤더로 두고 그 밑에 ticket을 두자") — 같은 단계 안에서는
- * 순서에 의미가 없어(spec §next, `step` 테이블에 우선순위 칸이 없다) 어차피 하나로 늘어놓으나
- * 기능별로 나누나 판정은 같다. 이미 `groupProcessSteps`가 기능 순으로 정렬해 주므로 여기서는
- * 그 정렬을 깨지 않고 이웃한 같은 기능 줄만 한 다발로 묶는다.
+ * 놓은 자리 → 저장 숫자 계산도 서버의 `placeStep`(core) 하나뿐이다 — 이 화면은 "어느 자리에
+ * 놓았다" 만 말한다(spec §놓은 자리를 저장 숫자로 옮기는 계산).
  *
- * 🔴 **읽기 전용** — 끌어 옮기기가 없다. 티켓 줄을 누르면 `features` 탭이 이미 쓰는 `DocDrawer`
- * 를 그대로 재사용해 원문을 연다(카드 대화상자, plan-board/03 과 같은 통로).
+ * 🔴 **끝난 티켓([x])은 집히지 않는다** — `useDraggable` 을 그 줄에서 끈다(캡틴 결정).
+ * 🔴 **놓을 때 검사하지 않는다**(INV-B3) — 놓은 자리를 서버로 그대로 보낼 뿐이다.
  */
 export function ProcessView({ project }: ProcessViewProps) {
   const { data, isLoading, isError, error } = usePlanBoard(project);
+  const stepMove = useStepMove(project);
   const [ticketDoc, setTicketDoc] = useState<{ feature: string; path: string } | null>(null);
+  const [dragging, setDragging] = useState<ProcessRow | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   if (isLoading) return <Loading label="순서를 읽는 중…" />;
   if (isError) return <ErrorMsg error={error} />;
@@ -36,55 +77,85 @@ export function ProcessView({ project }: ProcessViewProps) {
   // 이름 둘째 줄에 쓸 설명문구는 기능 표제에서 온다(plan 탭 BoardCard 와 같은 자리) — `steps`
   // 계산과 달리 core 의 판정이 아니라 화면 서식이라 여기서 조회한다(카드는 이미 있다, INV-1).
   const featureTitleOf = new Map(data.active.map((c) => [c.feature.slug, c.feature.title]));
+  const numbered = groups.filter((g) => g.step !== UNRANKED_STEP);
+  const unranked = groups.find((g) => g.step === UNRANKED_STEP);
+
+  const onDragStart = (e: DragStartEvent) => setDragging(findRow(groups, String(e.active.id)));
+
+  const onDragEnd = (e: DragEndEvent) => {
+    setDragging(null);
+    if (!e.over) return;
+    const target = parseDropTarget(String(e.over.id));
+    if (!target) return;
+    const row = findRow(groups, String(e.active.id));
+    if (!row) return;
+    stepMove.move({ feature: row.feature, ticket: row.ticket, target });
+  };
+
+  const openDoc = (row: ProcessRow) =>
+    setTicketDoc({ feature: row.feature, path: ticketDocPath({ slug: row.ticket }) });
 
   return (
-    <div className="@container h-full min-h-0 overflow-y-auto">
-      {groups.length === 0 ? (
-        <p className="text-base text-muted">작업 대상에 올라온 것이 없다</p>
-      ) : (
-        // `plan` 탭 칸(`CardList`)과 같은 격자 — 칸 폭에 따라 한 줄에 최대 세 묶음까지 나란히 선다.
-        <div className="grid grid-cols-1 items-start gap-4 @2xl:grid-cols-2 @5xl:grid-cols-3">
-          {groups.map((g) => (
-            <section
-              key={g.step}
-              aria-labelledby={`process-step-${g.step}`}
-              className="overflow-hidden rounded-lg border border-border bg-surface"
-            >
-              <header className="border-b border-border bg-surface-2/40 px-4 py-2">
-                <h2 id={`process-step-${g.step}`} className="mono font-medium tracking-tight">
-                  {g.step === UNRANKED_STEP ? "9999 — 아직 순서를 안 정했다" : `${g.step}단계`}
-                </h2>
-              </header>
-              {/* 기능 다발 사이는 선이 아니라 빈틈으로 나눈다(캡틴 지시) — 한 단계 안에서도 어느
-                  다발이 끝나고 다음 다발이 시작되는지 눈에 바로 잡히게. 틈의 크기는 티켓 한 줄
-                  높이(2.25rem = py-2 + text-sm 줄높이)와 같다. 🔴 첫 다발 앞에는 틈을 두지
-                  않는다 — `gap` 은 다발 *사이*에만 생기고, 바깥 padding 을 더 얹지 않는다. */}
-              <div className="flex flex-col gap-9">
-                {clusterByFeature(g.rows).map((cluster, i) => (
-                  <div key={cluster.feature}>
-                    <FeatureHeader
-                      feature={cluster.feature}
-                      title={featureTitleOf.get(cluster.feature) ?? cluster.feature}
-                      first={i === 0}
-                    />
-                    <ul className="divide-y divide-border/30">
-                      {cluster.rows.map((row) => (
-                        <ProcessTicketLine
-                          key={`${row.feature}/${row.ticket}`}
-                          row={row}
-                          onOpen={() =>
-                            setTicketDoc({ feature: row.feature, path: ticketDocPath({ slug: row.ticket }) })
-                          }
-                        />
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
+    <DndContext
+      accessibility={A11Y}
+      sensors={sensors}
+      collisionDetection={collideByPointer}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragCancel={() => setDragging(null)}
+    >
+      <div className="@container h-full min-h-0 overflow-y-auto">
+        {groups.length === 0 ? (
+          <p className="text-base text-muted">작업 대상에 올라온 것이 없다</p>
+        ) : (
+          // `plan` 탭 칸(`CardList`)과 같은 격자 — 칸 폭에 따라 한 줄에 최대 세 묶음까지 나란히 선다.
+          // 틈(`GapZone`) 은 `col-span-full` 로 격자를 가로질러 언제나 한 줄 전체를 차지한다 —
+          // 몇 칸짜리 줄에서 놓아도 "번호 매겨진 단계들 사이" 라는 뜻이 흐트러지지 않게.
+          <div className="grid grid-cols-1 items-start gap-4 @2xl:grid-cols-2 @5xl:grid-cols-3">
+            {numbered.length === 0 && unranked && (
+              <GapZone index={0} dragging={dragging !== null} hint="여기에 놓으면 새 단계가 생긴다" />
+            )}
+            {numbered.map((g, i) => (
+              <Fragment key={g.step}>
+                {i === 0 && (
+                  <GapZone index={0} dragging={dragging !== null} hint="여기에 놓으면 새 단계가 맨 앞에 생긴다" />
+                )}
+                <StepSection
+                  group={g}
+                  featureTitleOf={featureTitleOf}
+                  dragging={dragging}
+                  onOpen={openDoc}
+                />
+                <GapZone
+                  index={i + 1}
+                  dragging={dragging !== null}
+                  hint={
+                    i + 1 < numbered.length
+                      ? "여기에 놓으면 사이에 새 단계가 생긴다"
+                      : "여기에 놓으면 번호 매겨진 단계들 맨 뒤에 새 단계가 생긴다"
+                  }
+                />
+              </Fragment>
+            ))}
+            {unranked && (
+              <StepSection
+                group={unranked}
+                featureTitleOf={featureTitleOf}
+                dragging={dragging}
+                onOpen={openDoc}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      <DragOverlay>
+        {dragging && (
+          <div className="mono w-[min(360px,80vw)] rounded-md border border-accent/40 bg-surface px-3 py-1.5 text-sm shadow-lg">
+            {dragging.num} {dragging.title}
+          </div>
+        )}
+      </DragOverlay>
 
       <DocDrawer
         project={project}
@@ -92,7 +163,89 @@ export function ProcessView({ project }: ProcessViewProps) {
         path={ticketDoc?.path ?? null}
         onClose={() => setTicketDoc(null)}
       />
+    </DndContext>
+  );
+}
+
+/**
+ * 놓을 수 있는 틈 — 번호 매겨진 단계들 **사이**, 그리고 그 앞·뒤(spec §놓을 수 있는 자리).
+ * 🔴 안 끌고 있을 때는 얇게 접혀 있다가, 끄는 동안 눈에 띄게 펼쳐진다(캡틴 확인 §보여야 할 것:
+ * "놓을 수 있는 자리가 집기 전에 눈에 보이는가").
+ */
+function GapZone({ index, dragging, hint }: { index: number; dragging: boolean; hint: string }) {
+  const { isOver, setNodeRef } = useDroppable({ id: GAP_ID(index) });
+  return (
+    <div
+      ref={setNodeRef}
+      role="note"
+      aria-label={hint}
+      className={`col-span-full flex items-center justify-center rounded-md border-2 border-dashed transition-all ${
+        dragging
+          ? isOver
+            ? "h-9 border-accent bg-accent/10 text-sm text-accent"
+            : "h-3 border-border/60 text-transparent"
+          : "h-0 overflow-hidden border-transparent"
+      }`}
+    >
+      {dragging && isOver && hint}
     </div>
+  );
+}
+
+/** 단계 묶음 하나 — 통째로 **놓을 자리**다(9999 무더기 포함, "이미 있는 단계 위"). */
+function StepSection({
+  group,
+  featureTitleOf,
+  dragging,
+  onOpen,
+}: {
+  group: ProcessStepGroup;
+  featureTitleOf: ReadonlyMap<string, string>;
+  dragging: ProcessRow | null;
+  onOpen: (row: ProcessRow) => void;
+}) {
+  const unranked = group.step === UNRANKED_STEP;
+  const { isOver, setNodeRef } = useDroppable({
+    id: unranked ? UNRANKED_ID : ON_STEP_ID(group.step),
+  });
+  return (
+    <section
+      ref={setNodeRef}
+      aria-labelledby={`process-step-${group.step}`}
+      className={`overflow-hidden rounded-lg border bg-surface transition-colors ${
+        dragging && isOver ? "border-accent ring-2 ring-accent/40" : "border-border"
+      }`}
+    >
+      <header className="border-b border-border bg-surface-2/40 px-4 py-2">
+        <h2 id={`process-step-${group.step}`} className="mono font-medium tracking-tight">
+          {unranked ? "9999 — 아직 순서를 안 정했다" : `${group.step}단계`}
+        </h2>
+      </header>
+      {/* 기능 다발 사이는 선이 아니라 빈틈으로 나눈다(캡틴 지시) — 한 단계 안에서도 어느
+          다발이 끝나고 다음 다발이 시작되는지 눈에 바로 잡히게. 틈의 크기는 티켓 한 줄
+          높이(2.25rem = py-2 + text-sm 줄높이)와 같다. 🔴 첫 다발 앞에는 틈을 두지
+          않는다 — `gap` 은 다발 *사이*에만 생기고, 바깥 padding 을 더 얹지 않는다. */}
+      <div className="flex flex-col gap-9">
+        {clusterByFeature(group.rows).map((cluster, i) => (
+          <div key={cluster.feature}>
+            <FeatureHeader
+              feature={cluster.feature}
+              title={featureTitleOf.get(cluster.feature) ?? cluster.feature}
+              first={i === 0}
+            />
+            <ul className="divide-y divide-border/30">
+              {cluster.rows.map((row) => (
+                <ProcessTicketLine
+                  key={`${row.feature}/${row.ticket}`}
+                  row={row}
+                  onOpen={() => onOpen(row)}
+                />
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -137,14 +290,30 @@ function FeatureHeader({ feature, title, first }: { feature: string; title: stri
   );
 }
 
-/** 티켓 한 줄 — 상자는 **제 칸**을 갖는다(캡틴 지시). 기능 이름은 다발 머리가 이미 말하므로 여기서는 상자·번호·제목만 선다. */
+/**
+ * 티켓 한 줄 — 상자는 **제 칸**을 갖는다(캡틴 지시). 기능 이름은 다발 머리가 이미 말하므로 여기서는
+ * 상자·번호·제목만 선다.
+ *
+ * 🔴 **끝난 티켓([x])은 집히지 않는다**(캡틴 결정) — `useDraggable` 을 그 줄에서 끈다. 누르면
+ * 여는 동작(`onOpen`)은 그대로 남는다 — 6px 못 넘긴 손짓은 dnd-kit 이 클릭으로 넘긴다(`plan`
+ * 탭 카드와 같은 요령).
+ */
 function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: dragId(row.feature, row.ticket),
+    disabled: row.checked,
+  });
   return (
-    <li>
+    <li className={isDragging ? "opacity-30" : ""}>
       <button
+        ref={setNodeRef}
         type="button"
         onClick={onOpen}
-        className="grid w-full grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-2.5 px-4 py-2 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+        {...attributes}
+        {...listeners}
+        className={`grid w-full grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-2.5 px-4 py-2 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+          row.checked ? "" : "cursor-grab active:cursor-grabbing"
+        }`}
       >
         <span
           className={`col-start-1 mono shrink-0 text-sm ${row.checked ? "text-accent" : "text-muted"}`}

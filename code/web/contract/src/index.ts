@@ -305,3 +305,31 @@ export const PlanMoveRequest = z.object({
   index: z.number().int().nonnegative().default(0),
 });
 export type PlanMoveRequest = z.infer<typeof PlanMoveRequest>;
+
+/**
+ * 캡틴이 `process` 탭에서 티켓을 끌어 놓은 자리(plan-board/08). **저장 숫자는 여기 실리지
+ * 않는다** — 화면은 "어느 자리에 놓았다" 만 말하고, 저장 숫자는 서버의 `placeStep`(core) 하나가
+ * 정한다(spec §놓은 자리를 저장 숫자로 옮기는 계산). 세 가지 자리뿐이다(spec §놓을 수 있는 자리).
+ */
+export const StepDropTarget = z.discriminatedUnion("kind", [
+  /** 이미 있는 표시 단계(1-based) 위. */
+  z.object({ kind: z.literal("onStep"), displayStep: z.number().int().positive() }),
+  /** 번호 매겨진 표시 단계들 사이의 틈 — `index` 는 그 틈 앞의 표시 단계 수(0 = 맨 앞). */
+  z.object({ kind: z.literal("gap"), index: z.number().int().nonnegative() }),
+  /** `9999` 무더기 위. */
+  z.object({ kind: z.literal("unranked") }),
+]);
+export type StepDropTarget = z.infer<typeof StepDropTarget>;
+
+/**
+ * 캡틴이 `process` 탭에서 끈 티켓 하나 → 놓은 자리(plan-board/08).
+ *
+ * 🔴 **놓을 수 있는지 검사하지 않는다**(INV-B3) — 경계(backend)가 거절하는 것은 문서가 없는
+ * 기능·티켓 이름과 작업 대상 밖 기능뿐이다.
+ */
+export const StepMoveRequest = z.object({
+  feature: z.string().min(1),
+  ticket: z.string().min(1),
+  target: StepDropTarget,
+});
+export type StepMoveRequest = z.infer<typeof StepMoveRequest>;

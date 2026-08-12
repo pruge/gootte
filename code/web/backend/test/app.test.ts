@@ -469,6 +469,136 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
         expect(res.status).toBe(404);
       }));
   });
+
+  /**
+   * 캡틴이 `process` 탭에서 티켓을 끌어 단계를 정한다(plan-board/08).
+   * 놓은 자리 → 저장 숫자 계산 자체는 `core/src/plan/step.test.ts` 가 덮는다. 여기서 보는 것은
+   * **라우트가 그 함수와 `writeStep`(cli 와 같은 쓰기 자리)을 잇고, 새 판을 다시 읽어 돌려주는가**다.
+   */
+  describe("POST /api/plan/:slug/step — 캡틴이 끌어 단계를 정한다", () => {
+    const app = (dataDir: string) => createApp({ ...APP, dataDir });
+    const post = (dataDir: string, body: unknown, slug = "alpha") =>
+      app(dataDir).request(`/api/plan/${slug}/step`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const board = async (res: Response) => PlanBoardResponse.parse(await res.json());
+
+    // 🔴 auth-login 01-session 은 fixture 상 `resolved` — 완료 티켓이라 표시 계산에서 걷힌다.
+    // 그래서 이동 시나리오는 02-screen · 03-social(auth-login) · 01-a(doc-tree) 셋을 쓴다.
+
+    test("이미 있는 단계 위에 놓으면 그 단계의 저장 숫자를 그대로 받는다", () =>
+      withDataDir(async (dataDir) => {
+        place(dataDir, "auth-login", "active", 0);
+        place(dataDir, "doc-tree", "active", 1);
+        writeStep(dataDir, "alpha", "auth-login", "02-screen", 1);
+        writeStep(dataDir, "alpha", "auth-login", "03-social", 2);
+        const res = await post(dataDir, {
+          feature: "doc-tree",
+          ticket: "01-a",
+          target: { kind: "onStep", displayStep: 2 },
+        });
+        expect(res.status).toBe(200);
+        expect(readSteps(dataDir, "alpha")).toEqual(
+          expect.arrayContaining([{ feature: "doc-tree", ticket: "01-a", step: 2 }]),
+        );
+      }));
+
+    test("단계와 단계 사이에 놓으면 새 단계가 생기고, 다른 티켓의 저장 숫자는 바뀌지 않는다", () =>
+      withDataDir(async (dataDir) => {
+        place(dataDir, "auth-login", "active", 0);
+        place(dataDir, "doc-tree", "active", 1);
+        writeStep(dataDir, "alpha", "auth-login", "02-screen", 1);
+        writeStep(dataDir, "alpha", "auth-login", "03-social", 2);
+        const before = readSteps(dataDir, "alpha");
+        const res = await post(dataDir, {
+          feature: "doc-tree",
+          ticket: "01-a",
+          target: { kind: "gap", index: 1 },
+        });
+        const body = await board(res);
+        const auth = body.active.find((c) => c.feature.slug === "auth-login");
+        const doc = body.active.find((c) => c.feature.slug === "doc-tree");
+        expect(auth?.steps).toEqual({ "02-screen": 1, "03-social": 3 });
+        expect(doc?.steps).toEqual({ "01-a": 2 });
+        // 사이에 끼워 넣어도 원래 있던 행 둘은 저장 숫자가 그대로다.
+        expect(readSteps(dataDir, "alpha")).toEqual(
+          expect.arrayContaining(before.map((s) => expect.objectContaining(s))),
+        );
+      }));
+
+    test("9999 무더기 위로 되돌릴 수 있다", () =>
+      withDataDir(async (dataDir) => {
+        place(dataDir, "auth-login", "active", 0);
+        writeStep(dataDir, "alpha", "auth-login", "02-screen", 1);
+        const res = await post(dataDir, {
+          feature: "auth-login",
+          ticket: "02-screen",
+          target: { kind: "unranked" },
+        });
+        expect(res.status).toBe(200);
+        expect(readSteps(dataDir, "alpha")).toEqual([
+          { feature: "auth-login", ticket: "02-screen", step: 9999 },
+        ]);
+      }));
+
+    test("🔴 옮겨도 관리대상에는 한 글자도 쓰지 않는다(INV-2)", () =>
+      withDataDir(async (dataDir) => {
+        place(dataDir, "auth-login", "active", 0);
+        const before = treeSnapshot(FIXTURES);
+        await post(dataDir, {
+          feature: "auth-login",
+          ticket: "02-screen",
+          target: { kind: "gap", index: 0 },
+        });
+        expect(treeSnapshot(FIXTURES)).toEqual(before);
+      }));
+
+    test("문서가 없는 기능 이름은 400", () =>
+      withDataDir(async (dataDir) => {
+        const res = await post(dataDir, {
+          feature: "ghost",
+          ticket: "01-x",
+          target: { kind: "unranked" },
+        });
+        expect(res.status).toBe(400);
+        expect(ApiError.parse(await res.json()).error).toContain("ghost");
+      }));
+
+    test("문서가 없는 티켓 이름은 400", () =>
+      withDataDir(async (dataDir) => {
+        place(dataDir, "auth-login", "active", 0);
+        const res = await post(dataDir, {
+          feature: "auth-login",
+          ticket: "99-ghost",
+          target: { kind: "unranked" },
+        });
+        expect(res.status).toBe(400);
+        expect(ApiError.parse(await res.json()).error).toContain("99-ghost");
+      }));
+
+    test("작업 대상 밖의 기능은 400", () =>
+      withDataDir(async (dataDir) => {
+        const res = await post(dataDir, {
+          feature: "auth-login",
+          ticket: "01-session",
+          target: { kind: "unranked" },
+        });
+        expect(res.status).toBe(400);
+        expect(ApiError.parse(await res.json()).error).toContain("auth-login");
+      }));
+
+    test("미해소 slug → 404 ApiError", () =>
+      withDataDir(async (dataDir) => {
+        const res = await post(
+          dataDir,
+          { feature: "auth-login", ticket: "01-session", target: { kind: "unranked" } },
+          "nope",
+        );
+        expect(res.status).toBe(404);
+      }));
+  });
 });
 
 describe("discover 캐시 (W2)", () => {

@@ -1,9 +1,16 @@
 import { useCallback } from "react";
 import { flushSync } from "react-dom";
 import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PlanBoardResponse, PlanMoveRequest } from "@gootte/contract";
+import type { PlanBoardResponse, PlanMoveRequest, StepMoveRequest } from "@gootte/contract";
 import { applyMoveToBoard } from "../components/plan/areas";
-import { fetchProjects, fetchFeatures, fetchFeatureDoc, fetchPlanBoard, movePlanCards } from "./api";
+import {
+  fetchProjects,
+  fetchFeatures,
+  fetchFeatureDoc,
+  fetchPlanBoard,
+  movePlanCards,
+  moveStep,
+} from "./api";
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
 export function makeQueryClient(): QueryClient {
@@ -88,6 +95,23 @@ export function usePlanMove(slug: string) {
   );
 
   return { move, isError: mutation.isError, error: mutation.error };
+}
+
+/**
+ * 캡틴이 `process` 탭에서 티켓을 끌어 단계를 정한다(plan-board/08).
+ *
+ * 🔴 `plan` 탭의 `usePlanMove` 와 달리 놓는 동안의 연출 프레임이 없다 — process 탭은 카드가
+ * 칸을 오가지 않고 그룹 안에서 줄이 있던 위치를 다시 그릴 뿐이라, 서버가 다시 가른 판을 그대로
+ * 앉히는 것으로 충분하다(INV-1·INV-3). 실패하면 이전 판이 그대로 남는다 — 캐시를 손대지
+ * 않았으므로 되돌릴 것도 없다.
+ */
+export function useStepMove(slug: string) {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (request: StepMoveRequest) => moveStep(slug, request),
+    onSuccess: (board) => qc.setQueryData(qk.plan(slug), board),
+  });
+  return { move: mutation.mutate, isError: mutation.isError, error: mutation.error };
 }
 
 /** 드로어에 연 기능 문서 본문 — 셋 다 있어야 fetch(카드 트리에서 문서를 눌렀을 때만). */
