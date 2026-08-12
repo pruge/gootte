@@ -110,7 +110,7 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 | `pnpm test:ports` | 포트 해석기 테스트만 (`scripts/tests/ports.test.sh`) | 에이전트 가능 |
 | `pnpm discover <root>` | 로컬 관리대상 프로젝트 발견 · 읽기 전용 | 에이전트 가능 |
 | `pnpm gootte discover <…>` | 같은 것을 CLI 로 직접 호출 | 에이전트 가능 |
-| `pnpm gootte set\|set-feature\|drop\|order\|next <…>` | 개발 순서 계획(INV-5) — 인자는 `code/web/cli/src/commands.ts` 가 SoT | planner·에이전트 가능 |
+| `pnpm gootte next <프로젝트>` | 자리만 비워 둔 상태 — "아직 없다"고 답한다(plan-board/01·05) | 에이전트 가능 |
 | `pnpm dev:backend` | Hono API dev 서버 (`scripts/dev-backend.sh` → `tsx watch`) | **사용자가 띄운다** |
 | `pnpm dev:frontend` | Vite dev 서버 (`scripts/dev-frontend.sh`, `/api` → backend 프록시) | **사용자가 띄운다** |
 | `pnpm dev` | backend + frontend 동시 (`scripts/dev.sh`) | **사용자가 띄운다** |
