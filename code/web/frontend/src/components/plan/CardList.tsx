@@ -13,6 +13,8 @@ interface CardListProps {
   /** 지금 끌고 있는 카드가 이 칸으로 향하고 있다 — 칸 **전체**가 그렇다고 말한다. */
   highlighted?: boolean;
   onToggleSelect: (areaId: BoardAreaId, slug: string) => void;
+  /** 머리글을 누르면 티켓 목록이 대화상자로 열린다(캡틴 결정). */
+  onOpenCard: (slug: string) => void;
   onOpenDoc: (slug: string) => void;
   onRequestMove: (areaId: BoardAreaId, slug: string) => void;
 }
@@ -31,7 +33,8 @@ interface CardListProps {
  *
  * 칸 수는 **화면 폭이 아니라 이 칸의 폭**이 정한다(`@container`) — 판은 사이드바 옆에 있어
  * 창 크기와 칸 폭이 같지 않다. 뷰포트로 재면 사이드바를 접었을 때 칸이 넓어져도 그대로 있다.
- * 접힌 카드는 높이가 같아 줄이 가지런하고, 하나를 펼쳐도 `items-start` 라 옆 카드가 늘어나지 않는다.
+ * 카드는 전부 머리만 보여 높이가 같고, 티켓 목록은 대화상자가 맡는다(캡틴 결정) — 칸이 작아
+ * 펼친 줄이 밖으로 밀려 나가던 문제가 여기서 사라진다.
  */
 export function CardList({
   areaId,
@@ -40,6 +43,7 @@ export function CardList({
   selected,
   highlighted = false,
   onToggleSelect,
+  onOpenCard,
   onOpenDoc,
   onRequestMove,
 }: CardListProps) {
@@ -69,6 +73,7 @@ export function CardList({
                 card={c}
                 selected={selected.has(c.feature.slug)}
                 onToggleSelect={(slug) => onToggleSelect(areaId, slug)}
+                onOpenCard={onOpenCard}
                 onOpenDoc={onOpenDoc}
                 onRequestMove={(slug) => onRequestMove(areaId, slug)}
               />

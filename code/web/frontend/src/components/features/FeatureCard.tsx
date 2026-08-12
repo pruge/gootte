@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Feature } from "@gootte/contract";
+import { featureDescription } from "../plan/cardTitle";
 import { FeatureTree, type OpenDocFn } from "./FeatureTree";
 
 /** 남은 일 / 완료 / 착수 가능 / 처리중 세기 — 서버가 준 값을 세기만 한다(재계산 X, INV-1). */
@@ -35,6 +36,9 @@ export function FeatureCard({ feature, onOpenDoc, onGoToPlan }: FeatureCardProps
   const [expanded, setExpanded] = useState(false);
   const { done, open, startable, working } = counts(feature);
   const headingId = `feature-${feature.slug}-heading`;
+  // spec 표제가 `<기능 이름> — <설명>` 꼴이면 뒤의 슬러그 배지와 이름이 겹친다 — 앞의 겹친
+  // 부분만 뗀다(INV-4, `plan` 탭 카드와 같은 규칙·같은 함수). 뗄 것이 없으면 표제 그대로다.
+  const title = featureDescription(feature.title, feature.slug) || feature.title;
 
   return (
     <section className="shrink-0 overflow-hidden rounded-lg border border-border bg-surface">
@@ -46,7 +50,7 @@ export function FeatureCard({ feature, onOpenDoc, onGoToPlan }: FeatureCardProps
           className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-left"
         >
           <h2 id={headingId} className="font-medium tracking-tight">
-            {feature.title}
+            {title}
           </h2>
           <span className="mono text-sm text-muted">{feature.slug}</span>
           {feature.sourceStatus && (

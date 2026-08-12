@@ -20,7 +20,9 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type { PlanBoardResponse, PlanCard } from "@gootte/contract";
 import { usePlanBoard, usePlanMove } from "../../lib/query";
 import { Loading, ErrorMsg } from "../common/states";
+import { DocDrawer } from "../features/DocDrawer";
 import { BoardCard } from "./BoardCard";
+import { CardDialog } from "./CardDialog";
 import { CardList } from "./CardList";
 import { MoveDialog } from "./MoveDialog";
 import { featureDocPath } from "./planDoc";
@@ -183,6 +185,12 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
   // 지금 향하고 있는 칸 — 그 칸 **전체**와 그 탭 머리가 함께 밝아진다(캡틴 지시).
   const [overArea, setOverArea] = useState<BoardAreaId | null>(null);
   const [dialog, setDialog] = useState<{ area: BoardAreaId; slugs: string[] } | null>(null);
+  // 펼쳐 보고 있는 카드 — 판이 다시 그려져도 이름 하나만 들고 있으면 되고, 저장하지 않는다.
+  const [opened, setOpened] = useState<string | null>(null);
+  // 카드 대화상자에서 연 티켓 원문 — 새 문서 뷰어를 짓지 않고 `features` 탭의 `DocDrawer` 를
+  // 그대로 재사용한다(캡틴 결정 2026-08-12). 탭은 그대로 `plan` 에 머문다 — 문서 아이콘(03)과
+  // 달리 이 길은 판을 떠나지 않는다.
+  const [ticketDoc, setTicketDoc] = useState<{ feature: string; path: string } | null>(null);
 
   const sensors = useSensors(
     // 6px 움직여야 끌기 — 그 아래는 클릭이라 머리글 토글과 아이콘 둘이 그대로 눌린다.
@@ -312,6 +320,7 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
             highlighted={overArea === "active"}
             selected={picked.area === "active" ? pickedSet : EMPTY_SET}
             onToggleSelect={toggleSelect}
+            onOpenCard={setOpened}
             onOpenDoc={openDoc}
             onRequestMove={(area, slug) => setDialog({ area, slugs: bundleFor(area, slug) })}
           />
@@ -347,6 +356,7 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
               highlighted={overArea === current.id}
               selected={picked.area === current.id ? pickedSet : EMPTY_SET}
               onToggleSelect={toggleSelect}
+              onOpenCard={setOpened}
               onOpenDoc={openDoc}
               onRequestMove={(area, slug) => setDialog({ area, slugs: bundleFor(area, slug) })}
             />
@@ -370,6 +380,25 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
           </div>
         )}
       </DragOverlay>
+
+      {/* 🔴 펼친 카드는 **판이 아니라 판 위**에 뜬다 — 아래 칸은 카드 2.5줄로 못 박혀 있어(02)
+          제자리에서 펼치면 티켓 몇 장만 돼도 칸 밖으로 밀렸다(캡틴 지적). 창은 늘 지금 판의 카드를
+          그린다 — 문서가 바뀌면 열어 둔 채로도 상자가 따라 채워진다(INV-3). */}
+      {opened && cardOf(opened) && (
+        <CardDialog
+          card={cardOf(opened) as PlanCard}
+          onClose={() => setOpened(null)}
+          onOpenTicket={(path) => setTicketDoc({ feature: opened, path })}
+        />
+      )}
+
+      {/* 대화상자 위에 뜬다(DOM 순서 뒤 = 위 레이어) — 닫으면 티켓 목록으로 그대로 돌아간다. */}
+      <DocDrawer
+        project={project}
+        featureSlug={ticketDoc?.feature ?? null}
+        path={ticketDoc?.path ?? null}
+        onClose={() => setTicketDoc(null)}
+      />
 
       {dialog && (
         <MoveDialog

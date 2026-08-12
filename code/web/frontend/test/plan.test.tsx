@@ -1,12 +1,18 @@
 import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { Feature, PlanBoardResponse, PlanCard } from "@gootte/contract";
+import type { Feature, FeatureTicket, PlanBoardResponse, PlanCard } from "@gootte/contract";
 import { PlanView } from "../src/components/plan/PlanView";
 import { qk } from "../src/lib/query";
 
+/**
+ * 티켓 한 장 — `[번호, 제목]` 이면 미완이고, 상태와 완료일까지 주면 문서가 그렇게 말하는 것이다.
+ * 🔴 상자 값은 여기 없다 — 상자는 이 상태에서 **계산된다**(04, `ticketChecked`).
+ */
+type TicketSpec = [num: string, title: string, status?: FeatureTicket["status"], completedAt?: string];
+
 /** 서버가 이미 다섯 칸으로 갈라 보낸 값 — 화면은 다시 가르지 않는다(spec §판정 자리는 하나뿐). */
-function feature(slug: string, tickets: [string, string][] = []): Feature {
+function feature(slug: string, tickets: TicketSpec[] = []): Feature {
   return {
     slug,
     title: `${slug} — 제목`,
@@ -14,13 +20,14 @@ function feature(slug: string, tickets: [string, string][] = []): Feature {
     sourceStatus: "draft",
     statusKnown: true,
     docs: [{ kind: "file", name: "spec.md", path: "spec.md" }],
-    tickets: tickets.map(([num, title]) => ({
+    tickets: tickets.map(([num, title, status = "pending", completedAt]) => ({
       num,
       slug: `${num}-x`,
       title,
-      status: "pending",
-      sourceStatus: "draft",
+      status,
+      sourceStatus: status === "done" ? `resolved (${completedAt})` : status === "dropped" ? "wontfix" : "draft",
       statusKnown: true,
+      ...(completedAt ? { completedAt } : {}),
       blockedBy: [],
       unreadableBlockedBy: [],
       waitingOn: [],
@@ -68,12 +75,21 @@ function renderBoard(board: PlanBoardResponse) {
 /** 아래 칸의 탭 하나를 눌러 그 칸을 연다. */
 const openTab = (label: string) => fireEvent.click(screen.getByRole("tab", { name: new RegExp(label) }));
 
-/** 카드는 기본 접혀 있다(캡틴 결정) — 티켓 줄을 보려면 머리글을 눌러 편다. */
-const openCard = (title: string) => {
-  const card = screen.getByRole("article", { name: title });
-  fireEvent.click(within(card).getByRole("button", { expanded: false }));
-  return card;
+/** 카드 머리 단추 — 아이콘 둘과 형제라 이름으로 가른다(머리에만 티켓 수가 붙어 있다). */
+const cardHeader = (title: string): HTMLElement =>
+  within(screen.getByRole("article", { name: title })).getByRole("button", { name: /티켓 \d/ });
+
+/**
+ * 판에는 카드 머리만 보인다(캡틴 결정) — 티켓 목록은 머리글을 눌러 **대화상자로** 연다.
+ * 돌려주는 것은 카드가 아니라 그 창이다.
+ */
+const openCard = (title: string): HTMLElement => {
+  fireEvent.click(cardHeader(title));
+  return screen.getByRole("dialog");
 };
+
+/** 창의 `확인` — 캡틴이 닫는 길(대화상자 닫기 단추·ESC 와 같은 자리로 간다). */
+const confirmDialog = () => fireEvent.click(screen.getByRole("button", { name: "확인" }));
 
 describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
   it("다섯 칸이 그려진다 — 위 작업 대상 하나, 아래 네 탭", () => {
@@ -104,43 +120,52 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     expect(within(only).getByText("bare")).toBeInTheDocument();
   });
 
-  it("🔴 카드는 기본 접혀 있다 — 티켓 줄은 안 보이고 티켓 수는 머리에 남는다(캡틴 결정)", () => {
+  it("🔴 판에는 카드 머리만 보인다 — 티켓 줄은 없고 티켓 수는 머리에 남는다(캡틴 결정)", () => {
     renderBoard({
       ...EMPTY_BOARD,
       waiting: [card(feature("auth-login", [["01", "세션 발급"], ["02", "로그인 화면"]]))],
     });
     const card1 = screen.getByRole("article", { name: "auth-login 제목" });
-    expect(within(card1).getByRole("button", { expanded: false })).toBeInTheDocument();
     expect(within(card1).queryByText("세션 발급")).toBeNull();
-    // 접혀 있어도 카드가 제 크기를 말한다.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // 머리만 보여도 카드가 제 크기를 말한다.
     expect(within(card1).getByText("티켓 2")).toBeInTheDocument();
   });
 
-  it("머리글을 누르면 열려 티켓들이 줄로 보인다 — 문서에서 온 값이다(INV-5)", () => {
+  it("머리글을 누르면 대화상자가 떠 티켓들이 줄로 보인다 — 문서에서 온 값이다(INV-5)", () => {
     renderBoard({
       ...EMPTY_BOARD,
       waiting: [card(feature("auth-login", [["01", "세션 발급"], ["02", "로그인 화면"]]))],
     });
-    const card1 = openCard("auth-login 제목");
-    expect(within(card1).getByRole("button", { expanded: true })).toBeInTheDocument();
-    expect(within(card1).getByText("세션 발급")).toBeInTheDocument();
-    expect(within(card1).getByText("로그인 화면")).toBeInTheDocument();
+    const opened = openCard("auth-login 제목");
+    expect(within(opened).getByText("세션 발급")).toBeInTheDocument();
+    expect(within(opened).getByText("로그인 화면")).toBeInTheDocument();
+    // 창은 카드가 이고 있던 것을 그대로 이어 받는다 — 열었다고 사실이 사라지지 않게.
+    expect(within(opened).getByText("티켓 2")).toBeInTheDocument();
   });
 
-  it("다시 누르면 도로 접힌다 — 접힘은 화면의 상태일 뿐 저장되지 않는다", () => {
+  it("확인을 누르면 창이 닫힌다 — 열림은 화면의 상태일 뿐 저장되지 않는다(캡틴 결정)", () => {
     renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("auth-login", [["01", "세션 발급"]]))] });
-    const card1 = openCard("auth-login 제목");
-    fireEvent.click(within(card1).getByRole("button", { expanded: true }));
-    expect(within(card1).queryByText("세션 발급")).toBeNull();
+    openCard("auth-login 제목");
+    confirmDialog();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("세션 발급")).toBeNull();
   });
 
-  it("한 카드를 열어도 옆 카드는 접힌 채로 남는다", () => {
+  it("ESC 로도 닫힌다 — 창 하나에 닫는 길이 확인·ESC·바깥 누르기 셋이다", () => {
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("auth-login", [["01", "세션 발급"]]))] });
+    openCard("auth-login 제목");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("한 카드를 열면 그 카드의 티켓만 보인다 — 옆 카드가 딸려 열리지 않는다", () => {
     renderBoard({
       ...EMPTY_BOARD,
       waiting: [card(feature("a", [["01", "가 티켓"]])), card(feature("b", [["01", "나 티켓"]]))],
     });
-    openCard("a 제목");
-    expect(screen.getByText("가 티켓")).toBeInTheDocument();
+    const opened = openCard("a 제목");
+    expect(within(opened).getByText("가 티켓")).toBeInTheDocument();
     expect(screen.queryByText("나 티켓")).toBeNull();
   });
 
@@ -175,7 +200,8 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     openTab("완료");
     const done = screen.getByRole("article", { name: "shipped 제목" });
     // 닫힌 시각은 문서에 없는 값이라 계획 DB 가 갖는다(INV-5) — 접힌 머리에서도 보인다.
-    expect(within(done).getByText("2026-08-12T09:30:00+09:00")).toBeInTheDocument();
+    // 무엇의 시각인지 이름표를 달고 선다(04) — 문서의 완료 날짜와 나란히 서기 때문이다.
+    expect(within(done).getByText("닫힘 2026-08-12T09:30:00+09:00")).toBeInTheDocument();
   });
 
   it("각 탭이 자기 칸의 카드 수를 달고 있다 — 화면이 세지 않고 목록 길이를 읽는다", () => {
@@ -191,8 +217,8 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
   it("티켓이 없는 기능도 카드로 뜨고, 열면 없다고 말한다 — 감추면 화면이 거짓말한다", () => {
     renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("no-tickets"))] });
     expect(screen.getByRole("article", { name: "no-tickets 제목" })).toBeInTheDocument();
-    const only = openCard("no-tickets 제목");
-    expect(within(only).getByText("티켓이 없습니다.")).toBeInTheDocument();
+    const opened = openCard("no-tickets 제목");
+    expect(within(opened).getByText("티켓이 없습니다.")).toBeInTheDocument();
   });
 
   it("빈 판도 다섯 칸이 그대로 서 있다 — 칸이 사라지지 않는다", () => {
@@ -300,12 +326,8 @@ describe("PlanView — 카드 머리 아이콘 둘과 이동 대화상자(plan-b
 
   it("⌘+클릭으로 여러 장을 고르면 한 번에 옮겨진다(캡틴 제안 2)", async () => {
     renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("a")), card(feature("b"))] });
-    fireEvent.click(within(cardOf("a 제목")).getByRole("button", { expanded: false }), {
-      metaKey: true,
-    });
-    fireEvent.click(within(cardOf("b 제목")).getByRole("button", { expanded: false }), {
-      metaKey: true,
-    });
+    fireEvent.click(cardHeader("a 제목"), { metaKey: true });
+    fireEvent.click(cardHeader("b 제목"), { metaKey: true });
     // 고른 것은 눈에 보인다 — 몇 장인지 화면이 말한다.
     expect(screen.getByText(/대기 2장 고름/)).toBeInTheDocument();
 
@@ -315,11 +337,10 @@ describe("PlanView — 카드 머리 아이콘 둘과 이동 대화상자(plan-b
     expect(sent().features).toEqual(["a", "b"]);
   });
 
-  it("⌘+클릭은 카드를 펼치지 않는다 — 고르는 것과 여는 것이 섞이지 않는다", () => {
+  it("⌘+클릭은 카드를 열지 않는다 — 고르는 것과 여는 것이 섞이지 않는다", () => {
     renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("a", [["01", "티켓 하나"]]))] });
-    fireEvent.click(within(cardOf("a 제목")).getByRole("button", { expanded: false }), {
-      metaKey: true,
-    });
+    fireEvent.click(cardHeader("a 제목"), { metaKey: true });
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByText("티켓 하나")).toBeNull();
   });
 
@@ -329,10 +350,7 @@ describe("PlanView — 카드 머리 아이콘 둘과 이동 대화상자(plan-b
       active: [card(feature("up"), 0)],
       waiting: [card(feature("down"))],
     });
-    const pick = (name: string) =>
-      fireEvent.click(within(cardOf(name)).getByRole("button", { expanded: false }), {
-        metaKey: true,
-      });
+    const pick = (name: string) => fireEvent.click(cardHeader(name), { metaKey: true });
     pick("up 제목");
     expect(screen.getByText(/작업 대상 1장 고름/)).toBeInTheDocument();
     pick("down 제목");
@@ -366,5 +384,182 @@ describe("PlanView — 카드 머리 아이콘 둘과 이동 대화상자(plan-b
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 티켓이 스스로 체크되고, 다 되면 카드가 닫힌다(plan-board/04).
+ *
+ * 🔴 여기서 재는 것은 **상자와 접힘**뿐이다 — 무엇이 닫히는지는 `core/src/plan/close.test.ts` 가,
+ * 그것이 계획 DB 에 앉는지는 backend 가 덮는다. 화면은 판정하지 않는다(spec §판정 자리는 하나뿐).
+ */
+describe("PlanView — 티켓 상자와 닫힌 카드(plan-board/04)", () => {
+  /** 창에 뜬 티켓 줄들의 상자 — 목록은 대화상자가 갖는다(캡틴 결정). */
+  const boxesIn = (opened: HTMLElement): string[] =>
+    within(opened)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent?.slice(0, 3) ?? "");
+
+  it("티켓 줄마다 상태에 맞는 상자가 선다 — 완료면 [x], 아니면 [ ]", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      active: [
+        card(
+          feature("mixed", [
+            ["01", "끝난 것", "done", "2026-08-01"],
+            ["02", "남은 것"],
+          ]),
+          0,
+        ),
+      ],
+    });
+    expect(boxesIn(openCard("mixed 제목"))).toEqual(["[x]", "[ ]"]);
+  });
+
+  it("🔴 폐기 티켓은 빈 상자다 — 끝난 것과 안 하는 것을 같게 그리지 않는다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      active: [card(feature("wf", [["01", "안 할 것", "dropped"]]), 0)],
+    });
+    const c = openCard("wf 제목");
+    expect(boxesIn(c)).toEqual(["[ ]"]);
+    // 원문 상태는 그 줄에 verbatim 으로 남아 어느 쪽인지 말한다(INV-4).
+    expect(within(c).getByText("wontfix")).toBeInTheDocument();
+  });
+
+  it("🔴 문서가 바뀌면 새로 고치지 않아도 상자가 바뀐다 — 판을 다시 받는 것으로 족하다", async () => {
+    const open = feature("live", [["01", "하나"]]);
+    const { qc } = renderBoard({ ...EMPTY_BOARD, active: [card(open, 0)] });
+    expect(boxesIn(openCard("live 제목"))).toEqual(["[ ]"]);
+
+    // 실시간 배선(WS → plan 쿼리 invalidate)이 가져오는 것과 같은 새 판을 앉힌다.
+    qc.setQueryData(qk.plan("alpha"), {
+      ...EMPTY_BOARD,
+      active: [card(feature("live", [["01", "하나", "done", "2026-08-12"]]), 0)],
+    });
+
+    // 🔴 다시 그리라고 아무도 시키지 않는다 — 판이 바뀌었으니 **열어 둔 창까지** 따라온다.
+    await waitFor(() => expect(boxesIn(screen.getByRole("dialog"))).toEqual(["[x]"]));
+  });
+
+  it("완료 칸의 카드도 머리만 보이고, 누르면 창이 뜨고, 확인을 누르면 닫힌다(캡틴 결정)", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      done: [card(feature("shut", [["01", "끝난 것", "done", "2026-08-02"]]), 0, "2026-08-12 17:40")],
+    });
+    openTab("완료");
+    expect(within(screen.getByRole("article", { name: "shut 제목" })).queryByText("끝난 것")).toBeNull();
+
+    const opened = openCard("shut 제목");
+    expect(within(opened).getByText("끝난 것")).toBeInTheDocument();
+
+    confirmDialog();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("끝난 것")).toBeNull();
+  });
+
+  it("🔴 남은 티켓을 안고 닫힌 카드는 빈 상자를 그대로 보여 준다(INV-B4)", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      done: [
+        card(
+          feature("covered", [
+            ["01", "끝난 것", "done", "2026-08-02"],
+            ["02", "남은 것"],
+          ]),
+          0,
+          "2026-08-12 17:40",
+        ),
+      ],
+    });
+    openTab("완료");
+    const c = openCard("covered 제목");
+    expect(boxesIn(c)).toEqual(["[x]", "[ ]"]);
+    expect(within(c).getByText("남은 것")).toBeInTheDocument();
+  });
+
+  it("🔴 닫은 시각과 문서의 완료 날짜를 각각 보여 준다 — 한 값으로 뭉개지 않는다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      done: [
+        card(
+          feature("two-times", [
+            ["01", "먼저", "done", "2026-08-02"],
+            ["02", "나중", "done", "2026-08-09"],
+          ]),
+          0,
+          "2026-08-12 17:40",
+        ),
+      ],
+    });
+    openTab("완료");
+    const c = screen.getByRole("article", { name: "two-times 제목" });
+    expect(within(c).getByText("닫힘 2026-08-12 17:40")).toBeInTheDocument();
+    // 문서 쪽은 마지막 티켓이 끝난 날 — 날짜뿐이고 시각이 없다(spec F6).
+    expect(within(c).getByText("문서 완료 2026-08-09")).toBeInTheDocument();
+  });
+
+  it("문서에 완료 날짜가 없는 채로 닫힌 카드는 없다고 말한다 — 지어내지 않는다", () => {
+    renderBoard({
+      ...EMPTY_BOARD,
+      done: [card(feature("bare", [["01", "남은 것"]]), 0, "2026-08-12 17:40")],
+    });
+    openTab("완료");
+    const c = screen.getByRole("article", { name: "bare 제목" });
+    expect(within(c).getByText("문서 완료일 없음")).toBeInTheDocument();
+  });
+
+  it("닫히지 않은 카드에는 시각 줄이 없다 — 없는 값을 자리로 만들지 않는다", () => {
+    renderBoard({ ...EMPTY_BOARD, active: [card(feature("open", [["01", "하나"]]), 0)] });
+    const c = screen.getByRole("article", { name: "open 제목" });
+    expect(within(c).queryByText(/닫힘/)).toBeNull();
+  });
+});
+
+/**
+ * 카드 대화상자의 티켓 줄을 누르면 원문이 열린다(캡틴 결정 2026-08-12: "ticket 클릭하면 문서
+ * 보이게해"). 새 뷰어를 짓지 않고 `features` 탭의 `DocDrawer` 를 그대로 재사용한다 — 여기서 재는
+ * 것은 **판이 그 재사용 통로를 올바른 주소로 여는가**뿐이다. 렌더링 자체는 `doc-drawer.test.tsx`.
+ */
+describe("PlanView — 카드 대화상자에서 티켓 원문을 연다", () => {
+  it("티켓 줄을 누르면 그 티켓의 issues/*.md 가 드로어로 뜬다", async () => {
+    const { qc } = renderBoard({
+      ...EMPTY_BOARD,
+      waiting: [card(feature("auth-login", [["01", "세션 발급"]]))],
+    });
+    qc.setQueryData(qk.featureDoc("alpha", "auth-login", "issues/01-x.md"), {
+      path: "issues/01-x.md",
+      content: "# 01 — 세션 발급\n",
+    });
+
+    const opened = openCard("auth-login 제목");
+    fireEvent.click(within(opened).getByRole("button", { name: /세션 발급/ }));
+
+    const drawer = await screen.findByRole("dialog", { name: "issues/01-x.md" });
+    expect(within(drawer).getByRole("heading", { name: "01 — 세션 발급" })).toBeInTheDocument();
+    // 🔴 탭은 그대로 plan 이다 — 문서 아이콘(03)과 달리 판을 떠나지 않는다.
+    expect(screen.getByRole("article", { name: "auth-login 제목" })).toBeInTheDocument();
+  });
+
+  it("드로어를 닫으면 카드 대화상자로 그대로 돌아온다", async () => {
+    const { qc } = renderBoard({
+      ...EMPTY_BOARD,
+      waiting: [card(feature("auth-login", [["01", "세션 발급"]]))],
+    });
+    qc.setQueryData(qk.featureDoc("alpha", "auth-login", "issues/01-x.md"), {
+      path: "issues/01-x.md",
+      content: "# 01 — 세션 발급\n",
+    });
+
+    const opened = openCard("auth-login 제목");
+    fireEvent.click(within(opened).getByRole("button", { name: /세션 발급/ }));
+    const drawer = await screen.findByRole("dialog", { name: "issues/01-x.md" });
+
+    // 🔴 ESC 로 닫지 않는다 — 카드 대화상자도 같은 키를 듣고 있어, 둘 다 열린 채로 ESC 를
+    // 누르면 어느 쪽이 먼저 닫혀야 하는지가 애매해진다. 드로어 자신의 닫기 단추로 확인한다.
+    fireEvent.click(within(drawer).getByRole("button", { name: "닫기" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "issues/01-x.md" })).toBeNull());
+    // 카드 대화상자는 별개의 상태라 살아 있다 — 티켓 줄이 다시 보인다.
+    expect(screen.getByText("세션 발급")).toBeInTheDocument();
   });
 });

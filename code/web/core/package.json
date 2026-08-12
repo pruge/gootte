@@ -5,7 +5,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./parse": "./src/parse/index.ts"
+    "./parse": "./src/parse/index.ts",
+    "./plan": "./src/plan/index.ts"
   },
   "dependencies": {
     "@gootte/contract": "workspace:*",

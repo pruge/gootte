@@ -1,16 +1,19 @@
-import { useState, type MouseEvent } from "react";
+import type { MouseEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { IconArrowMoveRight, IconFileText } from "@tabler/icons-react";
 import type { PlanCard } from "@gootte/contract";
+import { documentCompletedOn } from "@gootte/core/plan";
 import { featureDescription } from "./cardTitle";
 
 export interface BoardCardProps {
   card: PlanCard;
   /** 여러 장 고르기 — 고른 카드는 테두리로 드러나고, 그중 하나를 끌면 전부 따라간다. */
   selected?: boolean;
-  /** 머리글을 ⌘/Ctrl/Shift 와 함께 누른 것 — 펼치는 대신 고른다. */
+  /** 머리글을 ⌘/Ctrl/Shift 와 함께 누른 것 — 여는 대신 고른다. */
   onToggleSelect?: (slug: string) => void;
+  /** 머리글을 그냥 누른 것 — 티켓 목록을 대화상자로 연다(캡틴 결정). */
+  onOpenCard?: (slug: string) => void;
   /** 문서 아이콘 — `features` 탭의 기존 통로로 간다(두 번째 문서 보기를 짓지 않는다). */
   onOpenDoc?: (slug: string) => void;
   /** 이동 아이콘 — "어느 칸으로 보낼까요" 대화상자. */
@@ -20,8 +23,9 @@ export interface BoardCardProps {
 }
 
 /**
- * 판 위의 카드 하나 — **기본은 머리만 보이게 접혀 있고, 눌러야 티켓 줄이 펼쳐진다**(캡틴 결정).
- * 접힘은 **화면의 상태**이지 저장하지 않는다(spec §완료 카드는 접혀 있다).
+ * 판 위의 카드 하나 — **머리만 보인다.** 머리글을 누르면 티켓 목록이 **대화상자로** 열린다
+ * (캡틴 결정 2026-08-12: "영역이 작으니 한번에 보기 힘들다 … dialog 로 떠서 카드를 펼쳐서
+ * 보여준다. 확인을 누르면 닫히게 하자"). 무엇이 열려 있는지는 **화면의 상태**이지 저장하지 않는다.
  *
  * 🔴 여기 보이는 것은 전부 **문서에서 온 것**이다(INV-5) — 제목도, 티켓 번호·제목·상태도.
  * 계획 DB 가 아는 것은 이 카드가 어느 칸에 있는가와 그 순서뿐이라, 둘이 갈라질 수 없다.
@@ -29,26 +33,31 @@ export interface BoardCardProps {
  * 🔴 접힌 카드도 **티켓 수는 머리에 이고 있다** — 감추면 카드가 제 크기를 말하지 않게 되고,
  * 캡틴이 판을 훑는 동안 하나하나 열어 봐야 한다.
  *
- * 머리글 토글은 `<button>` **하나**이고, 아이콘 둘은 그 버튼 **안**이 아니라 **옆(형제)** 에 선다 —
+ * 머리글 단추는 `<button>` **하나**이고, 아이콘 둘은 그 버튼 **안**이 아니라 **옆(형제)** 에 선다 —
  * 버튼 안의 버튼은 무효 HTML 이다(features 탭 `FeatureCard` 와 같은 규율).
  *
- * 끌기는 카드 전체가 손잡이다(03). 6px 움직여야 끌기로 치므로 머리글 토글과 아이콘 둘은 그대로
+ * 끌기는 카드 전체가 손잡이다(03). 6px 움직여야 끌기로 치므로 머리글 단추와 아이콘 둘은 그대로
  * 눌린다 — 따로 손잡이 아이콘을 세우지 않는다(캡틴이 정한 아이콘은 둘뿐이다).
- * 체크상자·자동 완료는 04 다.
+ *
+ * 🔴 티켓 줄의 상자(04)는 **저장된 값이 아니다** — 문서 상태 한 칸에서 계산한다(`ticketChecked`,
+ * core). 작업자가 문서를 완료로 바꾸면 아무도 gootte 에 알리지 않아도 다음 read 에서 채워진다.
+ * 화면은 판정하지 않고 core 의 판정을 그대로 그린다(spec §판정 자리는 하나뿐).
  */
 export function BoardCard({
   card,
   selected = false,
   onToggleSelect,
+  onOpenCard,
   onOpenDoc,
   onRequestMove,
   overlay = false,
 }: BoardCardProps) {
-  const [expanded, setExpanded] = useState(false);
   const { feature } = card;
   const headingId = `board-card-${feature.slug}`;
   // 표제 앞에 겹쳐 붙은 기능 이름은 뗀다 — 같은 이름이 한 카드에 두 번 뜨지 않게(캡틴 결정).
   const description = featureDescription(feature.title, feature.slug);
+  // 문서가 말하는 완료 날짜 — 닫힌 시각과 **다른 값**이라 따로 계산해 따로 보여 준다(core).
+  const completedOn = documentCompletedOn(feature);
 
   // 🔴 `role` 을 카드 자신의 것으로 못 박는다 — dnd-kit 기본값(`button`)이 붙으면 카드가
   // 카드가 아니게 되고, 안에 있는 머리글 버튼이 버튼 속 버튼이 된다.
@@ -69,7 +78,7 @@ export function BoardCard({
       onToggleSelect(feature.slug);
       return;
     }
-    setExpanded((v) => !v);
+    onOpenCard?.(feature.slug);
   };
 
   return (
@@ -93,7 +102,7 @@ export function BoardCard({
       <div className="flex w-full items-stretch bg-surface-2/50">
         <button
           type="button"
-          aria-expanded={expanded}
+          aria-haspopup="dialog"
           onClick={onHeaderClick}
           className="grid min-w-0 flex-1 cursor-[inherit] grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-accent"
         >
@@ -121,14 +130,26 @@ export function BoardCard({
             )}
           </h3>
           <span className="col-start-2 row-start-1 flex shrink-0 items-baseline gap-x-2.5">
-            {/* 닫힌 시각은 문서에 없는 값이라 계획 DB 가 갖는다(INV-5 · F6) — 있을 때만 뜬다. */}
-            {card.closedAt && (
-              <span className="mono text-sm tabular-nums text-muted">{card.closedAt}</span>
-            )}
             <span className="mono text-sm tabular-nums text-muted">
               티켓 {feature.tickets.length}
             </span>
           </span>
+
+          {/* 🔴 **두 시각을 한 값으로 뭉개지 않는다**(티켓 04). `닫힘` 은 gootte 가 완료 칸에 넣은
+              것으로 기록한 시각(날짜+시간, 계획 DB 가 갖는 유일한 이유 — 문서엔 시각이 없다, F6),
+              `문서 완료` 는 티켓 문서가 가진 날짜 그대로다. 뭉치는 순간 어느 쪽도 사실이 아니게 된다.
+              닫힌 카드에만 뜨고, 첫 줄 옆이 아니라 제 줄을 갖는다 — 짧은 이름 줄의 여백을
+              설명 줄에서 빼앗지 않기 위해서다(위 격자 설명과 같은 이유). */}
+          {card.closedAt && (
+            <span
+              className="mono col-span-2 col-start-1 row-start-3 flex flex-wrap items-baseline gap-x-2 text-sm tabular-nums text-muted"
+              title="닫힘 = gootte 가 완료 칸에 넣은 시각 · 문서 완료 = 티켓 문서가 말하는 마지막 완료 날짜"
+            >
+              <span>닫힘 {card.closedAt}</span>
+              <span aria-hidden>·</span>
+              <span>{completedOn ? `문서 완료 ${completedOn}` : "문서 완료일 없음"}</span>
+            </span>
+          )}
         </button>
 
         {/* 🔴 아이콘 **둘** — 캡틴 제안 9. 머리글 버튼의 형제이고, 끌기가 시작되지 않도록
@@ -160,35 +181,6 @@ export function BoardCard({
         )}
       </div>
 
-      {expanded &&
-        (feature.tickets.length === 0 ? (
-          // 티켓이 없는 기능도 감추지 않는다 — 열었는데 빈 칸이면 화면이 이유를 말해야 한다.
-          <p className="border-t border-border/70 px-3 py-2 text-sm text-muted">
-            티켓이 없습니다.
-          </p>
-        ) : (
-          <ul className="divide-y divide-border/50 border-t border-border/70">
-            {feature.tickets.map((t) => (
-              <li
-                key={t.slug}
-                className={`flex flex-wrap items-baseline gap-x-2.5 gap-y-1 px-3 py-1.5 ${
-                  t.status === "done" || t.status === "dropped" ? "text-muted" : ""
-                }`}
-              >
-                <span className="mono shrink-0 text-sm tabular-nums text-muted">{t.num || "—"}</span>
-                <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
-                {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게. */}
-                <span
-                  className={`mono shrink-0 rounded px-1.5 py-0.5 text-sm ${
-                    t.statusKnown ? "bg-surface-2 text-muted" : "bg-drop/15 text-drop"
-                  }`}
-                >
-                  {t.sourceStatus ?? "상태 줄 없음"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ))}
     </article>
   );
 }
