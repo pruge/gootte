@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -109,33 +109,28 @@ export function ProcessView({ project }: ProcessViewProps) {
           <p className="text-base text-muted">작업 대상에 올라온 것이 없다</p>
         ) : (
           // `plan` 탭 칸(`CardList`)과 같은 격자 — 칸 폭에 따라 한 줄에 최대 세 묶음까지 나란히 선다.
-          // 틈(`GapZone`) 은 `col-span-full` 로 격자를 가로질러 언제나 한 줄 전체를 차지한다 —
-          // 몇 칸짜리 줄에서 놓아도 "번호 매겨진 단계들 사이" 라는 뜻이 흐트러지지 않게.
+          // 🔴 틈(`GapZone`)은 격자 항목을 따로 두지 않고 **그 단계 카드 안**(위 가장자리,
+          // 마지막 카드는 아래 가장자리도)에 붙인다 — 틈을 격자 항목으로 두면(`col-span-full`)
+          // 카드 사이마다 한 줄을 통째로 끊어 몇 칸이든 한 줄에 하나씩만 서는 꼴이 된다
+          // (캡틴 지적 2026-08-12: "3 column인데 1 column에 모두 몰려 있어").
           <div className="grid grid-cols-1 items-start gap-4 @2xl:grid-cols-2 @5xl:grid-cols-3">
-            {numbered.length === 0 && unranked && (
-              <GapZone index={0} dragging={dragging !== null} hint="여기에 놓으면 새 단계가 생긴다" />
-            )}
             {numbered.map((g, i) => (
-              <Fragment key={g.step}>
-                {i === 0 && (
-                  <GapZone index={0} dragging={dragging !== null} hint="여기에 놓으면 새 단계가 맨 앞에 생긴다" />
-                )}
-                <StepSection
-                  group={g}
-                  featureTitleOf={featureTitleOf}
-                  dragging={dragging}
-                  onOpen={openDoc}
-                />
-                <GapZone
-                  index={i + 1}
-                  dragging={dragging !== null}
-                  hint={
-                    i + 1 < numbered.length
-                      ? "여기에 놓으면 사이에 새 단계가 생긴다"
-                      : "여기에 놓으면 번호 매겨진 단계들 맨 뒤에 새 단계가 생긴다"
-                  }
-                />
-              </Fragment>
+              <StepSection
+                key={g.step}
+                group={g}
+                featureTitleOf={featureTitleOf}
+                dragging={dragging}
+                onOpen={openDoc}
+                beforeGap={{
+                  index: i,
+                  hint: i === 0 ? "여기에 놓으면 새 단계가 맨 앞에 생긴다" : "여기에 놓으면 사이에 새 단계가 생긴다",
+                }}
+                afterGap={
+                  i === numbered.length - 1
+                    ? { index: numbered.length, hint: "여기에 놓으면 번호 매겨진 단계들 맨 뒤에 새 단계가 생긴다" }
+                    : null
+                }
+              />
             ))}
             {unranked && (
               <StepSection
@@ -143,6 +138,10 @@ export function ProcessView({ project }: ProcessViewProps) {
                 featureTitleOf={featureTitleOf}
                 dragging={dragging}
                 onOpen={openDoc}
+                beforeGap={
+                  numbered.length === 0 ? { index: 0, hint: "여기에 놓으면 새 단계가 생긴다" } : null
+                }
+                afterGap={null}
               />
             )}
           </div>
@@ -169,25 +168,29 @@ export function ProcessView({ project }: ProcessViewProps) {
 
 /**
  * 놓을 수 있는 틈 — 번호 매겨진 단계들 **사이**, 그리고 그 앞·뒤(spec §놓을 수 있는 자리).
- * 🔴 안 끌고 있을 때는 얇게 접혀 있다가, 끄는 동안 눈에 띄게 펼쳐진다(캡틴 확인 §보여야 할 것:
- * "놓을 수 있는 자리가 집기 전에 눈에 보이는가").
+ * 🔴 그 단계 카드의 가장자리에 붙는 **얇은 띠**다 — 격자 항목으로 따로 두지 않는다(위 §격자
+ * 참고). 안 끌고 있을 때는 얇게 접혀 있다가, 끄는 동안 눈에 띄게 펼쳐진다(캡틴 확인
+ * §보여야 할 것: "놓을 수 있는 자리가 집기 전에 눈에 보이는가").
  */
 function GapZone({ index, dragging, hint }: { index: number; dragging: boolean; hint: string }) {
   const { isOver, setNodeRef } = useDroppable({ id: GAP_ID(index) });
+  // 🔴 안 끌고 있을 때도 높이 0 이 아니다(`h-2`) — dnd-kit 은 이 요소의 **실제 사각형**으로
+  // 충돌을 재므로, 높이를 0 으로 접으면 손을 대기 전에 사각형이 없어 놓기가 이웃 단계로
+  // 새어 나간다. 대신 테두리·글자를 죽여 시각적으로만 접혀 보이게 한다.
   return (
     <div
       ref={setNodeRef}
       role="note"
       aria-label={hint}
-      className={`col-span-full flex items-center justify-center rounded-md border-2 border-dashed transition-all ${
-        dragging
-          ? isOver
-            ? "h-9 border-accent bg-accent/10 text-sm text-accent"
-            : "h-3 border-border/60 text-transparent"
-          : "h-0 overflow-hidden border-transparent"
+      className={`flex items-center justify-center border-2 border-dashed transition-all ${
+        isOver
+          ? "h-9 border-accent bg-accent/10 text-sm text-accent"
+          : dragging
+            ? "h-3 border-border/60 text-transparent"
+            : "h-2 border-transparent text-transparent"
       }`}
     >
-      {dragging && isOver && hint}
+      {isOver && hint}
     </div>
   );
 }
@@ -198,53 +201,63 @@ function StepSection({
   featureTitleOf,
   dragging,
   onOpen,
+  beforeGap,
+  afterGap,
 }: {
   group: ProcessStepGroup;
   featureTitleOf: ReadonlyMap<string, string>;
   dragging: ProcessRow | null;
   onOpen: (row: ProcessRow) => void;
+  /** 이 카드 **위**의 틈 — 번호 매겨진 단계에는 늘 있다(맨 앞이거나 앞 단계와의 사이). */
+  beforeGap: { index: number; hint: string } | null;
+  /** 이 카드 **아래**의 틈 — 번호 매겨진 단계들 중 **마지막 카드에만** 있다(9999 앞자리). */
+  afterGap: { index: number; hint: string } | null;
 }) {
   const unranked = group.step === UNRANKED_STEP;
   const { isOver, setNodeRef } = useDroppable({
     id: unranked ? UNRANKED_ID : ON_STEP_ID(group.step),
   });
+  const isDragging = dragging !== null;
   return (
     <section
-      ref={setNodeRef}
       aria-labelledby={`process-step-${group.step}`}
       className={`overflow-hidden rounded-lg border bg-surface transition-colors ${
-        dragging && isOver ? "border-accent ring-2 ring-accent/40" : "border-border"
+        isDragging && isOver ? "border-accent ring-2 ring-accent/40" : "border-border"
       }`}
     >
-      <header className="border-b border-border bg-surface-2/40 px-4 py-2">
-        <h2 id={`process-step-${group.step}`} className="mono font-medium tracking-tight">
-          {unranked ? "9999 — 아직 순서를 안 정했다" : `${group.step}단계`}
-        </h2>
-      </header>
-      {/* 기능 다발 사이는 선이 아니라 빈틈으로 나눈다(캡틴 지시) — 한 단계 안에서도 어느
-          다발이 끝나고 다음 다발이 시작되는지 눈에 바로 잡히게. 틈의 크기는 티켓 한 줄
-          높이(2.25rem = py-2 + text-sm 줄높이)와 같다. 🔴 첫 다발 앞에는 틈을 두지
-          않는다 — `gap` 은 다발 *사이*에만 생기고, 바깥 padding 을 더 얹지 않는다. */}
-      <div className="flex flex-col gap-9">
-        {clusterByFeature(group.rows).map((cluster, i) => (
-          <div key={cluster.feature}>
-            <FeatureHeader
-              feature={cluster.feature}
-              title={featureTitleOf.get(cluster.feature) ?? cluster.feature}
-              first={i === 0}
-            />
-            <ul className="divide-y divide-border/30">
-              {cluster.rows.map((row) => (
-                <ProcessTicketLine
-                  key={`${row.feature}/${row.ticket}`}
-                  row={row}
-                  onOpen={() => onOpen(row)}
-                />
-              ))}
-            </ul>
-          </div>
-        ))}
+      {beforeGap && <GapZone index={beforeGap.index} dragging={isDragging} hint={beforeGap.hint} />}
+      <div ref={setNodeRef}>
+        <header className="border-b border-border bg-surface-2/40 px-4 py-2">
+          <h2 id={`process-step-${group.step}`} className="mono font-medium tracking-tight">
+            {unranked ? "9999 — 아직 순서를 안 정했다" : `${group.step}단계`}
+          </h2>
+        </header>
+        {/* 기능 다발 사이는 선이 아니라 빈틈으로 나눈다(캡틴 지시) — 한 단계 안에서도 어느
+            다발이 끝나고 다음 다발이 시작되는지 눈에 바로 잡히게. 틈의 크기는 티켓 한 줄
+            높이(2.25rem = py-2 + text-sm 줄높이)와 같다. 🔴 첫 다발 앞에는 틈을 두지
+            않는다 — `gap` 은 다발 *사이*에만 생기고, 바깥 padding 을 더 얹지 않는다. */}
+        <div className="flex flex-col gap-9">
+          {clusterByFeature(group.rows).map((cluster, i) => (
+            <div key={cluster.feature}>
+              <FeatureHeader
+                feature={cluster.feature}
+                title={featureTitleOf.get(cluster.feature) ?? cluster.feature}
+                first={i === 0}
+              />
+              <ul className="divide-y divide-border/30">
+                {cluster.rows.map((row) => (
+                  <ProcessTicketLine
+                    key={`${row.feature}/${row.ticket}`}
+                    row={row}
+                    onOpen={() => onOpen(row)}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       </div>
+      {afterGap && <GapZone index={afterGap.index} dragging={isDragging} hint={afterGap.hint} />}
     </section>
   );
 }
