@@ -150,6 +150,34 @@ export function parseBlockedBy(content: string): string[] {
   return parseBlockedByLine(content).blockedBy;
 }
 
+// markdown 링크의 목적지 — `[...](<경로>)` 에서 괄호 안만 뗀다. 표시 문구(대괄호 안)는 안 본다 —
+// 사람이 이모지·굵게로 아무렇게나 꾸밀 수 있고, 이미 그렇게 쓰이고 있다(cross-feature-blocker/spec).
+const MD_LINK_PATH = /]\(([^)]+)\)/;
+// 경로에서 "<기능>/issues/<번호>-" 만 뜯는다 — `../../` 깊이는 몇이든 상관없다. 기능과 번호를
+// 둘 다 경로 자체가 담고 있으므로 추정이 필요 없다.
+const CROSS_FEATURE_PATH = /([^/]+)\/issues\/(\d{1,3})-/;
+
+/** markdown 링크 하나가 가리키는 기능·티켓 — 경로에서만 읽는다(표시 문구는 안 본다). */
+export interface CrossFeatureRef {
+  feature: string;
+  num: string;
+}
+
+/**
+ * `Blocked by:` 항목 하나(번호로 안 풀린 산문)가 다른 기능의 티켓을 markdown 링크로 가리키는지
+ * 본다. 링크가 없거나 `<기능>/issues/<번호>-` 형태로 안 풀리면 null — 그 경우 호출자는 지금처럼
+ * `unreadable` 로 남기고 계속 막는다(development-order/17). 여기서는 **경로만** 읽고 그 기능·티켓이
+ * 실재하는지는 판단하지 않는다 — 그건 다른 기능들의 문서를 함께 아는 자리(`project/features.ts`)의
+ * 몫이다(판정 자리는 하나).
+ */
+export function parseCrossFeatureRef(text: string): CrossFeatureRef | null {
+  const path = MD_LINK_PATH.exec(text)?.[1];
+  if (!path) return null;
+  const m = CROSS_FEATURE_PATH.exec(path);
+  if (!m) return null;
+  return { feature: m[1] as string, num: m[2] as string };
+}
+
 // H2 헤딩 한 줄("## " 뒤). H3 이상("###")은 이 접두를 매치하지 않는다 — "결과" 회고 문단
 // (예: jinwooauto/access-control/01 의 "### 캡틴 확인 결과")과 절 자체를 가른다.
 const H2_HEADING = /^##[ \t]+([^\n]*)$/gm;

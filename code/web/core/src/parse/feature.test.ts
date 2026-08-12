@@ -4,6 +4,7 @@ import {
   mapFirstmateStatus,
   parseBlockedBy,
   parseBlockedByLine,
+  parseCrossFeatureRef,
   parseFeatureSpec,
   parseNeedsCaptainEye,
   parseStatusLine,
@@ -265,6 +266,36 @@ describe("parseBlockedBy", () => {
         ),
       ).toEqual(["02"]);
     });
+  });
+});
+
+describe("parseCrossFeatureRef — markdown 링크의 경로에서 기능·번호를 읽는다(cross-feature-blocker)", () => {
+  it("🔴 실측 서식(jinwooauto failing-reads-widen-their-period/01) — 이모지·굵게로 꾸며도 경로에서 읽는다", () => {
+    expect(
+      parseCrossFeatureRef(
+        "🔴 **[failure-retries-in-one-place 02](../../failure-retries-in-one-place/issues/02-sends-report-their-outcome-and-the-plc-is-watched-again.md)**",
+      ),
+    ).toEqual({ feature: "failure-retries-in-one-place", num: "02" });
+  });
+
+  it("표시 문구는 안 본다 — 경로만 읽으므로 표시 문구가 엉터리여도 같은 답", () => {
+    expect(parseCrossFeatureRef("[아무 말이나 999](../../other-feature/issues/03-x.md)")).toEqual({
+      feature: "other-feature",
+      num: "03",
+    });
+  });
+
+  it("링크가 없으면 null", () => {
+    expect(parseCrossFeatureRef("번호 없이 적힌 진짜 산문")).toBeNull();
+  });
+
+  it("링크가 있어도 `<기능>/issues/<번호>-` 형태가 아니면 null", () => {
+    expect(parseCrossFeatureRef("[어딘가](https://example.com/docs)")).toBeNull();
+  });
+
+  it("같은 기능 안 링크(`[02](02-x.md)`)는 이 함수가 안 다룬다 — LEADING_NUM 이 먼저 번호로 읽는다", () => {
+    // parseCrossFeatureRef 는 waitingOn 에서 numKey 가 실패한 항목에만 시도된다.
+    expect(parseCrossFeatureRef("[02](02-x.md)")).toBeNull();
   });
 });
 

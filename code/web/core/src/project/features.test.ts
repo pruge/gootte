@@ -228,6 +228,106 @@ describe("buildFeatures — 기능 목록", () => {
   });
 });
 
+describe("buildFeatures — 기능을 넘는 markdown 링크 선행(cross-feature-blocker)", () => {
+  const docs = (slug: string, ...tickets: { file: string; body: string }[]) => ({
+    slug,
+    spec: null,
+    tickets: tickets.map((t) => parseTicket(t.file, t.body)),
+    tree: [],
+  });
+
+  it("다른 기능의 완료된 티켓을 링크로 가리키면 해제된다", () => {
+    const built = buildFeatures([
+      docs("blocker-feature", { file: "02-b.md", body: ticket("resolved (2026-08-13)") }),
+      docs("waiter-feature", {
+        file: "01-a.md",
+        body: ticket("ready-for-agent", "[blocker-feature 02](../../blocker-feature/issues/02-b.md)"),
+      }),
+    ]);
+    const waiter = built.find((f) => f.slug === "waiter-feature")!.tickets[0]!;
+    expect(waiter.waitingOn).toEqual([]);
+    expect(waiter.startable).toBe(true);
+  });
+
+  it("🔴 회귀 고정 — jinwooauto failing-reads-widen-their-period/01 실측 장면(2026-08-13)", () => {
+    // failure-retries-in-one-place/02 가 그날 아침 착지했는데도(resolved) 통째로 next 목록에서
+    // 빠졌던 장면 — 이 형식이 풀리지 않으면 다시 재현된다.
+    const built = buildFeatures([
+      docs("failure-retries-in-one-place", {
+        file: "02-sends-report-their-outcome-and-the-plc-is-watched-again.md",
+        body: ticket("resolved (2026-08-13 09:00)"),
+      }),
+      docs("failing-reads-widen-their-period", {
+        file: "01-x.md",
+        body: ticket(
+          "ready-for-agent",
+          "🔴 **[failure-retries-in-one-place 02](../../failure-retries-in-one-place/issues/02-sends-report-their-outcome-and-the-plc-is-watched-again.md)**",
+        ),
+      }),
+    ]);
+    const t = built.find((f) => f.slug === "failing-reads-widen-their-period")!.tickets[0]!;
+    expect(t.waitingOn).toEqual([]);
+    expect(t.startable).toBe(true);
+  });
+
+  it("다른 기능의 안 끝난 티켓을 링크로 가리키면 계속 막힌다", () => {
+    const built = buildFeatures([
+      docs("blocker-feature", { file: "02-b.md", body: ticket("ready-for-agent") }),
+      docs("waiter-feature", {
+        file: "01-a.md",
+        body: ticket("ready-for-agent", "[blocker-feature 02](../../blocker-feature/issues/02-b.md)"),
+      }),
+    ]);
+    const waiter = built.find((f) => f.slug === "waiter-feature")!.tickets[0]!;
+    expect(waiter.startable).toBe(false);
+    expect(waiter.waitingOn).toEqual([
+      "[blocker-feature 02](../../blocker-feature/issues/02-b.md)",
+    ]);
+  });
+
+  it("없는 기능을 가리키면 unreadable 로 남고 계속 막힌다", () => {
+    const built = buildFeatures([
+      docs("waiter-feature", {
+        file: "01-a.md",
+        body: ticket("ready-for-agent", "[ghost-feature 02](../../ghost-feature/issues/02-b.md)"),
+      }),
+    ]);
+    const waiter = built.find((f) => f.slug === "waiter-feature")!.tickets[0]!;
+    expect(waiter.startable).toBe(false);
+    expect(waiter.unreadableBlockedBy).toEqual([
+      "[ghost-feature 02](../../ghost-feature/issues/02-b.md)",
+    ]);
+  });
+
+  it("실재하는 기능이지만 없는 티켓 번호를 가리키면 unreadable 로 남고 계속 막힌다", () => {
+    const built = buildFeatures([
+      docs("blocker-feature", { file: "02-b.md", body: ticket("resolved (2026-08-13)") }),
+      docs("waiter-feature", {
+        file: "01-a.md",
+        body: ticket("ready-for-agent", "[blocker-feature 99](../../blocker-feature/issues/99-x.md)"),
+      }),
+    ]);
+    const waiter = built.find((f) => f.slug === "waiter-feature")!.tickets[0]!;
+    expect(waiter.startable).toBe(false);
+    expect(waiter.unreadableBlockedBy).toEqual([
+      "[blocker-feature 99](../../blocker-feature/issues/99-x.md)",
+    ]);
+  });
+
+  it("같은 기능 안의 맨 번호 선행은 동작이 하나도 안 바뀐다", () => {
+    const built = buildFeatures([
+      docs(
+        "solo-feature",
+        { file: "01-a.md", body: ticket("resolved (2026-08-01)") },
+        { file: "02-b.md", body: ticket("ready-for-agent", "01") },
+      ),
+    ]);
+    const t = built.find((f) => f.slug === "solo-feature")!.tickets.find((x) => x.num === "02")!;
+    expect(t.startable).toBe(true);
+    expect(t.waitingOn).toEqual([]);
+  });
+});
+
 describe("sortFeatures — 화면 순서(무리 → 처리중 → 폴더명, 티켓 03)", () => {
   const t = (status: FeatureTicket["status"], over: Partial<FeatureTicket> = {}): FeatureTicket => ({
     num: "01",
