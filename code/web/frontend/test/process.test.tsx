@@ -6,7 +6,7 @@ import { computeNext } from "@gootte/core/plan";
 import { ProcessView } from "../src/components/process/ProcessView";
 import { qk } from "../src/lib/query";
 
-/** `[번호, 제목]` 이면 미완, 상태·완료일까지 주면 문서가 그렇게 말하는 것이다(04, `ticketChecked`가 계산). */
+/** `[번호, 제목]` 이면 미완, 상태·완료일까지 주면 문서가 그렇게 말하는 것이다(04, `ticketBoxState`가 계산). */
 type TicketSpec = [num: string, title: string, status?: FeatureTicket["status"], completedAt?: string];
 
 function feature(slug: string, tickets: TicketSpec[] = []): Feature {
@@ -287,6 +287,16 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
     });
     const row = screen.getByRole("button", { name: /끝난 것/ });
     expect(row).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("🔴 폐기 티켓([-])도 집히지 않는다(plan-board/12) — 안 할 일에 순서를 매길 이유가 없다", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(feature("a", [["01", "폐기된 것", "dropped"]]), { "01-x": 1 })],
+    });
+    const row = screen.getByRole("button", { name: /폐기된 것/ });
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    expect(within(row).getByTitle("문서가 폐기라고 말한다")).toHaveTextContent("[-]");
   });
 
   it("🔴 놓을 수 있는 자리가 집기 전에도 DOM 에 있다 — 카드마다 위·아래가 늘 있다(캡틴 지적: 있다가 없다가 헷갈린다)", () => {

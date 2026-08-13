@@ -75,13 +75,23 @@ describe("computeDisplaySteps — 당김은 표시 계산이다(INV-B2, plan-boa
     });
   });
 
-  it("🔴 폐기 티켓은 완료가 아니다 — 그 단계는 안 비운다", () => {
+  it("🔴 폐기뿐인 단계는 빈다 — 뒤 단계가 당겨진다(plan-board/12, 캡틴 결정 2026-08-14)", () => {
     const features = [feature("a", [wontfix("01")]), feature("b", ["02"])];
     const placements = [row("a", "active", 0), row("b", "active", 1)];
     const steps = [s("a", "01", 1), s("b", "02", 2)];
     expect(computeDisplaySteps(features, placements, steps)).toEqual({
-      a: { "01-x": 1 },
-      b: { "02-x": 2 },
+      b: { "02-x": 1 },
+    });
+  });
+
+  it("🔴 폐기와 미완이 같은 단계에 섞이면 안 빈다 — 미완 하나가 그 단계를 붙든다", () => {
+    const features = [feature("a", [wontfix("01"), "02"]), feature("b", ["03"])];
+    const placements = [row("a", "active", 0), row("b", "active", 1)];
+    // a 의 01(폐기)·02(미완)가 같은 1단계, b 는 2단계 — 02 가 안 끝나 1단계는 안 비었다.
+    const steps = [s("a", "01", 1), s("a", "02", 1), s("b", "03", 2)];
+    expect(computeDisplaySteps(features, placements, steps)).toEqual({
+      a: { "01-x": 1, "02-x": 1 },
+      b: { "03-x": 2 },
     });
   });
 

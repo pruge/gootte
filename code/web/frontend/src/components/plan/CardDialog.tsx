@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { IconX } from "@tabler/icons-react";
 import type { FeatureTicket, PlanCard } from "@gootte/contract";
-import { closedDisplayAt, ticketChecked, UNRANKED_STEP } from "@gootte/core/plan";
+import { closedDisplayAt, ticketBoxState, UNRANKED_STEP } from "@gootte/core/plan";
 import { featureDescription } from "./cardTitle";
 import { ticketDocPath } from "./planDoc";
 
@@ -105,7 +105,9 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
           ) : (
             <ul className="divide-y divide-border/50">
               {orderedTickets.map((t) => {
-                const checked = ticketChecked(t);
+                const box = ticketBoxState(t);
+                const closed = box !== "open";
+                const glyph = box === "done" ? "[x]" : box === "dropped" ? "[-]" : "[ ]";
                 const step = steps[t.slug];
                 const unread = t.unread === true;
                 const inProgress = t.status === "in_progress";
@@ -122,13 +124,19 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                           : inProgress
                             ? "bg-inprogress hover:bg-inprogress-strong"
                             : "hover:bg-surface-2"
-                      } ${t.status === "done" || t.status === "dropped" ? "text-muted" : ""}`}
+                      } ${closed ? "text-muted" : ""}`}
                     >
                       <span
-                        className={`mono shrink-0 text-sm ${checked ? "text-accent" : "text-muted"}`}
-                        title={checked ? "문서가 완료라고 말한다" : "아직 완료가 아니다"}
+                        className={`mono shrink-0 text-sm ${closed ? "text-accent" : "text-muted"}`}
+                        title={
+                          box === "done"
+                            ? "문서가 완료라고 말한다"
+                            : box === "dropped"
+                              ? "문서가 폐기라고 말한다"
+                              : "아직 완료가 아니다"
+                        }
                       >
-                        {checked ? "[x]" : "[ ]"}
+                        {glyph}
                       </span>
                       {/* firstmate 가 매긴 단계(05) — 작업 대상 밖 카드나 값이 없는 티켓은 칸이 비어도
                           자리는 지킨다(같은 폭 유지, 값 있는 줄과 나란히 서게). */}

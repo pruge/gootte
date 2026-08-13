@@ -404,10 +404,16 @@ function rowTone(row: ProcessRow): string {
 }
 
 function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => void }) {
+  // 🔴 끝난 티켓([x])도, 폐기 티켓([-])도 집히지 않는다(plan-board/12) — 안 할 일에 순서를
+  // 매길 이유가 없다. "open" 이 아니면 전부 못 끈다.
+  const closed = row.box !== "open";
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: dragId(row.feature, row.ticket),
-    disabled: row.checked,
+    disabled: closed,
   });
+  const glyph = row.box === "done" ? "[x]" : row.box === "dropped" ? "[-]" : "[ ]";
+  const glyphTitle =
+    row.box === "done" ? "문서가 완료라고 말한다" : row.box === "dropped" ? "문서가 폐기라고 말한다" : "아직 완료가 아니다";
   return (
     <li className={isDragging ? "opacity-30" : ""}>
       <button
@@ -418,13 +424,13 @@ function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => voi
         {...listeners}
         className={`grid w-full grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] items-baseline gap-x-2.5 px-4 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${rowTone(
           row,
-        )} ${row.checked ? "" : "cursor-grab active:cursor-grabbing"}`}
+        )} ${closed ? "" : "cursor-grab active:cursor-grabbing"}`}
       >
         <span
-          className={`col-start-1 mono shrink-0 text-sm ${row.checked ? "text-accent" : "text-muted"}`}
-          title={row.checked ? "문서가 완료라고 말한다" : "아직 완료가 아니다"}
+          className={`col-start-1 mono shrink-0 text-sm ${closed ? "text-accent" : "text-muted"}`}
+          title={glyphTitle}
         >
-          {row.checked ? "[x]" : "[ ]"}
+          {glyph}
         </span>
         <span className="col-start-2 mono shrink-0 text-sm tabular-nums text-muted">
           {row.num || "—"}

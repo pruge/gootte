@@ -15,7 +15,7 @@ const row = (feature: string, ticket: string, title = "제목"): ProcessRow => (
   ticket,
   num: "01",
   title,
-  checked: false,
+  box: "open",
   unread: false,
   inProgress: false,
 });
