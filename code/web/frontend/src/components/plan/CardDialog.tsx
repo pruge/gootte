@@ -108,6 +108,7 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                 const checked = ticketChecked(t);
                 const step = steps[t.slug];
                 const unread = t.unread === true;
+                const inProgress = t.status === "in_progress";
                 return (
                   <li key={t.slug}>
                     {/* 🔴 줄 전체가 단추다 — 원문을 여는 것 하나뿐이라 부분 클릭을 나눌 이유가 없다.
@@ -116,7 +117,11 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                       type="button"
                       onClick={() => onOpenTicket(ticketDocPath(t))}
                       className={`flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 px-5 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
-                        unread ? "bg-unread hover:bg-unread-strong" : "hover:bg-surface-2"
+                        unread
+                          ? "bg-unread hover:bg-unread-strong"
+                          : inProgress
+                            ? "bg-inprogress hover:bg-inprogress-strong"
+                            : "hover:bg-surface-2"
                       } ${t.status === "done" || t.status === "dropped" ? "text-muted" : ""}`}
                     >
                       <span
@@ -145,6 +150,13 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                           className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
                         >
                           안 읽음
+                        </span>
+                      )}
+                      {inProgress && (
+                        // 색 말고도 붙들 것이 있다(INV-C2) — 처리중은 배경과 이 글자로만 말한다,
+                        // 테두리는 얹지 않는다(캡틴 지시 2026-08-13: "처리중 보더를 제거해봐").
+                        <span role="status" className="mono shrink-0 text-sm font-medium text-active">
+                          처리중
                         </span>
                       )}
                       {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게. */}

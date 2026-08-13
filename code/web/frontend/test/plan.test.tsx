@@ -250,6 +250,97 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
 });
 
 /**
+ * 처리중 파랑(status-colors-tell-apart/02)과 안 읽음 초록(unread-tickets-show-themselves/03)이
+ * 계획 탭 카드 대화상자에서 함께 선다. 🔴 검사가 붙드는 것은 **표시 문구가 있나 없나**뿐이다 —
+ * 색값은 캡틴이 조정할 수 있으므로 여기서 잠그지 않는다(INV-C2·INV-U2).
+ */
+describe("PlanView — 처리중과 안 읽음이 카드 대화상자에서 함께 선다(status-colors-tell-apart/02)", () => {
+  it("🔴 네 조합이 전부 옳다 — 안읽음×처리중 / 안읽음×아님 / 읽음×처리중 / 읽음×아님", () => {
+    const f = feature("combo", [
+      ["01", "안읽음 처리중", "in_progress"],
+      ["02", "안읽음 아님", "pending"],
+      ["03", "읽음 처리중", "in_progress"],
+      ["04", "읽음 아님", "pending"],
+    ]);
+    const combo: Feature = {
+      ...f,
+      tickets: f.tickets.map((t) => ({ ...t, unread: t.num === "01" || t.num === "02" })),
+      hasUnreadTicket: true,
+    };
+    renderBoard({ ...EMPTY_BOARD, active: [card(combo, 0)] });
+    const opened = openCard("combo 제목");
+    const rowOf = (title: string) => within(opened).getByText(title).closest("button") as HTMLElement;
+
+    const unreadInProgress = rowOf("안읽음 처리중");
+    expect(within(unreadInProgress).getByText("안 읽음")).toBeInTheDocument();
+    expect(within(unreadInProgress).getByText("처리중")).toBeInTheDocument();
+
+    const unreadOnly = rowOf("안읽음 아님");
+    expect(within(unreadOnly).getByText("안 읽음")).toBeInTheDocument();
+    expect(within(unreadOnly).queryByText("처리중")).toBeNull();
+
+    const inProgressOnly = rowOf("읽음 처리중");
+    expect(within(inProgressOnly).queryByText("안 읽음")).toBeNull();
+    expect(within(inProgressOnly).getByText("처리중")).toBeInTheDocument();
+
+    const neither = rowOf("읽음 아님");
+    expect(within(neither).queryByText("안 읽음")).toBeNull();
+    expect(within(neither).queryByText("처리중")).toBeNull();
+  });
+});
+
+/**
+ * 안 읽은 티켓이 있는 기능은 계획 탭 카드 머리도 초록이 된다(unread-tickets-show-themselves/03) —
+ * `features` 탭 머리글과 같은 판정(`feature.hasUnreadTicket`)을 그대로 쓴다.
+ */
+describe("PlanView — 카드 머리가 어디에 서 있든 안 읽음을 말한다(unread-tickets-show-themselves/03)", () => {
+  it("카드를 열지 않아도 머리에 표시가 뜬다", () => {
+    const f = feature("auth-login", [["01", "안 읽은 것"]]);
+    const unreadFeature: Feature = { ...f, hasUnreadTicket: true };
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(unreadFeature)] });
+    const cardEl = screen.getByRole("article", { name: "auth-login 제목" });
+    expect(within(cardEl).getByText("안 읽음")).toBeInTheDocument();
+  });
+
+  it("🔴 다 읽으면(hasUnreadTicket=false) 표시가 풀린다 — 판이 다시 받아온 값을 그대로 그린다", async () => {
+    const { qc } = renderBoard({
+      ...EMPTY_BOARD,
+      waiting: [card({ ...feature("auth-login", [["01", "이제 읽음"]]), hasUnreadTicket: true })],
+    });
+    expect(
+      within(screen.getByRole("article", { name: "auth-login 제목" })).getByText("안 읽음"),
+    ).toBeInTheDocument();
+
+    // 실시간 배선(WS → plan 쿼리 invalidate)이 가져오는 것과 같은 새 판을 앉힌다(plan.test.tsx 관례).
+    qc.setQueryData(qk.plan("alpha"), {
+      ...EMPTY_BOARD,
+      waiting: [card({ ...feature("auth-login", [["01", "이제 읽음"]]), hasUnreadTicket: false })],
+    });
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("article", { name: "auth-login 제목" })).queryByText("안 읽음"),
+      ).toBeNull(),
+    );
+  });
+
+  it("🔴 완료 칸의 카드에도 그대로 뜬다 — 캡틴이 손으로 닫은 카드에서도(캡틴이 이름 대신 경우)", () => {
+    const f = feature("shipped", [["01", "끝난 것", "done", "2026-08-01"]]);
+    const doneWithUnread: Feature = { ...f, hasUnreadTicket: true };
+    renderBoard({ ...EMPTY_BOARD, done: [card(doneWithUnread, 0, "2026-08-12 09:00")] });
+    openTab("완료");
+    const cardEl = screen.getByRole("article", { name: "shipped 제목" });
+    expect(within(cardEl).getByText("안 읽음")).toBeInTheDocument();
+  });
+
+  it("안 읽은 티켓이 없으면 카드 머리에 표시가 없다", () => {
+    const f = feature("clean", [["01", "읽은 것"]]);
+    renderBoard({ ...EMPTY_BOARD, waiting: [card({ ...f, hasUnreadTicket: false })] });
+    const cardEl = screen.getByRole("article", { name: "clean 제목" });
+    expect(within(cardEl).queryByText("안 읽음")).toBeNull();
+  });
+});
+
+/**
  * 캡틴이 카드를 옮긴다(plan-board/03).
  * 끌기 자체는 손에 붙는지 봐야 아는 일이라 **캡틴 확인**이 맡는다(티켓 03 §테스트).
  * 여기서 재는 것은 아이콘 둘·이동 대화상자·여러 장 고르기, 그리고 **묻지 않는다는 사실**이다.

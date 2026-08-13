@@ -196,6 +196,65 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
     expect(within(readRow).queryByText("안 읽음")).toBeNull();
   });
 
+  it("🔴 네 조합이 전부 옳다 — 안읽음×처리중 / 안읽음×아님 / 읽음×처리중 / 읽음×아님(status-colors-tell-apart/02)", () => {
+    const a = feature("a", [
+      ["01", "안읽음 처리중", "in_progress"],
+      ["02", "안읽음 아님", "pending"],
+      ["03", "읽음 처리중", "in_progress"],
+      ["04", "읽음 아님", "pending"],
+    ]);
+    const combo: Feature = {
+      ...a,
+      tickets: a.tickets.map((t) => ({ ...t, unread: t.num === "01" || t.num === "02" })),
+    };
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(combo, { "01-x": 1, "02-x": 1, "03-x": 1, "04-x": 1 })],
+    });
+    const rowOf = (title: string) => screen.getByText(title).closest("button") as HTMLElement;
+
+    const unreadInProgress = rowOf("안읽음 처리중");
+    expect(within(unreadInProgress).getByText("안 읽음")).toBeInTheDocument();
+    expect(within(unreadInProgress).getByText("처리중")).toBeInTheDocument();
+
+    const unreadOnly = rowOf("안읽음 아님");
+    expect(within(unreadOnly).getByText("안 읽음")).toBeInTheDocument();
+    expect(within(unreadOnly).queryByText("처리중")).toBeNull();
+
+    const inProgressOnly = rowOf("읽음 처리중");
+    expect(within(inProgressOnly).queryByText("안 읽음")).toBeNull();
+    expect(within(inProgressOnly).getByText("처리중")).toBeInTheDocument();
+
+    const neither = rowOf("읽음 아님");
+    expect(within(neither).queryByText("안 읽음")).toBeNull();
+    expect(within(neither).queryByText("처리중")).toBeNull();
+  });
+
+  it("🔴 처리중 여부가 단계 탭 줄까지 실려 온다 — 이 화면에서 다시 판정하지 않는다", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(feature("a", [["01", "붙들린 것", "in_progress"]]), { "01-x": 1 })],
+    });
+    expect(within(screen.getByText("붙들린 것").closest("button") as HTMLElement).getByText("처리중")).toBeInTheDocument();
+  });
+
+  it("🔴 기능 다발 머리가 초록이 된다 — 안 읽은 티켓이 있으면(unread-tickets-show-themselves/03)", () => {
+    const a = feature("a", [["01", "안 읽은 것"]]);
+    const unreadFeature: Feature = { ...a, hasUnreadTicket: true, tickets: a.tickets.map((t) => ({ ...t, unread: true })) };
+    renderProcess({ ...EMPTY_BOARD, active: [card(unreadFeature, { "01-x": 1 })] });
+    const headerText = screen.getByText("a").closest("div") as HTMLElement;
+    expect(within(headerText).getByText("안 읽음")).toBeInTheDocument();
+  });
+
+  it("안 읽은 티켓이 없으면 기능 다발 머리에 표시가 없다", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card({ ...feature("a", [["01", "읽은 것"]]), hasUnreadTicket: false }, { "01-x": 1 })],
+    });
+    const headerText = screen.getByText("a").closest("div") as HTMLElement;
+    expect(within(headerText).queryByText("안 읽음")).toBeNull();
+  });
+
   it("작업 대상 밖(대기·예약·폐기·완료)의 티켓은 하나도 나오지 않는다", () => {
     renderProcess({
       ...EMPTY_BOARD,

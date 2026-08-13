@@ -17,6 +17,7 @@ const row = (feature: string, ticket: string, title = "제목"): ProcessRow => (
   title,
   checked: false,
   unread: false,
+  inProgress: false,
 });
 
 const RECT = { top: 100, height: 200 };

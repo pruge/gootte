@@ -321,6 +321,37 @@ describe("readPlacementsWithAutoClose — 04 를 태우고 다시 읽는 자리(
     const second = readPlacementsWithAutoClose(dataDir, "alpha", [feature("done-one", "done")]);
     expect(second).toEqual(first);
   });
+
+  test("🔴 저절로 닫힌 카드에 새 티켓이 생기면 대기로 돌아온다(plan-board/10) — 자리 행이 사라진다", () => {
+    migratePlanDb(dataDir);
+    // 저절로 닫힌다(closed_at 없음).
+    readPlacementsWithAutoClose(dataDir, "alpha", [feature("a", "done")]);
+    expect(readPlacements(dataDir, "alpha")).toEqual([
+      { feature: "a", area: "done", seq: 0, closedAt: null },
+    ]);
+    // 새 티켓이 생겨 남은 일이 있다 — 다음 read 에서 자리 행이 사라진다(대기로 돌아온다, INV-B1).
+    const original = feature("a", "done");
+    const firstTicket = original.tickets[0];
+    if (!firstTicket) throw new Error("fixture must have one ticket");
+    const withNewTicket: Feature = {
+      ...original,
+      tickets: [
+        ...original.tickets,
+        { ...firstTicket, num: "02", slug: "02-x", path: "issues/02-x.md", status: "pending" },
+      ],
+    };
+    const placements = readPlacementsWithAutoClose(dataDir, "alpha", [withNewTicket]);
+    expect(placements).toEqual([]);
+    expect(readPlacements(dataDir, "alpha")).toEqual([]);
+  });
+
+  test("🔴 캡틴이 손으로 완료에 내려둔 카드(closed_at 있음)는 남은 티켓이 생겨도 그대로다", () => {
+    migratePlanDb(dataDir);
+    insert("alpha", "a", "done", 0, "2026-08-01 09:00");
+    const withOpenTicket: Feature = { ...feature("a", "pending") };
+    const placements = readPlacementsWithAutoClose(dataDir, "alpha", [withOpenTicket]);
+    expect(placements).toEqual([{ feature: "a", area: "done", seq: 0, closedAt: "2026-08-01 09:00" }]);
+  });
 });
 
 /**

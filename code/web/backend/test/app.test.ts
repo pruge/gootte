@@ -432,6 +432,22 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
       expect(card).toMatchObject({ seq: null, closedAt: null });
     }));
 
+  test("🔴 작업중 사본이 있으면 계획 판 티켓도 처리중을 말한다(status-colors-tell-apart/02, spec H6)", () =>
+    withDataDir(async (dataDir) => {
+      const th = makeTreehouse();
+      try {
+        const body = PlanBoardResponse.parse(
+          await (await createApp({ roots, treehouse: th, dataDir }).request("/api/plan/alpha")).json(),
+        );
+        const card = body.waiting.find((c) => c.feature.slug === "auth-login");
+        const t = card?.feature.tickets.find((x) => x.slug === "02-screen");
+        expect(t?.status).toBe("in_progress");
+        expect(t?.workedBy).toEqual(["fm/screen"]);
+      } finally {
+        rmSync(th, { recursive: true, force: true });
+      }
+    }));
+
   test("자리 행이 있으면 그 칸에 실린다 — 나머지는 그대로 대기", () =>
     withDataDir(async (dataDir) => {
       place(dataDir, "auth-login", "active", 0);
@@ -906,17 +922,48 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
       expect(treeSnapshot(ctx.projectRoot)).toEqual(before);
     }));
 
-  test("🔴 닫힌 기능에 티켓이 더 붙어도 대기로 되돌아가지 않는다 — 완료 칸에서 빈 상자를 보여 준다(INV-B5)", () =>
+  test("🔴 저절로 닫힌 기능에 티켓이 더 붙으면 대기로 돌아온다(plan-board/10, INV-B5 → INV-B7 뒤집힘)", () =>
     withProject({ shipped: ALL_DONE }, async (ctx) => {
       await get(ctx);
-      // 규율을 어겨 티켓 한 장이 더 붙었다(spec §닫힌 기능에는 티켓을 더하지 않는다).
+      // 규율을 어겨 티켓 한 장이 더 붙었다(spec §닫힌 기능에는 티켓을 더하지 않는다) — 그래도 할 일이다.
+      writeFileSync(
+        join(ctx.projectRoot, "docs", "features", "shipped", "issues", "03-late.md"),
+        ticket("03", "ready-for-agent"),
+      );
+      const body = await get(ctx, "2026-08-13 09:00");
+      expect(body.done).toEqual([]);
+      expect(body.waiting.map((c) => c.feature.slug)).toEqual(["shipped"]);
+      expect(body.waiting[0]?.feature.tickets.map((t) => t.status)).toEqual(["done", "done", "pending"]);
+      // 자리 행 자체가 사라졌다 — 대기는 저장되는 값이 아니다(INV-B1).
+      expect(readPlacements(ctx.dataDir, "beta")).toEqual([]);
+    }));
+
+  test("🔴 캡틴이 손으로 완료에 내려둔 카드는 티켓이 더 붙어도 그 자리에 그대로 있다", () =>
+    withProject({ shipped: ALL_DONE }, async (ctx) => {
+      await get(ctx);
+      // 캡틴이 손으로 옮긴다 — 완료가 아닌 자리를 거쳐야 closed_at 이 찍힌다(closedAtFor).
+      await post(ctx, { features: ["shipped"], area: "reserved", index: 0 });
+      await post(ctx, { features: ["shipped"], area: "done", index: 0 });
+      // 규율을 어겨 티켓 한 장이 더 붙었다.
       writeFileSync(
         join(ctx.projectRoot, "docs", "features", "shipped", "issues", "03-late.md"),
         ticket("03", "ready-for-agent"),
       );
       const body = await get(ctx, "2026-08-13 09:00");
       expect(body.done.map((c) => c.feature.slug)).toEqual(["shipped"]);
-      expect(body.done[0]?.closedAt).toBeNull(); // 저절로 닫힌 카드라 애초에 찍히지 않는다(06)
-      expect(body.done[0]?.feature.tickets.map((t) => t.status)).toEqual(["done", "done", "pending"]);
+      expect(body.done[0]?.closedAt).not.toBeNull(); // 캡틴이 손으로 옮겨 찍힌 시각이 있다
+      expect(body.waiting).toEqual([]);
+    }));
+
+  test("🔴 폐기 티켓만 새로 붙으면 완료 칸에 그대로 머문다 — 폐기는 할 일이 아니다", () =>
+    withProject({ shipped: ALL_DONE }, async (ctx) => {
+      await get(ctx);
+      writeFileSync(
+        join(ctx.projectRoot, "docs", "features", "shipped", "issues", "03-late.md"),
+        ticket("03", "wontfix"),
+      );
+      const body = await get(ctx, "2026-08-13 09:00");
+      expect(body.done.map((c) => c.feature.slug)).toEqual(["shipped"]);
+      expect(body.waiting).toEqual([]);
     }));
 });

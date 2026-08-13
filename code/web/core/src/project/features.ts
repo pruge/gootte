@@ -145,8 +145,12 @@ export function buildFeature(docs: FeatureDocs, crossIndex?: CrossFeatureIndex):
  * 🔴 이 술어가 **하나뿐이어야 한다.** 카드 정렬과 사이드바의 "남은 일 있는 기능 수" 가 각자
  * 판정하면 그 순간부터 둘 중 하나가 거짓이 되고, 화면이 서로 다른 말을 한다.
  * `TicketDoc` 과 `FeatureTicket` 둘 다 `status` 를 가지므로 그 한 칸만 보고 판정한다.
+ *
+ * 🔴 `planReopen`(`plan/close.ts`, plan-board/10)이 **같은 술어를 그대로 가져다 쓴다** — "저절로
+ * 닫힌 카드에 남은 일이 생겼나" 는 `featureFullyChecked`(상자가 다 찼나)와 다른 질문이고,
+ * 이 함수가 그 답이다. export 하는 이유가 그것이다.
  */
-function hasOpenWork(tickets: readonly { status: TodoStatus }[]): boolean {
+export function hasOpenWork(tickets: readonly { status: TodoStatus }[]): boolean {
   return tickets.some((t) => t.status !== "done" && t.status !== "dropped");
 }
 

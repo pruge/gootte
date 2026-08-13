@@ -1,4 +1,5 @@
 import type { Feature, Placement, PlanArea, TodoStatus } from "@gootte/contract";
+import { hasOpenWork } from "../project/features";
 import type { PlanWritePlan } from "./move";
 
 /**
@@ -75,9 +76,14 @@ const DONE: PlanArea = "done";
  * "일이 끝난 때" 가 아니다 — 문서의 `resolved (YYYY-MM-DD[ HH:MM])` 이 더 정확하다(06).
  * 화면이 보여줄 닫힌 시각은 `closedDisplayAt` 이 문서에서 채운다.
  *
- * 🔴 **되돌아 나오는 길을 만들지 않는다**(INV-B5). 닫을 때 티켓 목록을 기억하지도, 새 번호가
- * 붙었는지 감시하지도 않는다. 닫힌 뒤 규율을 어겨 티켓이 하나 붙으면 그 카드는 완료 칸에 머문 채
- * 빈 상자를 하나 보여 준다 — 여기서 다시 대기로 되돌리는 계산은 없다.
+ * 🔴 **닫을 때 티켓 목록을 기억하지도, 새 번호가 붙었는지 감시하지도 않는다**(INV-5) — 그것은
+ * 지금도 그대로다. 이 함수가 아는 것은 "지금 상자가 다 찼나" 뿐이고, 닫은 뒤에 무슨 일이
+ * 생기는지는 여기서 보지 않는다.
+ *
+ * 🔴 **"되돌아 나오는 길을 만들지 않는다"(옛 INV-B5)는 뒤집혔다**(캡틴 결정 2026-08-13,
+ * spec §INV-B7, plan-board/10) — 지금은 `planReopen`(아래)이 그 길을 낸다. 이 함수 자신은 여전히
+ * **닫는 판정 하나만** 한다 — 되돌리는 판정은 다른 질문(`hasOpenWork`)이라 다른 함수에 산다
+ * (spec §판정 자리는 하나뿐과 같은 이유로, 닫는 자리와 되돌리는 자리도 하나씩이다).
  *
  * 🔴 이미 완료 칸에 있는 카드는 **다시 쓰지 않는다** — 캡틴이 손으로 닫아 `closedAt` 을 가진
  * 카드도, 저절로 닫혀 `closedAt` 이 없는 카드도, 볼 때마다 다시 upsert 하지 않는다.
@@ -104,6 +110,43 @@ export function planAutoClose(
     clearSteps: closing.filter((slug) => rowOf.get(slug)?.area === "active"),
     setSteps: [],
   };
+}
+
+/**
+ * 판을 볼 때마다 묻는 또 한 줄 — **저절로 닫힌 카드에 남은 일이 생겼나**(plan-board/10, 캡틴
+ * 결정 2026-08-13 — spec §INV-B7). 있으면 대기로 돌려보낼 것을, 없으면 `null` 을 돌려준다.
+ *
+ * 🔴 **묻는 질문이 `featureFullyChecked`(상자가 다 찼나)와 다르다** — 여기서 쓰는 것은
+ * `hasOpenWork`(`countOpenFeatures` 가 쓰는 그 술어, "남은 일이 있나" — 폐기는 끝난 것으로 센다)
+ * 다. 닫는 판정을 재활용하면 폐기 티켓 하나로도 카드가 튀어나온다 — 그래서 다른 함수다.
+ *
+ * 🔴 **자기가 놓은 카드만 도로 집는다.** `closedAt` 이 있는 카드(캡틴이 손으로 완료에 내려둔
+ * 카드)는 절대 건드리지 않는다 — 남은 티켓을 안고 있어도 그대로 둔다. 캡틴이 지적하신 문제
+ * ①(기계가 몰래 자리를 옮긴다)이 여기서 되살아나면 이 기능 전체가 무효다.
+ *
+ * 🔴 **`planAutoClose` 와 같은 카드를 두고 동시에 참일 수 없다** — 이쪽이 참이려면 완료 칸에
+ * `closedAt` 없이 있어야 하고(과거의 `featureFullyChecked`), 지금 남은 일이 있다는 것은 지금
+ * `featureFullyChecked` 가 거짓이라는 뜻이다. 두 판정이 같은 볼 때 서로 싸우지 않는다.
+ *
+ * 대기로 돌아가는 것은 자리 행을 **지우는 것뿐**이다(INV-B1) — 새 칸도 새 값도 필요 없다.
+ * 단계 행은 건드리지 않는다 — 완료 칸 카드에는 애초에 단계 행이 없다(작업 대상 밖, INV-B6).
+ */
+export function planReopen(
+  features: readonly Feature[],
+  placements: readonly Placement[],
+): PlanWritePlan | null {
+  const featureOf = new Map(features.map((f) => [f.slug, f]));
+  const reopening = placements
+    .filter((p) => p.area === DONE && p.closedAt === null)
+    .filter((p) => {
+      const f = featureOf.get(p.feature);
+      return f !== undefined && hasOpenWork(f.tickets);
+    })
+    .map((p) => p.feature)
+    .sort((a, b) => a.localeCompare(b));
+  if (reopening.length === 0) return null;
+
+  return { upsert: [], remove: reopening, clearSteps: [], setSteps: [] };
 }
 
 /**

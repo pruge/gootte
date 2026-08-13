@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import type { Feature } from "@gootte/contract";
 import { Placement } from "@gootte/contract";
-import { planAutoClose, type PlanWritePlan } from "@gootte/core";
+import { planAutoClose, planReopen, type PlanWritePlan } from "@gootte/core";
 
 /**
  * 계획 저장소 — SQLite, gootte 자기 저장소(INV-2 — 관리대상에는 아무것도 안 쓴다. INV-2 가
@@ -267,13 +267,18 @@ export function writePlanMove(dataDir: string, project: string, plan: PlanWriteP
 }
 
 /**
- * 판을 읽기 전에 자동 닫힘(04, `planAutoClose`)부터 태우고, 자리 행을 다시 읽어 돌려준다 —
- * **판을 보는 모든 길이 지나는 한 자리**(HTTP `readBoard` 도, CLI `board`·`next` 도).
+ * 판을 읽기 전에 자동 닫힘(04, `planAutoClose`)과 자동 되돌림(10, `planReopen`)부터 태우고,
+ * 자리 행을 다시 읽어 돌려준다 — **판을 보는 모든 길이 지나는 한 자리**(HTTP `readBoard` 도,
+ * CLI `board`·`next` 도).
  *
- * 🔴 **판정은 한 줄도 여기 없다** — 무엇이 닫히는지는 `planAutoClose`(core) 하나뿐이고,
- * 여기는 그 결과를 쓰고(`writePlanMove`) 다시 읽을 뿐이다(spec §판정 자리는 하나뿐). 이 함수를
- * 부르지 않고 `readPlacements` 를 직접 부르는 길이 하나라도 남으면, 그 길은 화면·다른 길과
- * 다른 판을 본다 — 이 저장소가 고치는 문제가 그것이다.
+ * 🔴 **판정은 한 줄도 여기 없다** — 무엇이 닫히는지는 `planAutoClose`, 무엇이 되돌아오는지는
+ * `planReopen`(둘 다 core) 하나뿐이고, 여기는 그 결과를 쓰고(`writePlanMove`) 다시 읽을 뿐이다
+ * (spec §판정 자리는 하나뿐). 이 함수를 부르지 않고 `readPlacements` 를 직접 부르는 길이
+ * 하나라도 남으면, 그 길은 화면·다른 길과 다른 판을 본다 — 이 저장소가 고치는 문제가 그것이다.
+ *
+ * 🔴 **닫음을 먼저 쓰고 다시 읽은 뒤에 되돌림을 본다** — 두 판정은 서로 배타적이라(close.ts
+ * §planReopen) 순서가 결과를 바꾸지 않지만, 되돌림은 "지금 완료 칸에 있는 카드" 를 봐야 하므로
+ * 방금 닫힌 카드까지 다시 읽은 자리 행 위에서 판정해야 맞다.
  *
  * 🔴 **쓴 뒤에는 자리 행을 다시 읽는다** — 방금 쓴 값으로 조립하면 DB 의 2차 사본이 생긴다(INV-1).
  */
@@ -284,6 +289,8 @@ export function readPlacementsWithAutoClose(
 ): Placement[] {
   const closing = planAutoClose(features, readPlacements(dataDir, project));
   if (closing) writePlanMove(dataDir, project, closing);
+  const reopening = planReopen(features, readPlacements(dataDir, project));
+  if (reopening) writePlanMove(dataDir, project, reopening);
   return readPlacements(dataDir, project);
 }
 
