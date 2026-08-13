@@ -126,8 +126,14 @@
 
 ## 함께 가는 일
 
-🟢 **캡틴 지시로 [status-colors-tell-apart/02](../../status-colors-tell-apart/issues/02-work-in-flight-is-blue-on-the-board.md)
-와 한 작업자가 함께 맡는다.** 두 티켓은 서로 막지 않는다 — 순서는 작업자가 정해도 된다.
+🟢 **캡틴 지시로 세 티켓을 한 작업자가 함께 맡는다** — 이것,
+[status-colors-tell-apart/02](../../status-colors-tell-apart/issues/02-work-in-flight-is-blue-on-the-board.md)(처리중 파랑),
+[unread-tickets-show-themselves/03](../../unread-tickets-show-themselves/issues/03-the-card-header-is-green-wherever-the-card-stands.md)(머리글 초록).
+셋 다 서로 막지 않는다 — 순서는 작업자가 정해도 된다.
+
+🔴 **셋이 같은 화면의 같은 자리를 건드린다.** 계획 탭 카드와 티켓 줄에 파랑과 초록이 함께 서고,
+그중 일부는 완료 칸의 카드다. **한 사람이 셋을 다 들고 있어야 색이 서로 안 잡아먹는지 눈으로
+확인할 수 있다** — 나눠 맡으면 각자는 맞는데 합쳐 놓으면 안 읽히는 화면이 나온다.
 
 **왜 묶었나:** 색 티켓은 이미 닫힌 기능에 붙은 새 티켓이라, 이 티켓이 서기 전에는
 **그 카드가 완료 칸에 갇혀 대기에 안 뜬다.** 같은 사람이 두 가지를 다 들고 있으면
