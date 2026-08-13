@@ -9,6 +9,8 @@ export type OpenDocFn = (featureSlug: string, path: string, trigger: HTMLElement
 interface FeatureTreeProps {
   feature: Feature;
   onOpenDoc: OpenDocFn;
+  /** 검색어 — 티켓 제목에 걸린 자리를 노란 칩으로 보여준다(a-long-list-stays-usable/01). */
+  query?: string;
 }
 
 /** `adr` → `issues` → 나머지(spec.md 등 낱장) 순으로 고정한다(캡틴 지시). 없으면 그 자리가 빈다. */
@@ -43,7 +45,7 @@ function nonTicketEntries(issues: FeatureDocNode | null): FeatureDocNode[] {
  * 순서는 **adr → issues → 나머지 낱장 문서**(spec.md 등) 로 고정한다(캡틴 지시) —
  * 없는 칸은 그 자리가 빈다(INV-4, 폴더에 없는 걸 그려 넣지 않는다).
  */
-export function FeatureTree({ feature, onOpenDoc }: FeatureTreeProps) {
+export function FeatureTree({ feature, onOpenDoc, query = "" }: FeatureTreeProps) {
   const [issuesOpen, setIssuesOpen] = useState(true);
   const { adr, issues, rest } = splitDocs(feature.docs);
   const extras = nonTicketEntries(issues);
@@ -76,7 +78,13 @@ export function FeatureTree({ feature, onOpenDoc }: FeatureTreeProps) {
           ) : (
             <ul className="divide-y divide-border border-t border-border/60">
               {feature.tickets.map((t) => (
-                <TicketRow key={t.slug} ticket={t} featureSlug={feature.slug} onOpenDoc={onOpenDoc} />
+                <TicketRow
+                  key={t.slug}
+                  ticket={t}
+                  featureSlug={feature.slug}
+                  onOpenDoc={onOpenDoc}
+                  query={query}
+                />
               ))}
               {extras.map((node) => (
                 <DocTreeNode

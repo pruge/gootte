@@ -22,6 +22,8 @@
   --color-unread-fg: var(--unread-fg);
   --color-inprogress: var(--inprogress);
   --color-inprogress-strong: var(--inprogress-strong);
+  --color-search-mark: var(--search-mark);
+  --color-search-mark-fg: var(--search-mark-fg);
 
   --font-sans: Pretendard, "Pretendard Variable", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
@@ -61,6 +63,10 @@
      (양쪽 테마에서 각각 확인 — F8 안 읽음 초록과 같은 원리). */
   --inprogress: oklch(94.5% 0.035 250); /* 옅은 파란 배경 */
   --inprogress-strong: oklch(89% 0.05 250); /* hover — 안 읽음과 같은 원리로 더 진해야 안 사라진다 */
+  /* 검색어 표시(a-long-list-stays-usable/01) — 노란 칩. 다른 뜻(안 읽음 초록·처리중 파랑)과
+     안 겹치는 hue 95 */
+  --search-mark: oklch(88% 0.16 95);
+  --search-mark-fg: oklch(28% 0.05 95);
 }
 
 /* dark = 미션 컨트롤: 깊은 배경, 밀도, 단일 accent */
@@ -85,6 +91,9 @@
      (hue 245, `--active` 와 같은 hue) */
   --inprogress: oklch(31% 0.06 245);
   --inprogress-strong: oklch(37% 0.075 245);
+  /* 검색어 표시 — 어두운 배경 위에서도 눈에 띄는 진한 노랑 */
+  --search-mark: oklch(75% 0.16 95);
+  --search-mark-fg: oklch(20% 0.04 95);
 }
 
 @layer base {

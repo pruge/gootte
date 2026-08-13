@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Feature } from "@gootte/contract";
 import { featureDescription } from "../plan/cardTitle";
 import { FeatureTree, type OpenDocFn } from "./FeatureTree";
+import { HighlightedText } from "./HighlightedText";
 
 /** 남은 일 / 완료 / 착수 가능 / 처리중 세기 — 서버가 준 값을 세기만 한다(재계산 X, INV-1). */
 function counts(f: Feature) {
@@ -19,6 +20,14 @@ interface FeatureCardProps {
   /** 남은 일이 있으면 이 카드에 `plan` 버튼이 뜬다 — 누르면 `plan` 탭 기능 보기, 그 자리로
    * 돌아간다(development-order/16 ④). */
   onGoToPlan: (feature: string) => void;
+  /**
+   * 검색이 티켓 제목으로 이 카드를 걸렀을 때 참(티켓 01). 접힌 카드 안 티켓이 걸리면
+   * 캡틴이 왜 걸렸는지 봐야 하므로 펼쳐서 띄운다 — 사용자가 손으로 접었던 상태는 건드리지
+   * 않는다(검색어를 지우면 이 강제가 풀려 원래 펼침 상태로 돌아온다).
+   */
+  forceExpanded?: boolean;
+  /** 검색어(비어 있으면 아무것도 안 칠한다) — 걸린 자리를 노란 칩으로 보여준다(캡틴 지시). */
+  query?: string;
 }
 
 /**
@@ -32,8 +41,15 @@ interface FeatureCardProps {
  * 버튼 안에 버튼을 넣는 것은 무효 HTML 이라(중첩 인터랙티브), 토글과 `plan` 을 같은 줄의
  * 형제 버튼 둘로 가른다(development-order/16 ④).
  */
-export function FeatureCard({ feature, onOpenDoc, onGoToPlan }: FeatureCardProps) {
+export function FeatureCard({
+  feature,
+  onOpenDoc,
+  onGoToPlan,
+  forceExpanded = false,
+  query = "",
+}: FeatureCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const isExpanded = expanded || forceExpanded;
   const { done, open, startable, working } = counts(feature);
   const headingId = `feature-${feature.slug}-heading`;
   // spec 표제가 `<기능 이름> — <설명>` 꼴이면 뒤의 슬러그 배지와 이름이 겹친다 — 앞의 겹친
@@ -50,12 +66,12 @@ export function FeatureCard({ feature, onOpenDoc, onGoToPlan }: FeatureCardProps
       >
         <button
           type="button"
-          aria-expanded={expanded}
+          aria-expanded={isExpanded}
           onClick={() => setExpanded((v) => !v)}
           className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-left"
         >
           <h2 id={headingId} className="font-medium tracking-tight">
-            {title}
+            <HighlightedText text={title} query={query} />
           </h2>
           <span className="mono text-sm text-muted">{feature.slug}</span>
           {hasUnread && (
@@ -98,9 +114,9 @@ export function FeatureCard({ feature, onOpenDoc, onGoToPlan }: FeatureCardProps
         )}
       </div>
 
-      {expanded && (
+      {isExpanded && (
         <div aria-labelledby={headingId}>
-          <FeatureTree feature={feature} onOpenDoc={onOpenDoc} />
+          <FeatureTree feature={feature} onOpenDoc={onOpenDoc} query={query} />
         </div>
       )}
     </section>

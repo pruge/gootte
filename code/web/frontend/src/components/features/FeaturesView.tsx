@@ -1,9 +1,11 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { IconAlertTriangle, IconProgressAlert } from "@tabler/icons-react";
 import type { InProgressSummary } from "@gootte/contract";
 import { useFeatures } from "../../lib/query";
 import { Loading, ErrorMsg, Empty } from "../common/states";
 import { FeatureCard } from "./FeatureCard";
+import { FeatureSearchBox } from "./FeatureSearchBox";
+import { filterFeaturesBySearch } from "./featureSearch";
 import { DocDrawer } from "./DocDrawer";
 import { decodeDocView, encodeDocView } from "./docView";
 
@@ -130,6 +132,8 @@ export function FeaturesView({ project, view, onView, onGoToPlanFeature }: Featu
   // 문서를 연 트리거 요소 — 드로어를 닫을 때 포커스를 여기로 돌려준다(티켓 01 §설계 4).
   const triggerRef = useRef<HTMLElement | null>(null);
   const docView = decodeDocView(view);
+  // 검색은 지금 이 순간의 일이지 저장할 상태가 아니다 — 주소에 싣지 않는다(티켓 01 §주소).
+  const [query, setQuery] = useState("");
 
   const openDoc = (featureSlug: string, path: string, trigger: HTMLElement) => {
     triggerRef.current = trigger;
@@ -152,12 +156,26 @@ export function FeaturesView({ project, view, onView, onGoToPlanFeature }: Featu
   if (data.features.length === 0 && unresolved === 0)
     return <Empty>docs/features/ 아래 기능이 없습니다.</Empty>;
 
+  const matches = filterFeaturesBySearch(data.features, query);
+  const searching = query.trim() !== "";
+
   return (
     <>
       <div className="flex h-full flex-col gap-4 overflow-y-auto pb-2">
+        <FeatureSearchBox value={query} onChange={setQuery} />
         <UnresolvedWork inProgress={data.inProgress} />
-        {data.features.map((f) => (
-          <FeatureCard key={f.slug} feature={f} onOpenDoc={openDoc} onGoToPlan={onGoToPlanFeature} />
+        {searching && matches.length === 0 && (
+          <p className="px-1 text-sm text-muted">찾는 것이 없습니다</p>
+        )}
+        {matches.map(({ feature, forceExpanded }) => (
+          <FeatureCard
+            key={feature.slug}
+            feature={feature}
+            onOpenDoc={openDoc}
+            onGoToPlan={onGoToPlanFeature}
+            forceExpanded={forceExpanded}
+            query={query}
+          />
         ))}
       </div>
       <DocDrawer
