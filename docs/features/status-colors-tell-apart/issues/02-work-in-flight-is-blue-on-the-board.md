@@ -8,7 +8,7 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능.**
 
-**Status:** ready-for-agent (2026-08-13)
+**Status:** claimed (2026-08-13)
 
 🔗 **캡틴 지시로 [plan-board/10](../../plan-board/issues/10-a-closed-card-comes-back-when-work-appears.md)
 과 한 작업자가 함께 맡는다.** 서로 막지 않으니 순서는 작업자가 정해도 된다.
