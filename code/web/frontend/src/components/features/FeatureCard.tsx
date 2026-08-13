@@ -28,6 +28,13 @@ interface FeatureCardProps {
   forceExpanded?: boolean;
   /** 검색어(비어 있으면 아무것도 안 칠한다) — 걸린 자리를 노란 칩으로 보여준다(캡틴 지시). */
   query?: string;
+  /**
+   * 펼침 상태를 밖에서 들고 있을 때만 준다(features 탭 — 가상 스크롤로 카드가 DOM 에서
+   * 빠졌다 돌아와도 상태가 남는 자리, a-long-list-stays-usable/02 ①). 안 주면 이 카드
+   * 혼자 관리한다(기존 동작 그대로, `feature-tree.test.tsx` 가 이 길을 붙든다).
+   */
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
 }
 
 /**
@@ -47,8 +54,12 @@ export function FeatureCard({
   onGoToPlan,
   forceExpanded = false,
   query = "",
+  expanded: controlledExpanded,
+  onToggleExpanded,
 }: FeatureCardProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const expanded = controlledExpanded ?? localExpanded;
+  const toggleExpanded = onToggleExpanded ?? (() => setLocalExpanded((v) => !v));
   const isExpanded = expanded || forceExpanded;
   const { done, open, startable, working } = counts(feature);
   const headingId = `feature-${feature.slug}-heading`;
@@ -67,7 +78,7 @@ export function FeatureCard({
         <button
           type="button"
           aria-expanded={isExpanded}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={toggleExpanded}
           className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 text-left"
         >
           <h2 id={headingId} className="font-medium tracking-tight">

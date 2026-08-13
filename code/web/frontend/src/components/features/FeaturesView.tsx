@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { IconAlertTriangle, IconProgressAlert } from "@tabler/icons-react";
 import type { InProgressSummary } from "@gootte/contract";
 import { useFeatures } from "../../lib/query";
@@ -8,6 +9,14 @@ import { FeatureSearchBox } from "./FeatureSearchBox";
 import { filterFeaturesBySearch } from "./featureSearch";
 import { DocDrawer } from "./DocDrawer";
 import { decodeDocView, encodeDocView } from "./docView";
+import { findTrigger, type DocTrigger } from "./docTrigger";
+
+/** 실측 전 첫 어림값 — 접힌 카드 한 장 높이에 가깝게만 잡으면 된다, 마운트되면 바로 실측으로 바뀐다. */
+const ESTIMATED_ROW_HEIGHT = 64;
+/** 화면 위아래로 미리 그려 두는 줄 수 — 스크롤이 빨라도 빈 자리가 먼저 보이지 않게. */
+const OVERSCAN = 6;
+/** 카드 사이 간격(구 `gap-4` = 1rem) — 목록이 flex 가 아니라 절대 위치라 각 줄 아래 여백으로 흉내낸다. */
+const CARD_GAP_PX = 16;
 
 const UNREADABLE_REASON: Record<InProgressSummary["unreadable"][number]["reason"], string> = {
   "no-repo": "저장소를 찾지 못함",
@@ -119,30 +128,87 @@ interface FeaturesViewProps {
   onGoToPlanFeature: (feature: string) => void;
 }
 
+/** 카드 펼침 상태 — 카드 밖(여기)에 둔다, 가상 스크롤로 카드가 DOM 에서 빠졌다 돌아와도
+ * 살아 있는 자리(a-long-list-stays-usable/02 ①). 여러 장을 동시에 펼쳐 둘 수 있는 지금 동작은
+ * 그대로다 — 슬러그 집합일 뿐 하나로 조이지 않는다. */
+function useExpandedFeatures() {
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const toggle = useCallback((slug: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  }, []);
+  return { expanded, toggle };
+}
+
 /**
  * 기능별 할일 — `docs/features/<기능>/{spec.md,issues/,adr/,…}` 파생(INV-2 read-only).
  * 막힘 해제·착수 가능은 **서버가 매 read 재계산**한 값을 그대로 싣는다(INV-1·INV-4 — 여기서 다시 세지 않는다).
  * 처리중은 문서가 아니라 **격리 사본 관측**이 준다 — 이어지지 않은 작업도 같이 뜬다.
  *
- * 카드 목록은 이 컴포넌트가 스크롤을 갖는다(`overflow-y-auto`) — 각 카드는 `shrink-0` 이라
- * 내용만큼 자라고 눌리지 않는다(F1 회귀 고정, 티켓 01 §설계 1).
+ * 카드 목록은 이 컴포넌트가 스크롤을 갖는다(`overflow-y-auto`) — 화면에 들어온 카드만 그린다
+ * (TanStack Virtual, a-long-list-stays-usable/02). 개수로 길이 갈리지 않는다(INV-V3) — 카드
+ * 아홉 장이든 구백 장이든 이 한 길로 그린다. 높이는 실측해서 쓴다(③) — 짐작한 높이로 고정하면
+ * 접힘·펼침·설명 유무로 제각각인 실제 높이가 들어오는 순간 보던 자리가 밀린다.
  */
 export function FeaturesView({ project, view, onView, onGoToPlanFeature }: FeaturesViewProps) {
   const { data, isLoading, isError, error } = useFeatures(project);
-  // 문서를 연 트리거 요소 — 드로어를 닫을 때 포커스를 여기로 돌려준다(티켓 01 §설계 4).
-  const triggerRef = useRef<HTMLElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const docView = decodeDocView(view);
   // 검색은 지금 이 순간의 일이지 저장할 상태가 아니다 — 주소에 싣지 않는다(티켓 01 §주소).
   const [query, setQuery] = useState("");
+  const { expanded, toggle: toggleExpanded } = useExpandedFeatures();
 
-  const openDoc = (featureSlug: string, path: string, trigger: HTMLElement) => {
-    triggerRef.current = trigger;
+  // 문서를 연 자리의 신원(요소가 아니라 "무엇을 열었는지") — 드로어를 닫을 때 그 자리로
+  // 스크롤한 뒤 포커스를 돌려준다(②). 카드가 스크롤을 벗어났다 돌아오면 버튼은 새 DOM
+  // 노드로 다시 태어나므로, 옛 요소를 붙드는 것으로는 갈 곳을 못 찾는다.
+  const lastOpenedRef = useRef<DocTrigger | null>(null);
+  const [pendingFocus, setPendingFocus] = useState<DocTrigger | null>(null);
+
+  const matches = useMemo(
+    () => (data ? filterFeaturesBySearch(data.features, query) : []),
+    [data, query],
+  );
+  const searching = query.trim() !== "";
+
+  // count 는 늘 matches.length 다 — 목록이 짧을 때만 다른 길로 그리는 분기를 두지 않는다(INV-V3).
+  const virtualizer = useVirtualizer({
+    count: matches.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    overscan: OVERSCAN,
+    getItemKey: (index) => matches[index]!.feature.slug,
+  });
+  const virtualItems = virtualizer.getVirtualItems();
+  const visibleKey = virtualItems.map((v) => v.key).join(",");
+
+  // 스크롤이 그 자리를 다시 그릴 때까지 기다렸다가 포커스를 준다 — 스크롤 직후 한 번에
+  // 못 찾으면(아직 안 그려졌으면) visibleKey 가 바뀔 때마다 다시 시도한다.
+  useEffect(() => {
+    if (!pendingFocus || !containerRef.current) return;
+    const el = findTrigger(containerRef.current, pendingFocus);
+    if (el) {
+      el.focus();
+      setPendingFocus(null);
+    }
+  }, [pendingFocus, visibleKey]);
+
+  const openDoc = (featureSlug: string, path: string) => {
+    lastOpenedRef.current = { featureSlug, path };
     onView(encodeDocView(featureSlug, path));
   };
   const closeDoc = () => {
     onView(null);
-    triggerRef.current?.focus();
-    triggerRef.current = null;
+    const opened = lastOpenedRef.current;
+    lastOpenedRef.current = null;
+    if (!opened) return;
+    const idx = matches.findIndex((m) => m.feature.slug === opened.featureSlug);
+    if (idx === -1) return; // 검색이 그 사이 걸러냈다 — 돌아갈 자리가 없다.
+    virtualizer.scrollToIndex(idx, { align: "center" });
+    setPendingFocus(opened);
   };
 
   if (isLoading) return <Loading label="기능 문서 읽는 중…" />;
@@ -156,27 +222,54 @@ export function FeaturesView({ project, view, onView, onGoToPlanFeature }: Featu
   if (data.features.length === 0 && unresolved === 0)
     return <Empty>docs/features/ 아래 기능이 없습니다.</Empty>;
 
-  const matches = filterFeaturesBySearch(data.features, query);
-  const searching = query.trim() !== "";
-
   return (
     <>
-      <div className="flex h-full flex-col gap-4 overflow-y-auto pb-2">
+      <div ref={containerRef} data-virtual-viewport className="flex h-full flex-col gap-4 overflow-y-auto pb-2">
         <FeatureSearchBox value={query} onChange={setQuery} />
         <UnresolvedWork inProgress={data.inProgress} />
         {searching && matches.length === 0 && (
           <p className="px-1 text-sm text-muted">찾는 것이 없습니다</p>
         )}
-        {matches.map(({ feature, forceExpanded }) => (
-          <FeatureCard
-            key={feature.slug}
-            feature={feature}
-            onOpenDoc={openDoc}
-            onGoToPlan={onGoToPlanFeature}
-            forceExpanded={forceExpanded}
-            query={query}
-          />
-        ))}
+        {matches.length > 0 && (
+          // 🔴 shrink-0 없으면 flex 부모가 이 자리표시 칸을 실제 총 높이(virtualizer.getTotalSize())
+          // 보다 좁게 눌러버린다 — 카드 각각에 shrink-0 을 주던 것과 같은 회귀(F1)가 여기서도
+          // 일어난다. 눌리는 대신 컨테이너(overflow-y-auto)가 스크롤돼야 한다.
+          <div
+            className="shrink-0"
+            style={{ position: "relative", height: virtualizer.getTotalSize(), width: "100%" }}
+          >
+            {virtualItems.map((vi) => {
+              const { feature, forceExpanded } = matches[vi.index]!;
+              const isLast = vi.index === matches.length - 1;
+              return (
+                <div
+                  key={vi.key}
+                  data-index={vi.index}
+                  data-virtual-row
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${vi.start}px)`,
+                    paddingBottom: isLast ? 0 : CARD_GAP_PX,
+                  }}
+                >
+                  <FeatureCard
+                    feature={feature}
+                    onOpenDoc={openDoc}
+                    onGoToPlan={onGoToPlanFeature}
+                    forceExpanded={forceExpanded}
+                    query={query}
+                    expanded={expanded.has(feature.slug)}
+                    onToggleExpanded={() => toggleExpanded(feature.slug)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
       <DocDrawer
         project={project}
