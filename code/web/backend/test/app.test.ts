@@ -432,6 +432,22 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
       expect(card).toMatchObject({ seq: null, closedAt: null });
     }));
 
+  test("🔴 작업중 사본이 있으면 계획 판 티켓도 처리중을 말한다(status-colors-tell-apart/02, spec H6)", () =>
+    withDataDir(async (dataDir) => {
+      const th = makeTreehouse();
+      try {
+        const body = PlanBoardResponse.parse(
+          await (await createApp({ roots, treehouse: th, dataDir }).request("/api/plan/alpha")).json(),
+        );
+        const card = body.waiting.find((c) => c.feature.slug === "auth-login");
+        const t = card?.feature.tickets.find((x) => x.slug === "02-screen");
+        expect(t?.status).toBe("in_progress");
+        expect(t?.workedBy).toEqual(["fm/screen"]);
+      } finally {
+        rmSync(th, { recursive: true, force: true });
+      }
+    }));
+
   test("자리 행이 있으면 그 칸에 실린다 — 나머지는 그대로 대기", () =>
     withDataDir(async (dataDir) => {
       place(dataDir, "auth-login", "active", 0);
