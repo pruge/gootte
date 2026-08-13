@@ -411,3 +411,121 @@ describe("FeaturesView — 이어지지 않은 작업(격리 사본 관측)", ()
     expect(screen.getByText(/티켓 미상 · 작업중 1/)).toBeInTheDocument();
   });
 });
+
+// 두 번째 기능 — 검색이 "무엇이 남고 무엇이 사라졌나"를 가르는지 보려면 걸리는 것과
+// 안 걸리는 것이 둘 다 있어야 한다. 티켓 제목만 검색어에 맞는 자리도 하나 둔다.
+const SEARCH_DATA: FeaturesResponse = {
+  ...DATA,
+  features: [
+    ...DATA.features,
+    {
+      slug: "billing",
+      title: "billing — 결제",
+      status: "pending",
+      sourceStatus: "ready-for-agent",
+      statusKnown: true,
+      docs: [],
+      tickets: [
+        {
+          num: "01",
+          slug: "01-charge",
+          path: "issues/01-charge.md",
+          title: "정기 결제",
+          status: "pending",
+          sourceStatus: "ready-for-agent",
+          statusKnown: true,
+          blockedBy: [],
+          unreadableBlockedBy: [],
+          waitingOn: [],
+          startable: true,
+          workedBy: [],
+          needsCaptainEye: false,
+        },
+      ],
+    },
+  ],
+};
+
+/** 검색 상자 — placeholder 로 찾는다(문구 그대로 `기능·티켓 검색`). */
+function searchBox(): HTMLElement {
+  return screen.getByPlaceholderText("기능·티켓 검색");
+}
+
+describe("FeaturesView — 검색 상자가 기능과 티켓을 찾아 준다(a-long-list-stays-usable/01)", () => {
+  it("기능 이름으로 걸린다 — 대소문자 무관, 부분 일치. 안 걸린 카드는 사라진다", () => {
+    renderView(SEARCH_DATA);
+    fireEvent.change(searchBox(), { target: { value: "BILL" } });
+    expect(screen.getByRole("heading", { name: "결제" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "로그인" })).toBeNull();
+  });
+
+  it("🔴 접힌 카드 안 티켓 제목으로 걸러지고, 그 카드가 펼쳐진 채로 뜬다 — ⌘F 로는 안 되던 일", () => {
+    renderView(SEARCH_DATA);
+    // "소셜" 은 auth-login 카드 이름에는 없고, 접힌 채인 03번 티켓 제목("소셜 로그인")에만 있다.
+    fireEvent.change(searchBox(), { target: { value: "소셜" } });
+    const heading = screen.getByRole("heading", { name: "로그인" });
+    expect(heading.closest("button")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("소셜 로그인")).toBeInTheDocument();
+    // 이름도 티켓도 안 걸린 카드는 사라진다.
+    expect(screen.queryByRole("heading", { name: "결제" })).toBeNull();
+  });
+
+  it("아무것도 안 걸리면 없다고 말한다 — 빈 화면으로 두지 않는다", () => {
+    renderView(SEARCH_DATA);
+    fireEvent.change(searchBox(), { target: { value: "존재하지-않는-검색어" } });
+    expect(screen.getByText("찾는 것이 없습니다")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "로그인" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "결제" })).toBeNull();
+  });
+
+  it("검색어를 지우면 원래 목록 그대로 돌아온다 — 강제로 펼쳐진 카드도 접힘으로 되돌아온다", () => {
+    renderView(SEARCH_DATA);
+    fireEvent.change(searchBox(), { target: { value: "소셜" } });
+    expect(screen.getByRole("heading", { name: "로그인" }).closest("button")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    fireEvent.change(searchBox(), { target: { value: "" } });
+    expect(screen.getByRole("heading", { name: "로그인" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "결제" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "로그인" }).closest("button")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("지우기 단추를 눌러도 원래대로 돌아온다", () => {
+    renderView(SEARCH_DATA);
+    fireEvent.change(searchBox(), { target: { value: "결제" } });
+    expect(screen.queryByRole("heading", { name: "로그인" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "검색어 지우기" }));
+    expect(screen.getByRole("heading", { name: "로그인" })).toBeInTheDocument();
+    expect((searchBox() as HTMLInputElement).value).toBe("");
+  });
+
+  it("🔴 미해소 사본 구역은 검색과 무관하게 그대로 선다 — 경고를 검색어로 숨길 수 없다", () => {
+    renderView({
+      ...SEARCH_DATA,
+      inProgress: {
+        ...NO_WORK,
+        unknown: [{ slug: "alpha-abc123/2", branch: "fm/mystery", path: "/tmp/th/alpha-abc123/2" }],
+      },
+    });
+    fireEvent.change(searchBox(), { target: { value: "존재하지-않는-검색어" } });
+    expect(screen.getByText(/티켓 미상 · 작업중 1/)).toBeInTheDocument();
+  });
+
+  it("🔴 정규식 특수문자를 넣어도 깨지지 않는다 — 글자로 다루지 규칙으로 다루지 않는다", () => {
+    renderView(SEARCH_DATA);
+    fireEvent.change(searchBox(), { target: { value: "[a-z]+(.*)$^" } });
+    expect(screen.getByText("찾는 것이 없습니다")).toBeInTheDocument();
+    fireEvent.change(searchBox(), { target: { value: "" } });
+    expect(screen.getByRole("heading", { name: "로그인" })).toBeInTheDocument();
+  });
+
+  it("기존 동작이 그대로 산다 — 검색과 무관하게 손으로 펼치고 접을 수 있다", () => {
+    renderView(SEARCH_DATA);
+    openCard("결제");
+    expect(screen.getByText("정기 결제")).toBeInTheDocument();
+  });
+});
