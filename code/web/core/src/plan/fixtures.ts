@@ -11,6 +11,8 @@ export interface TicketSpec {
   sourceStatus?: string;
   /** `resolved (YYYY-MM-DD)` 의 완료일. 날짜뿐이고 시각은 없다(spec F6). */
   completedAt?: string;
+  /** 안 읽음 표시(`applyReadState` 가 계산하는 그 값, plan-board/11 이 판정에 그대로 쓴다). */
+  unread?: boolean;
 }
 
 /**
@@ -39,6 +41,7 @@ export function feature(slug: string, tickets: readonly (string | TicketSpec)[] 
         sourceStatus: spec.sourceStatus ?? "draft",
         statusKnown: true,
         ...(spec.completedAt ? { completedAt: spec.completedAt } : {}),
+        ...(spec.unread !== undefined ? { unread: spec.unread } : {}),
         blockedBy: [],
         unreadableBlockedBy: [],
         waitingOn: [],

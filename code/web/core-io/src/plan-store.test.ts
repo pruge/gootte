@@ -322,35 +322,154 @@ describe("readPlacementsWithAutoClose — 04 를 태우고 다시 읽는 자리(
     expect(second).toEqual(first);
   });
 
-  test("🔴 저절로 닫힌 카드에 새 티켓이 생기면 대기로 돌아온다(plan-board/10) — 자리 행이 사라진다", () => {
+  /**
+   * plan-board/11 — 방아쇠는 읽음 기록(`ticket.unread`)이다. 첫 read 는 항상
+   * `ensureReadSeed` 가 그때 있던 티켓을 읽음으로 깐 뒤이므로(spec §첫 화면이 통째로 초록이면
+   * 안 된다), "안 읽은 티켓" 을 만들려면 먼저 한 번 깔고 그 뒤에 새 티켓을 더해야 한다 —
+   * 아래 테스트들이 공유하는 패턴이다.
+   */
+  function addTicket(f: Feature, num: string, path: string): Feature {
+    const firstTicket = f.tickets[0];
+    if (!firstTicket) throw new Error("fixture must have one ticket");
+    return { ...f, tickets: [...f.tickets, { ...firstTicket, num, slug: `${num}-x`, path, status: "pending" }] };
+  }
+
+  test("🔴 저절로 닫힌 카드에 안 읽은 티켓이 생기면 대기로 돌아온다(plan-board/11) — 자리 행이 사라진다", () => {
     migratePlanDb(dataDir);
-    // 저절로 닫힌다(closed_at 없음).
+    // 저절로 닫힌다(closed_at 없음) — 이 read 가 있던 티켓을 읽음으로 깐다.
     readPlacementsWithAutoClose(dataDir, "alpha", [feature("a", "done")]);
     expect(readPlacements(dataDir, "alpha")).toEqual([
       { feature: "a", area: "done", seq: 0, closedAt: null },
     ]);
-    // 새 티켓이 생겨 남은 일이 있다 — 다음 read 에서 자리 행이 사라진다(대기로 돌아온다, INV-B1).
-    const original = feature("a", "done");
-    const firstTicket = original.tickets[0];
-    if (!firstTicket) throw new Error("fixture must have one ticket");
-    const withNewTicket: Feature = {
-      ...original,
-      tickets: [
-        ...original.tickets,
-        { ...firstTicket, num: "02", slug: "02-x", path: "issues/02-x.md", status: "pending" },
-      ],
-    };
+    // 안 읽은 새 티켓이 생긴다 — 다음 read 에서 자리 행이 사라진다(대기로 돌아온다, INV-B1).
+    const withNewTicket = addTicket(feature("a", "done"), "02", "issues/02-x.md");
     const placements = readPlacementsWithAutoClose(dataDir, "alpha", [withNewTicket]);
     expect(placements).toEqual([]);
     expect(readPlacements(dataDir, "alpha")).toEqual([]);
   });
 
-  test("🔴 캡틴이 손으로 완료에 내려둔 카드(closed_at 있음)는 남은 티켓이 생겨도 그대로다", () => {
+  test("🔴 캡틴이 손으로 완료에 내려둔 카드(closed_at 있음)도 안 읽은 티켓이 생기면 대기로 돌아온다 — 10 의 반대, 캡틴 결정(plan-board/11)", () => {
     migratePlanDb(dataDir);
     insert("alpha", "a", "done", 0, "2026-08-01 09:00");
-    const withOpenTicket: Feature = { ...feature("a", "pending") };
-    const placements = readPlacementsWithAutoClose(dataDir, "alpha", [withOpenTicket]);
-    expect(placements).toEqual([{ feature: "a", area: "done", seq: 0, closedAt: "2026-08-01 09:00" }]);
+    // 있던 티켓을 읽음으로 깐다.
+    readPlacementsWithAutoClose(dataDir, "alpha", [feature("a", "done")]);
+    expect(readPlacements(dataDir, "alpha")).toEqual([
+      { feature: "a", area: "done", seq: 0, closedAt: "2026-08-01 09:00" },
+    ]);
+    // 안 읽은 새 티켓이 생긴다 — 캡틴이 손으로 닫아 두었어도 이제는 대기로 돌아온다.
+    const withNewTicket = addTicket(feature("a", "done"), "02", "issues/02-x.md");
+    const placements = readPlacementsWithAutoClose(dataDir, "alpha", [withNewTicket]);
+    expect(placements).toEqual([]);
+    expect(readPlacements(dataDir, "alpha")).toEqual([]);
+  });
+
+  test("🔴 예약·폐기 칸의 카드도 안 읽은 티켓이 생기면 대기로 올라온다 — 칸이 셋으로 넓어졌다", () => {
+    migratePlanDb(dataDir);
+    insert("alpha", "a", "reserved", 0);
+    insert("alpha", "b", "discarded", 0);
+    readPlacementsWithAutoClose(dataDir, "alpha", [feature("a", "pending"), feature("b", "pending")]);
+
+    const withNewTicketA = addTicket(feature("a", "pending"), "02", "issues/02-x.md");
+    const withNewTicketB = addTicket(feature("b", "pending"), "02", "issues/02-x.md");
+    const placements = readPlacementsWithAutoClose(dataDir, "alpha", [withNewTicketA, withNewTicketB]);
+    expect(placements).toEqual([]);
+  });
+
+  test("처음 켠 직후에는 예약·폐기 칸의 카드가 안 움직인다 — 읽음 기록의 첫 깔기가 막는다", () => {
+    migratePlanDb(dataDir);
+    insert("alpha", "a", "reserved", 0);
+    insert("alpha", "b", "discarded", 0);
+    const placements = readPlacementsWithAutoClose(dataDir, "alpha", [
+      feature("a", "pending"),
+      feature("b", "pending"),
+    ]).sort((x, y) => x.feature.localeCompare(y.feature));
+    expect(placements).toEqual([
+      { feature: "a", area: "reserved", seq: 0, closedAt: null },
+      { feature: "b", area: "discarded", seq: 0, closedAt: null },
+    ]);
+  });
+
+  test("🔴 다 읽은 카드는 안 끝난 티켓을 안고 있어도 그 자리에 그대로다 — 칸이 비워지지 않는다", () => {
+    migratePlanDb(dataDir);
+    insert("alpha", "a", "reserved", 0);
+    // 있는 티켓(미완, pending)을 읽음으로 깐다 — 처리 여부와 무관하게 조용해야 한다.
+    const placements = readPlacementsWithAutoClose(dataDir, "alpha", [feature("a", "pending")]);
+    expect(placements).toEqual([{ feature: "a", area: "reserved", seq: 0, closedAt: null }]);
+  });
+
+  test("🔴 읽지 않고 도로 예약에 내려놓아도 또 대기로 올라온다 — 캡틴 결정(plan-board/11)", () => {
+    migratePlanDb(dataDir);
+    insert("alpha", "a", "reserved", 0);
+    readPlacementsWithAutoClose(dataDir, "alpha", [feature("a", "pending")]); // 있던 티켓을 읽음으로 깐다.
+    const withNewTicket = addTicket(feature("a", "pending"), "02", "issues/02-x.md");
+
+    // 1) 안 읽은 새 티켓이 생겨 대기로 올라온다(행이 사라진다).
+    expect(readPlacementsWithAutoClose(dataDir, "alpha", [withNewTicket])).toEqual([]);
+
+    // 2) 캡틴이 읽지 않고 도로 예약에 내려놓는다.
+    writePlanMove(dataDir, "alpha", {
+      upsert: [{ feature: "a", area: "reserved", seq: 0, closedAt: null }],
+      remove: [],
+      clearSteps: [],
+      setSteps: [],
+    });
+
+    // 3) 다음 read 에서 또 대기로 올라온다 — 내려놓기는 읽음이 아니다.
+    expect(readPlacementsWithAutoClose(dataDir, "alpha", [withNewTicket])).toEqual([]);
+  });
+
+  test("🔴 읽은 뒤 도로 내려놓으면 그 자리에 남는다", () => {
+    migratePlanDb(dataDir);
+    insert("alpha", "a", "reserved", 0);
+    readPlacementsWithAutoClose(dataDir, "alpha", [feature("a", "pending")]); // 있던 티켓을 읽음으로 깐다.
+    const withNewTicket = addTicket(feature("a", "pending"), "02", "issues/02-x.md");
+    expect(readPlacementsWithAutoClose(dataDir, "alpha", [withNewTicket])).toEqual([]);
+
+    // 캡틴이 새 티켓을 읽는다.
+    markDocRead(dataDir, "alpha", "a", "issues/02-x.md");
+    // 그리고 도로 예약에 내려놓는다.
+    writePlanMove(dataDir, "alpha", {
+      upsert: [{ feature: "a", area: "reserved", seq: 0, closedAt: null }],
+      remove: [],
+      clearSteps: [],
+      setSteps: [],
+    });
+
+    // 읽었으니 다음 read 에도 그 자리에 그대로 있다.
+    expect(readPlacementsWithAutoClose(dataDir, "alpha", [withNewTicket])).toEqual([
+      { feature: "a", area: "reserved", seq: 0, closedAt: null },
+    ]);
+  });
+
+  test("🔴 읽음 기록을 못 읽으면 대기 복귀만 조용해진다 — 판 자체는 문서만으로 그대로 선다(INV-U1, plan-board/11)", () => {
+    const db = new DatabaseSync(join(dataDir, "plan.db"));
+    db.exec(`
+      CREATE TABLE placement (
+        project TEXT NOT NULL, feature TEXT NOT NULL,
+        area TEXT NOT NULL CHECK (area IN ('active','reserved','discarded','done')),
+        seq INTEGER NOT NULL, closed_at TEXT, PRIMARY KEY (project, feature)
+      );
+      CREATE TABLE step (
+        project TEXT NOT NULL, feature TEXT NOT NULL, ticket TEXT NOT NULL,
+        step REAL NOT NULL, PRIMARY KEY (project, feature, ticket)
+      );
+      -- read_mark 를 일부러 망가뜨린다 — path 칸이 없다. CREATE TABLE IF NOT EXISTS 는 이미 있는
+      -- 표를 그대로 두므로, 이 망가진 모양이 open() 을 지나서도 살아남는다.
+      CREATE TABLE read_mark (project TEXT NOT NULL, feature TEXT NOT NULL);
+      CREATE TABLE read_seed (project TEXT NOT NULL PRIMARY KEY, seeded_at TEXT NOT NULL);
+    `);
+    db.prepare(`INSERT INTO placement (project, feature, area, seq, closed_at) VALUES (?, ?, ?, ?, ?)`).run(
+      "alpha",
+      "a",
+      "reserved",
+      0,
+      null,
+    );
+    db.close();
+
+    const placements = readPlacementsWithAutoClose(dataDir, "alpha", [feature("a", "pending")]);
+    // 읽음 기록이 막혀도 판은 문서만으로 그대로 선다 — 다만 대기 복귀는 안 일어난다.
+    expect(placements).toEqual([{ feature: "a", area: "reserved", seq: 0, closedAt: null }]);
   });
 });
 

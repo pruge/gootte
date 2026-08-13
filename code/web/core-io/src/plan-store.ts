@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import type { Feature } from "@gootte/contract";
 import { Placement } from "@gootte/contract";
-import { planAutoClose, planReopen, type PlanWritePlan } from "@gootte/core";
+import { applyReadState, planAutoClose, planReopen, type PlanWritePlan } from "@gootte/core";
 
 /**
  * 계획 저장소 — SQLite, gootte 자기 저장소(INV-2 — 관리대상에는 아무것도 안 쓴다. INV-2 가
@@ -267,11 +267,11 @@ export function writePlanMove(dataDir: string, project: string, plan: PlanWriteP
 }
 
 /**
- * 판을 읽기 전에 자동 닫힘(04, `planAutoClose`)과 자동 되돌림(10, `planReopen`)부터 태우고,
+ * 판을 읽기 전에 자동 닫힘(04, `planAutoClose`)과 대기 복귀(11, `planReopen`)부터 태우고,
  * 자리 행을 다시 읽어 돌려준다 — **판을 보는 모든 길이 지나는 한 자리**(HTTP `readBoard` 도,
  * CLI `board`·`next` 도).
  *
- * 🔴 **판정은 한 줄도 여기 없다** — 무엇이 닫히는지는 `planAutoClose`, 무엇이 되돌아오는지는
+ * 🔴 **판정은 한 줄도 여기 없다** — 무엇이 닫히는지는 `planAutoClose`, 무엇이 대기로 돌아오는지는
  * `planReopen`(둘 다 core) 하나뿐이고, 여기는 그 결과를 쓰고(`writePlanMove`) 다시 읽을 뿐이다
  * (spec §판정 자리는 하나뿐). 이 함수를 부르지 않고 `readPlacements` 를 직접 부르는 길이
  * 하나라도 남으면, 그 길은 화면·다른 길과 다른 판을 본다 — 이 저장소가 고치는 문제가 그것이다.
@@ -279,6 +279,18 @@ export function writePlanMove(dataDir: string, project: string, plan: PlanWriteP
  * 🔴 **닫음을 먼저 쓰고 다시 읽은 뒤에 되돌림을 본다** — 두 판정은 서로 배타적이라(close.ts
  * §planReopen) 순서가 결과를 바꾸지 않지만, 되돌림은 "지금 완료 칸에 있는 카드" 를 봐야 하므로
  * 방금 닫힌 카드까지 다시 읽은 자리 행 위에서 판정해야 맞다.
+ *
+ * 🔴 **`planReopen` 의 방아쇠는 읽음 기록이다**(plan-board/11, spec §INV-B8) — `applyReadState`
+ * 를 여기서 한 번 더 태워 `ticket.unread` 를 실어 보낸다. `withReadState`(backend)가 이미 그
+ * 값을 실은 채 `features` 를 넘겨도, 여기서 다시 태우는 것은 무해하다(같은 DB, 같은 함수라
+ * 같은 값이 나온다) — CLI 처럼 애초에 읽음 상태를 안 태우고 부르는 길에서도 판정이 갈리지
+ * 않게 하는 것이 이 함수의 몫이다(spec §화면을 안 켜도 같다). 🔴 **판정 자리를 새로 만들지
+ * 않는다** — `ensureReadSeed`·`readReadMarks`·`applyReadState` 는 전부 이미 있는 자리를 그대로
+ * 부르는 것뿐이다.
+ *
+ * 🔴 **읽음 기록을 못 읽으면 `planReopen` 이 조용해진다** — `applyReadState(features, null)` 은
+ * 전부 읽은 것으로 본다(INV-U1). 판 자체는 죽지 않는다 — 자동 닫힘은 이미 그 앞에서 끝났고,
+ * 대기 복귀 이동만 조용히 꺼진다.
  *
  * 🔴 **쓴 뒤에는 자리 행을 다시 읽는다** — 방금 쓴 값으로 조립하면 DB 의 2차 사본이 생긴다(INV-1).
  */
@@ -289,9 +301,31 @@ export function readPlacementsWithAutoClose(
 ): Placement[] {
   const closing = planAutoClose(features, readPlacements(dataDir, project));
   if (closing) writePlanMove(dataDir, project, closing);
-  const reopening = planReopen(features, readPlacements(dataDir, project));
+
+  const withUnread = featuresWithUnreadState(dataDir, project, features);
+  const reopening = planReopen(withUnread, readPlacements(dataDir, project));
   if (reopening) writePlanMove(dataDir, project, reopening);
   return readPlacements(dataDir, project);
+}
+
+/**
+ * `planReopen` 이 볼 `ticket.unread` 를 싣는다 — `backend/src/app.ts` 의 `withReadState` 와
+ * 같은 관례(첫 깔기 → 읽음 기록 읽기 → `applyReadState`)를 core-io 안에서도 한 번 더 지킨다.
+ * 🔴 읽음 기록이 막히면 `applyReadState(features, null)` 로 조용히 기운다(INV-U1) — 이 함수를
+ * 부르는 유일한 자리(`readPlacementsWithAutoClose`)가 그 값을 `planReopen` 하나에만 쓰므로,
+ * 판 전체를 죽이지 않고 대기 복귀만 꺼진다.
+ */
+function featuresWithUnreadState(
+  dataDir: string,
+  project: string,
+  features: readonly Feature[],
+): Feature[] {
+  try {
+    ensureReadSeed(dataDir, project, features);
+    return applyReadState(features, readReadMarks(dataDir, project));
+  } catch {
+    return applyReadState(features, null);
+  }
 }
 
 interface ReadMarkRow {

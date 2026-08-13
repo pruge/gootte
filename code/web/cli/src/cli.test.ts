@@ -178,6 +178,35 @@ describe("cli — step · step --clear · board · next(plan-board/05)", () => {
     expect(out).not.toContain("## 완료 (1)");
   });
 
+  /**
+   * plan-board/11 — HTTP 를 한 번도 부르지 않아도 예약 칸의 카드가 안 읽은 티켓 때문에 대기로
+   * 올라온다(spec §화면을 안 켜도 같다). `board` 는 `readPlacementsWithAutoClose`(core-io) 하나를
+   * 화면과 같이 지나므로, 이 판정도 CLI 만으로 같은 결과를 낸다.
+   */
+  it("board — 🔴 HTTP 를 부르지 않아도 예약 칸의 카드는 안 읽은 티켓이 생기면 대기로 올라온다", () => {
+    writePlanMove(dataDir, slug(), {
+      upsert: [{ feature: "f", area: "reserved", seq: 0, closedAt: null }],
+      remove: [],
+      clearSteps: [],
+      setSteps: [],
+    });
+    // 있던 티켓 둘을 읽음으로 깐다(첫 화면 깔기).
+    boardText([slug()], dataDir, proj);
+    expect(boardText([slug()], dataDir, proj)).toContain("## 예약 (1)");
+
+    // 안 읽은 새 티켓이 생긴다.
+    w(
+      proj,
+      "docs/features/f/issues/03-late.md",
+      "# 03 — late\n\n**Status:** ready-for-agent\n\n**Blocked by:** 없음\n",
+    );
+    const out = boardText([slug()], dataDir, proj);
+    expect(out).toContain("## 대기 (1)");
+    expect(out).not.toContain("## 예약 (1)");
+    // 계획 DB 에도 실제로 자리 행이 사라졌다 — CLI 만 쓰는 세션이 같은 판을 본다.
+    expect(readPlacements(dataDir, slug())).toEqual([]);
+  });
+
   it("next — 프로젝트 없이 거절한다", () => {
     expect(() => nextText([], dataDir, proj)).toThrow(CliError);
   });
