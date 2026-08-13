@@ -6,7 +6,7 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능.**
 
-**Status:** claimed
+**Status:** resolved (2026-08-13 14:03)
 
 ## 캡틴 지시 (원문)
 
@@ -133,3 +133,34 @@
   1. 🔴 **티켓 제목으로 찾았을 때 왜 그 카드가 걸렸는지 바로 보이나** — 접힌 채로 뜨면 반쪽이다.
   2. 🔴 **한글을 칠 때 화면이 떨리지 않나.**
   3. 🔴 **검색 상자가 목록을 가리거나 어색하게 끼어 있지 않나.**
+
+## Comments
+
+**(2026-08-13 14:03) 캡틴 확인 중 추가 요청 둘 — 이 티켓 원문에는 없던 것.**
+캡틴이 구현을 직접 화면으로 보시는 중, 이 티켓의 "🔴 문구 — 그대로 써라" 절이나 완료 조건에는
+없던 추가 둘을 그 자리에서 요청하셨다. 다음 사람이 코드와 티켓이 어긋난 것으로 읽고 되돌리지
+않도록 원문과 함께 남긴다.
+
+1. **검색어 노란 칩 강조.** 캡틴 원문:
+   > "검색한 키워드는 노란색으로 깜싼 배경색을 준 chip 형식으로 보이게하자. 글자 크기는 그대로."
+
+   구현 — `HighlightedText`(`frontend/src/components/features/HighlightedText.tsx`)가 기능 이름·
+   티켓 제목에서 걸린 자리를 `<mark>` 로 감싸고, 새 디자인 토큰 `--search-mark`/`--search-mark-fg`
+   (라이트·다크 각각, `frontend/src/styles/global.css`)로 배경만 얹는다. 글자 크기(`font-size`)는
+   건드리지 않는다. 걸러내기와 강조가 같은 규칙(`splitByQuery`, `featureSearch.ts`)을 쓰므로
+   "걸렸다고 걸러졌는데 칩은 안 뜬다" 류의 어긋남이 생기지 않는다.
+
+2. **`process` 탭 라벨 → `steps`.** 캡틴 원문:
+   > "features | plan | process -> features | plan | steps 로 수정하자."
+
+   구현 — `frontend/src/components/main/Tabs.tsx` 의 `label` 필드만 `"process"` → `"steps"` 로
+   바꿨다. 🔴 **탭의 내부 id·URL `tab=` 값·컴포넌트 파일명(`process/ProcessView.tsx`)·라우트는
+   그대로 `process` 다** — 이번 요청은 화면에 찍히는 글자만 캡틴이 지목하신 것이라, 코드 식별자까지
+   바꾸는 것은 범위 밖으로 판단했다. `docs/features/plan-board/`·`status-colors-tell-apart/`·
+   `unread-tickets-show-themselves/` 의 기존 문서들이 `` `process` `` 를 쓰는 자리를 훑었다 —
+   전부 **완료(resolved)로 얼어붙은 과거 티켓의 인용문이거나, 탭의 내부 식별자(라우트·컴포넌트명)를
+   가리키는 자리**였다(예: plan-board/07 §완료 조건의 `` `feature | plan | process` `` 는
+   2026-08-12 그 시점에 실제로 화면에 그렇게 찍혀 있었다는 완료 판정 기록이다 — 동결된 역사라
+   고치지 않는다, `AGENTS.md` §Track 어휘 은퇴 절과 같은 원칙). 지금 이 순간을 서술하는 살아있는
+   문서(`AGENTS.md`, `docs/agents/`) 에는 `process` 를 화면 라벨로 지목하는 자리가 없었다 — 고칠
+   곳이 없었다.
