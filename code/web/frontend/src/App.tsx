@@ -1,10 +1,21 @@
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { MainPanel } from "./components/main/MainPanel";
 import { useUrlState } from "./hooks/useUrlState";
+import { useKeyboardNav } from "./hooks/useKeyboardNav";
+import { useProjects } from "./lib/query";
 
 /** 셸 — 사이드바(프로젝트) + 메인(본문 header + features 탭). 브랜드=본문 header 좌측, 테마=사이드바 하단. */
 export function App() {
   const { project, tab, view, setProject, setTab, setView, goToPlanFeature } = useUrlState();
+  const { data: projects } = useProjects();
+
+  useKeyboardNav({
+    project,
+    projects: projects?.map((p) => p.slug) ?? [],
+    onSelectProject: setProject,
+    tab,
+    onSelectTab: setTab,
+  });
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg text-fg">
