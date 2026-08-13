@@ -107,6 +107,7 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
               {orderedTickets.map((t) => {
                 const checked = ticketChecked(t);
                 const step = steps[t.slug];
+                const unread = t.unread === true;
                 return (
                   <li key={t.slug}>
                     {/* 🔴 줄 전체가 단추다 — 원문을 여는 것 하나뿐이라 부분 클릭을 나눌 이유가 없다.
@@ -114,9 +115,9 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                     <button
                       type="button"
                       onClick={() => onOpenTicket(ticketDocPath(t))}
-                      className={`flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 px-5 py-2 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
-                        t.status === "done" || t.status === "dropped" ? "text-muted" : ""
-                      }`}
+                      className={`flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 px-5 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+                        unread ? "bg-unread hover:bg-unread-strong" : "hover:bg-surface-2"
+                      } ${t.status === "done" || t.status === "dropped" ? "text-muted" : ""}`}
                     >
                       <span
                         className={`mono shrink-0 text-sm ${checked ? "text-accent" : "text-muted"}`}
@@ -137,6 +138,15 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                         {t.num || "—"}
                       </span>
                       <span className="min-w-0 flex-1 break-words text-sm">{t.title}</span>
+                      {unread && (
+                        // 색 말고도 붙들 것이 있다(INV-U2) — `features` 탭 `TicketRow` 와 같은 표시.
+                        <span
+                          role="status"
+                          className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
+                        >
+                          안 읽음
+                        </span>
+                      )}
                       {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게. */}
                       <span
                         className={`mono shrink-0 rounded px-1.5 py-0.5 text-sm ${
