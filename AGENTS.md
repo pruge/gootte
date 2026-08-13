@@ -120,17 +120,27 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 | `pnpm gootte step --clear <프로젝트> <기능>/<티켓>` | 단계를 뗀다 | firstmate |
 | `pnpm gootte board <프로젝트>` | 다섯 칸 현황을 읽는다 — 읽기 전용, 자리·순서를 바꾸는 CLI 는 없다 | 누구나 |
 | `pnpm gootte next <프로젝트>` | 작업 대상에 있는 기능의, 표시 기준 1단계 티켓만 말한다(plan-board/05) | firstmate |
-| `pnpm dev:backend` | Hono API dev 서버 (`scripts/dev-backend.sh` → `tsx watch`) | **사용자가 띄운다** |
-| `pnpm dev:frontend` | Vite dev 서버 (`scripts/dev-frontend.sh`, `/api` → backend 프록시) | **사용자가 띄운다** |
-| `pnpm dev` | backend + frontend 동시 (`scripts/dev.sh`) | **사용자가 띄운다** |
-| `pnpm dev:stop` | dev 서버 정리 (`scripts/dev-stop.sh`) | **사용자가 띄운다** |
-| `pnpm e2e` | frontend playwright | **사용자가 띄운다** |
+| `pnpm dev:backend` | Hono API dev 서버 (`scripts/dev-backend.sh` → `tsx watch`) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
+| `pnpm dev:frontend` | Vite dev 서버 (`scripts/dev-frontend.sh`, `/api` → backend 프록시) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
+| `pnpm dev` | backend + frontend 동시 (`scripts/dev.sh`) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
+| `pnpm dev:stop` | dev 서버 정리 (`scripts/dev-stop.sh`) | 캡틴 사본 = **캡틴만**. 격리 사본 = **자기가 띄운 것만 작업자가** |
+| `pnpm e2e` | frontend playwright | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
 
 `discover` 와 backend 가 어디를 뒤질지는 env `GOOTTE_ROOTS`(콜론 구분, 기본
 `~/Documents/ai2/projects`)가 정한다. **"지금 누가 무엇을 붙들고 있나"** 를 관측할 격리 사본 뿌리는 env
 `GOOTTE_TREEHOUSE`(기본 `~/.treehouse`) 다 — 기계마다 다르니 경로를 코드에 못 박지 않는다.
 둘 다 `code/web/backend/src/app.ts` 가 SoT. 계획(INV-5) 저장 자리는 env `GOOTTE_DATA_DIR`(기본
 `~/.gootte`) — `code/web/cli/src/main.ts` 가 SoT.
+
+🔴 **`GOOTTE_DATA_DIR` 은 포트처럼 격리되지 않는다 — 값을 안 세우면 격리 사본도 캡틴의 `~/.gootte` 에
+쓴다.** `code/web/backend/src/app.ts:55-57` 과 `code/web/cli/src/main.ts:6-8` 둘 다 이 env 가 비어 있으면
+`~/.gootte` 로 떨어진다. `.ports.worktree`(아래)는 포트만 가르고 이 값은 아무도 안 갈라 준다. **격리
+사본에서 dev 서버를 띄우거나 `gootte` CLI 를 쓸 때는 `GOOTTE_DATA_DIR` 을 그 사본 안의 경로로 직접
+지정해라** — 안 그러면 시연·시험용으로 만든 프로젝트의 계획 행(placement·read_mark·read_seed)이
+캡틴의 실제 계획 DB 에 섞여 들어간다(실제 사고, 2026-08-14: 격리 사본 작업자가 아래 옛 규칙을 "서버는
+사용자만 띄운다"로 오독해 캡틴께 대신 띄워 달라 요청했고, 그 결과 시연이 캡틴 환경에서 돌아 캡틴의
+`~/.gootte/plan.db` 가 오염됐다). 사본 생성 시 이 값을 자동으로 갈라 주는 구조적 해결은 별건이다 —
+지금은 값을 직접 지정하는 것이 유일한 방어선이다.
 
 ### dev 포트 — `scripts/ports.sh` 가 유일한 판정자
 
@@ -147,7 +157,15 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
   기본값 폴백을 되살리지 않는다(`pnpm test:ports` 가 이 거절을 지킨다).
 
 격리 사본(worktree)에서는 진입 후 `pnpm setup` 을 한 번 돌린다(멱등). 복사해야 할 untracked dev secret 은 없다.
-dev 서버는 사용자가 직접 띄운다 — 에이전트가 kill·재시작·포트 점검을 하지 않는다.
+
+**캡틴 작업 사본의 dev 서버(백엔드 `8804` · 프론트 `5304`, `~/Documents/ai2/projects/gootte`)는 죽이거나
+재시작하거나 포트를 헤집지 않는다** — 이 줄의 원래 뜻이 그것이다. 🔴 **격리 사본의 작업자에게는 반대로
+적용된다** — `.ports.worktree` 가 배정한 자기 포트로 **자기 dev 서버를 스스로 띄우고**, 확인이 끝나면
+**자기가 띄운 것만** 내린다. `pkill`·`killall` 같은 **패턴 종료 금지** — 옆 사본과 캡틴 서버까지 같이
+죽는다. 포트를 비울 때는 firstmate 의 포트 한정 도우미를 쓴다.
+🔴 **"dev 서버는 사용자가 띄운다" 를 캡틴이 대신 띄워 준다는 뜻으로 읽지 마라** — 그 오독으로 격리
+사본 작업자가 캡틴께 대신 띄워 달라 요청했고, 시연이 캡틴 환경에서 돌아 캡틴의 실제 계획 DB 가
+오염된 적이 있다(2026-08-14, 위 `GOOTTE_DATA_DIR` 문단 참고).
 
 ## 구조 파악 — codegraph 로 한다
 
