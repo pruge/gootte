@@ -922,10 +922,10 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
       expect(treeSnapshot(ctx.projectRoot)).toEqual(before);
     }));
 
-  test("🔴 저절로 닫힌 기능에 티켓이 더 붙으면 대기로 돌아온다(plan-board/10, INV-B5 → INV-B7 뒤집힘)", () =>
+  test("🔴 저절로 닫힌 기능에 안 읽은 티켓이 더 붙으면 대기로 돌아온다(plan-board/11, INV-B8)", () =>
     withProject({ shipped: ALL_DONE }, async (ctx) => {
-      await get(ctx);
-      // 규율을 어겨 티켓 한 장이 더 붙었다(spec §닫힌 기능에는 티켓을 더하지 않는다) — 그래도 할 일이다.
+      await get(ctx); // 있던 티켓을 읽음으로 깐다(첫 화면, spec §첫 화면이 통째로 초록이면 안 된다).
+      // 규율을 어겨 안 읽은 티켓 한 장이 더 붙었다(spec §닫힌 기능에는 티켓을 더하지 않는다) — 그래도 할 일이다.
       writeFileSync(
         join(ctx.projectRoot, "docs", "features", "shipped", "issues", "03-late.md"),
         ticket("03", "ready-for-agent"),
@@ -938,20 +938,28 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
       expect(readPlacements(ctx.dataDir, "beta")).toEqual([]);
     }));
 
-  test("🔴 캡틴이 손으로 완료에 내려둔 카드는 티켓이 더 붙어도 그 자리에 그대로 있다", () =>
+  test("🔴 캡틴이 손으로 완료에 내려둔 카드도 안 읽은 티켓이 붙으면 대기로 올라온다 — 10 의 반대, 캡틴 결정(plan-board/11)", () =>
     withProject({ shipped: ALL_DONE }, async (ctx) => {
-      await get(ctx);
+      await get(ctx); // 있던 티켓을 읽음으로 깐다.
       // 캡틴이 손으로 옮긴다 — 완료가 아닌 자리를 거쳐야 closed_at 이 찍힌다(closedAtFor).
       await post(ctx, { features: ["shipped"], area: "reserved", index: 0 });
       await post(ctx, { features: ["shipped"], area: "done", index: 0 });
-      // 규율을 어겨 티켓 한 장이 더 붙었다.
+      // 규율을 어겨 안 읽은 티켓 한 장이 더 붙었다 — 손으로 닫았어도 이제는 대기로 올라온다.
       writeFileSync(
         join(ctx.projectRoot, "docs", "features", "shipped", "issues", "03-late.md"),
         ticket("03", "ready-for-agent"),
       );
       const body = await get(ctx, "2026-08-13 09:00");
-      expect(body.done.map((c) => c.feature.slug)).toEqual(["shipped"]);
-      expect(body.done[0]?.closedAt).not.toBeNull(); // 캡틴이 손으로 옮겨 찍힌 시각이 있다
+      expect(body.done).toEqual([]);
+      expect(body.waiting.map((c) => c.feature.slug)).toEqual(["shipped"]);
+    }));
+
+  test("🔴 다 읽은 카드는 안 끝난 티켓을 안고 있어도 그 자리에 그대로다 — 예약·폐기 칸이 비워지지 않는다(plan-board/11)", () =>
+    withProject({ half: HALF }, async (ctx) => {
+      // 캡틴이 옮긴다 — 이 read 가 지금 있는 티켓(하나는 done, 하나는 미완)을 읽음으로 깐다.
+      await post(ctx, { features: ["half"], area: "reserved", index: 0 });
+      const body = await get(ctx);
+      expect(body.reserved.map((c) => c.feature.slug)).toEqual(["half"]);
       expect(body.waiting).toEqual([]);
     }));
 

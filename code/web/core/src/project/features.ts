@@ -146,9 +146,9 @@ export function buildFeature(docs: FeatureDocs, crossIndex?: CrossFeatureIndex):
  * 판정하면 그 순간부터 둘 중 하나가 거짓이 되고, 화면이 서로 다른 말을 한다.
  * `TicketDoc` 과 `FeatureTicket` 둘 다 `status` 를 가지므로 그 한 칸만 보고 판정한다.
  *
- * 🔴 `planReopen`(`plan/close.ts`, plan-board/10)이 **같은 술어를 그대로 가져다 쓴다** — "저절로
- * 닫힌 카드에 남은 일이 생겼나" 는 `featureFullyChecked`(상자가 다 찼나)와 다른 질문이고,
- * 이 함수가 그 답이다. export 하는 이유가 그것이다.
+ * 🔴 **`planReopen`(`plan/close.ts`)은 더 이상 이 술어를 쓰지 않는다**(plan-board/11, 캡틴 결정
+ * 2026-08-13) — 되돌리는 방아쇠가 "남은 일이 있나" 에서 "안 읽었나" 로 바뀌었다(spec §INV-B8,
+ * `hasUnreadWork`). 이 함수는 `countOpenFeatures`(사이드바 집계)를 위해 export 된 채로 남는다.
  */
 export function hasOpenWork(tickets: readonly { status: TodoStatus }[]): boolean {
   return tickets.some((t) => t.status !== "done" && t.status !== "dropped");

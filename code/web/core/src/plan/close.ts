@@ -1,5 +1,4 @@
 import type { Feature, Placement, PlanArea, TodoStatus } from "@gootte/contract";
-import { hasOpenWork } from "../project/features";
 import type { PlanWritePlan } from "./move";
 
 /**
@@ -81,9 +80,9 @@ const DONE: PlanArea = "done";
  * 생기는지는 여기서 보지 않는다.
  *
  * 🔴 **"되돌아 나오는 길을 만들지 않는다"(옛 INV-B5)는 뒤집혔다**(캡틴 결정 2026-08-13,
- * spec §INV-B7, plan-board/10) — 지금은 `planReopen`(아래)이 그 길을 낸다. 이 함수 자신은 여전히
- * **닫는 판정 하나만** 한다 — 되돌리는 판정은 다른 질문(`hasOpenWork`)이라 다른 함수에 산다
- * (spec §판정 자리는 하나뿐과 같은 이유로, 닫는 자리와 되돌리는 자리도 하나씩이다).
+ * spec §INV-B7 → INV-B8, plan-board/10 → 11) — 지금은 `planReopen`(아래)이 그 길을 낸다. 이 함수
+ * 자신은 여전히 **닫는 판정 하나만** 한다 — 되돌리는 판정은 다른 질문(`hasUnreadWork`, 11)이라
+ * 다른 함수에 산다(spec §판정 자리는 하나뿐과 같은 이유로, 닫는 자리와 되돌리는 자리도 하나씩이다).
  *
  * 🔴 이미 완료 칸에 있는 카드는 **다시 쓰지 않는다** — 캡틴이 손으로 닫아 `closedAt` 을 가진
  * 카드도, 저절로 닫혀 `closedAt` 이 없는 카드도, 볼 때마다 다시 upsert 하지 않는다.
@@ -113,23 +112,49 @@ export function planAutoClose(
 }
 
 /**
- * 판을 볼 때마다 묻는 또 한 줄 — **저절로 닫힌 카드에 남은 일이 생겼나**(plan-board/10, 캡틴
- * 결정 2026-08-13 — spec §INV-B7). 있으면 대기로 돌려보낼 것을, 없으면 `null` 을 돌려준다.
+ * 안 읽은 할 일이 있다 — 읽지 않은 티켓이 하나라도 있다, 단 **폐기 티켓은 빼고 본다**
+ * (plan-board/11 §방아쇠는 "안 읽음" 하나다 — 안 읽은 폐기 티켓은 올라올 이유가 아니다.
+ * 폐기는 "안 한다" 이지 "할 일" 이 아니다).
  *
- * 🔴 **묻는 질문이 `featureFullyChecked`(상자가 다 찼나)와 다르다** — 여기서 쓰는 것은
- * `hasOpenWork`(`countOpenFeatures` 가 쓰는 그 술어, "남은 일이 있나" — 폐기는 끝난 것으로 센다)
- * 다. 닫는 판정을 재활용하면 폐기 티켓 하나로도 카드가 튀어나온다 — 그래서 다른 함수다.
+ * 🔴 **판정 자리를 새로 만들지 않는다.** 쓰는 값은 `ticket.unread` 그대로다 — `applyReadState`
+ * (project/read-state.ts, unread-tickets-show-themselves/03)가 이미 계산해 둔, 머리글 초록이
+ * 쓰는 바로 그 값이다. 이 함수가 더하는 것은 "폐기 티켓은 빼고 본다" 라는 필터 하나뿐이다.
+ */
+function hasUnreadWork(
+  tickets: readonly { readonly status: TodoStatus; readonly unread?: boolean }[],
+): boolean {
+  return tickets.some((t) => t.unread === true && t.status !== "dropped");
+}
+
+const REOPEN_FROM: ReadonlySet<PlanArea> = new Set(["reserved", "discarded", "done"]);
+
+/**
+ * 판을 볼 때마다 묻는 또 한 줄 — **예약·폐기·완료의 카드에 캡틴이 아직 안 읽은 티켓이 있나**
+ * (plan-board/11, 캡틴 결정 2026-08-13 — spec §INV-B8). 있으면 대기로 돌려보낼 것을, 없으면
+ * `null` 을 돌려준다.
  *
- * 🔴 **자기가 놓은 카드만 도로 집는다.** `closedAt` 이 있는 카드(캡틴이 손으로 완료에 내려둔
- * 카드)는 절대 건드리지 않는다 — 남은 티켓을 안고 있어도 그대로 둔다. 캡틴이 지적하신 문제
- * ①(기계가 몰래 자리를 옮긴다)이 여기서 되살아나면 이 기능 전체가 무효다.
+ * 🔴 **10 이 세운 "자기가 놓은 카드만 도로 집는다"(`closedAt` 유무로 손/자동을 가르던 것)는
+ * 같은 날 캡틴이 직접 걷어내셨다**(spec §INV-B7 → INV-B8) — *"그게 내가했든, 자동으로 했든,
+ * 구분하지마."* 이 함수는 이제 `closedAt` 을 한 번도 보지 않는다. 옛 절은 지우지 않고
+ * close.test.ts·spec.md 에 "무엇 위에서 지어졌는지" 로 남겨 둔다 — 뒤집힌 결정을 결함으로
+ * 되돌리지 않기 위해서다.
  *
- * 🔴 **`planAutoClose` 와 같은 카드를 두고 동시에 참일 수 없다** — 이쪽이 참이려면 완료 칸에
- * `closedAt` 없이 있어야 하고(과거의 `featureFullyChecked`), 지금 남은 일이 있다는 것은 지금
- * `featureFullyChecked` 가 거짓이라는 뜻이다. 두 판정이 같은 볼 때 서로 싸우지 않는다.
+ * 🔴 **칸도 완료 하나에서 예약·폐기·완료 셋으로 넓어졌다.** 그 두 칸의 카드는 정의상 안 끝난
+ * 일을 안고 있으므로, 방아쇠가 "남은 일이 있나"(`hasOpenWork`, `featureFullyChecked`)면 그
+ * 두 칸이 통째로 비워진다 — 그래서 방아쇠는 `hasUnreadWork`(위, "안 읽었나") 다.
+ * **처리 여부는 방아쇠가 아니다.**
+ *
+ * 🔴 **읽음 기록을 못 읽으면 아무 카드도 안 올라온다.** 호출자(`readPlacementsWithAutoClose`,
+ * core-io)가 실어 보내는 `ticket.unread` 는 `applyReadState` 가 계산한 값이고, 그 기록이 막히면
+ * `applyReadState` 는 조용한 쪽으로 기운다(INV-U1 — 전부 읽은 것으로 본다). 이 함수는 그 값을
+ * 그대로 받을 뿐이라 같은 방향으로 조용해진다 — 캡틴이 정하신 자리가 통째로 날아가지 않는다.
+ *
+ * 🔴 **`planAutoClose` 와 같은 카드를 두고 동시에 참일 수 없다** — `planAutoClose` 는 이미
+ * 완료 칸에 있는 카드를 다시 쓰지 않으므로, 그 카드에 대해 두 판정이 같은 순간 함께 참이 되는
+ * 일은 없다.
  *
  * 대기로 돌아가는 것은 자리 행을 **지우는 것뿐**이다(INV-B1) — 새 칸도 새 값도 필요 없다.
- * 단계 행은 건드리지 않는다 — 완료 칸 카드에는 애초에 단계 행이 없다(작업 대상 밖, INV-B6).
+ * 단계 행은 건드리지 않는다 — 예약·폐기·완료 칸 카드에는 애초에 단계 행이 없다(작업 대상 밖, INV-B6).
  */
 export function planReopen(
   features: readonly Feature[],
@@ -137,10 +162,10 @@ export function planReopen(
 ): PlanWritePlan | null {
   const featureOf = new Map(features.map((f) => [f.slug, f]));
   const reopening = placements
-    .filter((p) => p.area === DONE && p.closedAt === null)
+    .filter((p) => REOPEN_FROM.has(p.area))
     .filter((p) => {
       const f = featureOf.get(p.feature);
-      return f !== undefined && hasOpenWork(f.tickets);
+      return f !== undefined && hasUnreadWork(f.tickets);
     })
     .map((p) => p.feature)
     .sort((a, b) => a.localeCompare(b));

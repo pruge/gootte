@@ -164,89 +164,110 @@ describe("closedDisplayAt — 카드가 보여줄 닫힌 시각 하나(06)", () 
   });
 });
 
-describe("planReopen — 저절로 닫힌 카드는 저절로 돌아온다(plan-board/10, 캡틴 결정 2026-08-13)", () => {
-  const done = (slug: string) => feature(slug, [resolved("01", "2026-08-01")]);
+describe("planReopen — 예약·폐기·완료의 카드는 안 읽은 티켓이 있으면 대기로 올라온다(plan-board/11, 캡틴 결정 2026-08-13)", () => {
+  const read = (num: string) => ({ num, unread: false });
+  const unreadPending = (num: string) => ({ num, unread: true });
+  const unreadDone = (num: string, completedAt: string) => ({
+    ...resolved(num, completedAt),
+    unread: true,
+  });
+  const unreadWontfix = (num: string) => ({ ...wontfix(num), unread: true });
 
   it("되돌릴 것이 없으면 아무것도 쓰지 않는다(null)", () => {
-    expect(planReopen([done("a")], [row("a", "done", 0)])).toBeNull();
-    expect(planReopen([feature("a", ["01"])], [row("a", "active", 0)])).toBeNull();
+    expect(planReopen([feature("a", [read("01")])], [row("a", "done", 0)])).toBeNull();
+    expect(planReopen([feature("a", [unreadPending("01")])], [row("a", "active", 0)])).toBeNull();
     expect(planReopen([], [])).toBeNull();
   });
 
-  it("🔴 저절로 닫힌 카드에 아직 안 끝난 티켓이 생기면 대기로 돌아온다", () => {
-    const f = feature("a", [resolved("01", "2026-08-01"), "02"]);
-    const plan = planReopen([f], [row("a", "done", 0)]);
+  it("🔴 예약 카드 + 안 읽은 티켓 → 대기로 올라온다", () => {
+    const f = feature("a", [read("01"), unreadPending("02")]);
+    const plan = planReopen([f], [row("a", "reserved", 0)]);
     expect(plan?.remove).toEqual(["a"]);
     expect(plan?.upsert).toEqual([]);
   });
 
-  it("🔴 손으로 닫은 카드(closedAt 있음)는 남은 티켓을 안고 있어도 그대로다 — 가장 중요한 한 줄", () => {
-    const f = feature("a", [resolved("01", "2026-08-01"), "02"]);
-    expect(planReopen([f], [row("a", "done", 0, "2026-08-01 09:00")])).toBeNull();
+  it("🔴 폐기 카드 + 안 읽은 티켓 → 대기로 올라온다", () => {
+    const f = feature("a", [read("01"), unreadPending("02")]);
+    const plan = planReopen([f], [row("a", "discarded", 0)]);
+    expect(plan?.remove).toEqual(["a"]);
   });
 
-  it("🔴 폐기 티켓만 새로 생겨도 대기로 돌아오지 않는다 — 폐기는 할 일이 아니다", () => {
-    const f = feature("a", [resolved("01", "2026-08-01"), wontfix("02")]);
-    expect(planReopen([f], [row("a", "done", 0)])).toBeNull();
+  it("🔴 손으로 닫은 완료 카드(closedAt 있음) + 안 읽은 티켓 → 대기로 올라온다 — 10 의 반대, 캡틴 결정을 잠근다", () => {
+    const f = feature("a", [read("01"), unreadPending("02")]);
+    const plan = planReopen([f], [row("a", "done", 0, "2026-08-01 09:00")]);
+    expect(plan?.remove).toEqual(["a"]);
   });
 
-  it("🔴 티켓이 한 장도 없는 기능은 되돌리지 않는다", () => {
-    expect(planReopen([feature("a")], [row("a", "done", 0)])).toBeNull();
-  });
-
-  it("완료 칸 밖의 카드는 보지 않는다 — active·reserved·discarded 는 대상이 아니다", () => {
-    const f = feature("a", [resolved("01", "2026-08-01"), "02"]);
-    expect(planReopen([f], [row("a", "active", 0)])).toBeNull();
+  it("🔴 예약 카드 + 안 끝났지만 다 읽은 티켓 → 예약 그대로다 — 칸이 비워지지 않는다", () => {
+    const f = feature("a", [read("01"), read("02")]);
     expect(planReopen([f], [row("a", "reserved", 0)])).toBeNull();
+  });
+
+  it("🔴 폐기 칸 + 안 끝났지만 다 읽은 티켓 → 폐기 그대로다 — 칸이 비워지지 않는다", () => {
+    const f = feature("a", [read("01"), read("02")]);
     expect(planReopen([f], [row("a", "discarded", 0)])).toBeNull();
   });
 
-  it("여럿이 한 번에 돌아와도 순서가 결정적이다 — 폴더명순", () => {
-    const c = feature("c", [resolved("01", "2026-08-01"), "02"]);
-    const a = feature("a", [resolved("01", "2026-08-01"), "02"]);
-    const plan = planReopen([c, a], [row("c", "done", 0), row("a", "done", 1)]);
+  it("🔴 안 읽은 폐기 티켓뿐이면 그 자리 그대로다 — 폐기는 할 일이 아니다", () => {
+    const f = feature("a", [read("01"), unreadWontfix("02")]);
+    expect(planReopen([f], [row("a", "done", 0)])).toBeNull();
+  });
+
+  it("🔴 상태·제목만 바뀌어도 읽음은 안 풀린다 — 읽은 티켓은 상태와 무관하게 조용하다", () => {
+    const f = feature("a", [{ num: "01", status: "in_progress", unread: false }]);
+    expect(planReopen([f], [row("a", "reserved", 0)])).toBeNull();
+  });
+
+  it("🔴 티켓이 한 장도 없는 기능은 올리지 않는다", () => {
+    expect(planReopen([feature("a")], [row("a", "done", 0)])).toBeNull();
+  });
+
+  it("🔴 작업 대상 카드는 안 읽은 티켓이 있어도 건드리지 않는다 — 캡틴 범위 밖", () => {
+    const f = feature("a", [unreadPending("01")]);
+    expect(planReopen([f], [row("a", "active", 0)])).toBeNull();
+  });
+
+  it("🔴 대기 카드(자리 행 없음)는 애초에 대상이 아니다", () => {
+    const f = feature("a", [unreadPending("01")]);
+    expect(planReopen([f], [])).toBeNull();
+  });
+
+  it("여럿이 한 번에 올라와도 순서가 결정적이다 — 폴더명순", () => {
+    const c = feature("c", [unreadPending("01")]);
+    const a = feature("a", [unreadPending("01")]);
+    const plan = planReopen([c, a], [row("c", "reserved", 0), row("a", "discarded", 1)]);
     expect(plan?.remove).toEqual(["a", "c"]);
   });
 
   it("대기로 가는 것은 행을 지우는 것뿐 — 단계 행을 새로 만들지 않는다(INV-B6)", () => {
-    const f = feature("a", [resolved("01", "2026-08-01"), "02"]);
-    const plan = planReopen([f], [row("a", "done", 0)]);
+    const f = feature("a", [unreadPending("01")]);
+    const plan = planReopen([f], [row("a", "reserved", 0)]);
     expect(plan?.clearSteps).toEqual([]);
     expect(plan?.setSteps).toEqual([]);
   });
 
-  it("🔴 planAutoClose 와 같은 카드를 두고 동시에 참일 수 없다 — 두 판정이 싸우지 않는다", () => {
-    // 상자가 전부 채워진 채 완료 칸에 있으면(featureFullyChecked=참) planReopen 은 조용하고,
-    const closed = done("a");
-    expect(planReopen([closed], [row("a", "done", 0)])).toBeNull();
-    // 남은 일이 생겨 planReopen 이 참을 낼 때(hasOpenWork=참)는 featureFullyChecked 가 이미 거짓이라
-    // planAutoClose 는 같은 자리 행(완료, closableFrom 밖)을 보지 않는다.
-    const reopened = feature("a", [resolved("01", "2026-08-01"), "02"]);
-    expect(planAutoClose([reopened], [row("a", "done", 0)])).toBeNull();
-    expect(planReopen([reopened], [row("a", "done", 0)])?.remove).toEqual(["a"]);
+  it("🔴 planAutoClose 와 같은 카드를 두고 동시에 참일 수 없다 — planAutoClose 는 이미 완료 칸의 카드를 다시 쓰지 않는다", () => {
+    const closed = feature("a", [unreadDone("01", "2026-08-01")]);
+    // 이미 완료 칸에 있으므로 planAutoClose 는 이 카드를 보지 않는다(closableFrom 밖).
+    expect(planAutoClose([closed], [row("a", "done", 0)])).toBeNull();
+    // planReopen 은 안 읽은 티켓이 있으므로 참을 낸다 — 서로 다른 순간을 본다, 싸우지 않는다.
+    expect(planReopen([closed], [row("a", "done", 0)])?.remove).toEqual(["a"]);
   });
 
-  it("왕복 — 닫힘 → 되돌림 → 다시 닫힘이 안정적이다", () => {
-    // 1) 전부 완료 → 닫힌다
-    const allDone = feature("a", [resolved("01", "2026-08-01"), resolved("02", "2026-08-02")]);
-    const closePlan = planAutoClose([allDone], [row("a", "active", 0)]);
-    expect(closePlan?.upsert).toEqual([{ feature: "a", area: "done", seq: 0, closedAt: null }]);
-    let placements = [row("a", "done", 0)];
+  it("왕복 — 예약으로 내려놓음 → 안 읽은 티켓이 생겨 대기로 올라옴 → 읽으면 다시 내려놓아도 그대로다", () => {
+    // 1) 캡틴이 예약에 내려놓는다
+    let placements = [row("a", "reserved", 0)];
 
-    // 2) 새 티켓이 생겨 남은 일이 있다 → 대기로 돌아온다(행이 사라진다)
-    const withNewTicket = feature("a", [resolved("01", "2026-08-01"), resolved("02", "2026-08-02"), "03"]);
+    // 2) 새(안 읽은) 티켓이 생긴다 → 대기로 올라온다(행이 사라진다)
+    const withNewTicket = feature("a", [read("01"), unreadPending("02")]);
     const reopenPlan = planReopen([withNewTicket], placements);
     expect(reopenPlan?.remove).toEqual(["a"]);
     placements = placements.filter((p) => !reopenPlan?.remove.includes(p.feature));
     expect(placements).toEqual([]);
 
-    // 3) 그 티켓까지 끝나면 다시 저절로 닫힌다
-    const againDone = feature("a", [
-      resolved("01", "2026-08-01"),
-      resolved("02", "2026-08-02"),
-      resolved("03", "2026-08-03"),
-    ]);
-    const closeAgain = planAutoClose([againDone], placements);
-    expect(closeAgain?.upsert).toEqual([{ feature: "a", area: "done", seq: 0, closedAt: null }]);
+    // 3) 캡틴이 그 티켓을 읽는다 → planReopen 이 더 이상 참을 내지 않는다
+    const nowRead = feature("a", [read("01"), read("02")]);
+    placements = [row("a", "reserved", 0)];
+    expect(planReopen([nowRead], placements)).toBeNull();
   });
 });
