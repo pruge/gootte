@@ -10,7 +10,9 @@ import { planAutoClose, type PlanWritePlan } from "@gootte/core";
  * 계획 저장소 — SQLite, gootte 자기 저장소(INV-2 — 관리대상에는 아무것도 안 쓴다. INV-2 가
  * 예외로 열어 둔 `.gootte/` 네임스페이스조차 쓰지 않는다).
  *
- * 표는 둘뿐이다(spec §저장 형태). 옛 스키마(트랙·순위·왜·왜 닻·opinion_request·extra·history.md)는
+ * 표는 `placement`·`step` 둘이 spec §저장 형태 그대로다. `read_mark`·`read_seed` 는
+ * unread-tickets-show-themselves/01 이 같은 자리에 더한 것 — 읽음도 "사람이 정한 것"이라
+ * 저장 자격이 있다(INV-5). 옛 스키마(트랙·순위·왜·왜 닻·opinion_request·extra·history.md)는
  * plan-board/01 이 걷어냈다.
  *
  * 🔴 **여기 담기는 것은 사람이 정한 것뿐이다**(INV-5). 문서를 다시 읽어 같은 값이 나오는 것
@@ -61,6 +63,16 @@ const SCHEMA_DDL = `
     ticket  TEXT NOT NULL,
     step    REAL NOT NULL,
     PRIMARY KEY (project, feature, ticket)
+  );
+  CREATE TABLE IF NOT EXISTS read_mark (
+    project TEXT NOT NULL,
+    feature TEXT NOT NULL,
+    path    TEXT NOT NULL,
+    PRIMARY KEY (project, feature, path)
+  );
+  CREATE TABLE IF NOT EXISTS read_seed (
+    project   TEXT NOT NULL PRIMARY KEY,
+    seeded_at TEXT NOT NULL
   );
 `;
 
@@ -273,4 +285,73 @@ export function readPlacementsWithAutoClose(
   const closing = planAutoClose(features, readPlacements(dataDir, project));
   if (closing) writePlanMove(dataDir, project, closing);
   return readPlacements(dataDir, project);
+}
+
+interface ReadMarkRow {
+  feature: string;
+  path: string;
+}
+
+/**
+ * 이 프로젝트에서 읽은 티켓 전부 — `"<기능>/<경로>"` 키 집합(unread-tickets-show-themselves/01).
+ * 판정(`applyReadState`, core)이 이 집합을 그대로 받아 견준다 — 여기서는 읽기만 한다.
+ */
+export function readReadMarks(dataDir: string, project: string): Set<string> {
+  const db = open(dataDir);
+  try {
+    const rows = db
+      .prepare(`SELECT feature, path FROM read_mark WHERE project = ?`)
+      .all(project) as unknown as ReadMarkRow[];
+    return new Set(rows.map((r) => `${r.feature}/${r.path}`));
+  } finally {
+    db.close();
+  }
+}
+
+/** 티켓 원문을 열면 읽음이 된다 — 이미 읽은 티켓을 다시 열어도 조용히 끝난다(멱등). */
+export function markDocRead(dataDir: string, project: string, feature: string, path: string): void {
+  const db = open(dataDir);
+  try {
+    db.prepare(`INSERT OR IGNORE INTO read_mark (project, feature, path) VALUES (?, ?, ?)`).run(
+      project,
+      feature,
+      path,
+    );
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * 이 기능이 이 프로젝트에서 처음 올라간 순간, 그때 있던 티켓을 전부 읽음으로 깐다
+ * (spec §첫 화면이 통째로 초록이면 안 된다).
+ *
+ * 🔴 **한 번만 선다** — `read_seed` 행이 이미 있으면 그대로 끝난다. 이 판정을 "읽은 티켓이
+ * 하나도 없으면 깐다" 같은 값 기준으로 하면 서버를 다시 띄울 때마다 새 티켓까지 읽음으로
+ * 깔리는 조용한 실패가 난다(티켓 01 §첫 화면이 통째로 초록이면 안 된다) — 그래서 판정은
+ * **행의 존재**뿐이고 값을 보지 않는다.
+ */
+export function ensureReadSeed(dataDir: string, project: string, features: readonly Feature[]): void {
+  const db = open(dataDir);
+  try {
+    const already = db.prepare(`SELECT 1 FROM read_seed WHERE project = ?`).get(project);
+    if (already) return;
+    db.exec("BEGIN");
+    try {
+      const insertMark = db.prepare(
+        `INSERT OR IGNORE INTO read_mark (project, feature, path) VALUES (?, ?, ?)`,
+      );
+      for (const f of features) for (const t of f.tickets) insertMark.run(project, f.slug, t.path);
+      db.prepare(`INSERT INTO read_seed (project, seeded_at) VALUES (?, ?)`).run(
+        project,
+        new Date().toISOString(),
+      );
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw err;
+    }
+  } finally {
+    db.close();
+  }
 }

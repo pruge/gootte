@@ -17,6 +17,9 @@
   --color-supersede: var(--supersede);
   --color-partial: var(--partial);
   --color-drop: var(--drop);
+  --color-unread: var(--unread);
+  --color-unread-strong: var(--unread-strong);
+  --color-unread-fg: var(--unread-fg);
 
   --font-sans: Pretendard, "Pretendard Variable", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
@@ -47,6 +50,10 @@
   --supersede: oklch(52% 0.02 265);
   --partial: oklch(62% 0.16 55);
   --drop: oklch(58% 0.03 20);
+  /* 안 읽음(unread-tickets-show-themselves/01) — 팔레트에 없던 새 녹색(hue 150), 다른 뜻과 안 겹친다(F9) */
+  --unread: oklch(94% 0.055 150); /* 줄·머리글 배경 — 옅게, 글자가 그대로 읽혀야 한다 */
+  --unread-strong: oklch(88% 0.075 150); /* hover — bg-unread 보다 진해서 손을 얹어도 안 사라진다 */
+  --unread-fg: oklch(40% 0.1 150); /* "안 읽음" 글자·아이콘 — 옅은 배경 위에서도 대비가 난다 */
 }
 
 /* dark = 미션 컨트롤: 깊은 배경, 밀도, 단일 accent */
@@ -63,6 +70,10 @@
   --supersede: oklch(65% 0.02 260);
   --partial: oklch(78% 0.15 65);
   --drop: oklch(70% 0.09 25);
+  /* 안 읽음 — 어두운 배경 위에서도 배경보다 밝게 떠서 눈에 걸리되, 글자와는 충분히 대비된다 */
+  --unread: oklch(32% 0.05 150);
+  --unread-strong: oklch(38% 0.065 150);
+  --unread-fg: oklch(82% 0.11 150);
 }
 
 @layer base {

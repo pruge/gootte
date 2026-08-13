@@ -14,6 +14,7 @@ import {
 } from "@gootte/contract";
 import {
   applyInProgress,
+  applyReadState,
   computeDisplaySteps,
   countOpenFeatures,
   placeStep,
@@ -26,9 +27,12 @@ import {
   readFeatureDoc,
   readPlacements,
   readPlacementsWithAutoClose,
+  readReadMarks,
   readSteps,
   writePlanMove,
   writeStep,
+  ensureReadSeed,
+  markDocRead,
   scanWorkingCopies,
   defaultPlanDataDir,
   defaultProjectRoots,
@@ -143,8 +147,22 @@ export function createApp(options: AppOptions = {}): Hono {
     const proj = resolveSlug(roots, slug);
     if (!proj) return c.json(notFound(slug), 404);
     const project = basename(proj.path);
+    const features = readFeatures(proj.path);
+    // 이 기능이 이 프로젝트에서 처음 올라간 순간 있던 티켓은 읽은 것으로 깐다 — 한 번만 선다
+    // (unread-tickets-show-themselves/01 §첫 화면이 통째로 초록이면 안 된다).
+    //
+    // 🔴 깔기·읽기 어느 쪽이 막혀도 이 라우트 전체를 죽이지 않는다 — 계획 DB 가 고장 나도
+    // 할일 목록 자체는 문서만으로 서고, 안 읽음 표시만 조용히 꺼진다(INV-U1: 거짓 초록보다
+    // 표시가 아예 없는 쪽이 낫다).
+    let readMarks: Set<string> | null;
+    try {
+      ensureReadSeed(dataDir, project, features);
+      readMarks = readReadMarks(dataDir, project);
+    } catch {
+      readMarks = null;
+    }
     const observed = applyInProgress(
-      readFeatures(proj.path),
+      applyReadState(features, readMarks),
       scanWorkingCopies(treehouse, project),
     );
     return c.json(FeaturesResponse.parse({ project, ...observed }));
@@ -289,6 +307,12 @@ export function createApp(options: AppOptions = {}): Hono {
             ? { error: "기능 폴더 밖의 경로는 읽을 수 없습니다" }
             : { error: `문서를 찾을 수 없습니다: ${path}` };
         return c.json(error, result.reason === "outside" ? 400 : 404);
+      }
+      // 티켓 원문을 열면 읽음이 된다(unread-tickets-show-themselves/01) — 세 탭 어디서 열었든
+      // 이 자리 하나로 모인다(spec F1·F2). 표시는 티켓에만 붙으므로(캡틴 결정 ②) `issues/` 바깥의
+      // 명세·결정 기록은 조용히 넘어간다 — 경로 모양만 보고 판정한다(INV-4, 문서를 다시 안 읽는다).
+      if (path.startsWith("issues/")) {
+        markDocRead(dataDir, basename(proj.path), feature, path);
       }
       return c.json(FeatureDocResponse.parse({ path, content: result.content }));
     },

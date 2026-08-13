@@ -80,6 +80,11 @@ export const FeatureTicket = z.object({
   // 티켓 문서에 `## 캡틴 확인` 절이 있는가 — 절 존재만으로 정한다(INV-4, development-order/15 ②).
   // "— 없음" 접미(캡틴이 이미 필요 없다고 결정하신 절)는 필요로 세지 않는다.
   needsCaptainEye: z.boolean(),
+  // 캡틴이 아직 한 번도 열어 보지 않았는가 — gootte 자기 계획 DB 의 읽음 기록과 문서를 견줘
+  // 매 요청 다시 판정한다(INV-1, unread-tickets-show-themselves/01). `.optional()` 인 이유는
+  // 이 계산을 거치지 않은 응답(예: plan 판)에서는 값이 아예 없어도 되기 때문 — 없으면 화면은
+  // 읽은 것으로 본다(INV-U1, 조용한 쪽으로 기운다).
+  unread: z.boolean().optional(),
 });
 export type FeatureTicket = z.infer<typeof FeatureTicket>;
 
@@ -112,6 +117,9 @@ export const Feature = z.object({
   statusKnown: z.boolean(),
   tickets: z.array(FeatureTicket).default([]),
   docs: z.array(FeatureDocNode).default([]), // 폴더 트리(issues 제외) — 티켓 01 §설계 3
+  // 안 읽은 티켓이 하나라도 있는가 — 카드 머리글의 초록 여부(unread-tickets-show-themselves/01).
+  // `tickets[].unread` 를 다시 세지 않는다(INV-1 재계산은 서버 한 곳) — 화면은 이 값을 그대로 쓴다.
+  hasUnreadTicket: z.boolean().optional(),
 });
 export type Feature = z.infer<typeof Feature>;
 

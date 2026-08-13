@@ -6,9 +6,12 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type { Feature } from "@gootte/contract";
 import {
   clearStep,
+  ensureReadSeed,
+  markDocRead,
   migratePlanDb,
   readPlacements,
   readPlacementsWithAutoClose,
+  readReadMarks,
   readSteps,
   writePlanMove,
   writeStep,
@@ -359,5 +362,89 @@ describe("writeStep / clearStep — firstmate 가 매기고 떼는 칸", () => {
     clearStep(dataDir, "alpha", "f", "01-x");
     expect(readSteps(dataDir, "alpha")).toEqual([]);
     expect(readSteps(dataDir, "bravo")).toEqual([{ feature: "f", ticket: "01-x", step: 1 }]);
+  });
+});
+
+/** 여러 티켓을 가진 기능 하나 — 깔기(§첫 화면) 시험에 쓴다. */
+function featureWithTickets(slug: string, paths: string[]): Feature {
+  return {
+    slug,
+    title: `${slug} — 제목`,
+    status: "pending",
+    sourceStatus: null,
+    statusKnown: true,
+    docs: [],
+    tickets: paths.map((path, i) => ({
+      num: String(i + 1).padStart(2, "0"),
+      slug: path.replace(/^issues\//, "").replace(/\.md$/, ""),
+      path,
+      title: `티켓 ${path}`,
+      status: "pending",
+      sourceStatus: null,
+      statusKnown: true,
+      blockedBy: [],
+      unreadableBlockedBy: [],
+      waitingOn: [],
+      startable: true,
+      workedBy: [],
+      needsCaptainEye: false,
+    })),
+  };
+}
+
+/**
+ * 읽음 기록(unread-tickets-show-themselves/01) — 저장·복원과 첫 화면 깔기를 잰다.
+ * 판정(무엇이 안 읽음인가)은 `core/src/project/read-state.test.ts` 가 순수 함수로 이미 잰다.
+ */
+describe("readReadMarks / markDocRead — 읽음 기록 저장", () => {
+  test("쓰고 다시 읽으면 그대로 나온다", () => {
+    markDocRead(dataDir, "alpha", "f", "issues/01-x.md");
+    expect(readReadMarks(dataDir, "alpha")).toEqual(new Set(["f/issues/01-x.md"]));
+  });
+
+  test("같은 티켓을 두 번 읽어도 한 번과 같다(멱등)", () => {
+    markDocRead(dataDir, "alpha", "f", "issues/01-x.md");
+    markDocRead(dataDir, "alpha", "f", "issues/01-x.md");
+    expect(readReadMarks(dataDir, "alpha")).toEqual(new Set(["f/issues/01-x.md"]));
+  });
+
+  test("기록이 없으면 빈 집합 — 오류가 아니다", () => {
+    expect(readReadMarks(dataDir, "alpha")).toEqual(new Set());
+  });
+
+  test("다른 프로젝트의 기록은 섞이지 않는다", () => {
+    markDocRead(dataDir, "alpha", "f", "issues/01-x.md");
+    markDocRead(dataDir, "bravo", "f", "issues/02-x.md");
+    expect(readReadMarks(dataDir, "alpha")).toEqual(new Set(["f/issues/01-x.md"]));
+    expect(readReadMarks(dataDir, "bravo")).toEqual(new Set(["f/issues/02-x.md"]));
+  });
+});
+
+describe("ensureReadSeed — 처음 올라간 순간 있던 티켓만 읽음으로 깐다(spec §첫 화면)", () => {
+  test("처음 깔면 그때 있던 티켓이 전부 읽음이 된다", () => {
+    const features = [featureWithTickets("f", ["issues/01-x.md", "issues/02-x.md"])];
+    ensureReadSeed(dataDir, "alpha", features);
+    expect(readReadMarks(dataDir, "alpha")).toEqual(
+      new Set(["f/issues/01-x.md", "f/issues/02-x.md"]),
+    );
+  });
+
+  test("🔴 깔기는 한 번만 선다 — 이미 깔린 뒤에 생긴 새 티켓은 안 읽음으로 남는다", () => {
+    const before = [featureWithTickets("f", ["issues/01-x.md"])];
+    ensureReadSeed(dataDir, "alpha", before);
+
+    // 서버를 다시 띄운 모양 — 같은 프로젝트를 다시 열었는데 그사이 새 티켓이 생겼다.
+    const after = [featureWithTickets("f", ["issues/01-x.md", "issues/02-new.md"])];
+    ensureReadSeed(dataDir, "alpha", after);
+
+    // 첫 깔기 때 있던 01 만 읽음이고, 그 뒤에 생긴 02 는 안 읽음으로 남아야 한다.
+    expect(readReadMarks(dataDir, "alpha")).toEqual(new Set(["f/issues/01-x.md"]));
+  });
+
+  test("다른 프로젝트는 따로 깐다", () => {
+    ensureReadSeed(dataDir, "alpha", [featureWithTickets("f", ["issues/01-x.md"])]);
+    expect(readReadMarks(dataDir, "bravo")).toEqual(new Set());
+    ensureReadSeed(dataDir, "bravo", [featureWithTickets("g", ["issues/01-y.md"])]);
+    expect(readReadMarks(dataDir, "bravo")).toEqual(new Set(["g/issues/01-y.md"]));
   });
 });
