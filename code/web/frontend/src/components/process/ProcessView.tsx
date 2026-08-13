@@ -88,6 +88,10 @@ export function ProcessView({ project }: ProcessViewProps) {
   // 이름 둘째 줄에 쓸 설명문구는 기능 표제에서 온다(plan 탭 BoardCard 와 같은 자리) — `steps`
   // 계산과 달리 core 의 판정이 아니라 화면 서식이라 여기서 조회한다(카드는 이미 있다, INV-1).
   const featureTitleOf = new Map(data.active.map((c) => [c.feature.slug, c.feature.title]));
+  // 안 읽음 여부도 이미 카드에 실려 온다(unread-tickets-show-themselves/03) — 여기서 다시 세지 않는다.
+  const featureUnreadOf = new Map(
+    data.active.map((c) => [c.feature.slug, c.feature.hasUnreadTicket === true]),
+  );
   const numbered = groups.filter((g) => g.step !== UNRANKED_STEP);
   const unranked = groups.find((g) => g.step === UNRANKED_STEP);
 
@@ -143,6 +147,7 @@ export function ProcessView({ project }: ProcessViewProps) {
                 key={g.step}
                 group={g}
                 featureTitleOf={featureTitleOf}
+                featureUnreadOf={featureUnreadOf}
                 dragging={dragging !== null}
                 zone={overZone?.card.step === g.step ? overZone.card.edge : null}
                 numberedCount={numbered.length}
@@ -153,6 +158,7 @@ export function ProcessView({ project }: ProcessViewProps) {
               <StepSection
                 group={unranked}
                 featureTitleOf={featureTitleOf}
+                featureUnreadOf={featureUnreadOf}
                 dragging={dragging !== null}
                 zone={overZone?.card.step === 0 ? overZone.card.edge : null}
                 numberedCount={numbered.length}
@@ -219,6 +225,7 @@ function EdgeHint({ hint, dragging, armed }: { hint: string; dragging: boolean; 
 function StepSection({
   group,
   featureTitleOf,
+  featureUnreadOf,
   dragging,
   zone,
   numberedCount,
@@ -226,6 +233,7 @@ function StepSection({
 }: {
   group: ProcessStepGroup;
   featureTitleOf: ReadonlyMap<string, string>;
+  featureUnreadOf: ReadonlyMap<string, boolean>;
   dragging: boolean;
   /** 지금 손끝이 이 카드의 어디를 가리키는가 — 이 카드가 대상이 아니면 `null`. */
   zone: "before" | "after" | "whole" | null;
@@ -274,6 +282,7 @@ function StepSection({
               <FeatureHeader
                 feature={cluster.feature}
                 title={featureTitleOf.get(cluster.feature) ?? cluster.feature}
+                unread={featureUnreadOf.get(cluster.feature) === true}
                 first={i === 0}
               />
               <ul className="divide-y divide-border/30">
@@ -326,17 +335,41 @@ function clusterByFeature(rows: readonly ProcessRow[]): { feature: string; rows:
  * 🔴 **위·아래 테두리만** — 좌우는 긋지 않는다, 둥근 모서리도 쓰지 않는다(캡틴 지시).
  * 🔴 **첫 다발의 윗변은 긋지 않는다**(캡틴 지시) — 단계 헤더의 아랫변과 겹쳐 두 줄이 겹쳐
  * 두꺼워 보였다. 첫 다발만 위 테두리를 빼 단계 헤더의 선 하나로 충분하게 한다.
+ *
+ * 🔴 **안 읽은 티켓이 있으면 이 회색 배경이 초록으로 바뀐다**(unread-tickets-show-themselves/03) —
+ * `features` 탭 머리글과 같은 초록, 같은 판정(`feature.hasUnreadTicket`, 여기서 다시 세지 않는다).
  */
-function FeatureHeader({ feature, title, first }: { feature: string; title: string; first: boolean }) {
+function FeatureHeader({
+  feature,
+  title,
+  unread,
+  first,
+}: {
+  feature: string;
+  title: string;
+  unread: boolean;
+  first: boolean;
+}) {
   const description = featureDescription(title, feature);
   return (
     <div
-      className={`flex flex-col gap-y-0.5 border-b ${first ? "" : "border-t"} border-border bg-surface-2/60 px-4 py-1.5`}
+      className={`flex flex-col gap-y-0.5 border-b ${first ? "" : "border-t"} border-border px-4 py-1.5 ${
+        unread ? "bg-unread" : "bg-surface-2/60"
+      }`}
     >
       <span
-        className={`mono text-sm ${description ? "text-muted" : "font-medium tracking-tight"}`}
+        className={`mono flex flex-wrap items-center gap-x-2 text-sm ${description ? "text-muted" : "font-medium tracking-tight"}`}
       >
         {feature}
+        {unread && (
+          // 색 말고도 붙들 것이 있다(INV-U2) — `features` 탭 머리글과 같은 표시.
+          <span
+            role="status"
+            className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
+          >
+            안 읽음
+          </span>
+        )}
       </span>
       {description && (
         <span className="break-words text-sm font-medium tracking-tight">{description}</span>
@@ -353,6 +386,24 @@ function FeatureHeader({ feature, title, first }: { feature: string; title: stri
  * 여는 동작(`onOpen`)은 그대로 남는다 — 6px 못 넘긴 손짓은 dnd-kit 이 클릭으로 넘긴다(`plan`
  * 탭 카드와 같은 요령).
  */
+/**
+ * 줄의 배경·테두리 — 안 읽음(배경)과 처리중(테두리)은 **다른 채널**이다(캡틴 결정 2026-08-13,
+ * status-colors-tell-apart/02). 안 읽은 처리중 줄은 초록 배경 + 파란 테두리로 **둘 다** 말한다 —
+ * 배경이 비어 있을 때만(안 읽지 않았을 때만) 처리중이 옅은 파란 배경까지 갖는다.
+ *
+ * 🔴 테두리는 `ring`(box-shadow) 으로 얹는다 — `border` 는 줄 높이를 흔든다(캡틴 지시: 처리중
+ * 줄만 높이가 달라지면 안 된다). ring 은 레이아웃을 차지하지 않는다.
+ */
+function rowTone(row: ProcessRow): string {
+  const bg = row.unread
+    ? "bg-unread hover:bg-unread-strong"
+    : row.inProgress
+      ? "bg-inprogress hover:bg-inprogress-strong"
+      : "hover:bg-surface-2";
+  const ring = row.inProgress ? "ring-1 ring-inset ring-inprogress-border" : "";
+  return `${bg} ${ring}`;
+}
+
 function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => void }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: dragId(row.feature, row.ticket),
@@ -366,9 +417,9 @@ function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => voi
         onClick={onOpen}
         {...attributes}
         {...listeners}
-        className={`grid w-full grid-cols-[auto_auto_minmax(0,1fr)_auto] items-baseline gap-x-2.5 px-4 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
-          row.unread ? "bg-unread hover:bg-unread-strong" : "hover:bg-surface-2"
-        } ${row.checked ? "" : "cursor-grab active:cursor-grabbing"}`}
+        className={`grid w-full grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] items-baseline gap-x-2.5 px-4 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${rowTone(
+          row,
+        )} ${row.checked ? "" : "cursor-grab active:cursor-grabbing"}`}
       >
         <span
           className={`col-start-1 mono shrink-0 text-sm ${row.checked ? "text-accent" : "text-muted"}`}
@@ -387,6 +438,14 @@ function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => voi
             className="col-start-4 mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
           >
             안 읽음
+          </span>
+        )}
+        {row.inProgress && (
+          // 색 말고도 붙들 것이 있다(INV-C2) — 안 읽음과 같은 이유, 검사도 이 글자를 붙든다.
+          // 🔴 테두리 없는 글자다 — badge 에 `border` 를 얹으면 이 줄만 살짝 높아진다(캡틴 지시:
+          // 처리중 줄만 높이가 달라지면 안 된다). 줄 테두리는 `ring`(위 `rowTone`)이 이미 말한다.
+          <span role="status" className="col-start-5 mono shrink-0 text-sm font-medium text-active">
+            처리중
           </span>
         )}
       </button>

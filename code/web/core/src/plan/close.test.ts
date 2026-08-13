@@ -4,6 +4,7 @@ import {
   documentCompletedOn,
   featureFullyChecked,
   planAutoClose,
+  planReopen,
   ticketChecked,
 } from "./close";
 import { feature, resolved, row, wontfix } from "./fixtures";
@@ -125,7 +126,7 @@ describe("planAutoClose — gootte 가 스스로 쓰는 단 한 순간", () => {
     expect(plan?.upsert.map((p) => p.feature)).toEqual(["a", "b", "c"]);
   });
 
-  it("🔴 닫으면서 지우거나 새 단계를 붙이지 않는다 — 되돌아 나오는 길을 만들지 않는다(INV-B5)", () => {
+  it("🔴 닫으면서 지우거나 새 단계를 붙이지 않는다 — 닫는 판정은 닫는 것만 한다(되돌리는 길은 planReopen)", () => {
     const plan = planAutoClose([done("a")], [row("a", "active", 0)]);
     expect(plan?.remove).toEqual([]);
     expect(plan?.setSteps).toEqual([]);
@@ -160,5 +161,92 @@ describe("closedDisplayAt — 카드가 보여줄 닫힌 시각 하나(06)", () 
 
   it("둘 다 없으면 null 이다 — 지어내지 않는다", () => {
     expect(closedDisplayAt(null, feature("f", ["01"]))).toBeNull();
+  });
+});
+
+describe("planReopen — 저절로 닫힌 카드는 저절로 돌아온다(plan-board/10, 캡틴 결정 2026-08-13)", () => {
+  const done = (slug: string) => feature(slug, [resolved("01", "2026-08-01")]);
+
+  it("되돌릴 것이 없으면 아무것도 쓰지 않는다(null)", () => {
+    expect(planReopen([done("a")], [row("a", "done", 0)])).toBeNull();
+    expect(planReopen([feature("a", ["01"])], [row("a", "active", 0)])).toBeNull();
+    expect(planReopen([], [])).toBeNull();
+  });
+
+  it("🔴 저절로 닫힌 카드에 아직 안 끝난 티켓이 생기면 대기로 돌아온다", () => {
+    const f = feature("a", [resolved("01", "2026-08-01"), "02"]);
+    const plan = planReopen([f], [row("a", "done", 0)]);
+    expect(plan?.remove).toEqual(["a"]);
+    expect(plan?.upsert).toEqual([]);
+  });
+
+  it("🔴 손으로 닫은 카드(closedAt 있음)는 남은 티켓을 안고 있어도 그대로다 — 가장 중요한 한 줄", () => {
+    const f = feature("a", [resolved("01", "2026-08-01"), "02"]);
+    expect(planReopen([f], [row("a", "done", 0, "2026-08-01 09:00")])).toBeNull();
+  });
+
+  it("🔴 폐기 티켓만 새로 생겨도 대기로 돌아오지 않는다 — 폐기는 할 일이 아니다", () => {
+    const f = feature("a", [resolved("01", "2026-08-01"), wontfix("02")]);
+    expect(planReopen([f], [row("a", "done", 0)])).toBeNull();
+  });
+
+  it("🔴 티켓이 한 장도 없는 기능은 되돌리지 않는다", () => {
+    expect(planReopen([feature("a")], [row("a", "done", 0)])).toBeNull();
+  });
+
+  it("완료 칸 밖의 카드는 보지 않는다 — active·reserved·discarded 는 대상이 아니다", () => {
+    const f = feature("a", [resolved("01", "2026-08-01"), "02"]);
+    expect(planReopen([f], [row("a", "active", 0)])).toBeNull();
+    expect(planReopen([f], [row("a", "reserved", 0)])).toBeNull();
+    expect(planReopen([f], [row("a", "discarded", 0)])).toBeNull();
+  });
+
+  it("여럿이 한 번에 돌아와도 순서가 결정적이다 — 폴더명순", () => {
+    const c = feature("c", [resolved("01", "2026-08-01"), "02"]);
+    const a = feature("a", [resolved("01", "2026-08-01"), "02"]);
+    const plan = planReopen([c, a], [row("c", "done", 0), row("a", "done", 1)]);
+    expect(plan?.remove).toEqual(["a", "c"]);
+  });
+
+  it("대기로 가는 것은 행을 지우는 것뿐 — 단계 행을 새로 만들지 않는다(INV-B6)", () => {
+    const f = feature("a", [resolved("01", "2026-08-01"), "02"]);
+    const plan = planReopen([f], [row("a", "done", 0)]);
+    expect(plan?.clearSteps).toEqual([]);
+    expect(plan?.setSteps).toEqual([]);
+  });
+
+  it("🔴 planAutoClose 와 같은 카드를 두고 동시에 참일 수 없다 — 두 판정이 싸우지 않는다", () => {
+    // 상자가 전부 채워진 채 완료 칸에 있으면(featureFullyChecked=참) planReopen 은 조용하고,
+    const closed = done("a");
+    expect(planReopen([closed], [row("a", "done", 0)])).toBeNull();
+    // 남은 일이 생겨 planReopen 이 참을 낼 때(hasOpenWork=참)는 featureFullyChecked 가 이미 거짓이라
+    // planAutoClose 는 같은 자리 행(완료, closableFrom 밖)을 보지 않는다.
+    const reopened = feature("a", [resolved("01", "2026-08-01"), "02"]);
+    expect(planAutoClose([reopened], [row("a", "done", 0)])).toBeNull();
+    expect(planReopen([reopened], [row("a", "done", 0)])?.remove).toEqual(["a"]);
+  });
+
+  it("왕복 — 닫힘 → 되돌림 → 다시 닫힘이 안정적이다", () => {
+    // 1) 전부 완료 → 닫힌다
+    const allDone = feature("a", [resolved("01", "2026-08-01"), resolved("02", "2026-08-02")]);
+    const closePlan = planAutoClose([allDone], [row("a", "active", 0)]);
+    expect(closePlan?.upsert).toEqual([{ feature: "a", area: "done", seq: 0, closedAt: null }]);
+    let placements = [row("a", "done", 0)];
+
+    // 2) 새 티켓이 생겨 남은 일이 있다 → 대기로 돌아온다(행이 사라진다)
+    const withNewTicket = feature("a", [resolved("01", "2026-08-01"), resolved("02", "2026-08-02"), "03"]);
+    const reopenPlan = planReopen([withNewTicket], placements);
+    expect(reopenPlan?.remove).toEqual(["a"]);
+    placements = placements.filter((p) => !reopenPlan?.remove.includes(p.feature));
+    expect(placements).toEqual([]);
+
+    // 3) 그 티켓까지 끝나면 다시 저절로 닫힌다
+    const againDone = feature("a", [
+      resolved("01", "2026-08-01"),
+      resolved("02", "2026-08-02"),
+      resolved("03", "2026-08-03"),
+    ]);
+    const closeAgain = planAutoClose([againDone], placements);
+    expect(closeAgain?.upsert).toEqual([{ feature: "a", area: "done", seq: 0, closedAt: null }]);
   });
 });

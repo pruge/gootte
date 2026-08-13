@@ -12,6 +12,9 @@ export interface ProcessRow {
   // 안 읽음 표시(unread-tickets-show-themselves/02) — `ticket.unread` 를 그대로 옮긴다.
   // 판정 자리는 여전히 `applyReadState`(core) 하나뿐이다.
   unread: boolean;
+  // 처리중 표시(status-colors-tell-apart/02) — `ticket.status === "in_progress"` 를 그대로
+  // 옮긴다. 판정 자리는 격리 사본 관측(`applyInProgress`, core) 하나뿐 — 여기서 다시 정하지 않는다.
+  inProgress: boolean;
 }
 
 /** `process` 탭 단계 묶음 하나 — 제목과 그 밑 줄들. */
@@ -45,6 +48,7 @@ export function groupProcessSteps(cards: readonly PlanCard[]): ProcessStepGroup[
         title: ticket.title,
         checked: ticketChecked(ticket),
         unread: ticket.unread === true,
+        inProgress: ticket.status === "in_progress",
       };
       const list = byStep.get(step);
       if (list) list.push(row);

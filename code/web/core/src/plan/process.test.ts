@@ -20,9 +20,9 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       {
         step: 1,
         rows: [
-          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false },
-          { feature: "a", ticket: "04-x", num: "04", title: "티켓 04", checked: false, unread: false },
-          { feature: "b", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false },
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false, inProgress: false },
+          { feature: "a", ticket: "04-x", num: "04", title: "티켓 04", checked: false, unread: false, inProgress: false },
+          { feature: "b", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false, inProgress: false },
         ],
       },
     ]);
@@ -38,7 +38,7 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
     expect(groupProcessSteps(cards)).toEqual([
       {
         step: UNRANKED_STEP,
-        rows: [{ feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false }],
+        rows: [{ feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false, inProgress: false }],
       },
     ]);
   });
@@ -63,8 +63,28 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       {
         step: 1,
         rows: [
-          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: true, unread: false },
-          { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", checked: false, unread: false },
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: true, unread: false, inProgress: false },
+          { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", checked: false, unread: false, inProgress: false },
+        ],
+      },
+    ]);
+  });
+
+  it("🔴 처리중 표시는 ticket.status 를 그대로 옮긴다 — 다시 판정하지 않는다(status-colors-tell-apart/02)", () => {
+    const cards = [card("a", [{ num: "01", status: "in_progress" }], { "01-x": 1 })];
+    expect(groupProcessSteps(cards)).toEqual([
+      {
+        step: 1,
+        rows: [
+          {
+            feature: "a",
+            ticket: "01-x",
+            num: "01",
+            title: "티켓 01",
+            checked: false,
+            unread: false,
+            inProgress: true,
+          },
         ],
       },
     ]);

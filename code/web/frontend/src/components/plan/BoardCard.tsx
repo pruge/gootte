@@ -67,6 +67,9 @@ export function BoardCard({
   // (core `closedDisplayAt`, 06). 완료 칸이 아닌 카드에는 묻지 않는다 — 부분 완료 날짜를 "닫힘"으로
   // 잘못 읽지 않기 위해서다.
   const closedDisplay = closed ? closedDisplayAt(card.closedAt, feature) : null;
+  // 안 읽은 티켓이 하나라도 있는가 — 이미 실려 온 값을 쓴다(unread-tickets-show-themselves/03,
+  // `features` 탭 머리글과 같은 판정, 여기서 다시 세지 않는다). 완료 칸의 카드에도 그대로 선다.
+  const hasUnread = feature.hasUnreadTicket === true;
 
   // 🔴 `role` 을 카드 자신의 것으로 못 박는다 — dnd-kit 기본값(`button`)이 붙으면 카드가
   // 카드가 아니게 되고, 안에 있는 머리글 버튼이 버튼 속 버튼이 된다.
@@ -121,7 +124,9 @@ export function BoardCard({
         aria-haspopup="dialog"
         onClick={onHeaderClick}
         onKeyDown={onHeaderKeyDown}
-        className="grid w-full cursor-[inherit] grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 bg-surface-2/50 px-3 py-2 text-left"
+        className={`grid w-full cursor-[inherit] grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 px-3 py-2 text-left ${
+          hasUnread ? "bg-unread" : "bg-surface-2/50"
+        }`}
       >
         {/* 두 줄 — 첫 줄 기능 이름, 둘째 줄 설명문구(캡틴 결정). 설명이 없는 기능(표제가 곧
             폴더명인 경우)은 이름 한 줄만 그린다 — 빈 줄로 자리를 채우지 않는다.
@@ -153,6 +158,15 @@ export function BoardCard({
             "이동" 아이콘의 실제 화살표보다 티켓 수가 더 오른쪽으로 삐져나와 보인다. 같은 폭만큼
             물러나 **눈에 보이는 아이콘 끝**과 맞춘다. */}
         <span className="col-start-2 row-start-1 flex shrink-0 items-baseline justify-end gap-x-2.5 pr-1.5">
+          {hasUnread && (
+            // 색 말고도 붙들 것이 있다(INV-U2) — `features` 탭 머리글과 같은 표시.
+            <span
+              role="status"
+              className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
+            >
+              안 읽음
+            </span>
+          )}
           <span className="mono text-sm tabular-nums text-muted">
             티켓 {feature.tickets.length}
           </span>
