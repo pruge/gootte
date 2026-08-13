@@ -1,14 +1,16 @@
 import type { PlanCard } from "@gootte/contract";
-import { ticketChecked } from "./close";
+import { ticketBoxState, type TicketBoxState } from "./close";
 import { UNRANKED_STEP } from "./move";
 
-/** `process` 탭 한 줄 — 어느 기능의 몇 번 티켓인지와 제목, 상자(plan-board/07). */
+/** `process` 탭 한 줄 — 어느 기능의 몇 번 티켓인지와 제목, 상자(plan-board/07, 셋으로 넓힘은 12). */
 export interface ProcessRow {
   feature: string;
   ticket: string;
   num: string;
   title: string;
-  checked: boolean;
+  // 상자 셋 중 하나 — `[x]`/`[-]`/`[ ]` 는 화면이 여기서 그린다. 못 끄는 줄도 여기서
+  // 파생한다("open" 이 아니면 끝난 것 — plan-board/12).
+  box: TicketBoxState;
   // 안 읽음 표시(unread-tickets-show-themselves/02) — `ticket.unread` 를 그대로 옮긴다.
   // 판정 자리는 여전히 `applyReadState`(core) 하나뿐이다.
   unread: boolean;
@@ -46,7 +48,7 @@ export function groupProcessSteps(cards: readonly PlanCard[]): ProcessStepGroup[
         ticket: ticket.slug,
         num: ticket.num,
         title: ticket.title,
-        checked: ticketChecked(ticket),
+        box: ticketBoxState(ticket),
         unread: ticket.unread === true,
         inProgress: ticket.status === "in_progress",
       };

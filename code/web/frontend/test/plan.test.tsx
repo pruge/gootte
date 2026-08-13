@@ -7,7 +7,7 @@ import { qk } from "../src/lib/query";
 
 /**
  * 티켓 한 장 — `[번호, 제목]` 이면 미완이고, 상태와 완료일까지 주면 문서가 그렇게 말하는 것이다.
- * 🔴 상자 값은 여기 없다 — 상자는 이 상태에서 **계산된다**(04, `ticketChecked`).
+ * 🔴 상자 값은 여기 없다 — 상자는 이 상태에서 **계산된다**(04, `ticketBoxState`).
  */
 type TicketSpec = [num: string, title: string, status?: FeatureTicket["status"], completedAt?: string];
 
@@ -534,13 +534,13 @@ describe("PlanView — 티켓 상자와 닫힌 카드(plan-board/04)", () => {
     expect(boxesIn(openCard("mixed 제목"))).toEqual(["[x]", "[ ]"]);
   });
 
-  it("🔴 폐기 티켓은 빈 상자다 — 끝난 것과 안 하는 것을 같게 그리지 않는다", () => {
+  it("🔴 폐기 티켓은 [-] 상자다(plan-board/12 뒤집힘) — 끝난 것([x])과 모양이 갈린다", () => {
     renderBoard({
       ...EMPTY_BOARD,
       active: [card(feature("wf", [["01", "안 할 것", "dropped"]]), 0)],
     });
     const c = openCard("wf 제목");
-    expect(boxesIn(c)).toEqual(["[ ]"]);
+    expect(boxesIn(c)).toEqual(["[-]"]);
     // 원문 상태는 그 줄에 verbatim 으로 남아 어느 쪽인지 말한다(INV-4).
     expect(within(c).getByText("wontfix")).toBeInTheDocument();
   });

@@ -1,38 +1,51 @@
 import type { Feature, Placement, PlanArea, TodoStatus } from "@gootte/contract";
+import { hasOpenWork } from "../project/features";
 import type { PlanWritePlan } from "./move";
 
 /**
- * 티켓 줄의 상자 하나 — 채워졌는가.
+ * 티켓 줄의 상자 하나 — 셋 중 무엇인가: 했다(`done`) · 안 한다(`dropped`) · 남았다(그 밖 전부).
  *
  * 🔴 **문서에서 읽은 상태 한 칸만 본다**(INV-5). 이 값은 어디에도 저장되지 않는다 — 작업자가
- * 티켓 문서를 `resolved` 로 바꾸는 순간 다음 read 에서 그대로 채워지고, 아무도 gootte 에
+ * 티켓 문서를 `resolved`/`wontfix` 로 바꾸는 순간 다음 read 에서 그대로 바뀌고, 아무도 gootte 에
  * 알리지 않는다. 저장하면 그 순간 문서와 갈라질 두 번째 축이 생긴다.
  *
- * 🔴 **폐기(`wontfix`)는 채워진 것이 아니다.** 채움은 "끝났다" 이고 폐기는 "안 한다" 라서,
- * 둘을 같은 상자로 그리면 카드가 끝나지 않은 일을 끝났다고 말한다. 폐기 티켓은 빈 상자로 남고
- * (원문 상태가 그 옆에 verbatim 으로 서 있다), 그 카드를 닫을지는 캡틴이 손으로 정하신다
- * (spec §완료가 둘로 갈리는 자리).
+ * 🔴 **뒤집힘(캡틴 결정 2026-08-14, plan-board/12) — 옛 문단은 지우지 않고 남긴다:**
+ * *"폐기(`wontfix`)는 채워진 것이 아니다. 채움은 '끝났다' 이고 폐기는 '안 한다' 라서, 둘을 같은
+ * 상자로 그리면 카드가 끝나지 않은 일을 끝났다고 말한다. 폐기 티켓은 빈 상자로 남고(원문 상태가
+ * 그 옆에 verbatim 으로 서 있다), 그 카드를 닫을지는 캡틴이 손으로 정하신다."*
+ * 그 규율 아래서 안 할 일 한 장이 카드를 영원히 붙들었다 — 실제로 끝난 기능이 완료 칸으로
+ * 못 내려가고 판에 남았다. 캡틴이 그 자리를 직접 뒤집으셨다: 폐기도 종료로 센다. **모양은 여전히
+ * 갈린다** — `[x]`(했다)와 `[-]`(안 한다)는 카드를 열었을 때 무엇이 되고 무엇이 버려졌는지 보여줘야
+ * 하므로 값을 셋으로 넓혔다. **판정 자리는 이 함수 하나로 유지한다**(spec §판정 자리는 하나뿐) —
+ * `process` 탭·카드 대화상자·`featureFullyChecked`·표시 단계 계산 넷 다 이 값에서 파생한다.
  */
-export function ticketChecked(ticket: { readonly status: TodoStatus }): boolean {
-  return ticket.status === "done";
+export type TicketBoxState = "done" | "dropped" | "open";
+
+export function ticketBoxState(ticket: { readonly status: TodoStatus }): TicketBoxState {
+  if (ticket.status === "done") return "done";
+  if (ticket.status === "dropped") return "dropped";
+  return "open";
 }
 
 /**
- * 이 기능의 상자가 **전부** 채워졌는가 — 저절로 닫히는 유일한 조건.
+ * 이 기능의 상자가 **전부** 채워졌는가(`done` 이거나 `dropped`) — 저절로 닫히는 유일한 조건.
  *
  * 🔴 **티켓이 0장이면 닫지 않는다.** 빈 폴더는 "다 끝났다" 가 아니라 **끝났다는 증거가 없다** 이다
  * (`sortFeatures` 의 `RANK_NO_TICKETS` 와 같은 규율). 빈 조건을 참으로 접으면 spec 만 써 둔
  * 기능이 쓰는 순간 완료 칸으로 사라진다.
  *
- * 🔴 이것은 `countOpenFeatures` 가 쓰는 "남은 일이 있나"(폐기를 끝난 것으로 센다)와 **다른 질문**
- * 이고, 그래서 다른 함수다. 저쪽은 *착수할 것이 남았나*(features 탭의 정렬·집계), 이쪽은
- * *상자가 전부 채워졌나*(판을 닫는 판정)다. 폐기 티켓에서 답이 갈리는 것이 그 증거다 —
- * 같은 질문을 두 번 답하는 것이 아니라, 애초에 다른 질문이다.
+ * 🔴 **뒤집힘(plan-board/12) — 옛 문단은 지우지 않고 남긴다:** *"이것은 `countOpenFeatures` 가
+ * 쓰는 '남은 일이 있나'(폐기를 끝난 것으로 센다)와 다른 질문이고, 그래서 다른 함수다. … 폐기
+ * 티켓에서 답이 갈리는 것이 그 증거다."* 폐기를 빈 상자로 두던 시절에는 정말 다른 질문이었다.
+ * 폐기가 종료로 뒤집힌 지금은 두 질문이 폐기에서 **더 이상 갈리지 않는다** — `hasOpenWork`
+ * (`project/features.ts`)가 이미 "done 도 dropped 도 아닌 티켓이 있나" 를 정확히 답하므로, 이
+ * 함수는 그 답을 그대로 빌리고 **빈 폴더 가드 하나만** 얹는다. 두 함수가 남는 것은 이 가드
+ * 때문이지, 폐기에서 답이 갈려서가 아니다 — 판정 자리를 둘로 늘리지 않으려고 하나를 빌려 쓴다.
  */
 export function featureFullyChecked(feature: {
   readonly tickets: readonly { readonly status: TodoStatus }[];
 }): boolean {
-  return feature.tickets.length > 0 && feature.tickets.every(ticketChecked);
+  return feature.tickets.length > 0 && !hasOpenWork(feature.tickets);
 }
 
 /**

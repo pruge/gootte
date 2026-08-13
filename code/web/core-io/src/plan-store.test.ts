@@ -17,7 +17,7 @@ import {
   writeStep,
 } from "./plan-store";
 
-/** 티켓 하나짜리 기능 — `done` 이면 상자가 채워진 것(04, `ticketChecked`). */
+/** 티켓 하나짜리 기능 — `done` 이면 상자가 채워진 것(04, `ticketBoxState`). */
 function feature(slug: string, ticketStatus: "done" | "pending"): Feature {
   return {
     slug,

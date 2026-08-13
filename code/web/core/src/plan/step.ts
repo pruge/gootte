@@ -1,5 +1,5 @@
 import type { Feature, Placement } from "@gootte/contract";
-import { ticketChecked } from "./close";
+import { ticketBoxState } from "./close";
 import { UNRANKED_STEP, type StepRow } from "./move";
 
 /**
@@ -20,11 +20,12 @@ function indexActiveSteps(
   const activeSlugs = new Set(placements.filter((p) => p.area === "active").map((p) => p.feature));
   const featureOf = new Map(features.map((f) => [f.slug, f]));
 
-  // `${feature}/${ticket}` → 문서가 말하는 완료 여부. 작업 대상 기능의 실제 티켓만 담는다.
+  // `${feature}/${ticket}` → 그 자리가 비었는가(`done` 이거나 `dropped`). 작업 대상 기능의
+  // 실제 티켓만 담는다. 폐기도 당김에서는 완료와 같다(plan-board/12) — 폐기뿐인 단계도 빈다.
   const checkedOf = new Map<string, boolean>();
   for (const slug of activeSlugs) {
     for (const t of featureOf.get(slug)?.tickets ?? []) {
-      checkedOf.set(`${slug}/${t.slug}`, ticketChecked(t));
+      checkedOf.set(`${slug}/${t.slug}`, ticketBoxState(t) !== "open");
     }
   }
 
@@ -49,7 +50,7 @@ function groupByStep(rows: readonly StepRow[]): Map<number, StepRow[]> {
  * 🔴 저장한 숫자는 손대지 않는다(INV-B2) — 반환값은 표시용 사본이고, 호출자는 이것을
  * 계획 DB 에 다시 쓰지 않는다.
  *
- * 🔴 **그 단계의 티켓이 전부 완료(`ticketChecked`)여야 비었다고 본다.** 하나라도 남았으면
+ * 🔴 **그 단계의 티켓이 전부 채워졌어야(`ticketBoxState` !== "open") 비었다고 본다.** 하나라도 남았으면
  * 그 번호는 자리를 지키고, 뒤 번호는 당겨지지 않는다(spec §빈 단계가 생기는 길은 둘이다).
  *
  * 🔴 **9999 는 당기지 않는다** — 늘 9999 그대로 맨 뒤에 남는다

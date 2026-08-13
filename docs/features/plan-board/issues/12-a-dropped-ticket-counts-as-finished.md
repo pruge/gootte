@@ -5,7 +5,7 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능.**
 
-**Status:** ready-for-agent (2026-08-14)
+**Status:** resolved (2026-08-14 07:35)
 
 ## 캡틴 지시 (원문)
 

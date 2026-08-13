@@ -873,14 +873,23 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
       expect(readPlacements(ctx.dataDir, "beta")).toEqual([]);
     }));
 
-  test("🔴 폐기 티켓이 섞인 기능은 닫히지 않는다 — 빈 상자로 남고 캡틴이 정하신다", () =>
+  test("🔴 폐기와 완료가 섞인 기능도 닫힌다 — 뒤집힘(plan-board/12, 캡틴 결정 2026-08-14)", () =>
     withProject(
       { mixed: { "01-a.md": ticket("01", "resolved (2026-08-08)"), "02-b.md": ticket("02", "wontfix") } },
       async (ctx) => {
-        expect((await get(ctx)).waiting.map((c) => c.feature.slug)).toEqual(["mixed"]);
-        expect(readPlacements(ctx.dataDir, "beta")).toEqual([]);
+        const body = await get(ctx);
+        expect(body.done.map((c) => c.feature.slug)).toEqual(["mixed"]);
+        expect(body.waiting).toEqual([]);
       },
     ));
+
+  test("🔴 폐기뿐인 기능도 닫힌다", () =>
+    withProject({ wontfix: { "01-a.md": ticket("01", "wontfix") } }, async (ctx) => {
+      const body = await get(ctx);
+      expect(body.done.map((c) => c.feature.slug)).toEqual(["wontfix"]);
+      // 🔴 전부 폐기로 닫힌 카드는 닫힌 날짜가 없다 — 지어내지 않는다.
+      expect(body.done[0]?.closedAt).toBeNull();
+    }));
 
   test("🔴 저절로 닫힌 카드는 다시 봐도 closed_at 이 없다 — 볼 때마다 다시 쓰지 않는다", () =>
     withProject({ shipped: ALL_DONE }, async (ctx) => {

@@ -5,27 +5,27 @@ import {
   featureFullyChecked,
   planAutoClose,
   planReopen,
-  ticketChecked,
+  ticketBoxState,
 } from "./close";
 import { feature, resolved, row, wontfix } from "./fixtures";
 
-describe("ticketChecked — 상자는 문서에서 읽는다(INV-5)", () => {
-  it("완료면 채워진다", () => {
-    expect(ticketChecked({ status: "done" })).toBe(true);
+describe("ticketBoxState — 상자는 문서에서 읽는다(INV-5), 셋으로 갈린다(plan-board/12)", () => {
+  it("완료면 done", () => {
+    expect(ticketBoxState({ status: "done" })).toBe("done");
   });
 
-  it("미완은 전부 빈 상자 — 대기든 붙들려 있든", () => {
-    expect(ticketChecked({ status: "pending" })).toBe(false);
-    expect(ticketChecked({ status: "in_sprint" })).toBe(false);
-    expect(ticketChecked({ status: "in_progress" })).toBe(false);
+  it("미완은 전부 open — 대기든 붙들려 있든", () => {
+    expect(ticketBoxState({ status: "pending" })).toBe("open");
+    expect(ticketBoxState({ status: "in_sprint" })).toBe("open");
+    expect(ticketBoxState({ status: "in_progress" })).toBe("open");
   });
 
-  it("🔴 폐기는 채워진 것이 아니다 — 끝난 것과 안 하는 것은 다르다", () => {
-    expect(ticketChecked({ status: "dropped" })).toBe(false);
+  it("🔴 폐기는 dropped — done 도 open 도 아니다(뒤집힘 이후에도 모양은 갈린다)", () => {
+    expect(ticketBoxState({ status: "dropped" })).toBe("dropped");
   });
 });
 
-describe("featureFullyChecked — 저절로 닫히는 유일한 조건", () => {
+describe("featureFullyChecked — 저절로 닫히는 유일한 조건(plan-board/12 뒤집힘: 폐기도 닫는다)", () => {
   it("🔴 티켓이 0장이면 닫지 않는다 — 끝났다는 증거가 없다", () => {
     expect(featureFullyChecked(feature("empty"))).toBe(false);
   });
@@ -44,9 +44,26 @@ describe("featureFullyChecked — 저절로 닫히는 유일한 조건", () => {
     ).toBe(true);
   });
 
-  it("🔴 폐기 티켓이 섞이면 닫지 않는다 — 빈 상자로 남고 캡틴이 정하신다", () => {
+  it("🔴 폐기만 있어도 닫는다 — 캡틴 결정 2026-08-14", () => {
+    expect(featureFullyChecked(feature("wontfix-only", [wontfix("01")]))).toBe(true);
+  });
+
+  it("🔴 완료와 폐기가 섞여도 닫는다 — resolved 셋 + wontfix 하나", () => {
     expect(
-      featureFullyChecked(feature("mixed", [resolved("01", "2026-08-01"), wontfix("02")])),
+      featureFullyChecked(
+        feature("mixed", [
+          resolved("01", "2026-08-01"),
+          resolved("02", "2026-08-02"),
+          resolved("03", "2026-08-03"),
+          wontfix("04"),
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it("🔴 미완이 하나라도 남으면 폐기가 섞여 있어도 닫지 않는다", () => {
+    expect(
+      featureFullyChecked(feature("mixed-open", [resolved("01", "2026-08-01"), wontfix("02"), "03"])),
     ).toBe(false);
   });
 });
@@ -105,9 +122,21 @@ describe("planAutoClose — gootte 가 스스로 쓰는 단 한 순간", () => {
     expect(planAutoClose([done("a")], [row("a", "discarded", 0)])).toBeNull();
   });
 
-  it("🔴 폐기 티켓을 안은 기능은 닫히지 않는다 — 완료로 위장하지 않는다(INV-B4)", () => {
+  it("🔴 폐기와 완료가 섞인 기능도 닫힌다 — 뒤집힘(plan-board/12, 캡틴 결정 2026-08-14). 옛 이름(INV-B4)은 옛 규율의 것이었다", () => {
     const mixed = feature("m", [resolved("01", "2026-08-01"), wontfix("02")]);
-    expect(planAutoClose([mixed], [row("m", "active", 0)])).toBeNull();
+    const plan = planAutoClose([mixed], [row("m", "active", 0)]);
+    expect(plan?.upsert).toEqual([{ feature: "m", area: "done", seq: 0, closedAt: null }]);
+  });
+
+  it("🔴 폐기뿐인 기능도 닫힌다", () => {
+    const wontfixOnly = feature("w", [wontfix("01")]);
+    const plan = planAutoClose([wontfixOnly], []);
+    expect(plan?.upsert).toEqual([{ feature: "w", area: "done", seq: 0, closedAt: null }]);
+  });
+
+  it("🔴 전부 폐기로 닫힌 카드는 닫힌 날짜가 없다 — 지어내지 않는다", () => {
+    const wontfixOnly = feature("w", [wontfix("01")]);
+    expect(documentCompletedOn(wontfixOnly)).toBeNull();
   });
 
   it("닫히는 카드는 완료 칸 맨 뒤에 선다 — 이미 닫힌 카드의 자리를 밀어내지 않는다", () => {

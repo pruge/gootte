@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PlanCard } from "@gootte/contract";
 import { UNRANKED_STEP } from "./move";
 import { groupProcessSteps } from "./process";
-import { feature, resolved } from "./fixtures";
+import { feature, resolved, wontfix } from "./fixtures";
 
 const card = (
   slug: string,
@@ -20,9 +20,9 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       {
         step: 1,
         rows: [
-          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false, inProgress: false },
-          { feature: "a", ticket: "04-x", num: "04", title: "티켓 04", checked: false, unread: false, inProgress: false },
-          { feature: "b", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false, inProgress: false },
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", box: "open", unread: false, inProgress: false },
+          { feature: "a", ticket: "04-x", num: "04", title: "티켓 04", box: "open", unread: false, inProgress: false },
+          { feature: "b", ticket: "01-x", num: "01", title: "티켓 01", box: "open", unread: false, inProgress: false },
         ],
       },
     ]);
@@ -38,7 +38,7 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
     expect(groupProcessSteps(cards)).toEqual([
       {
         step: UNRANKED_STEP,
-        rows: [{ feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false, inProgress: false }],
+        rows: [{ feature: "a", ticket: "01-x", num: "01", title: "티켓 01", box: "open", unread: false, inProgress: false }],
       },
     ]);
   });
@@ -63,8 +63,8 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       {
         step: 1,
         rows: [
-          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: true, unread: false, inProgress: false },
-          { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", checked: false, unread: false, inProgress: false },
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", box: "done", unread: false, inProgress: false },
+          { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", box: "open", unread: false, inProgress: false },
         ],
       },
     ]);
@@ -81,10 +81,23 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
             ticket: "01-x",
             num: "01",
             title: "티켓 01",
-            checked: false,
+            box: "open",
             unread: false,
             inProgress: true,
           },
+        ],
+      },
+    ]);
+  });
+
+  it("🔴 폐기 티켓은 dropped 상자로 나온다(plan-board/12) — done 과 다른 값이다", () => {
+    const cards = [card("a", [wontfix("01"), "02"], { "01-x": 1, "02-x": 1 })];
+    expect(groupProcessSteps(cards)).toEqual([
+      {
+        step: 1,
+        rows: [
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", box: "dropped", unread: false, inProgress: false },
+          { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", box: "open", unread: false, inProgress: false },
         ],
       },
     ]);
