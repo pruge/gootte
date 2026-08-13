@@ -156,7 +156,12 @@ export function BoardCard({
             🔴 `pr-1.5` 는 장식이 아니다 — 아이콘 버튼 자신의 패딩(`p-1.5`)만큼 클릭 상자가 눈에
             보이는 그림보다 오른쪽으로 더 나가 있어, 상자 끝(칸의 오른쪽 끝)에 맞추면 오히려
             "이동" 아이콘의 실제 화살표보다 티켓 수가 더 오른쪽으로 삐져나와 보인다. 같은 폭만큼
-            물러나 **눈에 보이는 아이콘 끝**과 맞춘다. */}
+            물러나 **눈에 보이는 아이콘 끝**과 맞춘다.
+            🔴 이 전제는 "아이콘 칸이 항상 이 칸보다 넓다" 를 깔고 있었다 — `안 읽음` 표시
+            (unread-tickets-show-themselves/03)가 이 줄에 더해지면서 이 줄이 아이콘 줄보다
+            넓어질 수 있게 됐고, 그러면 격자 열 폭이 이 줄에 끌려가 아이콘 줄(아래, `justify-end`
+            없음)이 왼쪽으로 붙어 어긋나 보인다. 아이콘 줄에도 `justify-end` 를 주어 어느 줄이
+            더 넓어지든 항상 같은 오른쪽 끝을 본다. */}
         <span className="col-start-2 row-start-1 flex shrink-0 items-baseline justify-end gap-x-2.5 pr-1.5">
           {hasUnread && (
             // 색 말고도 붙들 것이 있다(INV-U2) — `features` 탭 머리글과 같은 표시.
@@ -178,7 +183,7 @@ export function BoardCard({
             반응하므로 pointerdown 도 함께 멈춘다. */}
         {!overlay && (
           <div
-            className="col-start-2 row-start-2 flex shrink-0 items-start gap-0.5"
+            className="col-start-2 row-start-2 flex shrink-0 items-start justify-end gap-0.5"
             onPointerDown={(e) => e.stopPropagation()}
           >
             <button
