@@ -22,7 +22,6 @@
   --color-unread-fg: var(--unread-fg);
   --color-inprogress: var(--inprogress);
   --color-inprogress-strong: var(--inprogress-strong);
-  --color-inprogress-border: var(--active);
 
   --font-sans: Pretendard, "Pretendard Variable", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
@@ -57,9 +56,9 @@
   --unread: oklch(94% 0.055 150); /* 줄·머리글 배경 — 옅게, 글자가 그대로 읽혀야 한다 */
   --unread-strong: oklch(88% 0.075 150); /* hover — bg-unread 보다 진해서 손을 얹어도 안 사라진다 */
   --unread-fg: oklch(40% 0.1 150); /* "안 읽음" 글자·아이콘 — 옅은 배경 위에서도 대비가 난다 */
-  /* 처리중(status-colors-tell-apart/02) — 배경은 새 값, 테두리는 `--active`(작업중 파랑)를 그대로
-     쓴다(캡틴 지시: "옅은 푸른색 배경 … border는 좀 짙은 푸른색"). hue 250 은 강조(남보라, hue 265)와
-     충분히 갈린다(양쪽 테마에서 각각 확인 — F8 안 읽음 초록과 같은 원리). */
+  /* 처리중(status-colors-tell-apart/02) — 배경만으로 말한다(캡틴 지시 2026-08-13: "처리중
+     보더를 제거해봐" — 테두리는 뺐다). hue 250 은 강조(남보라, hue 265)와 충분히 갈린다
+     (양쪽 테마에서 각각 확인 — F8 안 읽음 초록과 같은 원리). */
   --inprogress: oklch(94.5% 0.035 250); /* 옅은 파란 배경 */
   --inprogress-strong: oklch(89% 0.05 250); /* hover — 안 읽음과 같은 원리로 더 진해야 안 사라진다 */
 }
@@ -82,7 +81,8 @@
   --unread: oklch(32% 0.05 150);
   --unread-strong: oklch(38% 0.065 150);
   --unread-fg: oklch(82% 0.11 150);
-  /* 처리중 — 어두운 테마의 강조(청록, hue 200)와 갈리는 순수 파랑(hue 245, `--active` 와 같은 hue) */
+  /* 처리중 — 배경만으로 말한다. 어두운 테마의 강조(청록, hue 200)와 갈리는 순수 파랑
+     (hue 245, `--active` 와 같은 hue) */
   --inprogress: oklch(31% 0.06 245);
   --inprogress-strong: oklch(37% 0.075 245);
 }

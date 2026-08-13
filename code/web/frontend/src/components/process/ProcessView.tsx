@@ -387,21 +387,20 @@ function FeatureHeader({
  * 탭 카드와 같은 요령).
  */
 /**
- * 줄의 배경·테두리 — 안 읽음(배경)과 처리중(테두리)은 **다른 채널**이다(캡틴 결정 2026-08-13,
- * status-colors-tell-apart/02). 안 읽은 처리중 줄은 초록 배경 + 파란 테두리로 **둘 다** 말한다 —
- * 배경이 비어 있을 때만(안 읽지 않았을 때만) 처리중이 옅은 파란 배경까지 갖는다.
+ * 줄의 배경 — 안 읽음과 처리중은 **다른 채널**이다(캡틴 결정 2026-08-13,
+ * status-colors-tell-apart/02). 안 읽은 처리중 줄은 초록 배경으로 **둘 다** 말한다(글자 표시
+ * "처리중" 이 나머지를 진다) — 배경이 비어 있을 때만(안 읽지 않았을 때만) 처리중이 옅은 파란
+ * 배경을 갖는다.
  *
- * 🔴 테두리는 `ring`(box-shadow) 으로 얹는다 — `border` 는 줄 높이를 흔든다(캡틴 지시: 처리중
- * 줄만 높이가 달라지면 안 된다). ring 은 레이아웃을 차지하지 않는다.
+ * 🔴 테두리는 얹지 않는다(캡틴 지시 2026-08-13 — "처리중 보더를 제거해봐"). 처리중은 배경과
+ * `처리중` 글자만으로 말한다.
  */
 function rowTone(row: ProcessRow): string {
-  const bg = row.unread
+  return row.unread
     ? "bg-unread hover:bg-unread-strong"
     : row.inProgress
       ? "bg-inprogress hover:bg-inprogress-strong"
       : "hover:bg-surface-2";
-  const ring = row.inProgress ? "ring-1 ring-inset ring-inprogress-border" : "";
-  return `${bg} ${ring}`;
 }
 
 function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => void }) {
@@ -443,7 +442,8 @@ function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => voi
         {row.inProgress && (
           // 색 말고도 붙들 것이 있다(INV-C2) — 안 읽음과 같은 이유, 검사도 이 글자를 붙든다.
           // 🔴 테두리 없는 글자다 — badge 에 `border` 를 얹으면 이 줄만 살짝 높아진다(캡틴 지시:
-          // 처리중 줄만 높이가 달라지면 안 된다). 줄 테두리는 `ring`(위 `rowTone`)이 이미 말한다.
+          // 처리중 줄만 높이가 달라지면 안 된다). 처리중은 배경(위 `rowTone`)과 이 글자로 말한다
+          // — 테두리는 얹지 않는다(캡틴 지시 2026-08-13: "처리중 보더를 제거해봐").
           <span role="status" className="col-start-5 mono shrink-0 text-sm font-medium text-active">
             처리중
           </span>

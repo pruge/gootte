@@ -122,9 +122,7 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                           : inProgress
                             ? "bg-inprogress hover:bg-inprogress-strong"
                             : "hover:bg-surface-2"
-                      } ${inProgress ? "ring-1 ring-inset ring-inprogress-border" : ""} ${
-                        t.status === "done" || t.status === "dropped" ? "text-muted" : ""
-                      }`}
+                      } ${t.status === "done" || t.status === "dropped" ? "text-muted" : ""}`}
                     >
                       <span
                         className={`mono shrink-0 text-sm ${checked ? "text-accent" : "text-muted"}`}
@@ -155,8 +153,8 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                         </span>
                       )}
                       {inProgress && (
-                        // 색 말고도 붙들 것이 있다(INV-C2) — 테두리 없는 글자다(줄 높이를 흔들지
-                        // 않는다, status-colors-tell-apart/02). 줄 테두리는 위 `ring` 이 이미 말한다.
+                        // 색 말고도 붙들 것이 있다(INV-C2) — 처리중은 배경과 이 글자로만 말한다,
+                        // 테두리는 얹지 않는다(캡틴 지시 2026-08-13: "처리중 보더를 제거해봐").
                         <span role="status" className="mono shrink-0 text-sm font-medium text-active">
                           처리중
                         </span>
