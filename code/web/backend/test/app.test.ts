@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
@@ -13,7 +22,7 @@ import {
   ApiError,
   type Project,
 } from "@gootte/contract";
-import { migratePlanDb, readPlacements, readSteps, writeStep } from "@gootte/core-io";
+import { migratePlanDb, readPlacements, readReadMarks, readSteps, writeStep } from "@gootte/core-io";
 import { createApp } from "../src/app";
 import {
   clearDiscoverCache,
@@ -44,7 +53,23 @@ function treeSnapshot(root: string): Record<string, string> {
 const roots = [FIXTURES];
 // 격리 사본 뿌리도 주입한다 — 기계에 실제로 있는 `~/.treehouse` 를 읽으면 테스트가 기계에 종속된다.
 const NO_TREEHOUSE = join(FIXTURES, "..", "no-treehouse");
-const APP = { roots, treehouse: NO_TREEHOUSE };
+// 계획 저장소도 주입한다 — features 라우트가 이제 읽음 기록을 건드리므로(unread-tickets-
+// show-themselves/01), 주입하지 않으면 이 기계의 실제 `~/.gootte` 를 오염시킨다.
+const DATA_DIR = mkdtempSync(join(tmpdir(), "gootte-app-data-"));
+const APP = { roots, treehouse: NO_TREEHOUSE, dataDir: DATA_DIR };
+
+/** 격리된 계획 저장소로 한 번 부른다 — 테스트마다 새 디렉토리라 읽음 기록이 섞이지 않는다. */
+function withDataDir<T>(fn: (dataDir: string) => Promise<T> | T): Promise<T> | T {
+  const dir = mkdtempSync(join(tmpdir(), "gootte-app-data-"));
+  const done = () => rmSync(dir, { recursive: true, force: true });
+  try {
+    const out = fn(dir);
+    return out instanceof Promise ? out.finally(done) : (done(), out);
+  } catch (err) {
+    done();
+    throw err;
+  }
+}
 
 beforeEach(() => clearDiscoverCache());
 
@@ -201,6 +226,72 @@ describe("GET /api/features/:slug", () => {
   });
 });
 
+/**
+ * 안 읽은 티켓(unread-tickets-show-themselves/01) — 판정 자체는 core(`applyReadState`)와
+ * core-io(`plan-store.test.ts`)가 이미 잰다. 여기서 보는 것은 **라우트가 그 둘을 잇는가**다.
+ */
+describe("GET /api/features/:slug — 읽음 기록", () => {
+  test("🔴 처음 여는 프로젝트는 그때 있던 티켓을 전부 읽음으로 깔아 초록이 하나도 없다", () =>
+    withDataDir(async (dataDir) => {
+      const body = FeaturesResponse.parse(
+        await (await createApp({ ...APP, dataDir }).request("/api/features/alpha")).json(),
+      );
+      for (const f of body.features) {
+        expect(f.hasUnreadTicket).toBe(false);
+        for (const t of f.tickets) expect(t.unread).toBe(false);
+      }
+    }));
+
+  test("🔴 깔기는 한 번만 선다 — 서버를 다시 띄운 뒤(같은 dataDir 재사용) 생긴 티켓은 안 읽음으로 남는다", () =>
+    withDataDir(async (dataDir) => {
+      // 문서 트리를 손댈 수 있게 픽스처를 통째로 복사한다 — 원본 fixture 는 건드리지 않는다.
+      const projectRoot = mkdtempSync(join(tmpdir(), "gootte-app-root-"));
+      cpSync(FIXTURES, projectRoot, { recursive: true });
+      const requestFeatures = async () =>
+        FeaturesResponse.parse(
+          await (
+            await createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir }).request(
+              "/api/features/alpha",
+            )
+          ).json(),
+        );
+
+      try {
+        // 첫 요청 — "서버가 처음 뜬 순간" 지금 있는 티켓이 전부 읽음으로 깔린다.
+        const first = await requestFeatures();
+        for (const f of first.features) for (const t of f.tickets) expect(t.unread).toBe(false);
+
+        // 깔기와 다음 요청 사이에 새 티켓이 생긴다.
+        writeFileSync(
+          join(projectRoot, "alpha", "docs/features/auth-login/issues/09-new.md"),
+          "# 09 — 새 티켓\n\nStatus: ready-for-agent\n",
+        );
+
+        // "서버 재기동" 흉내 — 같은 dataDir 로 새 `createApp` · 새 요청.
+        const second = await requestFeatures();
+        const auth = second.features.find((f) => f.slug === "auth-login")!;
+        // 그 뒤에 생긴 09 만 안 읽음이고, 첫 깔기 때 있던 나머지는 그대로 읽음이다.
+        expect(auth.tickets.find((t) => t.num === "09")?.unread).toBe(true);
+        for (const t of auth.tickets.filter((t) => t.num !== "09")) expect(t.unread).toBe(false);
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+      }
+    }));
+
+  test("🔴 읽음 기록을 못 읽었으면 조용한 쪽으로 기운다 — 거짓 초록을 켜지 않는다(INV-U1)", () =>
+    withDataDir(async (dataDir) => {
+      // `plan.db` 자리에 파일이 아니라 디렉토리를 놓아 여는 것 자체가 실패하게 만든다.
+      mkdirSync(join(dataDir, "plan.db"));
+      const body = FeaturesResponse.parse(
+        await (await createApp({ ...APP, dataDir }).request("/api/features/alpha")).json(),
+      );
+      for (const f of body.features) {
+        expect(f.hasUnreadTicket).toBe(false);
+        for (const t of f.tickets) expect(t.unread).toBe(false);
+      }
+    }));
+});
+
 describe("GET /api/features/:slug/:feature/doc — 문서 본문(read-only, INV-2)", () => {
   test("기능 폴더 안의 문서를 내준다", async () => {
     const app = createApp(APP);
@@ -253,6 +344,35 @@ describe("GET /api/features/:slug/:feature/doc — 문서 본문(read-only, INV-
     const app = createApp(APP);
     const res = await app.request("/api/features/does-not-exist/doc-tree/doc?path=spec.md");
     expect(res.status).toBe(404);
+  });
+
+  /** 티켓 원문을 열면 읽음이 된다(unread-tickets-show-themselves/01) — 세 탭이 공유하는 이 자리 하나. */
+  describe("읽음 기록", () => {
+    test("🔴 티켓 문서(issues/)를 열면 읽음이 된다", () =>
+      withDataDir(async (dataDir) => {
+        const res = await createApp({ ...APP, dataDir }).request(
+          "/api/features/alpha/doc-tree/doc?path=issues/01-a.md",
+        );
+        expect(res.status).toBe(200);
+        expect(readReadMarks(dataDir, "alpha")).toEqual(new Set(["doc-tree/issues/01-a.md"]));
+      }));
+
+    test("명세·결정 기록을 열어도 읽음 기록이 남지 않는다(캡틴 결정 ② — 표시는 티켓뿐)", () =>
+      withDataDir(async (dataDir) => {
+        await createApp({ ...APP, dataDir }).request("/api/features/alpha/doc-tree/doc?path=spec.md");
+        await createApp({ ...APP, dataDir }).request(
+          "/api/features/alpha/doc-tree/doc?path=adr/0001-x.md",
+        );
+        expect(readReadMarks(dataDir, "alpha")).toEqual(new Set());
+      }));
+
+    test("같은 티켓을 두 번 열어도 한 번과 같다(멱등)", () =>
+      withDataDir(async (dataDir) => {
+        const app = createApp({ ...APP, dataDir });
+        await app.request("/api/features/alpha/doc-tree/doc?path=issues/01-a.md");
+        await app.request("/api/features/alpha/doc-tree/doc?path=issues/01-a.md");
+        expect(readReadMarks(dataDir, "alpha")).toEqual(new Set(["doc-tree/issues/01-a.md"]));
+      }));
   });
 });
 

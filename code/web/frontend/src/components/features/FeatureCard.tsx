@@ -39,10 +39,15 @@ export function FeatureCard({ feature, onOpenDoc, onGoToPlan }: FeatureCardProps
   // spec 표제가 `<기능 이름> — <설명>` 꼴이면 뒤의 슬러그 배지와 이름이 겹친다 — 앞의 겹친
   // 부분만 뗀다(INV-4, `plan` 탭 카드와 같은 규칙·같은 함수). 뗄 것이 없으면 표제 그대로다.
   const title = featureDescription(feature.title, feature.slug) || feature.title;
+  const hasUnread = feature.hasUnreadTicket === true;
 
   return (
     <section className="shrink-0 overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="flex w-full items-stretch border-b border-border bg-surface-2/40">
+      <div
+        className={`flex w-full items-stretch border-b border-border ${
+          hasUnread ? "bg-unread" : "bg-surface-2/40"
+        }`}
+      >
         <button
           type="button"
           aria-expanded={expanded}
@@ -53,6 +58,15 @@ export function FeatureCard({ feature, onOpenDoc, onGoToPlan }: FeatureCardProps
             {title}
           </h2>
           <span className="mono text-sm text-muted">{feature.slug}</span>
+          {hasUnread && (
+            // 안 읽은 티켓이 있는 동안만 뜬다 — 다 읽으면 풀린다(색 말고도 붙들 것: INV-U2).
+            <span
+              role="status"
+              className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
+            >
+              안 읽음
+            </span>
+          )}
           {feature.sourceStatus && (
             <span
               className={`mono rounded px-1.5 py-0.5 text-sm ${

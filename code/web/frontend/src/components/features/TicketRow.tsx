@@ -104,6 +104,7 @@ export function TicketRow({
   onOpenDoc: OpenDocFn;
 }) {
   const stage = stageOf(ticket);
+  const unread = ticket.unread === true;
 
   return (
     <li>
@@ -111,15 +112,25 @@ export function TicketRow({
         type="button"
         style={treeIndentStyle(TICKET_LIST_DEPTH)}
         onClick={(e) => onOpenDoc(featureSlug, ticket.path, e.currentTarget)}
-        className={`flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 pr-4 py-2.5 text-left hover:bg-surface-2/60 ${
-          ticket.status === "done" || ticket.status === "dropped" ? "text-muted" : ""
-        }`}
+        className={`flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 pr-4 py-2.5 text-left ${
+          unread ? "bg-unread hover:bg-unread-strong" : "hover:bg-surface-2/60"
+        } ${ticket.status === "done" || ticket.status === "dropped" ? "text-muted" : ""}`}
       >
         <StateIcon ticket={ticket} />
         <span className="mono shrink-0 text-sm tabular-nums text-muted">{ticket.num || "—"}</span>
         <span className={`min-w-0 flex-1 truncate ${stage === "waiting" ? "text-muted" : ""}`}>
           {ticket.title}
         </span>
+
+        {unread && (
+          // 색 말고도 붙들 것이 있다(INV-U2) — 보조기술과 시험이 이 글자를 붙든다.
+          <span
+            role="status"
+            className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
+          >
+            안 읽음
+          </span>
+        )}
 
         {ticket.statusKnown ? (
           <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
