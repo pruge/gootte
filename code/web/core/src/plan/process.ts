@@ -9,6 +9,9 @@ export interface ProcessRow {
   num: string;
   title: string;
   checked: boolean;
+  // 안 읽음 표시(unread-tickets-show-themselves/02) — `ticket.unread` 를 그대로 옮긴다.
+  // 판정 자리는 여전히 `applyReadState`(core) 하나뿐이다.
+  unread: boolean;
 }
 
 /** `process` 탭 단계 묶음 하나 — 제목과 그 밑 줄들. */
@@ -41,6 +44,7 @@ export function groupProcessSteps(cards: readonly PlanCard[]): ProcessStepGroup[
         num: ticket.num,
         title: ticket.title,
         checked: ticketChecked(ticket),
+        unread: ticket.unread === true,
       };
       const list = byStep.get(step);
       if (list) list.push(row);

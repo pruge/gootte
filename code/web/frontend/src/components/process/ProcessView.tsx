@@ -366,9 +366,9 @@ function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => voi
         onClick={onOpen}
         {...attributes}
         {...listeners}
-        className={`grid w-full grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-2.5 px-4 py-2 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
-          row.checked ? "" : "cursor-grab active:cursor-grabbing"
-        }`}
+        className={`grid w-full grid-cols-[auto_auto_minmax(0,1fr)_auto] items-baseline gap-x-2.5 px-4 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+          row.unread ? "bg-unread hover:bg-unread-strong" : "hover:bg-surface-2"
+        } ${row.checked ? "" : "cursor-grab active:cursor-grabbing"}`}
       >
         <span
           className={`col-start-1 mono shrink-0 text-sm ${row.checked ? "text-accent" : "text-muted"}`}
@@ -380,6 +380,15 @@ function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => voi
           {row.num || "—"}
         </span>
         <span className="col-start-3 min-w-0 truncate text-sm">{row.title}</span>
+        {row.unread && (
+          // 색 말고도 붙들 것이 있다(INV-U2) — `features` 탭 `TicketRow` 와 같은 표시.
+          <span
+            role="status"
+            className="col-start-4 mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
+          >
+            안 읽음
+          </span>
+        )}
       </button>
     </li>
   );

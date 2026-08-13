@@ -20,9 +20,9 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       {
         step: 1,
         rows: [
-          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: false },
-          { feature: "a", ticket: "04-x", num: "04", title: "티켓 04", checked: false },
-          { feature: "b", ticket: "01-x", num: "01", title: "티켓 01", checked: false },
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false },
+          { feature: "a", ticket: "04-x", num: "04", title: "티켓 04", checked: false, unread: false },
+          { feature: "b", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false },
         ],
       },
     ]);
@@ -38,7 +38,7 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
     expect(groupProcessSteps(cards)).toEqual([
       {
         step: UNRANKED_STEP,
-        rows: [{ feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: false }],
+        rows: [{ feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: false, unread: false }],
       },
     ]);
   });
@@ -63,8 +63,8 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       {
         step: 1,
         rows: [
-          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: true },
-          { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", checked: false },
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", checked: true, unread: false },
+          { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", checked: false, unread: false },
         ],
       },
     ]);

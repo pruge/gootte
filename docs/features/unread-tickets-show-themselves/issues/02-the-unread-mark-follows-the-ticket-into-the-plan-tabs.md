@@ -6,7 +6,7 @@
 **Blocked by:** 🔴 **[01](01-an-unread-ticket-is-green-until-i-open-it.md)** — 판정과 기록이 01 에서 선다.
 여기서는 **이미 있는 판정을 두 화면에 더 붙이는 것뿐이다.**
 
-**Status:** ready-for-agent (2026-08-13)
+**Status:** resolved (2026-08-13 11:15)
 
 🟢 **캡틴 결정 2026-08-13** — "계획·단계 탭의 티켓에도" 붙인다.
 

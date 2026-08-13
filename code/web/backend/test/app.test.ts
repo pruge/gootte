@@ -478,6 +478,27 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
     }));
 
   /**
+   * 안 읽음 표시(unread-tickets-show-themselves/02) — `features` 탭과 **같은 판정 자리**
+   * (`applyReadState`)를 이 라우트도 탄다. 판정 자체는 core 가 잰다 — 여기서 보는 것은
+   * **라우트가 그 판정을 잇는가**와 **두 탭이 같은 값을 보는가**뿐이다.
+   */
+  test("🔴 카드의 티켓도 안 읽음이 실린다 — features 탭과 같은 값(같은 dataDir)", () =>
+    withDataDir(async (dataDir) => {
+      const app = createApp({ ...APP, dataDir });
+      const featuresBody = FeaturesResponse.parse(
+        await (await app.request("/api/features/alpha")).json(),
+      );
+      const planBody = PlanBoardResponse.parse(await (await app.request("/api/plan/alpha")).json());
+
+      const featuresAuth = featuresBody.features.find((f) => f.slug === "auth-login")!;
+      const planAuth = planBody.waiting.find((c) => c.feature.slug === "auth-login")!.feature;
+      expect(planAuth.hasUnreadTicket).toBe(featuresAuth.hasUnreadTicket);
+      expect(planAuth.tickets.map((t) => [t.num, t.unread])).toEqual(
+        featuresAuth.tickets.map((t) => [t.num, t.unread]),
+      );
+    }));
+
+  /**
    * 카드를 옮긴다(plan-board/03) — **계획 DB 에 쓰는 유일한 입구**.
    * 무엇을 쓸지 정하는 규칙은 `core/src/plan/move.test.ts` 가, 실제 표에 앉는지는
    * `core-io/src/plan-store.test.ts` 가 덮는다. 여기서 보는 것은 **라우트가 그 둘을 잇고 새 판을

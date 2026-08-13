@@ -180,6 +180,22 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
     expect(boxes).toEqual(["[x]", "[ ]"]);
   });
 
+  it("🔴 안 읽은 티켓 줄에 표시가 뜬다 — features 탭과 같은 표시(unread-tickets-show-themselves/02)", () => {
+    const a = feature("a", [["01", "안 읽은 것"], ["02", "읽은 것"]]);
+    const unreadFeature: Feature = {
+      ...a,
+      tickets: a.tickets.map((t) => ({ ...t, unread: t.num === "01" })),
+    };
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(unreadFeature, { "01-x": 1, "02-x": 1 })],
+    });
+    const unreadRow = screen.getByText("안 읽은 것").closest("button") as HTMLElement;
+    const readRow = screen.getByText("읽은 것").closest("button") as HTMLElement;
+    expect(within(unreadRow).getByText("안 읽음")).toBeInTheDocument();
+    expect(within(readRow).queryByText("안 읽음")).toBeNull();
+  });
+
   it("작업 대상 밖(대기·예약·폐기·완료)의 티켓은 하나도 나오지 않는다", () => {
     renderProcess({
       ...EMPTY_BOARD,

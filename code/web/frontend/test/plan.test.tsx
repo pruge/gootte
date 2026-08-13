@@ -151,6 +151,20 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     expect(within(opened).getByText("티켓 2")).toBeInTheDocument();
   });
 
+  it("🔴 안 읽은 티켓 줄에 표시가 뜬다 — features 탭과 같은 표시(unread-tickets-show-themselves/02)", () => {
+    const f = feature("auth-login", [["01", "안 읽은 것"], ["02", "읽은 것"]]);
+    const unreadFeature: Feature = {
+      ...f,
+      tickets: f.tickets.map((t) => ({ ...t, unread: t.num === "01" })),
+    };
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(unreadFeature)] });
+    const opened = openCard("auth-login 제목");
+    const unreadRow = within(opened).getByText("안 읽은 것").closest("button") as HTMLElement;
+    const readRow = within(opened).getByText("읽은 것").closest("button") as HTMLElement;
+    expect(within(unreadRow).getByText("안 읽음")).toBeInTheDocument();
+    expect(within(readRow).queryByText("안 읽음")).toBeNull();
+  });
+
   it("확인을 누르면 창이 닫힌다 — 열림은 화면의 상태일 뿐 저장되지 않는다(캡틴 결정)", () => {
     renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("auth-login", [["01", "세션 발급"]]))] });
     openCard("auth-login 제목");

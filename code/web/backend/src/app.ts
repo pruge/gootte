@@ -101,6 +101,20 @@ export function createApp(options: AppOptions = {}): Hono {
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
 
   /**
+   * 안 읽음 표시를 얹은 기능 목록 — `features` 탭과 **같은 판정 자리**(`applyReadState`)를
+   * `plan`·`process` 탭에도 태운다(unread-tickets-show-themselves/02). 읽음 기록이 막히면
+   * 조용히 꺼진다(INV-U1) — 판 자체를 죽이지 않는다.
+   */
+  const withReadState = (project: string, features: Feature[]): Feature[] => {
+    try {
+      ensureReadSeed(dataDir, project, features);
+      return applyReadState(features, readReadMarks(dataDir, project));
+    } catch {
+      return applyReadState(features, null);
+    }
+  };
+
+  /**
    * 판 하나를 그린다 — **판을 보는 모든 길이 이 한 자리를 지난다**(GET 도, 옮긴 뒤의 응답도).
    *
    * 🔴 여기서 **자동 닫힘**이 일어난다(plan-board/04): 상자가 전부 채워진 기능을 처음 보는 순간
@@ -185,7 +199,7 @@ export function createApp(options: AppOptions = {}): Hono {
     if (!proj) return c.json(notFound(slug), 404);
     const project = basename(proj.path);
     try {
-      const areas = readBoard(project, readFeatures(proj.path));
+      const areas = readBoard(project, withReadState(project, readFeatures(proj.path)));
       return c.json(PlanBoardResponse.parse({ project, ...areas }));
     } catch (err) {
       // 계획 DB 를 못 읽는 것은 빈 판이 아니다 — 빈 판으로 그리면 화면이 "아무 계획도 없다" 고
@@ -231,7 +245,7 @@ export function createApp(options: AppOptions = {}): Hono {
         // 2차 사본이고, 한 번이라도 어긋나면 화면이 옮겨진 척한다(INV-1·INV-3).
         // 그 길에 자동 닫힘도 함께 선다(04) — 상자가 다 채워진 카드를 캡틴이 다른 칸으로 옮겨도
         // 판을 그리는 규칙은 하나여야 한다. 옮기는 자리와 닫는 자리가 갈리면 화면이 둘을 다르게 본다.
-        const areas = readBoard(project, features);
+        const areas = readBoard(project, withReadState(project, features));
         return c.json(PlanBoardResponse.parse({ project, ...areas }));
       } catch (err) {
         return c.json({ error: planError(err) } satisfies ApiError, 500);
@@ -280,7 +294,7 @@ export function createApp(options: AppOptions = {}): Hono {
         const step = placeStep(features, placements, readSteps(dataDir, project), target);
         writeStep(dataDir, project, feature, ticket, step);
         // 옮긴 뒤의 판은 **다시 읽어** 만든다 — /move 와 같은 규율이다(INV-1·INV-3).
-        const areas = readBoard(project, features);
+        const areas = readBoard(project, withReadState(project, features));
         return c.json(PlanBoardResponse.parse({ project, ...areas }));
       } catch (err) {
         return c.json({ error: planError(err) } satisfies ApiError, 500);
