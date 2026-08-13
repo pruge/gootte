@@ -451,6 +451,14 @@ function searchBox(): HTMLElement {
   return screen.getByPlaceholderText("기능·티켓 검색");
 }
 
+/**
+ * 검색이 걸린 글자는 `<mark>` 칩으로 조각나 텍스트 노드가 갈린다 — 평범한 `getByText` 는
+ * 조각난 글을 못 찾으므로 `textContent` 전체가 같은 원소를 직접 찾는다.
+ */
+function getByFullText(text: string): HTMLElement {
+  return screen.getByText((_, el) => el?.textContent === text);
+}
+
 describe("FeaturesView — 검색 상자가 기능과 티켓을 찾아 준다(a-long-list-stays-usable/01)", () => {
   it("기능 이름으로 걸린다 — 대소문자 무관, 부분 일치. 안 걸린 카드는 사라진다", () => {
     renderView(SEARCH_DATA);
@@ -459,13 +467,33 @@ describe("FeaturesView — 검색 상자가 기능과 티켓을 찾아 준다(a-
     expect(screen.queryByRole("heading", { name: "로그인" })).toBeNull();
   });
 
+  it("걸린 자리가 노란 칩(<mark>)으로 뜬다 — 글자 크기는 그대로, 원문 대소문자 그대로 보인다", () => {
+    renderView(SEARCH_DATA);
+    fireEvent.change(searchBox(), { target: { value: "결제" } });
+    const heading = screen.getByRole("heading", { name: "결제" });
+    const mark = heading.querySelector("mark")!;
+    expect(mark).not.toBeNull();
+    expect(mark.textContent).toBe("결제");
+    expect(mark.className).toContain("bg-search-mark");
+    expect(mark.className).not.toMatch(/text-(xs|sm|lg|base)\b/);
+  });
+
+  it("걸린 카드 안 티켓 제목의 칩도 대소문자 무관 부분 일치로 뜬다", () => {
+    renderView(SEARCH_DATA);
+    fireEvent.change(searchBox(), { target: { value: "OAUTH" } });
+    const heading = screen.getByRole("heading", { name: "로그인" });
+    expect(heading.closest("button")).toHaveAttribute("aria-expanded", "true");
+    const mark = getByFullText("OAuth 교환").querySelector("mark")!;
+    expect(mark.textContent).toBe("OAuth");
+  });
+
   it("🔴 접힌 카드 안 티켓 제목으로 걸러지고, 그 카드가 펼쳐진 채로 뜬다 — ⌘F 로는 안 되던 일", () => {
     renderView(SEARCH_DATA);
     // "소셜" 은 auth-login 카드 이름에는 없고, 접힌 채인 03번 티켓 제목("소셜 로그인")에만 있다.
     fireEvent.change(searchBox(), { target: { value: "소셜" } });
     const heading = screen.getByRole("heading", { name: "로그인" });
     expect(heading.closest("button")).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("소셜 로그인")).toBeInTheDocument();
+    expect(getByFullText("소셜 로그인")).toBeInTheDocument();
     // 이름도 티켓도 안 걸린 카드는 사라진다.
     expect(screen.queryByRole("heading", { name: "결제" })).toBeNull();
   });

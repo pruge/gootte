@@ -174,6 +174,7 @@ export function FeaturesView({ project, view, onView, onGoToPlanFeature }: Featu
             onOpenDoc={openDoc}
             onGoToPlan={onGoToPlanFeature}
             forceExpanded={forceExpanded}
+            query={query}
           />
         ))}
       </div>

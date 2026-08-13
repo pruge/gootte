@@ -9,6 +9,7 @@ import {
 import type { FeatureTicket } from "@gootte/contract";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
 import type { OpenDocFn } from "./FeatureTree";
+import { HighlightedText } from "./HighlightedText";
 
 /** 트리 나머지가 쓰는 문서 아이콘 폭(15px) — 상태 아이콘도 여기 맞춘다(F20). 뜻·색은 그대로다. */
 const STATE_ICON_SIZE = 15;
@@ -98,10 +99,13 @@ export function TicketRow({
   ticket,
   featureSlug,
   onOpenDoc,
+  query = "",
 }: {
   ticket: FeatureTicket;
   featureSlug: string;
   onOpenDoc: OpenDocFn;
+  /** 검색어 — 이 티켓이 검색으로 걸렸다면 걸린 자리를 노란 칩으로 보여준다. */
+  query?: string;
 }) {
   const stage = stageOf(ticket);
   const unread = ticket.unread === true;
@@ -119,7 +123,7 @@ export function TicketRow({
         <StateIcon ticket={ticket} />
         <span className="mono shrink-0 text-sm tabular-nums text-muted">{ticket.num || "—"}</span>
         <span className={`min-w-0 flex-1 truncate ${stage === "waiting" ? "text-muted" : ""}`}>
-          {ticket.title}
+          <HighlightedText text={ticket.title} query={query} />
         </span>
 
         {unread && (
