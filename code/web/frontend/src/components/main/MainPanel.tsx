@@ -13,8 +13,6 @@ interface MainPanelProps {
   onView: (v: string | null) => void;
   /** `features` 탭의 `plan` 버튼으로 `plan` 탭, 그 자리로 돌아간다(development-order/16 ④). */
   onGoToPlanFeature: (feature: string) => void;
-  /** 판 위 카드의 문서 아이콘으로 `features` 탭의 기존 문서 통로로 건너간다(plan-board/03). */
-  onOpenFeatureDoc: (feature: string, path: string | null) => void;
 }
 
 /** 셸의 메인 영역 — 본문 header(브랜드 + 프로젝트 + 탭) + 뷰. */
@@ -25,7 +23,6 @@ export function MainPanel({
   view,
   onView,
   onGoToPlanFeature,
-  onOpenFeatureDoc,
 }: MainPanelProps) {
   return (
     <section className="flex flex-1 flex-col overflow-hidden">
@@ -50,11 +47,7 @@ export function MainPanel({
       ) : (
         <div className="flex-1 overflow-hidden pl-4 pr-6 py-5">
           {tab === "plan" ? (
-            <PlanView
-              key={`${project}-plan`}
-              project={project}
-              onOpenFeatureDoc={onOpenFeatureDoc}
-            />
+            <PlanView key={`${project}-plan`} project={project} />
           ) : tab === "process" ? (
             <ProcessView key={`${project}-process`} project={project} />
           ) : (

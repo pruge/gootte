@@ -17,7 +17,7 @@ export interface BoardCardProps {
   onToggleSelect?: (slug: string) => void;
   /** 머리글을 그냥 누른 것 — 티켓 목록을 대화상자로 연다(캡틴 결정). */
   onOpenCard?: (slug: string) => void;
-  /** 문서 아이콘 — `features` 탭의 기존 통로로 간다(두 번째 문서 보기를 짓지 않는다). */
+  /** 문서 아이콘 — `plan` 탭에 머문 채 `DocDrawer` 를 그 자리에서 연다(두 번째 문서 보기를 짓지 않는다). */
   onOpenDoc?: (slug: string) => void;
   /** 이동 아이콘 — "어느 칸으로 보낼까요" 대화상자. */
   onRequestMove?: (slug: string) => void;

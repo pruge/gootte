@@ -165,8 +165,6 @@ function areaOfCard(board: PlanBoardResponse, slug: string): BoardAreaId | undef
 
 interface PlanViewProps {
   project: string;
-  /** 카드 머리의 문서 아이콘 — `features` 탭의 **기존 통로**로 넘긴다(두 번째 문서 보기 없음). */
-  onOpenFeatureDoc: (feature: string, path: string | null) => void;
 }
 
 /**
@@ -182,7 +180,7 @@ interface PlanViewProps {
  *
  * 체크상자·자동 완료·접힘은 04, 단계 매기기와 `next` 는 05 다.
  */
-export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
+export function PlanView({ project }: PlanViewProps) {
   const { data, isLoading, isError, error } = usePlanBoard(project);
   const move = usePlanMove(project);
   const [tab, setTab] = useState<BoardAreaId>("waiting");
@@ -197,10 +195,10 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
   const [dialog, setDialog] = useState<{ area: BoardAreaId; slugs: string[] } | null>(null);
   // 펼쳐 보고 있는 카드 — 판이 다시 그려져도 이름 하나만 들고 있으면 되고, 저장하지 않는다.
   const [opened, setOpened] = useState<string | null>(null);
-  // 카드 대화상자에서 연 티켓 원문 — 새 문서 뷰어를 짓지 않고 `features` 탭의 `DocDrawer` 를
-  // 그대로 재사용한다(캡틴 결정 2026-08-12). 탭은 그대로 `plan` 에 머문다 — 문서 아이콘(03)과
-  // 달리 이 길은 판을 떠나지 않는다.
-  const [ticketDoc, setTicketDoc] = useState<{ feature: string; path: string } | null>(null);
+  // 지금 열려 있는 문서 — 카드 머리의 문서 아이콘(03)과 카드 대화상자의 티켓 줄, 둘 다 이 자리를
+  // 쓴다. 새 문서 뷰어를 짓지 않고 `features` 탭의 `DocDrawer` 를 그대로 재사용하되(캡틴 결정
+  // 2026-08-12), 탭은 그대로 `plan` 에 머문다 — 어느 길로 열어도 판을 떠나지 않는다.
+  const [openedDoc, setOpenedDoc] = useState<{ feature: string; path: string } | null>(null);
 
   // 위·아래 손잡이 — 아래 칸 높이만 여기서 정하고 위 칸(작업 대상)은 `flex-1` 이 나머지를 먹는다.
   const split = useResizableSplit(DRAWER_HEIGHT_KEY, {
@@ -248,7 +246,8 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
 
   const openDoc = (slug: string) => {
     const card = cardOf(slug);
-    if (card) onOpenFeatureDoc(slug, featureDocPath(card.feature));
+    const path = card ? featureDocPath(card.feature) : null;
+    if (path) setOpenedDoc({ feature: slug, path });
   };
 
   const onDragStart = (e: DragStartEvent) => {
@@ -430,16 +429,16 @@ export function PlanView({ project, onOpenFeatureDoc }: PlanViewProps) {
           card={cardOf(opened) as PlanCard}
           closed={areaOfCard(board, opened) === "done"}
           onClose={() => setOpened(null)}
-          onOpenTicket={(path) => setTicketDoc({ feature: opened, path })}
+          onOpenTicket={(path) => setOpenedDoc({ feature: opened, path })}
         />
       )}
 
       {/* 대화상자 위에 뜬다(DOM 순서 뒤 = 위 레이어) — 닫으면 티켓 목록으로 그대로 돌아간다. */}
       <DocDrawer
         project={project}
-        featureSlug={ticketDoc?.feature ?? null}
-        path={ticketDoc?.path ?? null}
-        onClose={() => setTicketDoc(null)}
+        featureSlug={openedDoc?.feature ?? null}
+        path={openedDoc?.path ?? null}
+        onClose={() => setOpenedDoc(null)}
       />
 
       {dialog && (

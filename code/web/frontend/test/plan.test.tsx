@@ -60,8 +60,6 @@ const EMPTY_BOARD: PlanBoardResponse = {
   done: [],
 };
 
-const openFeatureDoc = vi.fn();
-
 function renderBoard(board: PlanBoardResponse) {
   // 판은 이미 심어 둔 것을 그린다 — `staleTime: Infinity` 라 마운트 때 다시 받아오지 않는다.
   // 그래서 아래 fetch 감시가 잡는 것은 **캡틴이 옮긴 요청뿐**이다.
@@ -73,7 +71,7 @@ function renderBoard(board: PlanBoardResponse) {
     qc,
     ...render(
       <QueryClientProvider client={qc}>
-        <PlanView project="alpha" onOpenFeatureDoc={openFeatureDoc} />
+        <PlanView project="alpha" />
       </QueryClientProvider>,
     ),
   };
@@ -353,7 +351,6 @@ describe("PlanView — 카드 머리 아이콘 둘과 이동 대화상자(plan-b
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    openFeatureDoc.mockClear();
     fetchMock = vi.fn(async (_url: string, init?: RequestInit) => ({
       ok: true,
       status: 200,
@@ -371,17 +368,26 @@ describe("PlanView — 카드 머리 아이콘 둘과 이동 대화상자(plan-b
 
   const sent = () => JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
 
-  it("문서 아이콘은 features 탭의 기존 통로로 보낸다 — 두 번째 문서 보기를 짓지 않는다", () => {
-    renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("auth-login"))] });
+  it("문서 아이콘은 plan 탭에 머문 채 드로어를 그 자리에서 연다 — features 탭으로 건너가지 않는다", async () => {
+    const { qc } = renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("auth-login"))] });
+    qc.setQueryData(qk.featureDoc("alpha", "auth-login", "spec.md"), {
+      path: "spec.md",
+      content: "# auth-login\n",
+    });
+
     clickIcon("auth-login 제목", /문서 열기/);
-    expect(openFeatureDoc).toHaveBeenCalledWith("auth-login", "spec.md");
+
+    const drawer = await screen.findByRole("dialog", { name: "spec.md" });
+    expect(within(drawer).getByRole("heading", { name: "auth-login" })).toBeInTheDocument();
+    // 🔴 카드는 그대로 있다 — 탭이 바뀌었다면 이 카드는 화면에서 사라졌을 것이다.
+    expect(screen.getByRole("article", { name: "auth-login 제목" })).toBeInTheDocument();
   });
 
-  it("문서가 하나도 없는 기능은 열 문서가 없다고 말한다 — 없는 주소를 지어내지 않는다", () => {
+  it("문서가 하나도 없는 기능은 아무것도 열지 않는다 — 없는 주소를 지어내지 않는다", () => {
     const bare = { ...feature("no-docs"), docs: [] };
     renderBoard({ ...EMPTY_BOARD, waiting: [card(bare)] });
     clickIcon("no-docs 제목", /문서 열기/);
-    expect(openFeatureDoc).toHaveBeenCalledWith("no-docs", null);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("이동 아이콘은 대화상자를 띄우고, 🔴 지금 있는 칸은 고를 수 없다", () => {
