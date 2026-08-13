@@ -6,7 +6,7 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능.**
 
-**Status:** ready-for-agent (2026-08-13)
+**Status:** claimed (2026-08-13)
 
 ## 왜
 
