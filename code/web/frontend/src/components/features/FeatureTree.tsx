@@ -3,6 +3,7 @@ import { IconChevronRight, IconFolder, IconFile, IconListCheck } from "@tabler/i
 import type { Feature, FeatureDocNode } from "@gootte/contract";
 import { TicketRow } from "./TicketRow";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
+import { triggerKey } from "./docTrigger";
 
 export type OpenDocFn = (featureSlug: string, path: string, trigger: HTMLElement) => void;
 
@@ -161,6 +162,7 @@ function DocTreeNode({
       <button
         type="button"
         style={indent}
+        data-doc-trigger={triggerKey({ featureSlug, path: node.path })}
         onClick={(e) => onOpenDoc(featureSlug, node.path, e.currentTarget)}
         className="flex w-full items-center gap-1.5 py-2 pr-4 text-left text-sm text-fg hover:bg-surface-2/60"
       >

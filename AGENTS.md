@@ -89,6 +89,9 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 - **끌어 놓기 = dnd-kit.** (`@dnd-kit/core`·`sortable`·`utilities`) HTML5 네이티브 drag 이벤트나
   다른 DnD 라이브러리로 갈아타지 않는다 — **포인터 기반**이라 `chrome-devtools-axi drag` 로 실제
   브라우저에서 끌어 볼 수 있고, 네이티브 drag 로 바꾸면 그 확인 경로가 통째로 사라진다.
+- **긴 목록 가상 스크롤 = TanStack Virtual.** (`@tanstack/react-virtual`) 화면 밖 카드를 그리지 않는
+  목록(예: `features` 탭)은 이 라이브러리로 짠다 — 높이를 재는 목록을 정면으로 다루고, 모양을
+  강요하지 않는다(a-long-list-stays-usable/02).
 
 ## Track 통제 어휘 — 은퇴했다
 

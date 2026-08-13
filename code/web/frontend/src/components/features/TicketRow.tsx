@@ -8,6 +8,7 @@ import {
 } from "@tabler/icons-react";
 import type { FeatureTicket } from "@gootte/contract";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
+import { triggerKey } from "./docTrigger";
 import type { OpenDocFn } from "./FeatureTree";
 import { HighlightedText } from "./HighlightedText";
 
@@ -115,6 +116,7 @@ export function TicketRow({
       <button
         type="button"
         style={treeIndentStyle(TICKET_LIST_DEPTH)}
+        data-doc-trigger={triggerKey({ featureSlug, path: ticket.path })}
         onClick={(e) => onOpenDoc(featureSlug, ticket.path, e.currentTarget)}
         className={`flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 pr-4 py-2.5 text-left ${
           unread ? "bg-unread hover:bg-unread-strong" : "hover:bg-surface-2/60"
