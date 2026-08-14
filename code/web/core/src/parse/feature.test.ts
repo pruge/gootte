@@ -4,6 +4,7 @@ import {
   mapFirstmateStatus,
   parseBlockedBy,
   parseBlockedByLine,
+  parseCaptainEyeLine,
   parseCrossFeatureRef,
   parseFeatureSpec,
   parseNeedsCaptainEye,
@@ -361,7 +362,11 @@ describe("parseNeedsCaptainEye — `## 캡틴 확인` 절이 있나 없나로만
     expect(parseNeedsCaptainEye("## 캡틴 확인 — 없음 (캡틴 결정, 2026-08-08)\n")).toBe(false);
   });
 
-  it("이모지 접두는 걷어내고 읽는다(jinwooauto/catalog-registry/05)", () => {
+  it("이모지 접두는 걷어내고 읽는다 — 실제로 쓰이는 서식(the-eye-mark-comes-from-one-place/spec §지금 쓰이는 제목 서식)", () => {
+    expect(parseNeedsCaptainEye("## 🔴 캡틴 확인 — 눈으로 봐야 한다\n")).toBe(true);
+  });
+
+  it("🔴 옛 티켓 전용: 사후 기록(`완료 (날짜)`)만 있어도 요청으로 센다 — F8, 표시 줄 없는 옛 티켓에만 걸리는 오늘 동작 그대로다. 결정된 적 없는 물음이지만 손대지 않는다(캡틴 결정 2026-08-14)", () => {
     expect(parseNeedsCaptainEye("## 🟢 캡틴 확인 완료 (2026-08-11)\n")).toBe(true);
   });
 
@@ -371,6 +376,73 @@ describe("parseNeedsCaptainEye — `## 캡틴 확인` 절이 있나 없나로만
 
   it("'캡틴 확인' 을 안 담은 다른 H2 헤딩은 무시한다", () => {
     expect(parseNeedsCaptainEye("## 착수 전에 확인할 것\n\n체크리스트\n")).toBe(false);
+  });
+});
+
+describe("parseCaptainEyeLine — `**캡틴 확인:**` 표시 줄(캡틴 결정 2026-08-14, INV-E2·E3)", () => {
+  it("🔴 `필요 — <자유 문구>` → true, `—` 뒤 문구는 읽지 않는다", () => {
+    const line = parseCaptainEyeLine("**캡틴 확인:** 필요 — 화면에서 18개가 이름으로 보이는지\n");
+    expect(line.known).toBe(true);
+    expect(line.needsCaptainEye).toBe(true);
+    expect(line.raw).toBe("필요");
+  });
+
+  it("🔴 `필요 없음` → false", () => {
+    const line = parseCaptainEyeLine("**캡틴 확인:** 필요 없음\n");
+    expect(line.known).toBe(true);
+    expect(line.needsCaptainEye).toBe(false);
+  });
+
+  it("🔴 `완료 (날짜)` → false", () => {
+    const line = parseCaptainEyeLine("**캡틴 확인:** 완료 (2026-08-11)\n");
+    expect(line.known).toBe(true);
+    expect(line.needsCaptainEye).toBe(false);
+  });
+
+  it("굵게 없는 `캡틴 확인: 필요` 도 읽는다(Status: 줄과 같은 관대함)", () => {
+    const line = parseCaptainEyeLine("캡틴 확인: 필요\n");
+    expect(line.known).toBe(true);
+    expect(line.needsCaptainEye).toBe(true);
+  });
+
+  it("🔴 못 알아본 값은 원문을 보존하고 알아봤나를 거짓으로 둔다 — 조용히 버리지 않는다", () => {
+    const line = parseCaptainEyeLine("**캡틴 확인:** 잘 모르겠음\n");
+    expect(line.known).toBe(false);
+    expect(line.needsCaptainEye).toBeNull();
+    expect(line.raw).toBe("잘 모르겠음");
+  });
+
+  it("줄이 아예 없으면 raw 도 null — 값을 지어내지 않는다", () => {
+    expect(parseCaptainEyeLine("# 제목\n본문뿐\n")).toEqual({
+      raw: null,
+      known: false,
+      needsCaptainEye: null,
+    });
+  });
+});
+
+describe("parseNeedsCaptainEye — 표시 줄과 제목의 우선순위(INV-E1·E2)", () => {
+  it("🔴 표시 줄이 있으면 제목과 달라도 표시 줄이 이긴다", () => {
+    const content = "**캡틴 확인:** 필요 없음\n\n## 캡틴 확인\n\n- 어디서\n";
+    expect(parseNeedsCaptainEye(content)).toBe(false);
+  });
+
+  it("표시 줄이 없으면 오늘 그대로 제목을 읽는다", () => {
+    expect(parseNeedsCaptainEye("## 캡틴 확인\n\n- 어디서\n")).toBe(true);
+  });
+
+  it("🔴 표시 줄이 못 알아본 값이면 제목 읽기로 되돌아간다", () => {
+    const content = "**캡틴 확인:** 잘 모르겠음\n\n## 캡틴 확인\n\n- 어디서\n";
+    expect(parseNeedsCaptainEye(content)).toBe(true);
+  });
+
+  it("🔴 이 티켓 자신이 첫 사용자다 — 표시 줄 값과 제목 읽기 값이 같다(the-eye-mark-comes-from-one-place/01 §완료 시 시연되는 것)", () => {
+    // 티켓 01 머리의 실제 줄. `## 캡틴 확인` 절이 없으니 제목 읽기는 오늘도 false 다.
+    const content = "**캡틴 확인:** 필요 없음 — 파서와 출력이라 시험으로 다 판정된다\n\n본문뿐\n";
+    const line = parseCaptainEyeLine(content);
+    expect(line.needsCaptainEye).toBe(false); // 표시 줄이 말하는 값
+    expect(parseNeedsCaptainEye("본문뿐\n")).toBe(false); // 제목만 읽었을 때의 값(표시 줄 없이)
+    expect(parseNeedsCaptainEye(content)).toBe(false); // 실제 판정 — 둘이 같다
   });
 });
 

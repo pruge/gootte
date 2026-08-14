@@ -13,6 +13,8 @@ export interface TicketSpec {
   completedAt?: string;
   /** 안 읽음 표시(`applyReadState` 가 계산하는 그 값, plan-board/11 이 판정에 그대로 쓴다). */
   unread?: boolean;
+  /** `## 캡틴 확인` 절 유무(또는 표시 줄)가 계산한 값 — 기본은 필요 없음. */
+  needsCaptainEye?: boolean;
 }
 
 /**
@@ -47,7 +49,7 @@ export function feature(slug: string, tickets: readonly (string | TicketSpec)[] 
         waitingOn: [],
         startable: true,
         workedBy: [],
-        needsCaptainEye: false,
+        needsCaptainEye: spec.needsCaptainEye ?? false,
       };
     }),
   };

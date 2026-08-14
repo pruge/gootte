@@ -185,18 +185,62 @@ const H2_HEADING = /^##[ \t]+([^\n]*)$/gm;
 const CAPTAIN_EYE_DECORATION = /^[\p{S}\p{P}\s]+/u;
 
 /**
- * `## 캡틴 확인` 절이 있는가 — 판정은 그 절이 있나 없나로만 한다(INV-4, development-order/15 ②).
- * 뜻을 짐작하지 않는다: 절 안 내용은 안 읽는다. 유일한 예외는 실측(gootte 13장 + jinwooauto
- * 45장, 2026-08-11)에서 나온 관례 하나 — 헤딩 자체에 **"— 없음"** 이 딸려 있으면(`access-control/03`·
- * `06`, `authorship/02`) 캡틴이 이미 "필요 없다" 고 적어 두신 것이라 세지 않는다.
+ * 절이 있나 없나로만 정한다(INV-4, development-order/15 ②) — 표시 줄이 없거나 못 알아본 값일 때
+ * 만 쓰는 폴백. 뜻을 짐작하지 않는다: 절 안 내용은 안 읽는다. 유일한 예외는 실측(gootte 13장 +
+ * jinwooauto 45장, 2026-08-11)에서 나온 관례 하나 — 헤딩 자체에 **"— 없음"** 이 딸려 있으면
+ * (`access-control/03`·`06`, `authorship/02`) 캡틴이 이미 "필요 없다" 고 적어 두신 것이라 세지 않는다.
  */
-export function parseNeedsCaptainEye(content: string): boolean {
+function needsCaptainEyeFromTitle(content: string): boolean {
   for (const m of content.matchAll(H2_HEADING)) {
     const text = (m[1] ?? "").replace(CAPTAIN_EYE_DECORATION, "");
     if (!text.startsWith("캡틴 확인") && !text.startsWith("캡틴확인")) continue;
     return !text.includes("없음");
   }
   return false;
+}
+
+// `**캡틴 확인:** x` 와 `캡틴 확인: x` 둘 다 — Status:/Blocked by: 와 같은 관대함.
+const CAPTAIN_EYE_LINE = /^[ \t]*(?:\*\*)?캡틴 확인:(?:\*\*)?[ \t]*(.*)$/m;
+// "필요 없음" 이 먼저 — "필요" 의 접두라 순서를 바꾸면 절대 안 걸린다.
+const CAPTAIN_EYE_NOT_NEEDED = /^필요\s*없음(?:[\p{S}\p{P}\s]|$)/u;
+const CAPTAIN_EYE_NEEDED = /^필요(?:[\p{S}\p{P}\s]|$)/u;
+const CAPTAIN_EYE_DONE = /^완료(?:[\p{S}\p{P}\s]|$)/u;
+
+/** `**캡틴 확인:**` 표시 줄에서 읽어낸 것. 값을 못 알아봐도 원문은 버리지 않는다. */
+export interface CaptainEyeLine {
+  /** 원문 verbatim(값 토큰만, `—` 뒤 자유 문구는 안 싣는다). 줄이 아예 없으면 null. */
+  raw: string | null;
+  /** 알아본 값이면 그 값, 못 알아봤거나 줄이 없으면 null. */
+  known: boolean;
+  /** 알아본 값이 말하는 뜻. 못 알아봤으면 null — 지어내지 않는다. */
+  needsCaptainEye: boolean | null;
+}
+
+/**
+ * `**캡틴 확인:** 필요 — <자유 문구>` 줄 파싱(캡틴 결정 2026-08-14, INV-E3) — **앞의 한 낱말**(필요·
+ * 필요 없음·완료)만 기계가 읽고, `—` 뒤는 사람 몫이라 안 읽는다. `Status:` 줄과 같은 원리로 값
+ * 토큰만 뽑는다.
+ */
+export function parseCaptainEyeLine(content: string): CaptainEyeLine {
+  const rest = CAPTAIN_EYE_LINE.exec(content)?.[1]?.trim();
+  if (!rest) return { raw: null, known: false, needsCaptainEye: null };
+  // 값 토큰만 raw 에 싣는다(Status: 줄과 같은 원리) — `—` 뒤 자유 문구·괄호 날짜는 안 싣는다.
+  if (CAPTAIN_EYE_NOT_NEEDED.test(rest)) return { raw: "필요 없음", known: true, needsCaptainEye: false };
+  if (CAPTAIN_EYE_NEEDED.test(rest)) return { raw: "필요", known: true, needsCaptainEye: true };
+  if (CAPTAIN_EYE_DONE.test(rest)) return { raw: "완료", known: true, needsCaptainEye: false };
+  // 🔴 못 알아본 값을 조용히 버리지 않는다 — 이 경우만 원문 전체를 raw 에 싣는다.
+  return { raw: rest, known: false, needsCaptainEye: null };
+}
+
+/**
+ * 캡틴 눈 판정 — 판정 자리는 하나다(INV-E1). 표시 줄이 있고 알아본 값이면 그 값이 제목보다
+ * 세다(INV-E2). 줄이 없거나 못 알아봤으면 오늘 그대로 제목을 읽는다 — 이미 있는 티켓 137장은
+ * 표시 줄이 없어 전부 이 폴백을 그대로 탄다(캡틴 결정 2026-08-14, "앞으로만 잘하자").
+ */
+export function parseNeedsCaptainEye(content: string): boolean {
+  const line = parseCaptainEyeLine(content);
+  if (line.known) return line.needsCaptainEye as boolean;
+  return needsCaptainEyeFromTitle(content);
 }
 
 /** 파일 한 장에서 읽어낸 티켓(막힘 해제는 아직 계산 전 — 그건 같은 기능의 다른 티켓을 알아야 한다). */

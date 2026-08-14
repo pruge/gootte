@@ -7,6 +7,9 @@ export interface NextTicket {
   feature: string;
   ticket: string;
   title: string;
+  /** 이 티켓이 캡틴 눈을 필요로 하는가 — gootte 가 이미 계산한 값 그대로(INV-E1). 받는 쪽은
+   * 다시 세지 않는다(the-eye-mark-comes-from-one-place/01). */
+  needsCaptainEye: boolean;
 }
 
 /**
@@ -37,10 +40,15 @@ export function computeNext(
       if (step !== 1) continue;
       const t = f.tickets.find((x) => x.slug === ticket);
       if (!t || t.status === "done" || t.status === "dropped") continue;
-      out.push({ feature, ticket, title: t.title, seq });
+      out.push({ feature, ticket, title: t.title, needsCaptainEye: t.needsCaptainEye, seq });
     }
   }
 
   out.sort((a, b) => a.seq - b.seq || a.ticket.localeCompare(b.ticket));
-  return out.map(({ feature, ticket, title }) => ({ feature, ticket, title }));
+  return out.map(({ feature, ticket, title, needsCaptainEye }) => ({
+    feature,
+    ticket,
+    title,
+    needsCaptainEye,
+  }));
 }
