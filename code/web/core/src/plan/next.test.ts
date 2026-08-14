@@ -16,7 +16,7 @@ describe("computeNext — 작업 대상의 표시 1단계만(plan-board/05, spec
     const placements = [row("a", "active", 0), row("b", "active", 1)];
     const steps = [s("a", "01", 1), s("b", "02", 2)];
     expect(computeNext(features, placements, steps)).toEqual([
-      { feature: "a", ticket: "01-x", title: "티켓 01" },
+      { feature: "a", ticket: "01-x", title: "티켓 01", needsCaptainEye: false },
     ]);
   });
 
@@ -25,7 +25,7 @@ describe("computeNext — 작업 대상의 표시 1단계만(plan-board/05, spec
     const placements = [row("a", "active", 0), row("b", "active", 1)];
     const steps = [s("a", "01", 1), s("b", "02", 2)];
     expect(computeNext(features, placements, steps)).toEqual([
-      { feature: "b", ticket: "02-x", title: "티켓 02" },
+      { feature: "b", ticket: "02-x", title: "티켓 02", needsCaptainEye: false },
     ]);
   });
 
@@ -49,7 +49,7 @@ describe("computeNext — 작업 대상의 표시 1단계만(plan-board/05, spec
     // 01·02 가 같은 1단계 — 01 은 끝났으니 안 나오고, 02 만 나온다.
     const steps = [s("a", "01", 1), s("a", "02", 1)];
     expect(computeNext(features, placements, steps)).toEqual([
-      { feature: "a", ticket: "02-x", title: "티켓 02" },
+      { feature: "a", ticket: "02-x", title: "티켓 02", needsCaptainEye: false },
     ]);
   });
 
@@ -76,6 +76,15 @@ describe("computeNext — 작업 대상의 표시 1단계만(plan-board/05, spec
 
   it("작업 대상이 비어 있으면 빈 목록", () => {
     expect(computeNext([], [], [])).toEqual([]);
+  });
+
+  it("🔴 캡틴 눈 여부는 이미 계산된 값을 그대로 싣는다 — 다시 세지 않는다(INV-E1)", () => {
+    const features = [feature("a", [{ num: "01", needsCaptainEye: true }])];
+    const placements = [row("a", "active", 0)];
+    const steps = [s("a", "01", 1)];
+    expect(computeNext(features, placements, steps)).toEqual([
+      { feature: "a", ticket: "01-x", title: "티켓 01", needsCaptainEye: true },
+    ]);
   });
 
   it("🔴 화면과 명령이 같은 함수를 쓴다 — 화면이 표시 1단계로 그릴 티켓 = next 가 말하는 티켓", () => {

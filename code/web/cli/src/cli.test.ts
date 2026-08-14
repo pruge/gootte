@@ -225,4 +225,15 @@ describe("cli — step · step --clear · board · next(plan-board/05)", () => {
     stepText([slug(), "f/02-b", "9999"], dataDir, proj);
     expect(nextText([slug()], dataDir, proj)).toBe("f/01-a\ta");
   });
+
+  it("next — 🔴 캡틴 눈이 걸린 티켓은 👁 를 싣는다 — 받는 쪽이 티켓 파일을 다시 안 연다(INV-E1)", () => {
+    w(
+      proj,
+      "docs/features/f/issues/01-a.md",
+      "# 01 — a\n\n**Status:** ready-for-agent\n\n**Blocked by:** 없음\n\n## 캡틴 확인\n\n- 어디서\n",
+    );
+    activate(dataDir, slug(), "f");
+    stepText([slug(), "f/01-a", "1"], dataDir, proj);
+    expect(nextText([slug()], dataDir, proj)).toBe("f/01-a\ta 👁");
+  });
 });

@@ -192,5 +192,9 @@ export function nextText(
   const steps = readSteps(dataDir, project);
   const tickets = computeNext(features, placements, steps);
   if (tickets.length === 0) return "(1단계 없음)";
-  return tickets.map((t) => `${t.feature}/${t.ticket}\t${t.title}`).join("\n");
+  // 🔴 캡틴 눈 여부는 이미 계산된 값을 그대로 싣는다 — 받는 쪽이 티켓 파일을 다시 열어 세지
+  // 않는다(INV-E1, the-eye-mark-comes-from-one-place/01).
+  return tickets
+    .map((t) => `${t.feature}/${t.ticket}\t${t.title}${t.needsCaptainEye ? " 👁" : ""}`)
+    .join("\n");
 }
