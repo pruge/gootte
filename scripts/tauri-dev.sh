@@ -10,4 +10,4 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tauri-lib.sh"
 
 export GOOTTE_TAURI_FRONTEND_MODE=dev
-exec $TAURI_CLI dev
+exec "${TAURI_CLI[@]}" dev

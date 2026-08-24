@@ -6,7 +6,7 @@
 > 한 화면에서 잡게 하는 것 — 어느 쪽도 파일에 손으로 적히지 않고 볼 때마다 계산된다.
 > TS 모노레포(`code/web/`, pnpm workspace) · Hono backend · React+Vite frontend · zod contract.
 
-이 파일이 이 저장소 지침의 **유일한 실파일**이다. `CLAUDE.md` 는 이 파일을 가리키는 심볼릭 링크다.
+이 파일이 이 저장소 지침의 **유일한 실파일**이다. `CLAUDE.md` 는 `@AGENTS.md` 임포트 한 줄로 이 파일을 당겨 오는 스텁 파일이다.
 문서 관례(티켓 서식·`Status:` 어휘·탐색 순서)는 [`docs/agents/`](docs/agents/) 가 갖는다.
 
 > 이 저장소는 cling 워크플로우로 지어졌고 **firstmate 관리로 전환을 마쳤다**
@@ -215,7 +215,7 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 
 ## Maintaining this file
 
-이 파일이 지침의 **유일한 실파일**이다 — `CLAUDE.md` 는 이 파일을 가리키는 심링크다.
+이 파일이 지침의 **유일한 실파일**이다 — `CLAUDE.md` 는 `@AGENTS.md` 임포트로 이 파일을 가리키는 스텁 파일이다.
 지침을 고칠 때는 항상 `AGENTS.md` 를 고치고, `CLAUDE.md` 를 실파일로 되돌리지 않는다.
 
 ### 이 문서의 구조

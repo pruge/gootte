@@ -12,6 +12,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tauri-lib.sh"
 pnpm -C "$ROOT_DIR/code/web/frontend" run build
 
 export GOOTTE_TAURI_FRONTEND_MODE=preview
-$TAURI_CLI build
+"${TAURI_CLI[@]}" build
 
 echo "✅ .app: $ROOT_DIR/code/web/src-tauri/target/release/bundle/macos/gootte.app"

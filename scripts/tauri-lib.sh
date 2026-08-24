@@ -14,4 +14,4 @@ PORTS_ENV="$("$ROOT_DIR/scripts/ports.sh")" || exit 1
 eval "$PORTS_ENV"
 
 export GOOTTE_TAURI_ROOT="$ROOT_DIR"
-TAURI_CLI="pnpm -C $ROOT_DIR/code/web exec tauri"
+TAURI_CLI=(pnpm -C "$ROOT_DIR/code/web" exec tauri)

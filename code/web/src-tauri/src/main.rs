@@ -269,9 +269,35 @@ fn forward_output(name: &'static str, stream: impl std::io::Read + Send + 'stati
     });
 }
 
-fn spawn_children(cfg: &StackConfig) -> Result<Vec<ManagedChild>, String> {
+fn register_child(mc: ManagedChild) {
+    registry()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .push(mc);
+}
+
+fn spawn_children(cfg: &StackConfig) -> Result<(), String> {
     let node = resolve_node()?;
     logln(&format!("node = {}", node.display()));
+
+    let vite_js = cfg
+        .root
+        .join("code/web/frontend/node_modules/vite/bin/vite.js");
+    if !vite_js.is_file() {
+        return Err(format!(
+            "{} 가 없다 — 먼저 `pnpm setup` 으로 의존성을 깔아라",
+            vite_js.display()
+        ));
+    }
+    if cfg.mode == FrontendMode::Preview {
+        let dist = cfg.root.join("code/web/frontend/dist/index.html");
+        if !dist.is_file() {
+            return Err(format!(
+                "{} 가 없다 — preview 모드는 프론트엔드 빌드 산물이 필요하다(`pnpm tauri:build` 를 써라)",
+                dist.display()
+            ));
+        }
+    }
 
     let mut backend_cmd = Command::new(&node);
     backend_cmd
@@ -292,25 +318,11 @@ fn spawn_children(cfg: &StackConfig) -> Result<Vec<ManagedChild>, String> {
         forward_output("backend", err);
     }
     logln(&format!("backend spawned (pid {})", backend.id()));
+    register_child(ManagedChild {
+        name: "backend",
+        child: backend,
+    });
 
-    let vite_js = cfg
-        .root
-        .join("code/web/frontend/node_modules/vite/bin/vite.js");
-    if !vite_js.is_file() {
-        return Err(format!(
-            "{} 가 없다 — 먼저 `pnpm setup` 으로 의존성을 깔아라",
-            vite_js.display()
-        ));
-    }
-    if cfg.mode == FrontendMode::Preview {
-        let dist = cfg.root.join("code/web/frontend/dist/index.html");
-        if !dist.is_file() {
-            return Err(format!(
-                "{} 가 없다 — preview 모드는 프론트엔드 빌드 산물이 필요하다(`pnpm tauri:build` 를 써라)",
-                dist.display()
-            ));
-        }
-    }
     let mut frontend_cmd = Command::new(&node);
     frontend_cmd.arg(&vite_js);
     if cfg.mode == FrontendMode::Preview {
@@ -339,17 +351,12 @@ fn spawn_children(cfg: &StackConfig) -> Result<Vec<ManagedChild>, String> {
         forward_output("frontend", err);
     }
     logln(&format!("frontend spawned (pid {})", frontend.id()));
+    register_child(ManagedChild {
+        name: "frontend",
+        child: frontend,
+    });
 
-    Ok(vec![
-        ManagedChild {
-            name: "backend",
-            child: backend,
-        },
-        ManagedChild {
-            name: "frontend",
-            child: frontend,
-        },
-    ])
+    Ok(())
 }
 
 fn wait_listening(port: u16, label: &str, timeout: Duration) -> Result<(), String> {
@@ -429,11 +436,7 @@ fn main() {
 
     tauri::Builder::default()
         .setup(move |app| {
-            let children = spawn_children(&cfg).unwrap_or_else(|e| fail_fatal(&e));
-            registry()
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .extend(children);
+            spawn_children(&cfg).unwrap_or_else(|e| fail_fatal(&e));
 
             wait_listening(cfg.backend_port, "backend", Duration::from_secs(20))
                 .and_then(|()| {
