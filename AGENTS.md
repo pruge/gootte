@@ -6,7 +6,7 @@
 > 한 화면에서 잡게 하는 것 — 어느 쪽도 파일에 손으로 적히지 않고 볼 때마다 계산된다.
 > TS 모노레포(`code/web/`, pnpm workspace) · Hono backend · React+Vite frontend · zod contract.
 
-이 파일이 이 저장소 지침의 **유일한 실파일**이다. `CLAUDE.md` 는 이 파일을 가리키는 심볼릭 링크다.
+이 파일이 이 저장소 지침의 **유일한 실파일**이다. `CLAUDE.md` 는 `@AGENTS.md` 임포트 한 줄로 이 파일을 당겨 오는 스텁 파일이다.
 문서 관례(티켓 서식·`Status:` 어휘·탐색 순서)는 [`docs/agents/`](docs/agents/) 가 갖는다.
 
 > 이 저장소는 cling 워크플로우로 지어졌고 **firstmate 관리로 전환을 마쳤다**
@@ -54,6 +54,7 @@
 | `backend` | `code/web/backend/` | `tsc --noEmit` + `vitest` (단위 + 계약) |
 | `frontend` | `code/web/frontend/` | `tsc --noEmit` + `vitest` (단위 + 계약). e2e = `pnpm e2e`(playwright, 별도) |
 | `scripts` | `scripts/` | `pnpm test:ports` (= `scripts/tests/ports.test.sh`, 임시 디렉토리 픽스처) |
+| `src-tauri` | `code/web/src-tauri/` | `cargo check` + `cargo clippy -- -D warnings`(컴파일+테스트 중 컴파일 축 — 수동 실행 검증은 `pnpm tauri:dev`) |
 
 전체 회귀는 루트에서 **`pnpm verify`** (= `pnpm test:ports` + `tsc --noEmit` 전 패키지 + `vitest run`) 한 방이다.
 후속 컴포넌트가 붙으면(계획된 것 = Kotlin/Android 뷰어) 그 컴포넌트의 verify 도 **컴파일 + 테스트** 두 축을
@@ -124,6 +125,8 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 | `pnpm dev:frontend` | Vite dev 서버 (`scripts/dev-frontend.sh`, `/api` → backend 프록시) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
 | `pnpm dev` | backend + frontend 동시 (`scripts/dev.sh`) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
 | `pnpm dev:stop` | dev 서버 정리 (`scripts/dev-stop.sh`) | 캡틴 사본 = **캡틴만**. 격리 사본 = **자기가 띄운 것만 작업자가** |
+| `pnpm tauri:dev` | macOS 데스크톱 셸 debug 실행 (`code/web/src-tauri/` — 셸이 backend+vite 를 자식으로 띄우고 창 닫히면 정리) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
+| `pnpm tauri:build` | 완성 .app 번들 (`scripts/tauri-build.sh` — frontend 빌드 후 `tauri build`) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
 | `pnpm e2e` | frontend playwright | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
 
 `discover` 와 backend 가 어디를 뒤질지는 env `GOOTTE_ROOTS`(콜론 구분, 기본
@@ -212,7 +215,7 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 
 ## Maintaining this file
 
-이 파일이 지침의 **유일한 실파일**이다 — `CLAUDE.md` 는 이 파일을 가리키는 심링크다.
+이 파일이 지침의 **유일한 실파일**이다 — `CLAUDE.md` 는 `@AGENTS.md` 임포트로 이 파일을 가리키는 스텁 파일이다.
 지침을 고칠 때는 항상 `AGENTS.md` 를 고치고, `CLAUDE.md` 를 실파일로 되돌리지 않는다.
 
 ### 이 문서의 구조
