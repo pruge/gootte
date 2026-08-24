@@ -218,6 +218,17 @@ fn resolve_ports(root: &Path) -> Result<(u16, u16), String> {
     Ok((backend, frontend))
 }
 
+/// 'v24.17.0' 같은 nvm 디렉터리 이름을 [24, 17, 0] 숫자 조각으로 — 버전 비교용.
+fn node_version_key(dir: &Path) -> Vec<u64> {
+    dir.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .trim_start_matches('v')
+        .split('.')
+        .map_while(|seg| seg.parse::<u64>().ok())
+        .collect()
+}
+
 /// node 실행 파일 찾기 — GUI 실행(launchd)은 셸 PATH 를 물려받지 않으므로
 /// GOOTTE_NODE → PATH → nvm → 알려진 위치 순으로 스스로 푼다.
 fn resolve_node() -> Result<PathBuf, String> {
@@ -238,11 +249,20 @@ fn resolve_node() -> Result<PathBuf, String> {
         }
     }
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-        let mut versions: Vec<PathBuf> = std::fs::read_dir(home.join(".nvm/versions/node"))
-            .map(|rd| rd.flatten().map(|e| e.path()).collect())
-            .unwrap_or_default();
-        versions.sort_unstable_by(|a, b| b.cmp(a)); // 버전 문자열 내림차순 — 최근 릴리스 우선
-        for dir in versions {
+        // 버전 이름을 숫자 조각으로 풀어 내림차순 정렬 — 최신 릴리스 우선.
+        let mut versions: Vec<(Vec<u64>, PathBuf)> =
+            std::fs::read_dir(home.join(".nvm/versions/node"))
+                .map(|rd| {
+                    rd.flatten()
+                        .map(|e| {
+                            let path = e.path();
+                            (node_version_key(&path), path)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+        versions.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+        for (_, dir) in &versions {
             let candidate = dir.join("bin/node");
             if candidate.is_file() {
                 return Ok(candidate);
@@ -274,6 +294,16 @@ fn register_child(mc: ManagedChild) {
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .push(mc);
+}
+
+/// 이름으로 등록된 자식이 아직 종료하지 않았는지 — try_wait 결과는 캐시되므로
+/// 여러 번 물어도 이후 감시 스레드·kill_all 의 판정이 달라지지 않는다.
+fn named_child_alive(name: &str) -> bool {
+    let mut guard = registry().lock().unwrap_or_else(|p| p.into_inner());
+    match guard.iter_mut().find(|mc| mc.name == name) {
+        Some(mc) => mc.child.try_wait().ok().flatten().is_none(),
+        None => false,
+    }
 }
 
 fn spawn_children(cfg: &StackConfig) -> Result<(), String> {
@@ -362,6 +392,11 @@ fn spawn_children(cfg: &StackConfig) -> Result<(), String> {
 fn wait_listening(port: u16, label: &str, timeout: Duration) -> Result<(), String> {
     let deadline = Instant::now() + timeout;
     loop {
+        if !named_child_alive(label) {
+            return Err(format!(
+                "{label} 가 :{port} 대기 중에 종료했다 — 로그의 자식 출력을 확인해라"
+            ));
+        }
         // 두 루프백 패밀리 모두 검사 — 바인딩 쪽 패밀리가 어느 쪽이든 truthy 다.
         let v4 = TcpStream::connect(("127.0.0.1", port)).is_ok();
         let v6 = TcpStream::connect(("::1", port)).is_ok();
@@ -438,29 +473,8 @@ fn main() {
         .setup(move |app| {
             spawn_children(&cfg).unwrap_or_else(|e| fail_fatal(&e));
 
-            wait_listening(cfg.backend_port, "backend", Duration::from_secs(20))
-                .and_then(|()| {
-                    wait_listening(cfg.frontend_port, "frontend", Duration::from_secs(20))
-                })
-                .unwrap_or_else(|e| fail_fatal(&e));
-
-            // 둘 다 살아난 뒤에만 창을 만든다 — 반쯤 뜬 화면(stale 뷰)을 보여 주지 않게.
-            // vite 를 127.0.0.1 로 고정했으니 오리진도 같은 패밀리로.
-            let url: tauri::Url = format!("http://127.0.0.1:{}", cfg.frontend_port)
-                .parse()
-                .unwrap_or_else(|e| fail_fatal(&format!("UI URL 파싱 실패: {e}")));
-            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
-                .title("gootte")
-                .inner_size(1440.0, 900.0)
-                .min_inner_size(960.0, 600.0)
-                .visible(false)
-                .build()
-                .unwrap_or_else(|e| fail_fatal(&format!("창 생성 실패: {e}")));
-            let _ = window.show();
-            let _ = window.set_focus();
-
             // 자식 하나가 죽으면 화면은 조용히 낡는다(INV-3 위반 상태) — 통보 없이
-            // 남겨 두지 않고 앱째로 내린다.
+            // 남겨 두지 않고 앱째로 내린다. 기동 대기 구간부터 감시를 켠다.
             thread::spawn(|| loop {
                 thread::sleep(Duration::from_secs(2));
                 if SHUTTING_DOWN.load(Ordering::SeqCst) {
@@ -482,6 +496,28 @@ fn main() {
                     ));
                 }
             });
+
+            wait_listening(cfg.backend_port, "backend", Duration::from_secs(20))
+                .and_then(|()| {
+                    wait_listening(cfg.frontend_port, "frontend", Duration::from_secs(20))
+                })
+                .unwrap_or_else(|e| fail_fatal(&e));
+
+            // 둘 다 살아난 뒤에만 창을 만든다 — 반쯤 뜬 화면(stale 뷰)을 보여 주지 않게.
+            // vite 를 127.0.0.1 로 고정했으니 오리진도 같은 패밀리로.
+            let url: tauri::Url = format!("http://127.0.0.1:{}", cfg.frontend_port)
+                .parse()
+                .unwrap_or_else(|e| fail_fatal(&format!("UI URL 파싱 실패: {e}")));
+            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
+                .title("gootte")
+                .inner_size(1440.0, 900.0)
+                .min_inner_size(960.0, 600.0)
+                .visible(false)
+                .build()
+                .unwrap_or_else(|e| fail_fatal(&format!("창 생성 실패: {e}")));
+            let _ = window.show();
+            let _ = window.set_focus();
+
             Ok(())
         })
         .build(tauri::generate_context!())
