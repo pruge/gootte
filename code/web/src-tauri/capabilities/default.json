@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "gootte ui is plain http against the local stack — it uses no tauri ipc commands, so the capability grants nothing.",
+  "windows": ["main"],
+  "permissions": []
+}

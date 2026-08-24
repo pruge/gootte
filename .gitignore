@@ -11,3 +11,6 @@ playwright/.cache/
 .codegraph/
 # 격리 사본 전용 dev 포트 — firstmate 가 사본을 만들 때 써 넣는다(.ports.main 은 tracked).
 code/web/.ports.worktree
+# tauri 셸 빌드 산물(code/web/src-tauri) — cargo target 과 codegen 스키마.
+code/web/src-tauri/target/
+code/web/src-tauri/gen/

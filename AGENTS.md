@@ -54,6 +54,7 @@
 | `backend` | `code/web/backend/` | `tsc --noEmit` + `vitest` (단위 + 계약) |
 | `frontend` | `code/web/frontend/` | `tsc --noEmit` + `vitest` (단위 + 계약). e2e = `pnpm e2e`(playwright, 별도) |
 | `scripts` | `scripts/` | `pnpm test:ports` (= `scripts/tests/ports.test.sh`, 임시 디렉토리 픽스처) |
+| `src-tauri` | `code/web/src-tauri/` | `cargo check` + `cargo clippy -- -D warnings`(컴파일+테스트 중 컴파일 축 — 수동 실행 검증은 `pnpm tauri:dev`) |
 
 전체 회귀는 루트에서 **`pnpm verify`** (= `pnpm test:ports` + `tsc --noEmit` 전 패키지 + `vitest run`) 한 방이다.
 후속 컴포넌트가 붙으면(계획된 것 = Kotlin/Android 뷰어) 그 컴포넌트의 verify 도 **컴파일 + 테스트** 두 축을
@@ -124,6 +125,8 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 | `pnpm dev:frontend` | Vite dev 서버 (`scripts/dev-frontend.sh`, `/api` → backend 프록시) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
 | `pnpm dev` | backend + frontend 동시 (`scripts/dev.sh`) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
 | `pnpm dev:stop` | dev 서버 정리 (`scripts/dev-stop.sh`) | 캡틴 사본 = **캡틴만**. 격리 사본 = **자기가 띄운 것만 작업자가** |
+| `pnpm tauri:dev` | macOS 데스크톱 셸 debug 실행 (`code/web/src-tauri/` — 셸이 backend+vite 를 자식으로 띄우고 창 닫히면 정리) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
+| `pnpm tauri:build` | 완성 .app 번들 (`scripts/tauri-build.sh` — frontend 빌드 후 `tauri build`) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
 | `pnpm e2e` | frontend playwright | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
 
 `discover` 와 backend 가 어디를 뒤질지는 env `GOOTTE_ROOTS`(콜론 구분, 기본
