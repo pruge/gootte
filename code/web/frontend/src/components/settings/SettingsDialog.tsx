@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   IconAlertTriangle,
   IconCheck,
@@ -28,15 +28,30 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [watchRoot, setWatchRoot] = useState("");
   const [firstmateHome, setFirstmateHome] = useState("");
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
+  /** 열림 전환 감지 — data 가 바뀔 때마다가 아니라 닫힘→열림 전환에서만 입력을 채운다(F4). */
+  const wasOpenRef = useRef(false);
 
-  // 서버 값이 도착하면(열림·무효화 재응답 포함) 입력 칸을 채운다 — 화면이 자기 판정 사본을
-  // 만들지 않게 서버 값을 그대로 반영한다(INV-1).
+  /**
+   * 입력 칸 동기는 두 순간뿐이다(review F4): **열리는 전환**(서버 값 채우기)과 **저장 성공**
+   * (정규화된 저장 결과 반영 — `~/x` 를 보냈으면 전개된 경로로 도착한다). 대화상자가 열려 있는
+   * 동안의 다른 캐시 무효화(WS 재접 등)가 useSettings 를 다시 불러와도 사용자가 타고 있는
+   * 미저장 입력을 덮어쓰지 않는다.
+   */
   useEffect(() => {
-    if (!open || !data) return;
-    setWatchRoot(data.watchRoot ?? "");
-    setFirstmateHome(data.firstmateHome ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- data 동기화는 열림·data 변화에만
+    if (open && !wasOpenRef.current && data) {
+      setWatchRoot(data.watchRoot ?? "");
+      setFirstmateHome(data.firstmateHome ?? "");
+    }
+    wasOpenRef.current = open;
   }, [open, data]);
+
+  // 저장 성공 — 서버가 정규화해 돌려준 값을 입력 칸에 앉힌다(2차 사본이 아니라 판정값).
+  useEffect(() => {
+    if (!save.isSuccess || !save.data) return;
+    setWatchRoot(save.data.watchRoot ?? "");
+    setFirstmateHome(save.data.firstmateHome ?? "");
+  }, [save.isSuccess, save.data]);
 
   useEffect(() => {
     if (!open) return;
@@ -101,13 +116,25 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             existsWarning={
               data && data.watchRoot !== null && !data.watchRootExists
                 ? `이 경로가 없거나 폴더가 아닙니다: ${data.watchRoot}`
-                : null
+                : pickError
             }
           >
             {isTauri() && (
               <button
                 type="button"
-                onClick={() => void pickFolder().then((p) => p !== null && setWatchRoot(p))}
+                onClick={() => {
+                  setPickError(null);
+                  pickFolder()
+                    .then((p) => {
+                      if (p !== null) setWatchRoot(p);
+                    })
+                    .catch((e: unknown) => {
+                      // 다이얼로그 실패(플러그인 오류·권한 박탈)를 조용히 흘리지 않는다(review F2).
+                      setPickError(
+                        `폴더 선택 실패: ${e instanceof Error ? e.message : String(e)}`,
+                      );
+                    });
+                }}
                 className="mono inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-accent hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
               >
                 <IconFolderOpen size={16} stroke={1.75} /> 찾아보기…

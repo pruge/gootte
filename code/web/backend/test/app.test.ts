@@ -1136,3 +1136,31 @@ describe("설정 GET/PUT /api/settings", () => {
       }
     }));
 });
+
+// review F3 — PUT 이 감시 루트를 바꾸면 감시기 재바인딩 통보가 간다(값은 저장 뒤 다시 읽은 것).
+describe("설정 PUT → onWatchRootChange", () => {
+  test("watchRoot 교체와 지움(null) 모두 새 값을 통보한다, 다른 키만 바꾸면 부르지 않는다", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-rebind-"));
+    try {
+      const seen: (string | null)[] = [];
+      const app = createApp({
+        roots,
+        treehouse: NO_TREEHOUSE,
+        dataDir,
+        onWatchRootChange: (w) => seen.push(w),
+      });
+      const put = (body: object) =>
+        app.request("/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      await put({ firstmateHome: "/f" }); // 루트 아님 → 통보 없음
+      await put({ watchRoot: FIXTURES }); // 교체
+      await put({ watchRoot: null }); // 지움
+      expect(seen).toEqual([FIXTURES, null]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+});

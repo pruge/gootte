@@ -79,6 +79,11 @@ export interface AppOptions {
   dataDir?: string;
   /** 완료 칸에 찍을 시각 (테스트 주입). 없으면 `nowStamp()`. */
   now?: () => string;
+  /**
+   * 감시 루트 설정이 바뀐 뒤의 통보(tauri-desktop-app T02) — server.ts 가 문서 감시기를 새
+   * 뿌리로 다시 묶는 데 쓴다(INV-3: 감시기도 설정값을 따라간다). 값은 저장 뒤 다시 읽은 것.
+   */
+  onWatchRootChange?: (watchRoot: string | null) => void;
 }
 
 /**
@@ -212,6 +217,9 @@ export function createApp(options: AppOptions = {}): Hono {
     }
     try {
       writeSettings(dataDir, normalized);
+      // 감시 루트가 실제로 바뀌었다면 감시기에도 알린다 — 요청 경로(effectiveRoots)만 새 값이고
+      // 감시기가 낡은 뿌리를 보고 있으면 live 갱신이 어긋난다(INV-3).
+      if (update.watchRoot !== undefined) options.onWatchRootChange?.(readSettings(dataDir).watchRoot);
     } catch (err) {
       return c.json({ error: planError(err) } satisfies ApiError, 500);
     }

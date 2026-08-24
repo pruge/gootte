@@ -1,7 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "gootte ui is plain http against the local stack — the only ipc it uses is the settings folder dialog (tauri-desktop-app T02).",
+  "description": "gootte ui is plain http against the local stack — the only ipc it uses is the settings folder dialog (tauri-desktop-app T02). The window loads an External http://127.0.0.1:<port> origin (src/main.rs), which Tauri classifies as remote, so the capability must list that origin under remote.urls or dialog:allow-open never applies.",
   "windows": ["main"],
+  "local": true,
+  "remote": {
+    "urls": ["http://127.0.0.1:*", "http://localhost:*"]
+  },
   "permissions": ["dialog:allow-open"]
 }
