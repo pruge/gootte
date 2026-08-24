@@ -220,6 +220,44 @@ export const ChangeEvent = z.discriminatedUnion("kind", [
 ]);
 export type ChangeEvent = z.infer<typeof ChangeEvent>;
 
+// ── 설정 (tauri-desktop-app T02) ────────────────────────
+/**
+ * 사용자가 정한 두 경로 — 감시 루트와 firstmate 홈.
+ *
+ * 🔴 INV-5 가 저장을 **허락하는** 드문 칸이다: 이 값들은 어디에도 적혀 있지 않고 사람만 아는 것
+ * (어느 폴더를 감시할지)이라 gootte 자기 저장소에 저장할 자격이 있다. 반면 "경로가 존재하는가"
+ * 는 원본(FS)을 다시 보면 나오는 사실이라 **저장하지 않는다**(INV-1·INV-3) — 응답 때마다 다시
+ * 본다(`SettingsResponse` 의 `*Exists`).
+ *
+ * 🔴 값이 없다는 것은 `null` 로 표현한다 — unset 과 빈 문자열은 다른 상태다. null 이면 소비처는
+ * 기존 기본값(env·플랫폼 기본)으로 떨어진다.
+ */
+export const Settings = z.object({
+  watchRoot: z.string().nullable().default(null), // 감시 루트 폴더 — discover 의 입력
+  firstmateHome: z.string().nullable().default(null), // firstmate 홈 — 백로그 조인(T04)의 입력
+});
+export type Settings = z.infer<typeof Settings>;
+
+/**
+ * GET/PUT 설정 응답 — 저장된 값 + **응답 시점에 다시 본** 존재 여부(INV-3).
+ * 존재 여부는 경고 표시용이고 저장하지 않는다 — 저장했다면 stale 뷰(INV-3 위반)가 된다.
+ */
+export const SettingsResponse = Settings.extend({
+  watchRootExists: z.boolean(),
+  firstmateHomeExists: z.boolean(),
+});
+export type SettingsResponse = z.infer<typeof SettingsResponse>;
+
+/**
+ * 설정 바꾸기(PUT) — 부분 갱신. `undefined` = 그대로, `null` = 지움(unset), 문자열 = 교체.
+ * 서버가 절대 경로로 정규화하고(`~` 전개 포함), 상대 경로는 400 으로 거절한다.
+ */
+export const SettingsUpdateRequest = z.object({
+  watchRoot: z.string().min(1).nullable().optional(),
+  firstmateHome: z.string().min(1).nullable().optional(),
+});
+export type SettingsUpdateRequest = z.infer<typeof SettingsUpdateRequest>;
+
 /** 에러 응답 (slug 미해소 404 등). */
 export const ApiError = z.object({
   error: z.string(),

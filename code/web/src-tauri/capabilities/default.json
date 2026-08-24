@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "gootte ui is plain http against the local stack — it uses no tauri ipc commands, so the capability grants nothing.",
+  "description": "gootte ui is plain http against the local stack — the only ipc it uses is the settings folder dialog (tauri-desktop-app T02).",
   "windows": ["main"],
-  "permissions": []
+  "permissions": ["dialog:allow-open"]
 }

@@ -1,8 +1,10 @@
-import { IconTelescope } from "@tabler/icons-react";
+import { useState } from "react";
+import { IconSettings, IconTelescope } from "@tabler/icons-react";
 import type { Tab } from "../../hooks/useUrlState";
 import { FeaturesView } from "../features/FeaturesView";
 import { PlanView } from "../plan/PlanView";
 import { ProcessView } from "../process/ProcessView";
+import { SettingsDialog } from "../settings/SettingsDialog";
 import { Tabs } from "./Tabs";
 
 interface MainPanelProps {
@@ -24,6 +26,7 @@ export function MainPanel({
   onView,
   onGoToPlanFeature,
 }: MainPanelProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   return (
     <section className="flex flex-1 flex-col overflow-hidden">
       <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border pl-4 pr-6">
@@ -32,12 +35,22 @@ export function MainPanel({
         ) : (
           <span />
         )}
-        {project && (
-          <div className="flex shrink-0 items-center gap-3">
-            <Tabs tab={tab} onTab={onTab} />
-          </div>
-        )}
+        <div className="flex shrink-0 items-center gap-3">
+          {project && <Tabs tab={tab} onTab={onTab} />}
+          {/* 설정 진입점(tauri-desktop-app T02) — 프로젝트 선택과 무관하게 항상 열린다 */}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="설정 열기"
+            aria-haspopup="dialog"
+            title="설정"
+            className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <IconSettings size={18} stroke={1.75} />
+          </button>
+        </div>
       </header>
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       {!project ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted">

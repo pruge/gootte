@@ -5,3 +5,4 @@ export * from "./treehouse";
 export * from "./watch";
 export * from "./plan-watch";
 export * from "./plan-store";
+export * from "./settings-store";
