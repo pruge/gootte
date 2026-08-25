@@ -490,4 +490,23 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
       expect(within(row).getByText(label)).toHaveClass("invisible");
     }
   });
+
+  /**
+   * 🔴 회귀 — `tickets/` 만 쓰는 기능(구관례 `tickets` 배열은 비어 있다)의 카드 머리글이
+   * "남은 일 0 · 완료 0 · 착수 가능 0 · 처리중 0" 을 보여줘 클릭해서 펼치기 전까지는 아무 일도
+   * 없는 것처럼 보이던 결함(캡틴 보고, 2026-08-25) — 머리글 집계가 `newTickets` 를 안 세었다.
+   */
+  it("issues/ 없이 tickets/ 만 있는 기능도 머리글 집계에 잡힌다", () => {
+    const feature: Feature = {
+      ...BASE,
+      tickets: [], // 구관례(issues/) 티켓 없음 — 신관례만 쓰는 기능
+      docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
+      newTickets: [newTicket()], // status: pending, startable: true
+    };
+    renderCard(feature);
+    expect(screen.getByText(/남은 일 1/)).toBeInTheDocument();
+    expect(screen.getByText(/착수 가능 1/)).toBeInTheDocument();
+    // 🔴 남은 일이 있으면 `plan` 버튼이 뜬다(development-order/16 ④) — 0으로 세면 이 버튼도 사라진다.
+    expect(screen.getByRole("button", { name: "plan" })).toBeInTheDocument();
+  });
 });

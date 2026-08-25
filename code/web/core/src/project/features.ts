@@ -184,12 +184,22 @@ export function hasOpenWork(tickets: readonly { status: TodoStatus }[]): boolean
 }
 
 /**
+ * 기능 하나의 티켓 전부 — `issues/`(구관례, `tickets`)와 `tickets/`(신관례, `newTickets`)를
+ * 합친다. 두 관례는 상태의 SoT 가 다르지만(계산 경로를 안 섞는다, contract 주석), "얼마나
+ * 남았나" 는 관례를 안 가리는 질문이다 — 여기서 합치지 않으면 `tickets/` 만 쓰는 기능이 카드
+ * 머리글·정렬·사이드바 집계에서 전부 0/빈 무리로 보인다(실제 결함, 2026-08-25 캡틴 보고).
+ */
+export function allTickets(f: Feature): FeatureTicket[] {
+  return [...f.tickets, ...(f.newTickets ?? [])];
+}
+
+/**
  * 남은 일이 있는 기능의 수 — 목록 뷰가 "이 프로젝트에 할 일이 몇 갈래 남았나" 로 쓴다.
  * 정렬 맨 앞 무리(`RANK_OPEN`)의 크기와 **정의상 같다**(같은 술어를 쓴다).
  * 티켓이 0개인 기능은 세지 않는다 — 착수할 것이 없다(그래서 정렬에서도 앞 무리가 아니다).
  */
 export function countOpenFeatures(features: readonly Feature[]): number {
-  return features.filter((f) => hasOpenWork(f.tickets)).length;
+  return features.filter((f) => hasOpenWork(allTickets(f))).length;
 }
 
 /**
@@ -246,9 +256,9 @@ function hasInProgress(tickets: readonly { status: TodoStatus }[]): boolean {
  */
 export function sortFeatures(features: readonly Feature[]): Feature[] {
   return [...features].sort((a, b) => {
-    const rankDiff = rank(a.tickets) - rank(b.tickets);
+    const rankDiff = rank(allTickets(a)) - rank(allTickets(b));
     if (rankDiff !== 0) return rankDiff;
-    const wipDiff = Number(hasInProgress(b.tickets)) - Number(hasInProgress(a.tickets));
+    const wipDiff = Number(hasInProgress(allTickets(b))) - Number(hasInProgress(allTickets(a)));
     return wipDiff !== 0 ? wipDiff : a.slug.localeCompare(b.slug);
   });
 }

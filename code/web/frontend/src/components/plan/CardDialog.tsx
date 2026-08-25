@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
-import { IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 import type { FeatureTicket, PlanCard } from "@gootte/contract";
+import { allTickets } from "@gootte/core";
 import { closedDisplayAt, ticketBoxState, UNRANKED_STEP } from "@gootte/core/plan";
+import { BACKLOG_STATUS_LABEL } from "../../lib/backlogStatusLabel";
 import { featureDescription } from "./cardTitle";
-import { ticketDocPath } from "./planDoc";
 
 /**
  * 표시 단계 순으로 줄 세운다(plan-board/05) — 값이 없는 티켓(작업 대상 밖 카드, 빈 단계로
@@ -45,7 +46,10 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
   const closedDisplay = closed ? closedDisplayAt(card.closedAt, feature) : null;
   // 작업 대상 카드에만 값이 있다(05) — 나머지 칸의 카드는 빈 표라 순서·표시가 그대로다.
   const steps = card.steps ?? {};
-  const orderedTickets = orderByStep(feature.tickets, steps);
+  // 🔴 issues/(구관례)와 tickets/(신관례, T04) 를 합친다 — 안 그러면 tickets/ 만 쓰는 기능은
+  // 이 대화상자가 "티켓 0 · 티켓이 없습니다" 를 보여준다(캡틴 보고, 2026-08-25).
+  const tickets = allTickets(feature);
+  const orderedTickets = orderByStep(tickets, steps);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -83,7 +87,7 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
             </h2>
             {/* 카드 머리가 이고 있던 곁다리를 그대로 옮겨 온다 — 창을 열었다고 사실이 사라지지 않게. */}
             <p className="mono mt-1.5 flex flex-wrap items-baseline gap-x-2.5 text-sm tabular-nums text-muted">
-              <span>티켓 {feature.tickets.length}</span>
+              <span>티켓 {tickets.length}</span>
               {closedDisplay && <span>닫힘 {closedDisplay}</span>}
             </p>
           </div>
@@ -99,7 +103,7 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
 
         {/* 티켓이 많은 기능도 한 창에서 끝까지 읽힌다 — 목록만 스크롤하고 머리와 확인 단추는 선다. */}
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {feature.tickets.length === 0 ? (
+          {tickets.length === 0 ? (
             // 티켓이 없는 기능도 감추지 않는다 — 열었는데 빈 창이면 화면이 이유를 말해야 한다.
             <p className="px-5 py-4 text-sm text-muted">티켓이 없습니다.</p>
           ) : (
@@ -117,7 +121,7 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                         상자는 여전히 문서에서 읽을 뿐 여기서 바뀌지 않는다(INV-5). */}
                     <button
                       type="button"
-                      onClick={() => onOpenTicket(ticketDocPath(t))}
+                      onClick={() => onOpenTicket(t.path)}
                       className={`flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 px-5 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
                         unread
                           ? "bg-unread hover:bg-unread-strong"
@@ -167,14 +171,29 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                           처리중
                         </span>
                       )}
-                      {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게. */}
-                      <span
-                        className={`mono shrink-0 rounded px-1.5 py-0.5 text-sm ${
-                          t.statusKnown ? "bg-surface-2 text-muted" : "bg-drop/15 text-drop"
-                        }`}
-                      >
-                        {t.sourceStatus ?? "상태 줄 없음"}
-                      </span>
+                      {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게.
+                          `features` 탭 `TicketRow` 와 같은 판정 — tickets/ 신관례는 파일에 상태가
+                          없다(SoT = 백로그), 조인됐을 때만 배지를 낸다(T04 §구현 원칙, 추측 금지). */}
+                      {t.docConvention === "tickets" ? (
+                        t.backlogStatus && (
+                          <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
+                            {BACKLOG_STATUS_LABEL[t.backlogStatus] ?? t.backlogStatus}
+                          </span>
+                        )
+                      ) : t.statusKnown ? (
+                        <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
+                          {t.sourceStatus}
+                        </span>
+                      ) : (
+                        <span
+                          role="status"
+                          className="mono flex shrink-0 items-center gap-1 rounded bg-drop/15 px-1.5 py-0.5 text-sm text-drop"
+                          title="정규 아홉 값이 아닙니다"
+                        >
+                          <IconAlertTriangle size={13} />
+                          {t.sourceStatus === null ? "상태 줄 없음" : `알 수 없는 상태: ${t.sourceStatus}`}
+                        </span>
+                      )}
                     </button>
                   </li>
                 );

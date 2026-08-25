@@ -45,6 +45,22 @@ export function dirExists(p: string | null): boolean {
   }
 }
 
+/** firstmate 홈 후보 — 호스트에 실제로 있는지 검사할 자리들. */
+export function defaultFirstmateHomeCandidates(): string[] {
+  return [join(homedir(), "Documents", "ai2", "firstmate2")];
+}
+
+/**
+ * firstmate 홈 placeholder 추천 — 호스트 실측(존재하는 폴더)만 준다. 저장하지 않는다(INV-1) —
+ * 응답 때마다 다시 계산되는 추천일 뿐, 값이 아니다. 후보가 하나도 없으면 null(placeholder 생략).
+ * `candidates` 는 테스트가 실제 host 경로 대신 임시 디렉토리를 주입할 수 있게 하는 자리.
+ */
+export function suggestFirstmateHome(
+  candidates: string[] = defaultFirstmateHomeCandidates(),
+): string | null {
+  return candidates.find((p) => dirExists(p)) ?? null;
+}
+
 const DEFAULTS: SettingsT = { watchRoot: null, firstmateHome: null };
 
 /**

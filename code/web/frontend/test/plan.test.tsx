@@ -149,6 +149,101 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     expect(within(opened).getByText("티켓 2")).toBeInTheDocument();
   });
 
+  /**
+   * 🔴 회귀 — `tickets/` 신관례(T04)만 쓰는 기능은 `feature.tickets`(구관례)가 비어 있다.
+   * `BoardCard`·`CardDialog` 가 `feature.tickets` 만 세면 이런 기능은 카드가 "티켓 0", 대화상자는
+   * "티켓이 없습니다" 를 보여준다 — 실제로는 `newTickets` 에 미완 티켓이 있는데도(캡틴 보고,
+   * 2026-08-25). `FeatureCard`(features 탭)와 같은 결함이 plan 탭에도 있었다.
+   */
+  it("issues/ 없이 tickets/ 만 있는 기능도 카드 머리·대화상자에서 티켓 수·목록이 잡힌다", () => {
+    const newTicket: FeatureTicket = {
+      num: "01",
+      slug: "T01",
+      path: "tickets/T01.md",
+      title: "신관례 티켓",
+      status: "pending",
+      sourceStatus: null,
+      statusKnown: false,
+      blockedBy: [],
+      unreadableBlockedBy: [],
+      waitingOn: [],
+      startable: true,
+      workedBy: [],
+      needsCaptainEye: false,
+      docConvention: "tickets",
+      backlogStatus: null,
+      backlogUrl: null,
+    };
+    const f: Feature = { ...feature("new-convention"), tickets: [], newTickets: [newTicket] };
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(f)] });
+    const card1 = screen.getByRole("article", { name: "new-convention 제목" });
+    expect(within(card1).getByText("티켓 1")).toBeInTheDocument();
+    const opened = openCard("new-convention 제목");
+    expect(within(opened).getByText("티켓 1")).toBeInTheDocument();
+    expect(within(opened).getByText("신관례 티켓")).toBeInTheDocument();
+    expect(within(opened).queryByText("티켓이 없습니다.")).toBeNull();
+  });
+
+  /**
+   * 🔴 회귀 — `CardDialog` 의 상태 배지가 `features` 탭 `TicketRow` 와 다른 판정을 썼다. tickets/
+   * 신관례는 파일에 상태가 없어(SoT = 백로그) `t.statusKnown` 이 항상 false 인데, `CardDialog` 는
+   * 그 값만 보고 "정규 아홉 값이 아닙니다" 경고 배지("상태 줄 없음")를 띄웠다 — 백로그 조인이
+   * 실제로 성공해 `backlogStatus` 가 실려 있어도 무시됐다(캡틴 보고, 2026-08-25). `TicketRow` 와
+   * 같이 `docConvention` 을 먼저 보게 고쳤다 — 공유 표는 `lib/backlogStatusLabel.ts`.
+   */
+  it("tickets/ 신관례가 백로그에 조인되면 대화상자도 배지를 보여준다 — 경고 배지가 아니다", () => {
+    const joined: FeatureTicket = {
+      num: "02",
+      slug: "T02",
+      path: "tickets/T02.md",
+      title: "조인된 신관례 티켓",
+      status: "done",
+      sourceStatus: null,
+      statusKnown: false,
+      completedAt: "2026-08-25",
+      blockedBy: [],
+      unreadableBlockedBy: [],
+      waitingOn: [],
+      startable: true,
+      workedBy: [],
+      needsCaptainEye: false,
+      docConvention: "tickets",
+      backlogStatus: "done",
+      backlogUrl: "https://github.com/pruge/gootte/pull/54",
+    };
+    const f: Feature = { ...feature("joined-convention"), tickets: [], newTickets: [joined] };
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(f)] });
+    const opened = openCard("joined-convention 제목");
+    expect(within(opened).getByText("done")).toBeInTheDocument();
+    expect(within(opened).queryByText("상태 줄 없음")).toBeNull();
+  });
+
+  it("tickets/ 신관례가 미조인이면(백로그에 없음) 배지 없이 조용하다 — 경고로 보이지 않는다", () => {
+    const unjoined: FeatureTicket = {
+      num: "01",
+      slug: "T01",
+      path: "tickets/T01.md",
+      title: "미조인 신관례 티켓",
+      status: "pending",
+      sourceStatus: null,
+      statusKnown: false,
+      blockedBy: [],
+      unreadableBlockedBy: [],
+      waitingOn: [],
+      startable: true,
+      workedBy: [],
+      needsCaptainEye: false,
+      docConvention: "tickets",
+      backlogStatus: null,
+      backlogUrl: null,
+    };
+    const f: Feature = { ...feature("unjoined-convention"), tickets: [], newTickets: [unjoined] };
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(f)] });
+    const opened = openCard("unjoined-convention 제목");
+    expect(within(opened).queryByText("상태 줄 없음")).toBeNull();
+    expect(within(opened).queryByRole("status", { name: /정규 아홉 값이 아닙니다/ })).toBeNull();
+  });
+
   it("🔴 안 읽은 티켓 줄에 표시가 뜬다 — features 탭과 같은 표시(unread-tickets-show-themselves/02)", () => {
     const f = feature("auth-login", [["01", "안 읽은 것"], ["02", "읽은 것"]]);
     const unreadFeature: Feature = {
@@ -726,6 +821,45 @@ describe("PlanView — 카드 대화상자에서 티켓 원문을 연다", () =>
     expect(within(drawer).getByRole("heading", { name: "01 — 세션 발급" })).toBeInTheDocument();
     // 🔴 탭은 그대로 plan 이다 — 문서 아이콘(03)과 달리 판을 떠나지 않는다.
     expect(screen.getByRole("article", { name: "auth-login 제목" })).toBeInTheDocument();
+  });
+
+  /**
+   * 🔴 회귀 — `ticketDocPath()` 가 슬러그에서 `issues/<slug>.md` 를 지어내고 있었다(캡틴 결정
+   * 2026-08-12 당시엔 유일한 관례였다). `tickets/T<NN>.md` 신관례(T04) 도입 후에는 그 재조립이
+   * 실제 경로와 어긋나 티켓을 눌러도 문서가 안 열렸다(캡틴 보고, 2026-08-25) — 지금은 서버가 이미
+   * 준 `ticket.path` 를 그대로 쓴다(재조립하지 않는다, INV-4).
+   */
+  it("tickets/ 신관례 티켓 줄을 누르면 그 티켓의 tickets/T<NN>.md 가 드로어로 뜬다", async () => {
+    const newTicket: FeatureTicket = {
+      num: "01",
+      slug: "T01",
+      path: "tickets/T01.md",
+      title: "신관례 티켓",
+      status: "pending",
+      sourceStatus: null,
+      statusKnown: false,
+      blockedBy: [],
+      unreadableBlockedBy: [],
+      waitingOn: [],
+      startable: true,
+      workedBy: [],
+      needsCaptainEye: false,
+      docConvention: "tickets",
+      backlogStatus: null,
+      backlogUrl: null,
+    };
+    const f: Feature = { ...feature("new-convention"), tickets: [], newTickets: [newTicket] };
+    const { qc } = renderBoard({ ...EMPTY_BOARD, waiting: [card(f)] });
+    qc.setQueryData(qk.featureDoc("alpha", "new-convention", "tickets/T01.md"), {
+      path: "tickets/T01.md",
+      content: "# T01 — 신관례 티켓\n",
+    });
+
+    const opened = openCard("new-convention 제목");
+    fireEvent.click(within(opened).getByRole("button", { name: /신관례 티켓/ }));
+
+    const drawer = await screen.findByRole("dialog", { name: "tickets/T01.md" });
+    expect(within(drawer).getByRole("heading", { name: "T01 — 신관례 티켓" })).toBeInTheDocument();
   });
 
   it("드로어를 닫으면 카드 대화상자로 그대로 돌아온다", async () => {

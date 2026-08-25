@@ -19,7 +19,6 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { groupProcessSteps, UNRANKED_STEP, type ProcessRow, type ProcessStepGroup } from "@gootte/core/plan";
 import { usePlanBoard, useStepMove } from "../../lib/query";
-import { ticketDocPath } from "../plan/planDoc";
 import { featureDescription } from "../plan/cardTitle";
 import { DocDrawer } from "../features/DocDrawer";
 import { Loading, ErrorMsg } from "../common/states";
@@ -119,8 +118,7 @@ export function ProcessView({ project }: ProcessViewProps) {
     setOverZone(null);
   };
 
-  const openDoc = (row: ProcessRow) =>
-    setTicketDoc({ feature: row.feature, path: ticketDocPath({ slug: row.ticket }) });
+  const openDoc = (row: ProcessRow) => setTicketDoc({ feature: row.feature, path: row.path });
 
   return (
     <DndContext

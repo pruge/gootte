@@ -1,4 +1,4 @@
-import type { Feature, FeatureDocNode, FeatureTicket } from "@gootte/contract";
+import type { Feature, FeatureDocNode } from "@gootte/contract";
 
 /**
  * 카드 머리의 문서 아이콘이 열 문서 경로 — 여기서 정하는 것은 "어느 문서로 갈까" 하나뿐이고,
@@ -20,17 +20,4 @@ export function featureDocPath(feature: Feature): string | null {
   };
   walk(feature.docs);
   return files.find((p) => p === "spec.md") ?? files[0] ?? null;
-}
-
-/**
- * 판 카드 대화상자에서 티켓 줄을 누르면 열 원문 경로 — `issues/<티켓 slug>.md`(캡틴 결정
- * 2026-08-12: "ticket 클릭하면 문서 보이게해").
- *
- * 🔴 `feature.docs` 트리에서 찾지 않는다 — 그 트리는 **`issues/` 를 제외하고** 만들어진다
- * (contract `Feature.docs` 주석, 티켓 목록이 따로 싣기 때문). 티켓은 이미 문서를 파싱해서 나온
- * 값이라 파일이 있다는 것이 보장되고, 파일명 규칙도 하나뿐이다(`core/src/parse/ticket-path.ts`
- * 의 역방향) — 지어내는 것이 아니라 그 규칙을 그대로 되짚는 것이다.
- */
-export function ticketDocPath(ticket: Pick<FeatureTicket, "slug">): string {
-  return `issues/${ticket.slug}.md`;
 }

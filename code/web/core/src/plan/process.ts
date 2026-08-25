@@ -8,6 +8,9 @@ export interface ProcessRow {
   ticket: string;
   num: string;
   title: string;
+  // 기능 폴더 기준 상대 경로("issues/01-x.md" 또는 "tickets/T01.md") — 문서 읽기 API 의 `path`
+  // 로 그대로 쓴다(feature-doc-browser/04). 화면이 관례별로 다시 조립하지 않는다(INV-4).
+  path: string;
   // 상자 셋 중 하나 — `[x]`/`[-]`/`[ ]` 는 화면이 여기서 그린다. 못 끄는 줄도 여기서
   // 파생한다("open" 이 아니면 끝난 것 — plan-board/12).
   box: TicketBoxState;
@@ -48,6 +51,7 @@ export function groupProcessSteps(cards: readonly PlanCard[]): ProcessStepGroup[
         ticket: ticket.slug,
         num: ticket.num,
         title: ticket.title,
+        path: ticket.path,
         box: ticketBoxState(ticket),
         unread: ticket.unread === true,
         inProgress: ticket.status === "in_progress",

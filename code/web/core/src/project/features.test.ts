@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Feature, FeatureTicket } from "@gootte/contract";
-import { parseTicket } from "../parse/feature";
+import { parseNewTicket, parseTicket } from "../parse/feature";
 import { buildFeature, buildFeatures, countOpenFeatures, sortFeatures } from "./features";
 
 /** 티켓 파일 한 장 합성 — 상단 두 줄이 서식의 전부다(triage-labels). */
@@ -225,6 +225,35 @@ describe("buildFeatures — 기능 목록", () => {
         .slice(0, 2)
         .map((f) => f.slug),
     ).toEqual(["alpha-open", "echo-open"]);
+  });
+
+  /**
+   * 🔴 회귀 — `tickets/` 신관례(T04)만 쓰는 기능은 `docs.tickets`(구관례)가 비어 있다.
+   * `countOpenFeatures`·`sortFeatures` 가 `newTickets` 를 안 보면 이런 기능은 "남은 일 0" 으로
+   * 세어지고 정렬에서도 맨 뒤(RANK_NO_TICKETS)로 밀린다 — 실제로 열어보면 미완 티켓이 있는데도
+   * 목록에서는 아무 일도 없는 것처럼 보이는 결함이었다(캡틴 보고, 2026-08-25).
+   */
+  const docsWithNewTickets = (slug: string, ...files: string[]) => ({
+    slug,
+    spec: null,
+    tickets: [],
+    tree: [],
+    newTickets: files.map((f) => parseNewTicket(f, "# T — 신관례 티켓")),
+  });
+
+  it("tickets/ 신관례만 쓰는 기능도 남은 일로 센다 — issues/ 처럼 취급한다", () => {
+    const built = buildFeatures([docsWithNewTickets("new-convention-open", "T01.md")]);
+    expect(countOpenFeatures(built)).toBe(1);
+    expect(sortFeatures(built)[0]?.slug).toBe("new-convention-open");
+  });
+
+  it("issues/ 와 tickets/ 를 섞어 써도 합쳐서 센다", () => {
+    const docs = [
+      docsWithNewTickets("only-new", "T01.md"),
+      docsWithNoTickets("no-tickets-at-all"),
+    ];
+    const built = buildFeatures(docs);
+    expect(countOpenFeatures(built)).toBe(1);
   });
 });
 

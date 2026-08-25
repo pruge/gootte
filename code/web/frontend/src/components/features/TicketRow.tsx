@@ -7,6 +7,7 @@ import {
   IconProgress,
 } from "@tabler/icons-react";
 import type { FeatureTicket } from "@gootte/contract";
+import { BACKLOG_STATUS_LABEL } from "../../lib/backlogStatusLabel";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
 import { triggerKey } from "./docTrigger";
 import type { OpenDocFn } from "./FeatureTree";
@@ -14,14 +15,6 @@ import { HighlightedText } from "./HighlightedText";
 
 /** 트리 나머지가 쓰는 문서 아이콘 폭(15px) — 상태 아이콘도 여기 맞춘다(F20). 뜻·색은 그대로다. */
 const STATE_ICON_SIZE = 15;
-
-/** 백로그 다섯 값 → 배지 문구(T04) — 화면 어휘는 issues 관례와 같게 맞춘다. */
-const BACKLOG_STATUS_LABEL: Partial<Record<FeatureTicket["status"], string>> = {
-  pending: "queued",
-  in_progress: "in flight",
-  done: "done",
-  dropped: "dropped",
-};
 
 /**
  * T04 — `tickets/` 신관례인데 백로그에 조인되지 않은 티켓. 파일에 상태가 없으므로 이 경우는

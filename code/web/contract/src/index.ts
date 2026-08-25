@@ -261,6 +261,8 @@ export type Settings = z.infer<typeof Settings>;
 export const SettingsResponse = Settings.extend({
   watchRootExists: z.boolean(),
   firstmateHomeExists: z.boolean(),
+  // 호스트 실측 기반 추천 경로(placeholder 용) — 저장값이 아니다(INV-1). 후보가 없으면 null.
+  firstmateHomeSuggestion: z.string().nullable().default(null),
 });
 export type SettingsResponse = z.infer<typeof SettingsResponse>;
 
