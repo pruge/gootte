@@ -46,6 +46,7 @@ import {
   writeSettings,
   normalizeDirPath,
   dirExists,
+  suggestFirstmateHome,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
@@ -91,6 +92,11 @@ export interface AppOptions {
    * 보도록 재묶는 데 쓴다. 문서 감시기 재묶음(T02)과 같은 INV-3 근거다.
    */
   onFirstmateHomeChange?: (firstmateHome: string | null) => void;
+  /**
+   * firstmate 홈 placeholder 추천 후보 (테스트 주입). 없으면 `suggestFirstmateHome` 기본 후보
+   * (실제 host 경로) — 테스트는 실제 host 를 보지 않도록 임시 디렉토리를 주입한다.
+   */
+  firstmateHomeSuggestionCandidates?: string[];
 }
 
 /**
@@ -139,6 +145,9 @@ export function createApp(options: AppOptions = {}): Hono {
     ...s,
     watchRootExists: dirExists(s.watchRoot),
     firstmateHomeExists: dirExists(s.firstmateHome),
+    firstmateHomeSuggestion: options.firstmateHomeSuggestionCandidates
+      ? suggestFirstmateHome(options.firstmateHomeSuggestionCandidates)
+      : suggestFirstmateHome(),
   });
 
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });

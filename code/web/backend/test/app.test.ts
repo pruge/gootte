@@ -180,24 +180,29 @@ describe("GET /api/features/:slug", () => {
     expect(body.inProgress.unreadable).toEqual([]);
   });
 
-  test("작업중 사본이 있으면 처리중이 실리고, 못 이은 작업은 unknown 으로 실린다", async () => {
-    const th = makeTreehouse();
-    try {
-      const body = FeaturesResponse.parse(
-        await (await createApp({ roots, treehouse: th }).request("/api/features/alpha")).json(),
-      );
-      const t = body.features
-        .find((f) => f.slug === "auth-login")
-        ?.tickets.find((x) => x.slug === "02-screen");
-      expect(t?.status).toBe("in_progress");
-      expect(t?.workedBy).toEqual(["fm/screen"]);
-      expect(body.inProgress).toMatchObject({ rootExists: true, working: 2, tickets: 1 });
-      // 🔴 이어지지 않은 작업이 응답에서 사라지지 않는다.
-      expect(body.inProgress.unknown.map((u) => u.branch)).toEqual(["fm/elsewhere"]);
-    } finally {
-      rmSync(th, { recursive: true, force: true });
-    }
-  });
+  test("작업중 사본이 있으면 처리중이 실리고, 못 이은 작업은 unknown 으로 실린다", async () =>
+    withDataDir(async (dataDir) => {
+      // dataDir 를 안 주입하면 이 기계의 실제 ~/.gootte 를 읽는다(파일 상단 주석과 같은 근거) —
+      // 이 테스트만 빠져 있었다(2026-08-25 발견, 실제 host 상태에 따라 죽는 test 오염).
+      const th = makeTreehouse();
+      try {
+        const body = FeaturesResponse.parse(
+          await (
+            await createApp({ roots, treehouse: th, dataDir }).request("/api/features/alpha")
+          ).json(),
+        );
+        const t = body.features
+          .find((f) => f.slug === "auth-login")
+          ?.tickets.find((x) => x.slug === "02-screen");
+        expect(t?.status).toBe("in_progress");
+        expect(t?.workedBy).toEqual(["fm/screen"]);
+        expect(body.inProgress).toMatchObject({ rootExists: true, working: 2, tickets: 1 });
+        // 🔴 이어지지 않은 작업이 응답에서 사라지지 않는다.
+        expect(body.inProgress.unknown.map((u) => u.branch)).toEqual(["fm/elsewhere"]);
+      } finally {
+        rmSync(th, { recursive: true, force: true });
+      }
+    }));
 
   test("미해소 slug → 404 ApiError", async () => {
     const app = createApp(APP);
@@ -1103,7 +1108,12 @@ describe("설정 GET/PUT /api/settings", () => {
 
   test("미설정이면 전부 null + 존재 false — 소비처는 기본값으로 떨어진다", async () =>
     withSettingsDataDir(async (dataDir) => {
-      const app = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
+      const app = createApp({
+        roots,
+        treehouse: NO_TREEHOUSE,
+        dataDir,
+        firstmateHomeSuggestionCandidates: [],
+      });
       const res = await app.request("/api/settings");
       expect(res.status).toBe(200);
       expect(SettingsResponse.parse(await res.json())).toEqual({
@@ -1111,12 +1121,18 @@ describe("설정 GET/PUT /api/settings", () => {
         firstmateHome: null,
         watchRootExists: false,
         firstmateHomeExists: false,
+        firstmateHomeSuggestion: null,
       });
     }));
 
   test("저장하면 정규화되어 실리고, 존재 여부는 응답 때 다시 본다(INV-3)", async () =>
     withSettingsDataDir(async (dataDir) => {
-      const app = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
+      const app = createApp({
+        roots,
+        treehouse: NO_TREEHOUSE,
+        dataDir,
+        firstmateHomeSuggestionCandidates: [],
+      });
       const res = await app.request("/api/settings", {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -1129,7 +1145,38 @@ describe("설정 GET/PUT /api/settings", () => {
         firstmateHome: "/없는/경로",
         watchRootExists: true,
         firstmateHomeExists: false, // 없는 경로도 저장은 된다 — 경고는 화면이 이 값을 본다
+        firstmateHomeSuggestion: null,
       });
+    }));
+
+  test("firstmateHomeSuggestion — 후보가 실제로 있으면 응답에 싣고, 없으면 null(placeholder 생략)", async () =>
+    withSettingsDataDir(async (dataDir) => {
+      const candidateDir = mkdtempSync(join(tmpdir(), "gootte-app-fm-home-candidate-"));
+      try {
+        const appWithCandidate = createApp({
+          roots,
+          treehouse: NO_TREEHOUSE,
+          dataDir,
+          firstmateHomeSuggestionCandidates: [candidateDir],
+        });
+        const withBody = SettingsResponse.parse(
+          await (await appWithCandidate.request("/api/settings")).json(),
+        );
+        expect(withBody.firstmateHomeSuggestion).toBe(candidateDir);
+
+        const appNoCandidate = createApp({
+          roots,
+          treehouse: NO_TREEHOUSE,
+          dataDir,
+          firstmateHomeSuggestionCandidates: [join(candidateDir, "없음")],
+        });
+        const withoutBody = SettingsResponse.parse(
+          await (await appNoCandidate.request("/api/settings")).json(),
+        );
+        expect(withoutBody.firstmateHomeSuggestion).toBeNull();
+      } finally {
+        rmSync(candidateDir, { recursive: true, force: true });
+      }
     }));
 
   test("~ 로 입력한 경로는 홈으로 전개되어 저장된다", async () =>

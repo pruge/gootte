@@ -28,7 +28,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [watchRoot, setWatchRoot] = useState("");
   const [firstmateHome, setFirstmateHome] = useState("");
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [pickError, setPickError] = useState<string | null>(null);
+  const [pickErrorWatchRoot, setPickErrorWatchRoot] = useState<string | null>(null);
+  const [pickErrorFirstmateHome, setPickErrorFirstmateHome] = useState<string | null>(null);
   /** 열림 전환 감지 — data 가 바뀔 때마다가 아니라 닫힘→열림 전환에서만 입력을 채운다(F4). */
   const wasOpenRef = useRef(false);
 
@@ -116,21 +117,21 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             existsWarning={
               data && data.watchRoot !== null && !data.watchRootExists
                 ? `이 경로가 없거나 폴더가 아닙니다: ${data.watchRoot}`
-                : pickError
+                : pickErrorWatchRoot
             }
           >
             {isTauri() && (
               <button
                 type="button"
                 onClick={() => {
-                  setPickError(null);
+                  setPickErrorWatchRoot(null);
                   pickFolder()
                     .then((p) => {
                       if (p !== null) setWatchRoot(p);
                     })
                     .catch((e: unknown) => {
                       // 다이얼로그 실패(플러그인 오류·권한 박탈)를 조용히 흘리지 않는다(review F2).
-                      setPickError(
+                      setPickErrorWatchRoot(
                         `폴더 선택 실패: ${e instanceof Error ? e.message : String(e)}`,
                       );
                     });
@@ -145,15 +146,37 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <Field
             id="settings-firstmate-home"
             label="firstmate 홈 경로"
-            hint="백로그 조인에 쓰는 firstmate 홈입니다. 비우면 기본값을 씁니다."
+            hint="티켓 상태 조인과 백로그 감시에 쓰는 firstmate 홈(<홈>/data/backlog.md)입니다. 비어 있으면 상태 조인과 백로그 감시가 꺼집니다."
+            placeholder={data?.firstmateHomeSuggestion ?? undefined}
             value={firstmateHome}
             onChange={setFirstmateHome}
             existsWarning={
               data && data.firstmateHome !== null && !data.firstmateHomeExists
                 ? `이 경로가 없거나 폴더가 아닙니다: ${data.firstmateHome}`
-                : null
+                : pickErrorFirstmateHome
             }
-          />
+          >
+            {isTauri() && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPickErrorFirstmateHome(null);
+                  pickFolder()
+                    .then((p) => {
+                      if (p !== null) setFirstmateHome(p);
+                    })
+                    .catch((e: unknown) => {
+                      setPickErrorFirstmateHome(
+                        `폴더 선택 실패: ${e instanceof Error ? e.message : String(e)}`,
+                      );
+                    });
+                }}
+                className="mono inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-accent hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                <IconFolderOpen size={16} stroke={1.75} /> 찾아보기…
+              </button>
+            )}
+          </Field>
 
           {save.isError && (
             <p role="alert" className="flex items-start gap-2 text-base text-drop">
@@ -191,10 +214,12 @@ interface FieldProps {
   onChange: (v: string) => void;
   /** 서버가 응답 때 다시 본 존재 여부가 false 일 때의 경고 문구(INV-3 — 화면이 재판정하지 않는다). */
   existsWarning: string | null;
+  /** input placeholder — 미지정 시 일반 예시("/절대/경로"). 값이 있으면 브라우저가 알아서 안 보인다. */
+  placeholder?: string;
   children?: React.ReactNode;
 }
 
-function Field({ id, label, hint, value, onChange, existsWarning, children }: FieldProps) {
+function Field({ id, label, hint, value, onChange, existsWarning, placeholder, children }: FieldProps) {
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">
@@ -207,7 +232,7 @@ function Field({ id, label, hint, value, onChange, existsWarning, children }: Fi
           value={value}
           onChange={(e) => onChange(e.target.value)}
           spellCheck={false}
-          placeholder="/절대/경로"
+          placeholder={placeholder ?? "/절대/경로"}
           className="mono min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm outline-none placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-accent"
         />
         {children}

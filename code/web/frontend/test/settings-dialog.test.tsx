@@ -11,10 +11,17 @@ vi.mock("../src/lib/api", () => ({
   saveSettings: vi.fn(),
 }));
 
+vi.mock("../src/lib/tauri", () => ({
+  isTauri: vi.fn(() => true),
+  pickFolder: vi.fn(),
+}));
+
 import { fetchSettings, saveSettings } from "../src/lib/api";
+import { pickFolder } from "../src/lib/tauri";
 
 const mockFetch = vi.mocked(fetchSettings);
 const mockSave = vi.mocked(saveSettings);
+const mockPickFolder = vi.mocked(pickFolder);
 
 function settings(partial: Partial<SettingsResponseType>): SettingsResponseType {
   return SettingsResponse.parse({
@@ -22,6 +29,7 @@ function settings(partial: Partial<SettingsResponseType>): SettingsResponseType 
     firstmateHome: null,
     watchRootExists: false,
     firstmateHomeExists: false,
+    firstmateHomeSuggestion: null,
     ...partial,
   });
 }
@@ -84,5 +92,77 @@ describe("SettingsDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
     await waitFor(() => expect(mockSave).toHaveBeenCalled());
     expect(mockSave.mock.calls[0]![0]).toEqual(expect.objectContaining({ watchRoot: null }));
+  });
+
+  it("firstmate 홈 안내문은 실제 동작을 말한다 — 비우면 조인·감시가 꺼진다", () => {
+    renderDialog();
+    expect(screen.getByText(/조인과 백로그 감시가 꺼집니다/)).toBeInTheDocument();
+  });
+
+  it("firstmate 홈 필드에도 찾아보기 버튼이 있다(Tauri 셸에서) — watchRoot 와 동일 UX", () => {
+    renderDialog();
+    const buttons = screen.getAllByRole("button", { name: /찾아보기/ });
+    expect(buttons).toHaveLength(2);
+  });
+
+  it("firstmate 홈 찾아보기로 고르면 그 값이 입력 칸에 앉는다", async () => {
+    mockPickFolder.mockResolvedValue("/골라온/경로");
+    renderDialog();
+    const buttons = screen.getAllByRole("button", { name: /찾아보기/ });
+    fireEvent.click(buttons[1]!); // 0=감시 루트, 1=firstmate 홈
+    await waitFor(() =>
+      expect(screen.getByLabelText("firstmate 홈 경로")).toHaveValue("/골라온/경로"),
+    );
+  });
+
+  it("찾아보기 다이얼로그가 실패하면 조용히 흘리지 않고 경고를 보여준다(review F2)", async () => {
+    mockPickFolder.mockRejectedValue(new Error("플러그인 오류"));
+    renderDialog();
+    const buttons = screen.getAllByRole("button", { name: /찾아보기/ });
+    fireEvent.click(buttons[1]!); // firstmate 홈 쪽 버튼
+    expect(await screen.findByText(/폴더 선택 실패: 플러그인 오류/)).toBeInTheDocument();
+  });
+
+  it("감시 루트 찾아보기도 같은 길을 탄다", async () => {
+    mockPickFolder.mockResolvedValue("/감시/루트");
+    renderDialog();
+    fireEvent.click(screen.getAllByRole("button", { name: /찾아보기/ })[0]!);
+    await waitFor(() =>
+      expect(screen.getByLabelText("감시 루트 폴더")).toHaveValue("/감시/루트"),
+    );
+  });
+
+  it("firstmate 홈 미설정 시 placeholder 에 서버가 준 추천 경로가 보인다", () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(
+      qk.settings,
+      settings({ firstmateHomeSuggestion: "/Users/x/Documents/ai2/firstmate2" }),
+    );
+    render(
+      <QueryClientProvider client={qc}>
+        <SettingsDialog open onClose={() => {}} />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByPlaceholderText("/Users/x/Documents/ai2/firstmate2")).toBeInTheDocument();
+  });
+
+  it("firstmate 홈에 값이 이미 있으면 입력 칸은 추천 경로가 아니라 저장된 값을 보여준다", () => {
+    // placeholder 는 값이 있으면 브라우저가 안 그리는 것이 표준 동작이라(HTML 자체 규약),
+    // 여기선 화면이 추천을 값 위에 덮어쓰지 않는지만 확인한다.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(
+      qk.settings,
+      settings({
+        firstmateHome: "/이미/설정됨",
+        firstmateHomeExists: true,
+        firstmateHomeSuggestion: "/Users/x/Documents/ai2/firstmate2",
+      }),
+    );
+    render(
+      <QueryClientProvider client={qc}>
+        <SettingsDialog open onClose={() => {}} />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByLabelText("firstmate 홈 경로")).toHaveValue("/이미/설정됨");
   });
 });

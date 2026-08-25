@@ -2,7 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { dirExists, normalizeDirPath, readSettings, settingsFile, writeSettings } from "./settings-store";
+import {
+  dirExists,
+  normalizeDirPath,
+  readSettings,
+  settingsFile,
+  suggestFirstmateHome,
+  writeSettings,
+} from "./settings-store";
 
 let dataDir: string;
 
@@ -88,5 +95,24 @@ describe("dirExists", () => {
     expect(dirExists(file)).toBe(false);
     expect(dirExists(join(dataDir, "nope"))).toBe(false);
     expect(dirExists(null)).toBe(false);
+  });
+});
+
+describe("suggestFirstmateHome", () => {
+  test("실제로 있는 첫 후보를 준다", () => {
+    const existing = join(dataDir, "firstmate2");
+    mkdirSync(existing);
+    expect(suggestFirstmateHome([existing])).toBe(existing);
+  });
+
+  test("후보가 하나도 없으면 null(placeholder 생략)", () => {
+    expect(suggestFirstmateHome([join(dataDir, "없음")])).toBeNull();
+  });
+
+  test("먼저 오는 존재하는 후보를 준다 — 순서가 우선순위", () => {
+    const missing = join(dataDir, "없음");
+    const existing = join(dataDir, "firstmate2");
+    mkdirSync(existing);
+    expect(suggestFirstmateHome([missing, existing])).toBe(existing);
   });
 });
