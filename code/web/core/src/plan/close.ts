@@ -1,5 +1,5 @@
 import type { Feature, Placement, PlanArea, TodoStatus } from "@gootte/contract";
-import { hasOpenWork } from "../project/features";
+import { allTickets, hasOpenWork } from "../project/features";
 import type { PlanWritePlan } from "./move";
 
 /**
@@ -42,10 +42,10 @@ export function ticketBoxState(ticket: { readonly status: TodoStatus }): TicketB
  * 함수는 그 답을 그대로 빌리고 **빈 폴더 가드 하나만** 얹는다. 두 함수가 남는 것은 이 가드
  * 때문이지, 폐기에서 답이 갈려서가 아니다 — 판정 자리를 둘로 늘리지 않으려고 하나를 빌려 쓴다.
  */
-export function featureFullyChecked(feature: {
-  readonly tickets: readonly { readonly status: TodoStatus }[];
-}): boolean {
-  return feature.tickets.length > 0 && !hasOpenWork(feature.tickets);
+export function featureFullyChecked(feature: Feature): boolean {
+  // 두 관례를 합쳐 본다 — 신관례 전용 기능은 옛 관례만 보던 시절엔 0장으로 보여 영영 닫히지 않았다.
+  const tickets = allTickets(feature);
+  return tickets.length > 0 && !hasOpenWork(tickets);
 }
 
 /**
@@ -54,11 +54,10 @@ export function featureFullyChecked(feature: {
  *
  * ISO 날짜(+시각)라 문자열 비교가 곧 시간 비교다.
  */
-export function documentCompletedOn(feature: {
-  readonly tickets: readonly { readonly completedAt?: string }[];
-}): string | null {
+export function documentCompletedOn(feature: Feature): string | null {
   let latest: string | null = null;
-  for (const t of feature.tickets) {
+  // 두 관례를 합쳐 본다 — 신관례 티켓의 resolved 도 닫힌 시각의 후보다.
+  for (const t of allTickets(feature)) {
     if (t.completedAt && (latest === null || t.completedAt > latest)) latest = t.completedAt;
   }
   return latest;
@@ -178,7 +177,8 @@ export function planReopen(
     .filter((p) => REOPEN_FROM.has(p.area))
     .filter((p) => {
       const f = featureOf.get(p.feature);
-      return f !== undefined && hasUnreadWork(f.tickets);
+      // 두 관례를 합쳐 본다 — 신관례 전용 기능은 옛 관례만 보던 시절엔 새 티켓이 붙어도 안 돌아왔다.
+      return f !== undefined && hasUnreadWork(allTickets(f));
     })
     .map((p) => p.feature)
     .sort((a, b) => a.localeCompare(b));
@@ -196,9 +196,6 @@ export function planReopen(
  * 🔴 완료 칸 밖의 카드에는 부르지 않는다 — 부분 완료 상태의 문서 날짜를 "닫힘"으로 잘못 읽지
  * 않도록, 호출자가 완료 칸 카드에만 쓴다.
  */
-export function closedDisplayAt(
-  closedAt: string | null,
-  feature: { readonly tickets: readonly { readonly completedAt?: string }[] },
-): string | null {
+export function closedDisplayAt(closedAt: string | null, feature: Feature): string | null {
   return closedAt ?? documentCompletedOn(feature);
 }

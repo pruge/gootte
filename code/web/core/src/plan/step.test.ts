@@ -55,6 +55,23 @@ describe("computeDisplaySteps — 당김은 표시 계산이다(INV-B2, plan-boa
     expect(computeDisplaySteps(features, placements, steps)).toEqual({ a: { "01-x": 1 } });
   });
 
+  it("🔴 신관례 전용 기능의 단계도 표시 계산에서 살아남는다 — 옛 관례만 보던 시절엔 통째로 걸러졌다", () => {
+    const features = [
+      feature("new-only", [
+        { num: "01", newConvention: true },
+        { num: "02", newConvention: true },
+      ]),
+    ];
+    const placements = [row("new-only", "active", 0)];
+    const steps: StepRow[] = [
+      { feature: "new-only", ticket: "T01", step: 2 },
+      { feature: "new-only", ticket: "T02", step: 3 },
+    ];
+    expect(computeDisplaySteps(features, placements, steps)).toEqual({
+      "new-only": { T01: 1, T02: 2 },
+    });
+  });
+
   it("🔴 한 단계에 티켓이 하나라도 안 끝났으면 당기지 않는다", () => {
     const features = [feature("a", [resolved("01", "2026-08-01"), "02"]), feature("b", ["03"])];
     const placements = [row("a", "active", 0), row("b", "active", 1)];

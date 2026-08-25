@@ -1,4 +1,5 @@
 import type { Feature, Placement } from "@gootte/contract";
+import { allTickets } from "../project/features";
 import type { StepRow } from "./move";
 import { computeDisplaySteps } from "./step";
 
@@ -38,7 +39,8 @@ export function computeNext(
     if (seq === undefined || !f) continue;
     for (const [ticket, step] of Object.entries(tickets)) {
       if (step !== 1) continue;
-      const t = f.tickets.find((x) => x.slug === ticket);
+      // 두 관례를 합쳐 찾는다 — 신관례 티켓도 "다음" 이 될 수 있다.
+      const t = allTickets(f).find((x) => x.slug === ticket);
       if (!t || t.status === "done" || t.status === "dropped") continue;
       out.push({ feature, ticket, title: t.title, needsCaptainEye: t.needsCaptainEye, seq });
     }

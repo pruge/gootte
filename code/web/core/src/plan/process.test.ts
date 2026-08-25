@@ -103,4 +103,46 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       },
     ]);
   });
+
+  it("🔴 신관례 전용 기능도 그룹이 나온다 — 옛 관례만 보던 시절엔 빈 메시지였다", () => {
+    const cards = [
+      card(
+        "new-only",
+        [
+          { num: "01", newConvention: true },
+          { num: "02", newConvention: true },
+        ],
+        { T01: 1, T02: 2 },
+      ),
+    ];
+    expect(groupProcessSteps(cards)).toEqual([
+      {
+        step: 1,
+        rows: [
+          { feature: "new-only", ticket: "T01", num: "01", title: "티켓 01", path: "tickets/T01.md", box: "open", unread: false, inProgress: false },
+        ],
+      },
+      {
+        step: 2,
+        rows: [
+          { feature: "new-only", ticket: "T02", num: "02", title: "티켓 02", path: "tickets/T02.md", box: "open", unread: false, inProgress: false },
+        ],
+      },
+    ]);
+  });
+
+  it("🔴 두 관례가 섞인 기능은 합쳐서 같은 단계 묶음에 선다", () => {
+    const cards = [
+      card("mixed", ["01", { num: "02", newConvention: true }], { "01-x": 1, T02: 1 }),
+    ];
+    expect(groupProcessSteps(cards)).toEqual([
+      {
+        step: 1,
+        rows: [
+          { feature: "mixed", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "open", unread: false, inProgress: false },
+          { feature: "mixed", ticket: "T02", num: "02", title: "티켓 02", path: "tickets/T02.md", box: "open", unread: false, inProgress: false },
+        ],
+      },
+    ]);
+  });
 });

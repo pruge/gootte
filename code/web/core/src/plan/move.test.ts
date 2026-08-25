@@ -129,6 +129,48 @@ describe("planMove — 캡틴이 놓은 자리가 곧 정답이다(티켓 03)", 
     ]);
   });
 
+  test("🔴 신관례 전용 기능(옛 관례 티켓 0장)을 올리면 단계 행이 심어진다", () => {
+    const features = [
+      feature("new-only", [
+        { num: "01", newConvention: true },
+        { num: "02", newConvention: true, blockedBy: ["01"] },
+      ]),
+    ];
+    const plan = planMove(features, [], move(["new-only"], "active"), NOW);
+    expect(plan.setSteps).toEqual([
+      { feature: "new-only", ticket: "T01", step: 1 },
+      { feature: "new-only", ticket: "T02", step: 2 },
+    ]);
+  });
+
+  test("🔴 두 관례가 섞인 기능은 합쳐서 단계를 심는다 — 신관례 선행 위에서도 계산한다", () => {
+    const features = [
+      feature("mixed", [
+        "01",
+        { num: "02", blockedBy: ["01"], newConvention: true },
+      ]),
+    ];
+    const plan = planMove(features, [], move(["mixed"], "active"), NOW);
+    expect(plan.setSteps).toEqual([
+      { feature: "mixed", ticket: "01-x", step: 1 },
+      { feature: "mixed", ticket: "T02", step: 2 },
+    ]);
+  });
+
+  test("🔴 되올라온 신관례 전용 기능의 끝난 티켓에도 행을 만들지 않는다(D2)", () => {
+    const features = [
+      feature("new-re-raised", [
+        { ...resolved("01", "2026-08-20"), newConvention: true },
+        { num: "02", newConvention: true, blockedBy: ["01"] },
+      ]),
+    ];
+    const rows = [row("new-re-raised", "reserved", 0)];
+    const plan = planMove(features, rows, move(["new-re-raised"], "active"), NOW);
+    expect(plan.setSteps).toEqual([
+      { feature: "new-re-raised", ticket: "T02", step: 2 },
+    ]);
+  });
+
   test("작업 대상 안에서 순서만 바꾼 카드의 단계는 건드리지 않는다 — firstmate 가 매긴 값이다", () => {
     const features = [feature("a", ["01"]), feature("b", ["01"])];
     const rows = [row("a", "active", 0), row("b", "active", 1)];
