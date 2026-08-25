@@ -16,6 +16,7 @@ import {
   type Settings,
 } from "@gootte/contract";
 import {
+  applyBacklogStatus,
   applyInProgress,
   applyReadState,
   computeDisplaySteps,
@@ -28,6 +29,7 @@ import {
 import {
   readFeatures,
   readFeatureDoc,
+  readBacklogTasks,
   readPlacements,
   readPlacementsWithAutoClose,
   readReadMarks,
@@ -278,7 +280,13 @@ export function createApp(options: AppOptions = {}): Hono {
       applyReadState(features, readMarks),
       scanWorkingCopies(treehouse, project),
     );
-    return c.json(FeaturesResponse.parse({ project, ...observed }));
+    // T04 — `tickets/T<NN>.md` 신관례의 상태는 문서가 아니라 firstmate 홈 백로그가 SoT(D4).
+    // 홈 미설정·백로그 없음은 readBacklogTasks 가 빈 목록으로 흡수 — 조인 실패는 상태 미표시로만 드러난다.
+    const withBacklog = {
+      ...observed,
+      features: applyBacklogStatus(observed.features, readBacklogTasks(readSettings(dataDir).firstmateHome), project),
+    };
+    return c.json(FeaturesResponse.parse({ project, ...withBacklog }));
   });
 
   // GET /api/plan/:slug → PlanBoardResponse (`plan` 탭 — 다섯 자리 판, plan-board/02)

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import type { Feature, FeatureDocNode } from "@gootte/contract";
-import { buildFeatures, parseFeatureSpec, parseTicket, type FeatureDocs } from "@gootte/core";
+import { buildFeatures, parseFeatureSpec, parseNewTicket, parseTicket, type FeatureDocs } from "@gootte/core";
 
 /**
  * firstmate 작업 표면 read — `docs/features/<기능>/{spec.md,issues/<NN>-*.md}` (F3).
@@ -65,11 +65,21 @@ function readFeatureDir(base: string, slug: string): FeatureDocs {
       const content = read(join(issues, f));
       return content === null ? [] : [parseTicket(f, content)];
     });
+  // 신관례(T04) — `tickets/T<NN>.md` 만 줍는다(INV-4: 실재하는 파일만). 대소문자 무시(`Ti\d+`).
+  const ticketsDir = join(dir, "tickets");
+  const newTickets = entries(ticketsDir)
+    .filter((f) => /^t\d+\.md$/i.test(f))
+    .sort()
+    .flatMap((f) => {
+      const content = read(join(ticketsDir, f));
+      return content === null ? [] : [parseNewTicket(f, content)];
+    });
   return {
     slug,
     spec: specText === null ? null : parseFeatureSpec(slug, specText),
     tickets,
     tree: buildDocTree(dir, ""),
+    newTickets,
   };
 }
 

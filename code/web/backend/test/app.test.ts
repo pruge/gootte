@@ -234,6 +234,102 @@ describe("GET /api/features/:slug", () => {
 });
 
 /**
+ * T04 — `tickets/T<NN>.md` 신관례 + firstmate 홈 백로그 조인. 파서·조인 자체는 core/core-io 가
+ * 이미 잰다(`backlog.test.ts`·`backlog-join.test.ts`·`features.test.ts`). 여기서 보는 것은
+ * **라우트가 설정된 firstmateHome 을 실제로 읽어 잇는가**다.
+ */
+describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
+  function makeProjectRoot(ticketFile = "T04.md"): string {
+    const parent = mkdtempSync(join(tmpdir(), "gootte-app-t04-"));
+    const featDir = join(parent, "widget", "docs", "features", "tauri-desktop-app");
+    mkdirSync(join(featDir, "tickets"), { recursive: true });
+    writeFileSync(join(parent, "widget", "AGENTS.md"), "# widget\n"); // discoverProjects 판정(F3)
+    writeFileSync(join(featDir, "spec.md"), "# 데스크톱 앱\n");
+    writeFileSync(join(featDir, "tickets", ticketFile), "# T04 — 신관례 문서 표시\n");
+    return parent;
+  }
+
+  function makeFirstmateHome(backlog: string): string {
+    const home = mkdtempSync(join(tmpdir(), "gootte-app-fmhome-"));
+    mkdirSync(join(home, "data"), { recursive: true });
+    writeFileSync(join(home, "data", "backlog.md"), backlog);
+    return home;
+  }
+
+  const BACKLOG = [
+    "# Backlog",
+    "",
+    "## In flight",
+    "- [ ] widget-tauri-t04 - New-convention docs tree (repo: widget) (kind: ship) (since 2026-08-25)",
+    "- [ ] widget-tauri - Tauri desktop app (repo: widget) (kind: ship) (since 2026-08-25)",
+    "  Artifacts: projects/widget/docs/features/tauri-desktop-app/. Decisions D1-D5 in grill.md.",
+    "",
+  ].join("\n");
+
+  test("부모 메모 + <parent>-t<NN> 로 조인되면 티켓에 백로그 상태가 실린다", async () =>
+    withDataDir(async (dataDir) => {
+      const projectRoot = makeProjectRoot();
+      const home = makeFirstmateHome(BACKLOG);
+      try {
+        const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
+        await app.request("/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ firstmateHome: home }),
+        });
+        const body = FeaturesResponse.parse(await (await app.request("/api/features/widget")).json());
+        const f = body.features.find((x) => x.slug === "tauri-desktop-app");
+        expect(f?.newTickets?.[0]).toMatchObject({
+          num: "04",
+          docConvention: "tickets",
+          status: "in_progress",
+          backlogStatus: "in_progress",
+        });
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+        rmSync(home, { recursive: true, force: true });
+      }
+    }));
+
+  test("조인 실패(미매칭)면 상태를 보여주지 않는다 — 크래시도 빈 화면도 아니다", async () =>
+    withDataDir(async (dataDir) => {
+      const projectRoot = makeProjectRoot("T09.md"); // 백로그엔 t04 만 있다
+      const home = makeFirstmateHome(BACKLOG);
+      try {
+        const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
+        await app.request("/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ firstmateHome: home }),
+        });
+        const res = await app.request("/api/features/widget");
+        expect(res.status).toBe(200);
+        const body = FeaturesResponse.parse(await res.json());
+        const f = body.features.find((x) => x.slug === "tauri-desktop-app");
+        expect(f?.newTickets?.[0]?.backlogStatus).toBeNull();
+        expect(f?.newTickets?.[0]?.status).toBe("pending");
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+        rmSync(home, { recursive: true, force: true });
+      }
+    }));
+
+  test("firstmate 홈 미설정이면 신관례 티켓은 그대로 뜨되 상태는 비어 있다", async () =>
+    withDataDir(async (dataDir) => {
+      const projectRoot = makeProjectRoot();
+      try {
+        const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
+        const body = FeaturesResponse.parse(await (await app.request("/api/features/widget")).json());
+        const f = body.features.find((x) => x.slug === "tauri-desktop-app");
+        expect(f?.newTickets?.[0]?.num).toBe("04");
+        expect(f?.newTickets?.[0]?.backlogStatus).toBeNull();
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+      }
+    }));
+});
+
+/**
  * 안 읽은 티켓(unread-tickets-show-themselves/01) — 판정 자체는 core(`applyReadState`)와
  * core-io(`plan-store.test.ts`)가 이미 잰다. 여기서 보는 것은 **라우트가 그 둘을 잇는가**다.
  */
