@@ -52,8 +52,9 @@ app.get(
   upgradeWebSocket(() => ({
     onOpen: (_e, ws) => {
       hub.add(ws);
-      // 늦게 붙은 클라이언트에게도 폴백 상태는 참해야 한다 — 방송 시점에 없었으면 못 받는다.
-      if (watchFallbackActive) ws.send(JSON.stringify({ kind: "watch-fallback", active: true }));
+      // 늦게 붙었거나 **다시** 붙은 클라이언트에게도 폴백 상태는 참해야 한다(INV-3) — 전환 방송은
+      // 그 순간 연결된 소켓만 닿으니, 열림마다 현재 상태를 greeting 으로 넘긴다(회복 포함).
+      ws.send(JSON.stringify({ kind: "watch-fallback", active: watchFallbackActive }));
     },
     onClose: (_e, ws) => hub.remove(ws),
   })),

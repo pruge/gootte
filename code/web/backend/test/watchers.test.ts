@@ -43,6 +43,7 @@ function makeProject(root: string, slug: string, feature: string, tickets: Recor
 describe("startWatchers", () => {
   let root = "";
   let dataDir = "";
+  let home = "";
   let watchers: Watchers | null = null;
 
   afterEach(async () => {
@@ -50,8 +51,10 @@ describe("startWatchers", () => {
     watchers = null;
     if (root) rmSync(root, { recursive: true, force: true });
     if (dataDir) rmSync(dataDir, { recursive: true, force: true });
+    if (home) rmSync(home, { recursive: true, force: true });
     root = "";
     dataDir = "";
+    home = "";
     clearDiscoverCache();
   });
 
@@ -156,6 +159,50 @@ describe("startWatchers", () => {
       await watchers.rebind([]);
 
       expect(events.filter((e) => e.kind === "watch-fallback")).toEqual([
+        { kind: "watch-fallback", active: true },
+        { kind: "watch-fallback", active: false },
+      ]);
+    });
+
+    test("data/ 없는 홈으로 재묶으면 폴백이 유지되고, data/ 가 생긴 뒤의 재묶음에서 회복한다", async () => {
+      // watchBacklog 은 <home>/data/ 가 없으면 **생성 중 동기로** onError 를 울린다. 재묶음이
+      // 그 방금 표시를 덮어 버리면 폴백 폴러가 이르게 내려 조용한 stale(INV-3)이 된다 —
+      // 설정 저장(server.ts 와 같은 배선) → 재묶음 → 최종 방송 상태를 실제 fs 로 잰다.
+      root = mkdtempSync(join(tmpdir(), "gootte-watchers-"));
+      dataDir = mkdtempSync(join(tmpdir(), "gootte-watchers-db-"));
+      home = mkdtempSync(join(tmpdir(), "gootte-watchers-home-")); // 일부러 data/ 를 만들지 않는다
+      makeProject(root, "alpha", "shipped", {});
+      const events: ChangeEvent[] = [];
+      watchers = startWatchers({
+        roots: [root],
+        dataDir,
+        firstmateHome: home,
+        onChange: (e) => events.push(e),
+      });
+      expect(events).toEqual([{ kind: "watch-fallback", active: true }]);
+
+      const app = createApp({
+        roots: [root],
+        treehouse: NO_TREEHOUSE,
+        dataDir,
+        onFirstmateHomeChange: (h) => void watchers?.rebindBacklog(h),
+      });
+      const put = () =>
+        app.request("/api/settings", {
+          method: "PUT",
+          body: JSON.stringify({ firstmateHome: home }),
+          headers: { "content-type": "application/json" },
+        });
+
+      expect((await put()).status).toBe(200);
+      await sleep(100); // 재묶음의 마이크로태스크 뒤처리가 모두 흐른 뒤의 최종 상태를 본다
+      // 동기 실패 위에 시작 뒤 해제가 얹히면 여기서 spurious active:false 가 찍힌다.
+      expect(events).toEqual([{ kind: "watch-fallback", active: true }]);
+
+      mkdirSync(join(home, "data"), { recursive: true }); // 감시 가능해졌다 — 같은 길로 회복하는가
+      expect((await put()).status).toBe(200);
+      await sleep(100);
+      expect(events).toEqual([
         { kind: "watch-fallback", active: true },
         { kind: "watch-fallback", active: false },
       ]);
