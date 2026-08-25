@@ -591,6 +591,23 @@ describe("ensureReadSeed — 처음 올라간 순간 있던 티켓만 읽음으�
     expect(readReadMarks(dataDir, "alpha")).toEqual(new Set(["f/issues/01-x.md"]));
   });
 
+  test("🔴 신관례 티켓도 깔린다 — 씨앗 없이 판정하면 초록이 못 뜬다(실제 결함)", () => {
+    const f = featureWithTickets("f", ["issues/01-x.md"]);
+    f.newTickets = [
+      {
+        ...f.tickets[0]!,
+        num: "01",
+        slug: "T01-y",
+        path: "tickets/T01-y.md",
+        title: "티켓 tickets/T01-y.md",
+      },
+    ];
+    ensureReadSeed(dataDir, "alpha", [f]);
+    expect(readReadMarks(dataDir, "alpha")).toEqual(
+      new Set(["f/issues/01-x.md", "f/tickets/T01-y.md"]),
+    );
+  });
+
   test("다른 프로젝트는 따로 깐다", () => {
     ensureReadSeed(dataDir, "alpha", [featureWithTickets("f", ["issues/01-x.md"])]);
     expect(readReadMarks(dataDir, "bravo")).toEqual(new Set());

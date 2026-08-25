@@ -446,6 +446,40 @@ const SEARCH_DATA: FeaturesResponse = {
         },
       ],
     },
+    // 신관례(tickets/) 전용 기능 — 검색이 newTickets 제목도 찾는다(실제 결함 회귀).
+    {
+      slug: "notify",
+      title: "notify — 알림",
+      status: "pending",
+      sourceStatus: "ready-for-agent",
+      statusKnown: true,
+      docs: [
+        {
+          kind: "dir",
+          name: "tickets",
+          path: "tickets",
+          children: [{ kind: "file", name: "T01-push.md", path: "tickets/T01-push.md" }],
+        },
+      ],
+      tickets: [],
+      newTickets: [
+        {
+          num: "01",
+          slug: "T01-push",
+          path: "tickets/T01-push.md",
+          title: "푸시 발송",
+          status: "pending",
+          sourceStatus: null,
+          statusKnown: true,
+          blockedBy: [],
+          unreadableBlockedBy: [],
+          waitingOn: [],
+          startable: true,
+          workedBy: [],
+          needsCaptainEye: false,
+        },
+      ],
+    },
   ],
 };
 
@@ -498,6 +532,16 @@ describe("FeaturesView — 검색 상자가 기능과 티켓을 찾아 준다(a-
     expect(heading.closest("button")).toHaveAttribute("aria-expanded", "true");
     expect(getByFullText("소셜 로그인")).toBeInTheDocument();
     // 이름도 티켓도 안 걸린 카드는 사라진다.
+    expect(screen.queryByRole("heading", { name: "결제" })).toBeNull();
+  });
+
+  it("🔴 신관례(tickets/) 티켓 제목으로도 걸린다 — 검색이 두 관례를 합쳐 읽는다(실제 결함)", () => {
+    renderView(SEARCH_DATA);
+    fireEvent.change(searchBox(), { target: { value: "푸시" } });
+    const heading = screen.getByRole("heading", { name: "알림" });
+    expect(heading.closest("button")).toHaveAttribute("aria-expanded", "true");
+    expect(getByFullText("푸시 발송")).toBeInTheDocument();
+    // 안 걸린 카드는 사라진다.
     expect(screen.queryByRole("heading", { name: "결제" })).toBeNull();
   });
 

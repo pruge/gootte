@@ -271,6 +271,56 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
     "",
   ].join("\n");
 
+  // 백로그에서 이미 끝난 모양 — done 절의 `- [x]`. 사이드바(openFeatures) 회귀 시험이 쓴다.
+  // 조인은 <parent>-t<NN> 자식에 부모 메모의 Artifacts 경로를 쓰므로 부모 항목도 함께 둔다.
+  const DONE_BACKLOG = [
+    "# Backlog",
+    "",
+    "## Done",
+    "- [x] widget-tauri-t04 - New-convention docs tree (repo: widget) (kind: ship) (done: 2026-08-25)",
+    "- [x] widget-tauri - Tauri desktop app (repo: widget) (kind: ship) (done: 2026-08-25)",
+    "  Artifacts: projects/widget/docs/features/tauri-desktop-app/. Decisions D1-D5 in grill.md.",
+    "",
+  ].join("\n");
+
+  /**
+   * 🔴 사이드바(`GET /api/projects` 의 `openFeatures`)도 **조인 뒤에 세야 한다** — 신관례
+   * 티켓은 파일에 상태가 없어 조인 없이는 전부 pending 이고, 백로그에서 다 끝난 기능까지
+   * "남은 일 있음" 으로 셰진다(실제 결함, 2026-08-25 실측: firstmate 2 → 실제 0).
+   */
+  test("사이드바 카운트(openFeatures)는 백로그 조인 뒤에 센다 — 다 끝난 신관례 기능은 세지 않는다", async () =>
+    withDataDir(async (dataDir) => {
+      const projectRoot = makeProjectRoot();
+      const home = makeFirstmateHome(DONE_BACKLOG);
+      try {
+        const count = async () =>
+          ProjectsResponse.parse(
+            await (
+              await createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir }).request(
+                "/api/projects",
+              )
+            ).json(),
+          ).projects.find((p) => p.slug === "widget")?.openFeatures;
+
+        // 조인 전(홈 미설정 = 백로그 없음): 티켓 상태를 모르니 pending — 남은 일 있는 기능 1개.
+        expect(await count()).toBe(1);
+
+        // 홈을 설정해 조인하면: 그 티켓은 백로그에서 done — 더 이상 남은 일이 아니다.
+        await createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir }).request(
+          "/api/settings",
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ firstmateHome: home }),
+          },
+        );
+        expect(await count()).toBe(0);
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+        rmSync(home, { recursive: true, force: true });
+      }
+    }));
+
   test("부모 메모 + <parent>-t<NN> 로 조인되면 티켓에 백로그 상태가 실린다", async () =>
     withDataDir(async (dataDir) => {
       const projectRoot = makeProjectRoot();
@@ -889,6 +939,37 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
         });
         expect(res.status).toBe(400);
         expect(ApiError.parse(await res.json()).error).toContain("99-ghost");
+      }));
+
+    test("🔴 신관례(tickets/) 티켓을 끌어도 400 이 아니다 — 존재 판정이 두 관례를 합쳐 본다(실제 결함)", () =>
+      withDataDir(async (dataDir) => {
+        // 픽스처를 통째로 복사해 신관례 전용 기능을 심는다 — 원본 fixture 는 건드리지 않는다.
+        const projectRoot = mkdtempSync(join(tmpdir(), "gootte-app-root-"));
+        cpSync(FIXTURES, projectRoot, { recursive: true });
+        mkdirSync(join(projectRoot, "alpha/docs/features/new-conv/tickets"), { recursive: true });
+        writeFileSync(
+          join(projectRoot, "alpha/docs/features/new-conv/tickets/T01.md"),
+          "# T01 — 신관례 샘플\n\n## Depends on\n- nothing\n",
+        );
+        try {
+          const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
+          place(dataDir, "new-conv", "active", 0);
+          const res = await app.request("/api/plan/alpha/step", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              feature: "new-conv",
+              ticket: "T01",
+              target: { kind: "unranked" },
+            }),
+          });
+          expect(res.status).toBe(200);
+          expect(readSteps(dataDir, "alpha")).toEqual([
+            { feature: "new-conv", ticket: "T01", step: 9999 },
+          ]);
+        } finally {
+          rmSync(projectRoot, { recursive: true, force: true });
+        }
       }));
 
     test("작업 대상 밖의 기능은 400", () =>

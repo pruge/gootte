@@ -1,4 +1,5 @@
 import type { Feature } from "@gootte/contract";
+import { allTickets } from "./features";
 
 /**
  * 안 읽은 티켓 판정 — 순수(INV-4, unread-tickets-show-themselves/01).
@@ -16,10 +17,19 @@ export function applyReadState(
   readMarks: ReadonlySet<string> | null,
 ): Feature[] {
   return features.map((f) => {
-    const tickets = f.tickets.map((t) => ({
+    // 두 관례를 같은 표식으로 심는다 — `tickets/` 만 쓰는 기능의 티켓도 안 읽음이 될 수 있어야
+    // 한다(실제 결함, 2026-08 캡틴 보고). 병합 읽기는 `allTickets` 하나뿐이다.
+    const mark = (t: Feature["tickets"][number]) => ({
       ...t,
       unread: readMarks !== null && !readMarks.has(readMarkKey(f.slug, t.path)),
-    }));
-    return { ...f, tickets, hasUnreadTicket: tickets.some((t) => t.unread) };
+    });
+    const tickets = f.tickets.map(mark);
+    const newTickets = f.newTickets?.map(mark);
+    return {
+      ...f,
+      tickets,
+      newTickets,
+      hasUnreadTicket: allTickets({ ...f, tickets, newTickets }).some((t) => t.unread),
+    };
   });
 }

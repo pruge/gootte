@@ -1,4 +1,4 @@
-import { computeDisplaySteps, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
+import { allTickets, computeDisplaySteps, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
 import {
   clearStep,
   defaultPlanDataDir,
@@ -65,7 +65,8 @@ function assertActiveTicket(
 ): void {
   const f = readFeatures(projectPath).find((x) => x.slug === feature);
   if (!f) throw new CliError(`기능 없음: ${feature}`);
-  if (!f.tickets.some((t) => t.slug === ticket)) throw new CliError(`티켓 없음: ${feature}/${ticket}`);
+  if (!allTickets(f).some((t) => t.slug === ticket))
+    throw new CliError(`티켓 없음: ${feature}/${ticket}`);
   const row = readPlacements(dataDir, project).find((p) => p.feature === feature);
   if (!row || row.area !== "active") {
     throw new CliError(`${feature} 는 작업 대상에 없다 — 단계를 매길 수 없다`);
@@ -159,7 +160,7 @@ export function boardText(
     for (const card of cards) {
       lines.push(`- ${card.feature.slug}`);
       if (id !== "active") continue;
-      for (const t of card.feature.tickets) {
+      for (const t of allTickets(card.feature)) {
         const step = displaySteps[card.feature.slug]?.[t.slug];
         const label = step === undefined ? "-" : step === UNRANKED_STEP ? "9999" : String(step);
         lines.push(`    [${label}] ${t.slug} ${t.title}`);

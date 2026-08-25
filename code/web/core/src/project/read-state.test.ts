@@ -74,4 +74,30 @@ describe("applyReadState", () => {
     const [result] = applyReadState([feature("f", [])], new Set());
     expect(result!.hasUnreadTicket).toBe(false);
   });
+
+  test("🔴 신관례 티켓도 안 읽음이 된다 — tickets/ 만 쓰는 기능의 초록이 죽지 않는다(실제 결함)", () => {
+    const f = feature("f", [ticket("issues/01-a.md")]);
+    f.newTickets = [ticket("tickets/T01-b.md")];
+
+    // 신관례 티켓만 안 읽음이고, 머리글도 함께 초록이다.
+    const [result] = applyReadState([f], new Set(["f/issues/01-a.md"]));
+    expect(result!.newTickets?.map((t) => t.unread)).toEqual([true]);
+    expect(result!.hasUnreadTicket).toBe(true);
+
+    // 신관례 티켓을 읽으면 초록이 내려간다.
+    const [read] = applyReadState(
+      [f],
+      new Set(["f/issues/01-a.md", "f/tickets/T01-b.md"]),
+    );
+    expect(read!.newTickets?.map((t) => t.unread)).toEqual([false]);
+    expect(read!.hasUnreadTicket).toBe(false);
+  });
+
+  test("🔴 신관례 티켓도 null 기록에서는 조용한 쪽으로 기운다(INV-U1)", () => {
+    const f = feature("f", []);
+    f.newTickets = [ticket("tickets/T01-b.md")];
+    const [result] = applyReadState([f], null);
+    expect(result!.newTickets?.every((t) => t.unread === false)).toBe(true);
+    expect(result!.hasUnreadTicket).toBe(false);
+  });
 });

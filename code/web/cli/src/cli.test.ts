@@ -90,6 +90,13 @@ describe("cli — step · step --clear · board · next(plan-board/05)", () => {
     expect(() => stepText([slug(), "f/99-x", "1"], dataDir, proj)).toThrow(/티켓 없음/);
   });
 
+  it("step — 🔴 신관례(tickets/) 티켓에도 단계를 매긴다 — 존재 판정이 두 관례를 합쳐 본다(실제 결함)", () => {
+    w(proj, "docs/features/g/tickets/T01.md", "# T01 — c\n\n## Depends on\n- nothing\n");
+    activate(dataDir, slug(), "g");
+    expect(stepText([slug(), "g/T01", "1"], dataDir, proj)).toBe("g/T01 → 1단계");
+    expect(readSteps(dataDir, slug())).toContainEqual({ feature: "g", ticket: "T01", step: 1 });
+  });
+
   it("step — 🔴 --why 를 비롯해 어떤 플래그도 받지 않는다", () => {
     expect(() => stepText([slug(), "f/01-a", "1", "--why", "이유"], dataDir, proj)).toThrow(
       /받지 않는다/,
@@ -138,6 +145,17 @@ describe("cli — step · step --clear · board · next(plan-board/05)", () => {
     expect(out).toContain("## 작업 대상 (1)");
     expect(out).toContain("[1] 01-a a");
     expect(out).toContain("[9999] 02-b b");
+  });
+
+  it("board — 🔴 신관례(tickets/) 티켓도 작업 대상 줄에 나온다 — 출력이 두 관례를 합쳐 읽는다(실제 결함)", () => {
+    w(proj, "docs/features/g/tickets/T01.md", "# T01 — c\n\n## Depends on\n- nothing\n");
+    activate(dataDir, slug(), "g");
+    stepText([slug(), "g/T01", "2"], dataDir, proj);
+    const out = boardText([slug()], dataDir, proj);
+    // 신관례 전용 기능 g 가 작업 대상에 뜨고, 그 티켓 줄도 매겨진 단계와 함께 나온다.
+    expect(out).toContain("## 작업 대상 (1)");
+    expect(out).toContain("- g");
+    expect(out).toMatch(/\[\d+\] T01 c/);
   });
 
   it("board — 🔴 어떤 플래그도 받지 않는다", () => {
