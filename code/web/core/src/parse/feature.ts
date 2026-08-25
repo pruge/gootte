@@ -158,9 +158,14 @@ export function parseBlockedBy(content: string): string[] {
 // markdown 링크의 목적지 — `[...](<경로>)` 에서 괄호 안만 뗀다. 표시 문구(대괄호 안)는 안 본다 —
 // 사람이 이모지·굵게로 아무렇게나 꾸밀 수 있고, 이미 그렇게 쓰이고 있다(cross-feature-blocker/spec).
 const MD_LINK_PATH = /]\(([^)]+)\)/;
-// 경로에서 "<기능>/issues/<번호>-" 만 뜯는다 — `../../` 깊이는 몇이든 상관없다. 기능과 번호를
-// 둘 다 경로 자체가 담고 있으므로 추정이 필요 없다.
-const CROSS_FEATURE_PATH = /([^/]+)\/issues\/(\d{1,3})-/;
+// 경로에서 "<기능>/issues/<번호>-"(구관례) 와 "<기능>/tickets/T<번호>.md"(신관례) 를 뜯는다 —
+// `../../` 깊이는 몇이든 상관없다. 기능과 번호를 둘 다 경로 자체가 담고 있으므로 추정이 필요 없다.
+// 두 관례의 파일명 모양이 다르다(both-conventions-are-first-class/T02): 구관례는 번호 뒤 하이픈이
+// 필수(01-x.md), 신관례는 접두 T 에 하이픈이 없다(T04.md). 관례 목록은 ticket-path.ts:21 이
+// `(issues|tickets)` 로 이미 적은 것과 같은 뜻이고, 번호에서 T 를 걷는 것도 ticket-path.ts:45 의
+// /^[Tt]?(\d{1,3})/ 과 같은 뜻이다. 신관례 폴더의 티켓은 T<NN>.md 뿐이다 — README 같은
+// 안내문은 티켓이 아니므로 여기서도 안 풀린다(null).
+const CROSS_FEATURE_PATH = /([^/]+)\/(?:issues\/(\d{1,3})-|tickets\/[Tt](\d{1,3})\.md$)/;
 
 /** markdown 링크 하나가 가리키는 기능·티켓 — 경로에서만 읽는다(표시 문구는 안 본다). */
 export interface CrossFeatureRef {
@@ -180,7 +185,8 @@ export function parseCrossFeatureRef(text: string): CrossFeatureRef | null {
   if (!path) return null;
   const m = CROSS_FEATURE_PATH.exec(path);
   if (!m) return null;
-  return { feature: m[1] as string, num: m[2] as string };
+  // 어느 관례로 풀렸나에 따라 번호가 둘째·셋째 잡음군 중 하나로 온다 — 값은 같은 뜻("03").
+  return { feature: m[1] as string, num: (m[2] ?? m[3]) as string };
 }
 
 // H2 헤딩 한 줄("## " 뒤). H3 이상("###")은 이 접두를 매치하지 않는다 — "결과" 회고 문단

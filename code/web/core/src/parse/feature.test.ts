@@ -299,6 +299,22 @@ describe("parseCrossFeatureRef — markdown 링크의 경로에서 기능·번�
     // parseCrossFeatureRef 는 waitingOn 에서 numKey 가 실패한 항목에만 시도된다.
     expect(parseCrossFeatureRef("[02](02-x.md)")).toBeNull();
   });
+
+  it("🔴 신관례(both-conventions-are-first-class/T02) — `<기능>/tickets/T<번호>.md` 도 기능·번호로 풀린다", () => {
+    expect(parseCrossFeatureRef("[T03](../../other-feature/tickets/T03.md)")).toEqual({
+      feature: "other-feature",
+      num: "03",
+    });
+  });
+
+  it("신관례 폴더의 비티켓 파일(tickets/README.md)은 티켓이 아니므로 안 풀린다", () => {
+    expect(parseCrossFeatureRef("[안내](../../other-feature/tickets/README.md)")).toBeNull();
+  });
+
+  it("신관례라도 번호 접두 T 없는 파일명(T 가 아니라 그냥 숫자)은 이 자리의 모양이 아니다", () => {
+    // ticket-path.ts 와 같은 뜻 — 신관례 폴더의 티켓은 T<NN>.md 뿐이다(INV-4, 추정 금지).
+    expect(parseCrossFeatureRef("[03](../../other-feature/tickets/03.md)")).toBeNull();
+  });
 });
 
 describe("parseTicket — 번호·제목·상태·선행 네 가지", () => {
