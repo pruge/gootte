@@ -1,6 +1,12 @@
 /**
  * firstmate 홈 백로그(`data/backlog.md`, tasks-axi) 파서 — 문자열 → 구조. 순수·결정적(INV-4).
  * 서식 SoT 는 firstmate 자신(`bin/fm-tasks-axi-lib.sh`) — 여기는 그 출력을 읽기만 한다(INV-2).
+ *
+ * 🔴 `## Archived <date>` 헤딩(`data/done-archive.md`, tasks-axi 가 오래된 done 항목을 옮겨
+ * 두는 자리)도 `done` 절로 받는다(tauri-desktop-app T05 검수) — 조인(`joinTicketBacklog`)이
+ * 살아있는 `backlog.md` 하나만 보면, 완료된 하위 티켓이 아카이빙되는 순간 조인이 끊겨 완료
+ * 표시가 사라진다(INV-1·INV-2·INV-4 는 그대로: 캐시 없이 두 파일을 매번 다시 읽어 병합할
+ * 뿐이다 — `code/web/core-io/src/backlog.ts` 참고).
  */
 
 export type BacklogSection = "in_flight" | "queued" | "done";
@@ -21,7 +27,13 @@ const SECTION_HEADING: Readonly<Record<string, BacklogSection>> = {
   Queued: "queued",
   Done: "done",
 };
+const ARCHIVED_HEADING = /^Archived\b/;
 const HEADING = /^##\s+(.+?)\s*$/;
+
+/** 헤딩 텍스트 → 절. `Archived 2026-08-24` 같은 done-archive.md 헤딩도 done 으로 받는다. */
+function sectionForHeading(heading: string): BacklogSection | null {
+  return SECTION_HEADING[heading] ?? (ARCHIVED_HEADING.test(heading) ? "done" : null);
+}
 const TASK_LINE = /^-\s\[([ xX])\]\s+(\S+)\s-\s(.*)$/;
 const REPO_TAG = /\(repo:\s*([^)]+)\)/;
 const DATE_TAG = /\((?:since|merged|done):?\s*([^)]+)\)/;
@@ -42,7 +54,7 @@ export function parseBacklog(content: string): BacklogTaskDoc[] {
   for (const line of content.split("\n")) {
     const headingMatch = HEADING.exec(line);
     if (headingMatch) {
-      section = SECTION_HEADING[headingMatch[1] as string] ?? null;
+      section = sectionForHeading(headingMatch[1] as string);
       current = null;
       continue;
     }

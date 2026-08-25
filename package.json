@@ -13,9 +13,8 @@
     "dev:frontend": "bash scripts/dev-frontend.sh",
     "dev": "bash scripts/dev.sh",
     "dev:stop": "bash scripts/dev-stop.sh",
-    "tauri:dev": "bash scripts/tauri-dev.sh",
-    "tauri:build": "bash scripts/tauri-build.sh",
-    "e2e": "pnpm -C code/web/frontend e2e",
-    "dev:desktop-app": "bash scripts/tauri-dev.sh"
+    "dev:tauri": "bash scripts/tauri-dev.sh",
+    "build:tauri": "bash scripts/tauri-build.sh",
+    "e2e": "pnpm -C code/web/frontend e2e"
   }
 }

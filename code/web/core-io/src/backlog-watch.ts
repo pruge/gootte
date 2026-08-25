@@ -6,11 +6,20 @@ import chokidar, { type FSWatcher } from "chokidar";
  * firstmate 홈 백로그 감시(tauri-desktop-app T03) — tasks-axi 백로그 파일이 바뀌면 신호 하나.
  * 상태의 단일 출처는 백로그다(spec D4 사관장 확정 b안) — 그 파일이 바뀌는 순간을 놓치면 화면이
  * 옛 상태를 그린다(INV-3). 해석은 리더(T04)의 몫이고 여기선 "바뀌었다" 만 말한다(INV-4).
+ *
+ * 🔴 살아있는 `backlog.md` 뿐 아니라 `done-archive.md`(tasks-axi 가 오래된 done 항목을 옮겨
+ * 두는 자리)도 같은 `data/` 디렉토리 안이라 이 감시기 하나가 둘 다 본다(tauri-desktop-app T05
+ * 검수 — 완료된 하위 티켓이 아카이빙되면 조인이 끊기던 결함의 수정, `code/web/core-io/src/backlog.ts`).
  */
 
 /** 백로그 파일 한 곳 — `<firstmateHome>/data/backlog.md`. 리더(T04)도 이 함수 하나를 지난다. */
 export function backlogFile(firstmateHome: string): string {
   return join(firstmateHome, "data", "backlog.md");
+}
+
+/** 아카이브 백로그 파일 — `<firstmateHome>/data/done-archive.md`(tasks-axi 가 오래된 done 항목을 옮기는 자리). */
+export function archivedBacklogFile(firstmateHome: string): string {
+  return join(firstmateHome, "data", "done-archive.md");
 }
 
 export interface BacklogWatcher {
@@ -48,6 +57,7 @@ export function watchBacklog(
 
   const debounceMs = opts.debounceMs ?? 150;
   const target = backlogFile(home);
+  const archivedTarget = archivedBacklogFile(home);
   const dir = dirname(target);
 
   if (!existsSync(dir)) {
@@ -74,7 +84,7 @@ export function watchBacklog(
     opts.onError?.(err);
   });
   watcher.on("all", (_ev, abs) => {
-    if (basename(abs) === basename(target)) fire();
+    if (basename(abs) === basename(target) || basename(abs) === basename(archivedTarget)) fire();
   });
 
   return {
