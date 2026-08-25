@@ -14,7 +14,11 @@ export interface PlanWatcher {
  * SQLite WAL 모드는 `plan.db-wal`·`plan.db-shm` 도 같이 건드리므로 셋 다 지켜본다.
  * 디렉토리 자체(`depth: 0`)를 보고 파일명으로 걸러 — 파일이 아직 없어도(첫 쓰기 전) 감시가 선다.
  */
-export function watchPlanDb(dataDir: string, onChange: () => void, opts: { debounceMs?: number } = {}): PlanWatcher {
+export function watchPlanDb(
+  dataDir: string,
+  onChange: () => void,
+  opts: { debounceMs?: number; onError?: (err: unknown) => void } = {},
+): PlanWatcher {
   mkdirSync(dataDir, { recursive: true });
   const debounceMs = opts.debounceMs ?? 150;
   const dbBase = "plan.db";
@@ -33,6 +37,8 @@ export function watchPlanDb(dataDir: string, onChange: () => void, opts: { debou
   watcher.on("error", (err) => {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[watch] plan.db 감시 실패(계속 진행): ${msg}\n`);
+    // 감시 불가는 폴백 판단의 근거다(tauri-desktop-app T03) — 소비처가 폴러로 갈아타게 통보한다.
+    opts.onError?.(err);
   });
   watcher.on("all", (_ev, abs) => {
     if (basename(abs).startsWith(dbBase)) fire();

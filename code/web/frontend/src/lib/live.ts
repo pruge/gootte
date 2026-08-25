@@ -12,8 +12,17 @@ function liveUrl(): string {
  * - kind:"project" → 그 프로젝트 쿼리(queryKey 에 slug 포함) invalidate.
  * - kind:"projects" → projects 쿼리 invalidate.
  * - kind:"plan" → 계획(DB) 워처는 project 를 모른다(development-order/07) — `plan` 쿼리 전부 invalidate.
+ * - kind:"backlog" (tauri-desktop-app T03) → firstmate 홈 백로그가 바뀌었다(T04 조인 원천).
+ *   어느 프로젝트 줄에 섞일지 모르는 coarse 신호라 전부 invalidate — 결정적 리더가 다시 읽는다(INV-4).
+ * - kind:"watch-fallback" (T03) → 서버 FS 이벤트 감시 불과. `active:true` 면 폴백 폴러를
+ *   돌려 주기 풀스캔으로 대응하고, `active:false` 가 오면 내린다. 이벤트가 안 온다는 뜻이지
+ *   연결이 끊겼다는 뜻이 아니다 — WS 재연결 시의 전체 invalidate와는 별개다.
  * - 끊기면 backoff 재연결, 재연결 open 시 전체 invalidate(끊긴 새 놓친 변경 흡수).
  */
+
+/** 폴백 폴링 주기 — 감시 불가 환경에서의 최악의 stale 폭. 수 초 반영 기준의 상한선이다. */
+const FALLBACK_POLL_MS = 5_000;
+
 export function useLiveSync(qc: QueryClient): void {
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -21,6 +30,16 @@ export function useLiveSync(qc: QueryClient): void {
     let firstOpen = true;
     let retry: ReturnType<typeof setTimeout> | null = null;
     let backoff = 500;
+    /** 폴백 폴러 — watch-fallback active 동안만 살아 있는 타이머 하나. 평소엔 없다(CPU 안정). */
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    const setFallbackPolling = (active: boolean): void => {
+      if (active && !pollTimer) {
+        pollTimer = setInterval(() => void qc.invalidateQueries(), FALLBACK_POLL_MS);
+      } else if (!active && pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
 
     const connect = (): void => {
       ws = new WebSocket(liveUrl());
@@ -51,6 +70,11 @@ export function useLiveSync(qc: QueryClient): void {
           void qc.invalidateQueries({
             predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "plan",
           });
+        } else if (ev.kind === "backlog") {
+          // 백로그 조인은 어느 프로젝트/탭에 섞일지 모르는 coarse 신호다 — 전부 다시 읽는다.
+          void qc.invalidateQueries();
+        } else if (ev.kind === "watch-fallback") {
+          setFallbackPolling(ev.active);
         } else {
           void qc.invalidateQueries({
             predicate: (q) => Array.isArray(q.queryKey) && q.queryKey.includes(ev.project),
@@ -72,6 +96,7 @@ export function useLiveSync(qc: QueryClient): void {
     return () => {
       disposed = true;
       if (retry) clearTimeout(retry);
+      if (pollTimer) clearInterval(pollTimer);
       ws?.close();
     };
   }, [qc]);

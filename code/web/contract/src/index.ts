@@ -212,11 +212,18 @@ export type FeatureDocResponse = z.infer<typeof FeatureDocResponse>;
  * `projects` = 프로젝트 추가/삭제 → projects 쿼리 invalidate(+서버 discover-cache bust).
  * `plan` = gootte 자기 계획 저장소(`plan.db`)가 바뀌었다(드래그 또는 CLI) → project 는 없다,
  *   파일 워처는 어느 프로젝트인지 모르니(development-order/07) `plan` 쿼리 전부 invalidate.
+ * `backlog` = firstmate 홈 백로그 파일이 바뀌었다(tauri-desktop-app T03) → 백로그 조인을 다시
+ *   읽어라(T04). 어느 프로젝트인지 모르는 coarse 신호다 — 조인하는 뷰 전부가 다시 읽는다.
+ * `watch-fallback` = FS 이벤트 감시를 쓸 수 없다(tauri-desktop-app T03) → `active:true` 면
+ *   프론트가 주기 풀스캔(invalidate 전체)으로 대응하고, 감시가 회복하면 `active:false` 가 온다.
+ *   이벤트 경로가 죽었다는 뜻이 아니라 **이벤트가 안 온다는** 뜻이다 — 폴백 폴러의 유일한 근거.
  */
 export const ChangeEvent = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("project"), project: z.string() }),
   z.object({ kind: z.literal("projects") }),
   z.object({ kind: z.literal("plan") }),
+  z.object({ kind: z.literal("backlog") }),
+  z.object({ kind: z.literal("watch-fallback"), active: z.boolean() }),
 ]);
 export type ChangeEvent = z.infer<typeof ChangeEvent>;
 

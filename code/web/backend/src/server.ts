@@ -18,22 +18,31 @@ const dataDir = planDataDir();
  * 규칙: 설정값이 기본값을 이긴다. 감시기도 이 값을 따라가야 live 갱신이 사용자가 정한 폴더를
  * 덮는다(INV-3). 설정 파일을 못 읽으면 기본값으로 서비스를 계속한다 — 앱 기동을 죽이지 않는다.
  */
-const savedWatchRoot = (() => {
+const savedSettings = (() => {
   try {
-    return readSettings(dataDir).watchRoot;
+    return readSettings(dataDir);
   } catch {
     return null;
   }
 })();
+const savedWatchRoot = savedSettings?.watchRoot ?? null;
+/** 부팅 시점의 firstmate 홈(tauri-desktop-app T03) — 백로그 감시기의 시작 뿌리. 미설정이면 감시 없음. */
+const savedFirstmateHome = savedSettings?.firstmateHome ?? null;
 const watcherRoots = (watchRoot: string | null): string[] => (watchRoot ? [watchRoot] : roots);
 
 const hub = createLiveHub();
+/**
+ * 지금 폴백 폴링 모드인가(tauri-desktop-app T03) — 접속이 늦은 클라이언트도 알아야 한다.
+ * 방송은 이미 연결된 소켓만 닿으니, 열림 순간 마지막 상태를 한 줄 greeting 으로 넘긴다(INV-3).
+ */
+let watchFallbackActive = false;
 const app = createApp({
   roots,
   dataDir,
-  // PUT /api/settings 가 감시 루트를 바꾸면 문서 감시기를 새 뿌리로 다시 묶는다 — 일반화된
-  // 재구성 프레임워크가 아니라 있던 startWatchers 위의 배선 한 가닥이다(전체 FS 감시는 T03).
+  // PUT /api/settings 가 감시 루트·firstmate 홈을 바꾸면 해당 감시기를 새 값으로 다시 묶는다 —
+  // 일반화된 재구성 프레임워크가 아니라 있던 startWatchers 위의 배선이다(T02 문서 · T03 백로그).
   onWatchRootChange: (watchRoot) => void watchers.rebind(watcherRoots(watchRoot)),
+  onFirstmateHomeChange: (firstmateHome) => void watchers.rebindBacklog(firstmateHome),
 });
 
 // WS `/api/live` — 실시간 push 채널(2b, ADR-0002). 🔴 캐치올(mountFallback) *전*에 등록해야 `*` 에 안 먹힘.
@@ -41,21 +50,31 @@ const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 app.get(
   "/api/live",
   upgradeWebSocket(() => ({
-    onOpen: (_e, ws) => hub.add(ws),
+    onOpen: (_e, ws) => {
+      hub.add(ws);
+      // 늦게 붙었거나 **다시** 붙은 클라이언트에게도 폴백 상태는 참해야 한다(INV-3) — 전환 방송은
+      // 그 순간 연결된 소켓만 닿으니, 열림마다 현재 상태를 greeting 으로 넘긴다(회복 포함).
+      ws.send(JSON.stringify({ kind: "watch-fallback", active: watchFallbackActive }));
+    },
     onClose: (_e, ws) => hub.remove(ws),
   })),
 );
 mountFallback(app);
 
-// 문서·계획 감시기 → coarse invalidate broadcast (INV-3 웹 실현, plan-board/09).
-// 둘을 한 함수(startWatchers)로 함께 세운다 — 하나만 세우고 잊는 일이 없게.
-// 시작 뿌리는 저장된 감시 루트가 이긴다(위 watcherRoots) — 부팅부터 설정값을 본다.
+// 문서·계획·백로그 감시기 → coarse invalidate broadcast (INV-3 웹 실현, plan-board/09 · tauri-desktop-app T03).
+// 셋을 한 함수(startWatchers)로 함께 세운다 — 하나만 세우고 잊는 일이 없게. 어느 하나라도
+// 감시 불가면 watch-fallback 신호가 나가고 프론트가 주기 풀스캔으로 갈아탄다.
+// 시작 뿌리는 저장된 설정값이 이긴다(위 watcherRoots·savedFirstmateHome) — 부팅부터 설정값을 본다.
 let watchers: Watchers;
 {
   const w = startWatchers({
     roots: watcherRoots(savedWatchRoot),
     dataDir,
-    onChange: (c) => hub.broadcast(c),
+    firstmateHome: savedFirstmateHome,
+    onChange: (c) => {
+      if (c.kind === "watch-fallback") watchFallbackActive = c.active;
+      hub.broadcast(c);
+    },
     onProjectsChange: clearDiscoverCache,
   });
   watchers = w;
@@ -64,7 +83,7 @@ let watchers: Watchers;
 const server = serve({ fetch: app.fetch, port }, (info) => {
   process.stdout.write(`gootte backend → http://localhost:${info.port}\n`);
   process.stdout.write(`  discover roots: ${roots.join(", ")}\n`);
-  process.stdout.write(`  live: WS /api/live · watcher on(문서·계획)\n`);
+  process.stdout.write(`  live: WS /api/live · watcher on(문서·계획·백로그)\n`);
 });
 injectWebSocket(server);
 

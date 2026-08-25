@@ -34,7 +34,7 @@ function Harness({ qc }: { qc: QueryClient }) {
 const invalidated = (qc: QueryClient, key: unknown[]): boolean =>
   qc.getQueryState(key)?.isInvalidated ?? false;
 
-describe("useLiveSync (023)", () => {
+describe("useLiveSync", () => {
   let qc: QueryClient;
 
   beforeEach(() => {
@@ -90,6 +90,48 @@ describe("useLiveSync (023)", () => {
     ws.emit({ kind: "projects" });
     expect(invalidated(qc, ["projects"])).toBe(true);
     expect(invalidated(qc, ["plan", "alpha"])).toBe(false);
+  });
+
+  it("backlog 메시지(tauri-desktop-app T03) → 전체 invalidate(조인이 어느 뷰에 섞일지 모르는 coarse)", () => {
+    qc.setQueryData(["projects"], []);
+    qc.setQueryData(["plan", "alpha"], 1);
+    qc.setQueryData(["doc", "alpha", "todo", "x"], 1);
+    render(<Harness qc={qc} />);
+    const ws = MockWS.instances[0]!;
+    ws.open();
+
+    expect(invalidated(qc, ["projects"])).toBe(false);
+    ws.emit({ kind: "backlog" });
+    // 백로그 조인(T04)은 어느 프로젝트 줄에 섞일지 모른다 — 결정적 리더가 전부 다시 읽게 한다(INV-4).
+    expect(invalidated(qc, ["projects"])).toBe(true);
+    expect(invalidated(qc, ["plan", "alpha"])).toBe(true);
+    expect(invalidated(qc, ["doc", "alpha", "todo", "x"])).toBe(true);
+  });
+
+  it("watch-fallback(tauri-desktop-app T03): active:true → 주기 풀스캔 폴러, active:false → 해제(CPU 안정)", () => {
+    vi.useFakeTimers();
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    render(<Harness qc={qc} />);
+    const ws = MockWS.instances[0]!;
+    ws.open();
+
+    ws.emit({ kind: "watch-fallback", active: true });
+    vi.advanceTimersByTime(5_000);
+    expect(spy).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(5_000);
+    expect(spy).toHaveBeenCalledTimes(2);
+
+    // 회복 신호 → 폴러 해제. 이후 아무리 기다려도 invalidate 가 늘지 않는다.
+    ws.emit({ kind: "watch-fallback", active: false });
+    spy.mockClear();
+    vi.advanceTimersByTime(60_000);
+    expect(spy).not.toHaveBeenCalled();
+
+    // 같은 신호가 되풀이돼도 타이머는 하나다 — 중복 기동 없음.
+    ws.emit({ kind: "watch-fallback", active: true });
+    ws.emit({ kind: "watch-fallback", active: true });
+    vi.advanceTimersByTime(5_000);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it("잘못된 메시지는 무시(invalidate 없음)", () => {
