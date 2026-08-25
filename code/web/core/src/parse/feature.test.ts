@@ -8,6 +8,7 @@ import {
   parseCrossFeatureRef,
   parseFeatureSpec,
   parseNeedsCaptainEye,
+  parseNewTicket,
   parseStatusLine,
   parseTicket,
 } from "./feature";
@@ -460,5 +461,54 @@ describe("parseFeatureSpec", () => {
 
   it("표제가 없으면 폴더명", () => {
     expect(parseFeatureSpec("some-feature", "본문뿐\n").title).toBe("some-feature");
+  });
+});
+
+describe("parseNewTicket — `## Depends on` 을 읽는다(T01)", () => {
+  // 실물 서식(tauri-desktop-app/tickets/T04.md 끝부분) — 여러 줄 목록이다.
+  const t = (body: string) =>
+    parseNewTicket(
+      "T03.md",
+      `# T03 — 제목\n\n## Goal\n본문\n${body}\n\n## Can run in parallel with\n- nothing\n`,
+    );
+
+  it("`- T02` 가 있으면 그 티켓의 의존에 02 가 실린다", () => {
+    const doc = t("## Depends on\n- T02");
+    expect(doc.blockedBy).toEqual(["02"]);
+    expect(doc.unreadableBlockedBy).toEqual([]);
+  });
+
+  it("사유가 붙어도 번호만 읽는다 — `- T02 (경로 설정값)`", () => {
+    expect(t("## Depends on\n- T02 (경로 설정값)").blockedBy).toEqual(["02"]);
+  });
+
+  it("여러 항목을 순서대로 읽고, 중복 번호는 한 번만 싣는다", () => {
+    expect(t("## Depends on\n- T02\n- T03\n- T02 (다시)").blockedBy).toEqual(["02", "03"]);
+  });
+
+  it("`- none`·`- nothing` 선언은 의존 없음으로 읽는다", () => {
+    expect(t("## Depends on\n- none").blockedBy).toEqual([]);
+    expect(parseNewTicket("T01.md", "# T01 — a\n\n## Depends on\n- nothing\n").blockedBy).toEqual([]);
+  });
+
+  it("🔴 절이 없으면 의존 없음 — 옛 관례가 `Blocked by:` 줄 없음을 읽듯(INV-4 일관)", () => {
+    expect(parseNewTicket("T01.md", "# T01 — a\n\n본문뿐이다\n").blockedBy).toEqual([]);
+  });
+
+  it("절의 끝은 다음 헤딩이다 — `Can run in parallel with` 안의 `- nothing` 이 의존을 지우지 않는다", () => {
+    expect(t("## Depends on\n- T02\n\n## Can run in parallel with\n- nothing").blockedBy).toEqual(["02"]);
+  });
+
+  it("번호로 안 풀린 항목은 막히며 verbatim 으로 드러난다(옛 관례와 같은 규율, development-order/17)", () => {
+    const doc = t("## Depends on\n- 자매 기능이 먼저 끝나야");
+    expect(doc.blockedBy).toEqual(["자매 기능이 먼저 끝나야"]);
+    expect(doc.unreadableBlockedBy).toEqual(["자매 기능이 먼저 끝나야"]);
+  });
+
+  it("제목·번호 읽기는 그대로 유지한다(회귀)", () => {
+    const doc = t("## Depends on\n- T02");
+    expect(doc.num).toBe("03");
+    expect(doc.slug).toBe("T03");
+    expect(doc.title).toBe("제목");
   });
 });

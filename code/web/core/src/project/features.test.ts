@@ -257,6 +257,72 @@ describe("buildFeatures — 기능 목록", () => {
   });
 });
 
+describe("buildFeature — 신관례 티켓도 막힘·착수 가능 판정을 받는다(T01)", () => {
+  const docs = (
+    tickets: readonly { file: string; body: string }[],
+    newTickets: readonly { file: string; body: string }[] = [],
+  ) => ({
+    slug: "f",
+    spec: null,
+    tickets: tickets.map((t) => parseTicket(t.file, t.body)),
+    tree: [],
+    newTickets: newTickets.map((t) => parseNewTicket(t.file, t.body)),
+  });
+
+  // 신관례 `## Depends on` 절 — 실물 서식 그대로.
+  const depends = (...nums: string[]) =>
+    ["", "## Depends on", ...nums.map((n) => `- T${n}`)].join("\n");
+
+  it("미완 구관례 선행이 있으면 대기 — 옛 관례와 같은 계산을 거친다", () => {
+    const f = buildFeature(
+      docs([{ file: "01-a.md", body: ticket("ready-for-agent") }], [
+        { file: "T02.md", body: `# T02 — b\n${depends("01")}` },
+      ]),
+    );
+    const t2 = f.newTickets?.find((t) => t.num === "02");
+    expect(t2?.blockedBy).toEqual(["01"]);
+    expect(t2?.waitingOn).toEqual(["01"]);
+    expect(t2?.startable).toBe(false);
+  });
+
+  it("선행이 완료면 착수 가능 — 계산으로 풀린다(파일에 적혀 있지 않아도)", () => {
+    const f = buildFeature(
+      docs([{ file: "01-a.md", body: ticket("resolved (2026-08-01)") }], [
+        { file: "T02.md", body: `# T02 — b\n${depends("01")}` },
+      ]),
+    );
+    const t2 = f.newTickets?.find((t) => t.num === "02");
+    expect(t2?.waitingOn).toEqual([]);
+    expect(t2?.startable).toBe(true);
+  });
+
+  it("🔴 존재하지 않는 번호를 가리키면 계속 막힌 채 남는다(INV-4)", () => {
+    const f = buildFeature(docs([], [{ file: "T02.md", body: `# T02 — b\n${depends("09")}` }]));
+    const t2 = f.newTickets?.find((t) => t.num === "02");
+    expect(t2?.waitingOn).toEqual(["09"]);
+    expect(t2?.startable).toBe(false);
+  });
+
+  it("신관례끼리의 의존도 대기로 판정된다 — 빌드 시점엔 둘 다 백로그 조인 전(pending)이다", () => {
+    const f = buildFeature(
+      docs([], [
+        { file: "T01.md", body: "# T01 — a" },
+        { file: "T02.md", body: `# T02 — b\n${depends("01")}` },
+      ]),
+    );
+    const t2 = f.newTickets?.find((t) => t.num === "02");
+    expect(t2?.waitingOn).toEqual(["01"]);
+    expect(t2?.startable).toBe(false);
+  });
+
+  it("없음 선언(`- none`)은 의존 없음 — 착수 가능이다", () => {
+    const f = buildFeature(docs([], [{ file: "T01.md", body: "# T01 — a\n\n## Depends on\n- none" }]));
+    const t1 = f.newTickets?.[0];
+    expect(t1?.blockedBy).toEqual([]);
+    expect(t1?.startable).toBe(true);
+  });
+});
+
 describe("buildFeatures — 기능을 넘는 markdown 링크 선행(cross-feature-blocker)", () => {
   const docs = (slug: string, ...tickets: { file: string; body: string }[]) => ({
     slug,

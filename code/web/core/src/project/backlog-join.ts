@@ -1,4 +1,5 @@
 import type { Feature, FeatureTicket, TodoStatus } from "@gootte/contract";
+import { featureNums, resolveWaitingOn, type CrossFeatureIndex } from "./features";
 import type { BacklogTaskDoc } from "../parse/backlog";
 
 /**
@@ -66,8 +67,26 @@ function joinTicket(ticket: FeatureTicket, tasks: readonly BacklogTaskDoc[], rep
  * 않는다 — 그쪽 상태의 단일 출처는 여전히 문서다.
  */
 export function applyBacklogStatus(features: readonly Feature[], tasks: readonly BacklogTaskDoc[], repo: string): Feature[] {
-  return features.map((f) => ({
+  const joined = features.map((f) => ({
     ...f,
     newTickets: (f.newTickets ?? []).map((t) => joinTicket(t, tasks, repo, f.slug)),
   }));
+  // 🔴 조인으로 상태가 바뀌었으니 신관례 티켓의 대기·착수 가능도 **다시** 계산한다(INV-3 —
+  // 낡은 뷰 금지). buildFeatures 시점엔 백로그 상태를 모르므로(전부 pending) 신관례끼리의
+  // 의존은 여기서 풀린다. 구관례(`tickets`)는 문서가 상태의 SoT 라 조인이 바꾸지 않으므로
+  // 건드리지 않는다 — 그쪽 판정은 이미 buildFeature 가 끝낸다.
+  const index: CrossFeatureIndex = new Map(
+    joined.map((f) => [f.slug, featureNums([...f.tickets, ...(f.newTickets ?? [])])]),
+  );
+  return joined.map((f) => {
+    const nums = index.get(f.slug);
+    if (!nums) return f;
+    return {
+      ...f,
+      newTickets: (f.newTickets ?? []).map((t) => {
+        const waiting = resolveWaitingOn(t.blockedBy, nums.done, index);
+        return { ...t, waitingOn: waiting, startable: waiting.length === 0 };
+      }),
+    };
+  });
 }

@@ -15,6 +15,11 @@ export interface TicketSpec {
   unread?: boolean;
   /** `## 캡틴 확인` 절 유무(또는 표시 줄)가 계산한 값 — 기본은 필요 없음. */
   needsCaptainEye?: boolean;
+  /**
+   * 선행 번호(`Blocked by:`/`Depends on` 에서 읽힌 그 값, T01) — 기본은 없음(지금과 같다).
+   * 주면 `waitingOn`·`startable` 이 형제 티켓의 완료 여부에서 계산된다(판정 자리와 같은 뜻).
+   */
+  blockedBy?: string[];
 }
 
 /**
@@ -25,6 +30,10 @@ export interface TicketSpec {
  * 🔴 테스트 전용이다 — 패키지 barrel(`plan/index.ts`)에 싣지 않는다.
  */
 export function feature(slug: string, tickets: readonly (string | TicketSpec)[] = []): Feature {
+  const specs: TicketSpec[] = tickets.map((t) => (typeof t === "string" ? { num: t } : t));
+  // 완료 형제 번호 — blockedBy 를 준 티켓의 waitingOn/startable 계산에 쓴다(NaN 은 어디에도
+  // 같지 않으므로 번호로 안 풀리는 산문 선행은 언제나 대기다 — core 판정과 같은 규율).
+  const doneNums = new Set(specs.filter((s) => s.status === "done").map((s) => Number.parseInt(s.num, 10)));
   return {
     slug,
     title: `${slug} — 제목`,
@@ -32,8 +41,8 @@ export function feature(slug: string, tickets: readonly (string | TicketSpec)[] 
     sourceStatus: "draft",
     statusKnown: true,
     docs: [],
-    tickets: tickets.map((t) => {
-      const spec: TicketSpec = typeof t === "string" ? { num: t } : t;
+    tickets: specs.map((spec) => {
+      const waitingOn = (spec.blockedBy ?? []).filter((b) => !doneNums.has(Number.parseInt(b, 10)));
       return {
         num: spec.num,
         slug: `${spec.num}-x`,
@@ -44,10 +53,10 @@ export function feature(slug: string, tickets: readonly (string | TicketSpec)[] 
         statusKnown: true,
         ...(spec.completedAt ? { completedAt: spec.completedAt } : {}),
         ...(spec.unread !== undefined ? { unread: spec.unread } : {}),
-        blockedBy: [],
+        blockedBy: spec.blockedBy ?? [],
         unreadableBlockedBy: [],
-        waitingOn: [],
-        startable: true,
+        waitingOn,
+        startable: waitingOn.length === 0,
         workedBy: [],
         needsCaptainEye: spec.needsCaptainEye ?? false,
       };

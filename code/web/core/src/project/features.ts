@@ -38,7 +38,10 @@ function byNum(a: { num: string; slug: string }, b: { num: string; slug: string 
  * `statusKnown: false` 는 "모른다" 를 뜻하지 "이슈 관례의 알 수 없는 상태" 를 뜻하지 않는다
  * (화면은 `docConvention` 으로 그 둘을 가른다). 백로그 조인은 `applyBacklogStatus` 가 나중에 얹는다.
  */
-function toNewTicket(doc: NewTicketDoc): FeatureTicket {
+function toNewTicket(doc: NewTicketDoc, doneNums: ReadonlySet<number>, crossIndex: CrossFeatureIndex): FeatureTicket {
+  // 옛 관례와 **같은 계산**을 거친다(T01) — `## Depends on` 은 같은 개념의 다른 표기일 뿐이다(F2).
+  // 임자는 여기 없다(상태의 SoT 가 백로그라 claimed 도 문서에 없다).
+  const waiting = waitingOn(doc.blockedBy, doneNums, crossIndex);
   return {
     num: doc.num,
     slug: doc.slug,
@@ -47,10 +50,10 @@ function toNewTicket(doc: NewTicketDoc): FeatureTicket {
     status: "pending",
     sourceStatus: null,
     statusKnown: false,
-    blockedBy: [],
-    unreadableBlockedBy: [],
-    waitingOn: [],
-    startable: true,
+    blockedBy: doc.blockedBy,
+    unreadableBlockedBy: doc.unreadableBlockedBy,
+    waitingOn: waiting,
+    startable: waiting.length === 0,
     workedBy: [],
     needsCaptainEye: false,
     docConvention: "tickets",
@@ -60,7 +63,7 @@ function toNewTicket(doc: NewTicketDoc): FeatureTicket {
 }
 
 /** 기능 하나의 번호 현황 — 다른 기능의 티켓을 가리키는 선행을 풀 때 함께 쓰인다. */
-interface FeatureTicketIndex {
+export interface FeatureNums {
   /** 그 기능에 실재하는 티켓 번호 전부(있다/없다 판정용). */
   readonly all: ReadonlySet<number>;
   /** 그중 완료(`done`)인 것(해제 판정용). */
@@ -68,21 +71,35 @@ interface FeatureTicketIndex {
 }
 
 /** 기능 slug → 그 기능의 번호 현황. 다른 기능의 티켓을 가리키는 선행을 풀 때 찾아본다. */
-type CrossFeatureIndex = ReadonlyMap<string, FeatureTicketIndex>;
+export type CrossFeatureIndex = ReadonlyMap<string, FeatureNums>;
+
+/**
+ * 티켓 무리에서 번호 현황을 만든다 — 두 관례(`issues/`·`tickets/`)를 섞어 넘겨도 된다.
+ * `buildCrossFeatureIndex` 와 백로그 조인 뒤의 재판정(backlog-join, INV-3)이 함께 쓴다.
+ */
+export function featureNums(tickets: readonly { num: string; status: TodoStatus }[]): FeatureNums {
+  const all = new Set<number>();
+  const done = new Set<number>();
+  for (const t of tickets) {
+    const n = numKey(t.num);
+    if (n === null) continue;
+    all.add(n);
+    if (t.status === "done") done.add(n);
+  }
+  return { all, done };
+}
 
 /** 여러 기능 문서에서 `CrossFeatureIndex` 를 만든다 — `buildFeatures` 가 한 번 만들어 전체에 돌린다. */
 function buildCrossFeatureIndex(docsList: readonly FeatureDocs[]): CrossFeatureIndex {
-  const index = new Map<string, FeatureTicketIndex>();
+  const index = new Map<string, FeatureNums>();
   for (const docs of docsList) {
-    const all = new Set<number>();
-    const done = new Set<number>();
-    for (const t of docs.tickets) {
-      const n = numKey(t.num);
-      if (n === null) continue;
-      all.add(n);
-      if (t.status === "done") done.add(n);
-    }
-    index.set(docs.slug, { all, done });
+    // 🔴 신관례(`tickets/`, T01) 티켓의 번호도 같은 색인에 넣는다 — 안 그러면 신관례를
+    // 가리키는/신관례가 거는 기능 간 참조가 "그 기능에 없다" 고 거짓말한다. 빌드 시점의
+    // 신관례 상태는 언제나 백로그 조인 전(pending)이다 — 완료 재판정은 applyBacklogStatus 몫.
+    index.set(
+      docs.slug,
+      featureNums([...docs.tickets, ...(docs.newTickets ?? []).map((t) => ({ ...t, status: "pending" as const }))]),
+    );
   }
   return index;
 }
@@ -101,11 +118,11 @@ function buildCrossFeatureIndex(docsList: readonly FeatureDocs[]): CrossFeatureI
  *   (cross-feature-blocker 티켓). 기능이 없다·티켓이 없다·경로가 애매하면 지금처럼 계속 막는다.
  */
 function waitingOn(
-  ticket: TicketDoc,
+  blockedBy: readonly string[],
   doneNums: ReadonlySet<number>,
   crossIndex: CrossFeatureIndex,
 ): string[] {
-  return ticket.blockedBy.filter((b) => {
+  return blockedBy.filter((b) => {
     const n = numKey(b);
     if (n !== null) return !doneNums.has(n);
     const ref = parseCrossFeatureRef(b);
@@ -117,8 +134,17 @@ function waitingOn(
   });
 }
 
+/** `waitingOn` 의 좁은 창구 — 백로그 조인 뒤의 신관례 재판정(`backlog-join`)이 함께 쓴다(INV-3). */
+export function resolveWaitingOn(
+  blockedBy: readonly string[],
+  doneNums: ReadonlySet<number>,
+  crossIndex: CrossFeatureIndex,
+): string[] {
+  return waitingOn(blockedBy, doneNums, crossIndex);
+}
+
 function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>, crossIndex: CrossFeatureIndex): FeatureTicket {
-  const waiting = waitingOn(doc, doneNums, crossIndex);
+  const waiting = waitingOn(doc.blockedBy, doneNums, crossIndex);
   // 임자 있음 = 문서가 claimed 라고 말한다. 처리중을 만들지는 않는다(그건 applyInProgress 의 몫) —
   // 여기서는 착수 가능 판정에서만 뺀다(work-claims-its-ticket/01 §C).
   const claimed = doc.sourceStatus === "claimed";
@@ -149,8 +175,13 @@ function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>, crossIndex: Cro
  * `buildFeatures` 는 전체 문서로 만든 색인을 넘겨 기능을 넘는 선행도 풀 수 있게 한다.
  */
 export function buildFeature(docs: FeatureDocs, crossIndex?: CrossFeatureIndex): Feature {
+  // 완료 색인에도 두 관례를 섞는다 — 신관례 티켓이 구관례를, 구관례가 신관례를 선행으로
+  // 가리킬 수 있으므로(T01). 빌드 시점엔 신관례 상태가 아직 백로그 조인 전(pending)이라
+  // 실질은 구관례 쪽이 채우고, 조인 뒤의 재판정은 `applyBacklogStatus` 가 한다(INV-3).
   const doneNums = new Set<number>();
   for (const t of docs.tickets) {
+    // 신관례는 이 시점엔 언제나 pending(백로그 조인 전)이라 done 이 나올 수 없다 — 주석은
+    // 취지를 알리는 것이고 실제 필터는 구관례에만 의미가 있다.
     const n = numKey(t.num);
     if (n !== null && t.status === "done") doneNums.add(n);
   }
@@ -163,7 +194,7 @@ export function buildFeature(docs: FeatureDocs, crossIndex?: CrossFeatureIndex):
     statusKnown: docs.spec?.statusKnown ?? false,
     tickets: [...docs.tickets].sort(byNum).map((t) => toTicket(t, doneNums, index)),
     docs: docs.tree,
-    newTickets: [...(docs.newTickets ?? [])].sort(byNum).map(toNewTicket),
+    newTickets: [...(docs.newTickets ?? [])].sort(byNum).map((t) => toNewTicket(t, doneNums, index)),
   };
 }
 
