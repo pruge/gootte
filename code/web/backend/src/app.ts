@@ -17,6 +17,7 @@ import {
 } from "@gootte/contract";
 import {
   applyBacklogStatus,
+  allTickets,
   applyInProgress,
   applyReadState,
   computeDisplaySteps,
@@ -410,7 +411,7 @@ export function createApp(options: AppOptions = {}): Hono {
         const features = readFeatures(proj.path);
         const f = features.find((x) => x.slug === feature);
         if (!f) return c.json({ error: `문서가 없는 기능입니다: ${feature}` } satisfies ApiError, 400);
-        if (!f.tickets.some((t) => t.slug === ticket)) {
+        if (!allTickets(f).some((t) => t.slug === ticket)) {
           return c.json(
             { error: `문서가 없는 티켓입니다: ${feature}/${ticket}` } satisfies ApiError,
             400,

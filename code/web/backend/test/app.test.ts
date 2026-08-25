@@ -891,6 +891,37 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
         expect(ApiError.parse(await res.json()).error).toContain("99-ghost");
       }));
 
+    test("🔴 신관례(tickets/) 티켓을 끌어도 400 이 아니다 — 존재 판정이 두 관례를 합쳐 본다(실제 결함)", () =>
+      withDataDir(async (dataDir) => {
+        // 픽스처를 통째로 복사해 신관례 전용 기능을 심는다 — 원본 fixture 는 건드리지 않는다.
+        const projectRoot = mkdtempSync(join(tmpdir(), "gootte-app-root-"));
+        cpSync(FIXTURES, projectRoot, { recursive: true });
+        mkdirSync(join(projectRoot, "alpha/docs/features/new-conv/tickets"), { recursive: true });
+        writeFileSync(
+          join(projectRoot, "alpha/docs/features/new-conv/tickets/T01.md"),
+          "# T01 — 신관례 샘플\n\n## Depends on\n- nothing\n",
+        );
+        try {
+          const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
+          place(dataDir, "new-conv", "active", 0);
+          const res = await app.request("/api/plan/alpha/step", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              feature: "new-conv",
+              ticket: "T01",
+              target: { kind: "unranked" },
+            }),
+          });
+          expect(res.status).toBe(200);
+          expect(readSteps(dataDir, "alpha")).toEqual([
+            { feature: "new-conv", ticket: "T01", step: 9999 },
+          ]);
+        } finally {
+          rmSync(projectRoot, { recursive: true, force: true });
+        }
+      }));
+
     test("작업 대상 밖의 기능은 400", () =>
       withDataDir(async (dataDir) => {
         const res = await post(dataDir, {

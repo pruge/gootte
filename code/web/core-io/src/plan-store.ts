@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import type { Feature } from "@gootte/contract";
 import { Placement } from "@gootte/contract";
-import { applyReadState, planAutoClose, planReopen, type PlanWritePlan } from "@gootte/core";
+import { applyReadState, allTickets, planAutoClose, planReopen, type PlanWritePlan } from "@gootte/core";
 
 /**
  * 계획 저장소 — SQLite, gootte 자기 저장소(INV-2 — 관리대상에는 아무것도 안 쓴다. INV-2 가
@@ -382,7 +382,7 @@ export function ensureReadSeed(dataDir: string, project: string, features: reado
       const insertMark = db.prepare(
         `INSERT OR IGNORE INTO read_mark (project, feature, path) VALUES (?, ?, ?)`,
       );
-      for (const f of features) for (const t of f.tickets) insertMark.run(project, f.slug, t.path);
+      for (const f of features) for (const t of allTickets(f)) insertMark.run(project, f.slug, t.path);
       db.prepare(`INSERT INTO read_seed (project, seeded_at) VALUES (?, ?)`).run(
         project,
         new Date().toISOString(),

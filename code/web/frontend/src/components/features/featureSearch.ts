@@ -1,4 +1,5 @@
 import type { Feature } from "@gootte/contract";
+import { allTickets } from "@gootte/core";
 
 /**
  * 검색 걸러내기 결과 — 카드 하나가 왜 남았는지까지 들고 있다.
@@ -62,7 +63,7 @@ export function filterFeaturesBySearch(
   const matches: FeatureSearchMatch[] = [];
   for (const feature of features) {
     const nameMatches = includesQuery(feature.title, normalizedQuery);
-    const ticketMatches = feature.tickets.some((t) => includesQuery(t.title, normalizedQuery));
+    const ticketMatches = allTickets(feature).some((t) => includesQuery(t.title, normalizedQuery));
     if (nameMatches || ticketMatches) {
       matches.push({ feature, forceExpanded: ticketMatches });
     }
