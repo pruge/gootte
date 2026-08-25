@@ -7,7 +7,7 @@ import type {
   UnreadableCopy,
 } from "@gootte/contract";
 import { parseTicketPath } from "../parse/ticket-path";
-import { sortFeatures } from "./features";
+import { allTickets, sortFeatures } from "./features";
 
 /**
  * "지금 붙들려 있는 일" 계산 — 순수(INV-4). 입력은 **격리 사본 관측 결과**지 문서가 아니다.
@@ -87,7 +87,9 @@ export function applyInProgress(
   scan: CopyScan,
 ): { features: Feature[]; inProgress: InProgressSummary } {
   const known = new Set<string>();
-  for (const f of features) for (const t of f.tickets) known.add(key(f.slug, t.slug));
+  // 🔴 두 관례 다 본다(실제 결함 2026-08) — 옛 관례만 세던 시절엔 신관례 티켓을 건드린 작업이
+  // 무조건 '티켓 미상'으로 세어졌다.
+  for (const f of features) for (const t of allTickets(f)) known.add(key(f.slug, t.slug));
 
   const branchesByTicket = new Map<string, string[]>();
   const unknown: UnmappedWork[] = [];
@@ -115,17 +117,24 @@ export function applyInProgress(
 
   let tickets = 0;
   const unclaimed: UnclaimedTicket[] = [];
-  const marked = features.map((f) => ({
-    ...f,
-    tickets: f.tickets.map((t) => {
+  const marked = features.map((f) => {
+    // 두 관례를 같은 함수로 심는다 — 신관례 티켓도 처리중이 되고 workedBy 를 실린다.
+    // 'claimed 인데 사본 없음' 판정은 옛 관례의 원문 상태에서만 걸린다(신관례 sourceStatus 는
+    // 백로그 SoT 앞에서 늘 null 이다).
+    const mark = (t: FeatureTicket): FeatureTicket => {
       const next = markTicket(t, branchesByTicket.get(key(f.slug, t.slug)) ?? []);
       if (next.status === "in_progress") tickets += 1;
       else if (t.sourceStatus === "claimed") {
         unclaimed.push({ feature: f.slug, ticket: t.slug, title: t.title });
       }
       return next;
-    }),
-  }));
+    };
+    return {
+      ...f,
+      tickets: f.tickets.map(mark),
+      newTickets: f.newTickets?.map(mark),
+    };
+  });
 
   // 정렬은 여기서 한 번만 일어난다(티켓 03) — `marked` 라야 처리중이 실려 있다.
   // `features`(입력, 문서만 본 순서)는 아직 처리중을 모르니 여기가 그 사실이 다 모이는 자리다.
