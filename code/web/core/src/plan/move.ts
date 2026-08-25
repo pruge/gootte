@@ -1,4 +1,5 @@
 import type { Feature, Placement, PlanArea, PlanMoveRequest } from "@gootte/contract";
+import { allTickets } from "../project/features";
 import { assignSteps } from "./auto-step";
 import { compareBySeq } from "./board";
 import { ticketBoxState } from "./close";
@@ -91,7 +92,10 @@ export function planMove(
       ? moved
           .filter((slug) => !wasActive(slug))
           .flatMap((slug) => {
-            const tickets = featureOf.get(slug)?.tickets ?? [];
+            // 두 관례를 합쳐 읽는다 — 신관례 전용 기능이면 옛 관례만 보던 시절엔 [] 라서
+            // 단계 행이 아예 안 심어졌다(실제 결함, 2026-08 캡틴 보고).
+            const f = featureOf.get(slug);
+            const tickets = f ? allTickets(f) : [];
             const steps = assignSteps(tickets);
             // 끝난 티켓(done·dropped)에는 행 자체를 만들지 않는다(D2) — 단계 화면에는
             // 남은 일만 선다. 선행으로서의 몫은 assignSteps 가 계산에서 이미 한다.

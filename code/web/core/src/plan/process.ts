@@ -1,4 +1,5 @@
 import type { PlanCard } from "@gootte/contract";
+import { allTickets } from "../project/features";
 import { ticketBoxState, type TicketBoxState } from "./close";
 import { UNRANKED_STEP } from "./move";
 
@@ -43,7 +44,9 @@ export function groupProcessSteps(cards: readonly PlanCard[]): ProcessStepGroup[
   const byStep = new Map<number, ProcessRow[]>();
   for (const card of cards) {
     const steps = card.steps ?? {};
-    for (const ticket of card.feature.tickets) {
+    // 두 관례를 합쳐 읽는다 — 신관례 전용 기능이 여기서 다시 걸러져 groups 가 비고
+    // process 탭이 빈 메시지를 띄웠다(실제 결함, 2026-08 캡틴 보고).
+    for (const ticket of allTickets(card.feature)) {
       const step = steps[ticket.slug];
       if (step === undefined) continue;
       const row: ProcessRow = {

@@ -66,6 +66,20 @@ describe("featureFullyChecked — 저절로 닫히는 유일한 조건(plan-boar
       featureFullyChecked(feature("mixed-open", [resolved("01", "2026-08-01"), wontfix("02"), "03"])),
     ).toBe(false);
   });
+
+  it("🔴 신관례 전용 기능(옛 관례 티켓 0장)도 다 끝나면 닫는다 — 옛 관례만 보던 시절엔 영영 닫히지 않았다", () => {
+    expect(
+      featureFullyChecked(
+        feature("new-done", [
+          { ...resolved("01", "2026-08-01"), newConvention: true },
+          { ...resolved("02", "2026-08-02"), newConvention: true },
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      featureFullyChecked(feature("new-open", [{ num: "01", newConvention: true }])),
+    ).toBe(false);
+  });
 });
 
 describe("documentCompletedOn — 문서가 말하는 완료 날짜", () => {
@@ -86,6 +100,14 @@ describe("documentCompletedOn — 문서가 말하는 완료 날짜", () => {
   it("남은 티켓을 안고 닫힌 카드도 끝난 티켓의 날짜는 말한다", () => {
     const f = feature("f", [resolved("01", "2026-08-02"), "02"]);
     expect(documentCompletedOn(f)).toBe("2026-08-02");
+  });
+
+  it("🔴 신관례 티켓의 완료일도 후보다 — 두 관례를 합쳐 가장 늦은 것", () => {
+    const f = feature("f", [
+      resolved("01", "2026-08-02"),
+      { ...resolved("02", "2026-08-09"), newConvention: true },
+    ]);
+    expect(documentCompletedOn(f)).toBe("2026-08-09");
   });
 });
 
@@ -132,6 +154,15 @@ describe("planAutoClose — gootte 가 스스로 쓰는 단 한 순간", () => {
     const wontfixOnly = feature("w", [wontfix("01")]);
     const plan = planAutoClose([wontfixOnly], []);
     expect(plan?.upsert).toEqual([{ feature: "w", area: "done", seq: 0, closedAt: null }]);
+  });
+
+  it("🔴 신관례 전용 기능도 다 끝나면 저절로 닫힌다 — 옛 관례만 보던 시절엔 영영 자동 완료되지 않았다", () => {
+    const newDone = feature("new-done", [
+      { ...resolved("01", "2026-08-01"), newConvention: true },
+      { num: "02", newConvention: true, status: "dropped", sourceStatus: "wontfix" },
+    ]);
+    const plan = planAutoClose([newDone], [row("new-done", "active", 0)]);
+    expect(plan?.upsert).toEqual([{ feature: "new-done", area: "done", seq: 0, closedAt: null }]);
   });
 
   it("🔴 전부 폐기로 닫힌 카드는 닫힌 날짜가 없다 — 지어내지 않는다", () => {
@@ -249,6 +280,15 @@ describe("planReopen — 예약·폐기·완료의 카드는 안 읽은 티켓�
 
   it("🔴 티켓이 한 장도 없는 기능은 올리지 않는다", () => {
     expect(planReopen([feature("a")], [row("a", "done", 0)])).toBeNull();
+  });
+
+  it("🔴 신관례 전용 기능의 안 읽은 티켓도 대기로 되올린다 — 옛 관례만 보던 시절엔 새 티켓이 붙어도 안 돌아왔다", () => {
+    const f = feature("new-only", [
+      { num: "01", newConvention: true, unread: false },
+      { num: "02", newConvention: true, unread: true },
+    ]);
+    const plan = planReopen([f], [row("new-only", "done", 0)]);
+    expect(plan?.remove).toEqual(["new-only"]);
   });
 
   it("🔴 작업 대상 카드는 안 읽은 티켓이 있어도 건드리지 않는다 — 캡틴 범위 밖", () => {

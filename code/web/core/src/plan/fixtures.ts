@@ -20,6 +20,10 @@ export interface TicketSpec {
    * 주면 `waitingOn`·`startable` 이 형제 티켓의 완료 여부에서 계산된다(판정 자리와 같은 뜻).
    */
   blockedBy?: string[];
+  /** 신관례 칸(`tickets/T<NN>.md`, T04)으로 넣는다 — 기본은 옛 관례(`issues/`). slug·path 를
+   * core-io 가 실물에서 뽑는 모양(`T04` · `tickets/T04.md`)으로 만든다.
+   */
+  newConvention?: boolean;
 }
 
 /**
@@ -34,6 +38,28 @@ export function feature(slug: string, tickets: readonly (string | TicketSpec)[] 
   // 완료 형제 번호 — blockedBy 를 준 티켓의 waitingOn/startable 계산에 쓴다(NaN 은 어디에도
   // 같지 않으므로 번호로 안 풀리는 산문 선행은 언제나 대기다 — core 판정과 같은 규율).
   const doneNums = new Set(specs.filter((s) => s.status === "done").map((s) => Number.parseInt(s.num, 10)));
+  const toTicket = (spec: TicketSpec) => {
+    const waitingOn = (spec.blockedBy ?? []).filter((b) => !doneNums.has(Number.parseInt(b, 10)));
+    return {
+      num: spec.num,
+      // 신관례는 core-io 가 실물에서 뽑는 모양 그대로 — slug 에 접미가 없고 경로가 tickets/ 다.
+      slug: spec.newConvention ? `T${spec.num}` : `${spec.num}-x`,
+      path: spec.newConvention ? `tickets/T${spec.num}.md` : `issues/${spec.num}-x.md`,
+      title: `티켓 ${spec.num}`,
+      status: spec.status ?? "pending",
+      sourceStatus: spec.sourceStatus ?? "draft",
+      statusKnown: true,
+      ...(spec.completedAt ? { completedAt: spec.completedAt } : {}),
+      ...(spec.unread !== undefined ? { unread: spec.unread } : {}),
+      blockedBy: spec.blockedBy ?? [],
+      unreadableBlockedBy: [],
+      waitingOn,
+      startable: waitingOn.length === 0,
+      workedBy: [],
+      needsCaptainEye: spec.needsCaptainEye ?? false,
+      ...(spec.newConvention ? ({ docConvention: "tickets", backlogStatus: null } as const) : {}),
+    };
+  };
   return {
     slug,
     title: `${slug} — 제목`,
@@ -41,26 +67,10 @@ export function feature(slug: string, tickets: readonly (string | TicketSpec)[] 
     sourceStatus: "draft",
     statusKnown: true,
     docs: [],
-    tickets: specs.map((spec) => {
-      const waitingOn = (spec.blockedBy ?? []).filter((b) => !doneNums.has(Number.parseInt(b, 10)));
-      return {
-        num: spec.num,
-        slug: `${spec.num}-x`,
-        path: `issues/${spec.num}-x.md`,
-        title: `티켓 ${spec.num}`,
-        status: spec.status ?? "pending",
-        sourceStatus: spec.sourceStatus ?? "draft",
-        statusKnown: true,
-        ...(spec.completedAt ? { completedAt: spec.completedAt } : {}),
-        ...(spec.unread !== undefined ? { unread: spec.unread } : {}),
-        blockedBy: spec.blockedBy ?? [],
-        unreadableBlockedBy: [],
-        waitingOn,
-        startable: waitingOn.length === 0,
-        workedBy: [],
-        needsCaptainEye: spec.needsCaptainEye ?? false,
-      };
-    }),
+    tickets: specs.filter((s) => !s.newConvention).map(toTicket),
+    // 신관례 칸(T04) — 신관례 전용 기능도 만들 수 있게 한다. 옛 관례 티켓이 하나도 없으면
+    // `tickets` 는 실물과 같이 빈 배열이다.
+    newTickets: specs.filter((s) => s.newConvention).map(toTicket),
   };
 }
 

@@ -20,7 +20,7 @@ const ticket = (num: string, slug: string, over: Partial<FeatureTicket> = {}): F
   ...over,
 });
 
-const feature = (slug: string, tickets: FeatureTicket[]): Feature => ({
+const feature = (slug: string, tickets: FeatureTicket[], newTickets?: FeatureTicket[]): Feature => ({
   slug,
   title: slug,
   status: "pending",
@@ -28,6 +28,7 @@ const feature = (slug: string, tickets: FeatureTicket[]): Feature => ({
   statusKnown: true,
   tickets,
   docs: [],
+  ...(newTickets ? { newTickets } : {}),
 });
 
 const copy = (slug: string, branch: string, touched: string[] = []): ObservedCopy => ({
@@ -78,6 +79,19 @@ describe("parseTicketPath — 경로 하나가 티켓을 가리키는가", () =>
   it("번호 없는 티켓 파일도 버리지 않는다 — num 만 빈 문자열", () => {
     expect(parseTicketPath("docs/features/auth/issues/hotfix.md")?.slug).toBe("hotfix");
     expect(parseTicketPath("docs/features/auth/issues/hotfix.md")?.num).toBe("");
+  });
+
+  it("🔴 신관례 tickets/T<NN>.md 도 티켓이다 — 옛 관례만 보던 시절엔 미상으로 세어졌다(실제 결함 2026-08)", () => {
+    expect(parseTicketPath("docs/features/new-feature/tickets/T01.md")).toEqual({
+      feature: "new-feature",
+      slug: "T01",
+      num: "01",
+    });
+  });
+
+  it("티켓이 아닌 것은 신관례 폴더에서도 티켓이 아니다", () => {
+    expect(parseTicketPath("docs/features/new-feature/tickets/README.md")).toBeNull();
+    expect(parseTicketPath("docs/features/new-feature/tickets/nested/T01.md")).toBeNull();
   });
 });
 
@@ -258,5 +272,51 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
       scan([copy("pool/1", "fm/x", ["docs/features/auth/issues/02-screen.md"])]),
     );
     expect(find([...FEATURES], "auth", "02-screen")?.status).toBe("pending");
+  });
+
+  describe("🔴 신관례(T04) — tickets/T<NN>.md 도 처리중이 된다(실제 결함 2026-08)", () => {
+    // 신관례 전용 기능 — 옛 관례 티켓 0장. core-io 가 실물에서 뽑는 모양 그대로.
+    const newTicket = (num: string): FeatureTicket => ({
+      num,
+      slug: `T${num}`,
+      path: `tickets/T${num}.md`,
+      title: `티켓 T${num}`,
+      status: "pending",
+      sourceStatus: null,
+      statusKnown: false,
+      blockedBy: [],
+      unreadableBlockedBy: [],
+      waitingOn: [],
+      startable: true,
+      workedBy: [],
+      needsCaptainEye: false,
+      docConvention: "tickets",
+      backlogStatus: null,
+    });
+
+    it("작업 가지의 커밋이 건드린 신관례 티켓이 처리중이 되고 workedBy 를 실는다", () => {
+      const f = feature("new-only", [], [newTicket("01"), newTicket("02")]);
+      const marked = applyInProgress(
+        [f],
+        scan([copy("pool/2", "fm/t", ["docs/features/new-only/tickets/T01.md"])]),
+      );
+      const t = marked.features[0]?.newTickets?.find((x) => x.slug === "T01");
+      expect(t?.status).toBe("in_progress");
+      expect(t?.workedBy).toEqual(["fm/t"]);
+      // 안 건드린 형제는 그대로고, 요약 계수에도 한 번만 센다.
+      expect(marked.features[0]?.newTickets?.find((x) => x.slug === "T02")?.status).toBe("pending");
+      expect(marked.inProgress.tickets).toBe(1);
+      expect(marked.inProgress.unknown).toEqual([]);
+    });
+
+    it("옛 관례만 보던 시절의 모습 — 신관례 작업은 미상으로 세어졌다(지금은 아니다)", () => {
+      const f = feature("new-only", [], [newTicket("01")]);
+      const marked = applyInProgress(
+        [f],
+        scan([copy("pool/3", "fm/u", ["docs/features/new-only/tickets/T01.md", "code/web/src/a.ts"])]),
+      );
+      expect(marked.inProgress.unknown).toEqual([]);
+      expect(marked.inProgress.working).toBe(1);
+    });
   });
 });

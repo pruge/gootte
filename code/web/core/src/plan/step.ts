@@ -1,4 +1,5 @@
 import type { Feature, Placement } from "@gootte/contract";
+import { allTickets } from "../project/features";
 import { ticketBoxState } from "./close";
 import { UNRANKED_STEP, type StepRow } from "./move";
 
@@ -24,7 +25,8 @@ function indexActiveSteps(
   // 실제 티켓만 담는다. 폐기도 당김에서는 완료와 같다(plan-board/12) — 폐기뿐인 단계도 빈다.
   const checkedOf = new Map<string, boolean>();
   for (const slug of activeSlugs) {
-    for (const t of featureOf.get(slug)?.tickets ?? []) {
+    // 두 관례를 합쳐 본다 — 신관례 전용 기능의 단계도 여기서 걸러지지 않아야 한다.
+    for (const t of allTickets(featureOf.get(slug)!)) {
       checkedOf.set(`${slug}/${t.slug}`, ticketBoxState(t) !== "open");
     }
   }

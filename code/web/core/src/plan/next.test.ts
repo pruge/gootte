@@ -36,6 +36,23 @@ describe("computeNext — 작업 대상의 표시 1단계만(plan-board/05, spec
     expect(computeNext(features, placements, steps)).toEqual([]);
   });
 
+  it("🔴 신관례 전용 기능의 티켓도 '다음' 이 된다 — 옛 관례만 보던 시절엔 못 찾았다", () => {
+    const features = [
+      feature("new-only", [
+        { num: "01", newConvention: true },
+        { num: "02", newConvention: true },
+      ]),
+    ];
+    const placements = [row("new-only", "active", 0)];
+    const steps: StepRow[] = [
+      { feature: "new-only", ticket: "T01", step: 1 },
+      { feature: "new-only", ticket: "T02", step: 2 },
+    ];
+    expect(computeNext(features, placements, steps)).toEqual([
+      { feature: "new-only", ticket: "T01", title: "티켓 01", needsCaptainEye: false },
+    ]);
+  });
+
   it("예약·폐기·완료 칸의 기능은 나오지 않는다", () => {
     const features = [feature("r", ["01"]), feature("d", ["02"]), feature("done", ["03"])];
     const placements = [row("r", "reserved", 0), row("d", "discarded", 1), row("done", "done", 2)];

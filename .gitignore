@@ -14,3 +14,5 @@ code/web/.ports.worktree
 # tauri 셸 빌드 산물(code/web/src-tauri) — cargo target 과 codegen 스키마.
 code/web/src-tauri/target/
 code/web/src-tauri/gen/
+# 격리 사본이 GOOTTE_DATA_DIR 을 여기 안으로 갈라 놓을 때의 계획 DB(머신 로컬).
+.gootte-data/
