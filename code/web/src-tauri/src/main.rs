@@ -324,7 +324,7 @@ fn spawn_children(cfg: &StackConfig) -> Result<(), String> {
         let dist = cfg.root.join("code/web/frontend/dist/index.html");
         if !dist.is_file() {
             return Err(format!(
-                "{} 가 없다 — preview 모드는 프론트엔드 빌드 산물이 필요하다(`pnpm tauri:build` 를 써라)",
+                "{} 가 없다 — preview 모드는 프론트엔드 빌드 산물이 필요하다(`pnpm build:tauri` 를 써라)",
                 dist.display()
             ));
         }

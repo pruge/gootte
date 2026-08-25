@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/tauri-build.sh — pnpm tauri:build 진입점. 완성 .app 을 만든다.
+# scripts/tauri-build.sh — pnpm build:tauri 진입점. 완성 .app 을 만든다.
 #
 # 순서: 프론트엔드 빌드(tsc + vite build → frontend/dist) → tauri build.
 # 완성 앱은 release 셸이 vite preview(dist 서빙 + /api·WS 프록시)와 hono backend 를
