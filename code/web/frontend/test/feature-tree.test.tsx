@@ -491,6 +491,21 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     }
   });
 
+  it("🔴 조인된 신관례 티켓이 선행이 있으면 '대기 → 02' 로 보여준다(T01)", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
+      newTickets: [
+        newTicket({ waitingOn: ["02"], startable: false, backlogStatus: "pending" }),
+      ],
+    };
+    renderCard(feature);
+    open();
+    const row = screen.getByText("신관례 문서 표시").closest("button")!;
+    expect(within(row).getByText("대기")).not.toHaveClass("invisible");
+    expect(within(row).getByText("→ 02")).toBeInTheDocument();
+  });
+
   /**
    * 🔴 회귀 — `tickets/` 만 쓰는 기능(구관례 `tickets` 배열은 비어 있다)의 카드 머리글이
    * "남은 일 0 · 완료 0 · 착수 가능 0 · 처리중 0" 을 보여줘 클릭해서 펼치기 전까지는 아무 일도
@@ -508,5 +523,20 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     expect(screen.getByText(/착수 가능 1/)).toBeInTheDocument();
     // 🔴 남은 일이 있으면 `plan` 버튼이 뜬다(development-order/16 ④) — 0으로 세면 이 버튼도 사라진다.
     expect(screen.getByRole("button", { name: "plan" })).toBeInTheDocument();
+  });
+
+  it("🔴 신관례 티켓의 startable 이 실제 값으로 집계된다 — 대기 중인 티켓은 착수 가능 수에서 뺀다(T01)", () => {
+    const feature: Feature = {
+      ...BASE,
+      tickets: [],
+      docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
+      newTickets: [
+        newTicket({ num: "01", slug: "T01", backlogStatus: "pending" }), // 착수 가능
+        newTicket({ num: "02", slug: "T02", blockedBy: ["01"], waitingOn: ["01"], startable: false, backlogStatus: "pending" }),
+      ],
+    };
+    renderCard(feature);
+    expect(screen.getByText(/남은 일 2/)).toBeInTheDocument();
+    expect(screen.getByText(/착수 가능 1/)).toBeInTheDocument();
   });
 });

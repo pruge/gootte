@@ -244,13 +244,13 @@ describe("GET /api/features/:slug", () => {
  * **라우트가 설정된 firstmateHome 을 실제로 읽어 잇는가**다.
  */
 describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
-  function makeProjectRoot(ticketFile = "T04.md"): string {
+  function makeProjectRoot(ticketFile = "T04.md", ticketBody = "# T04 — 신관례 문서 표시\n"): string {
     const parent = mkdtempSync(join(tmpdir(), "gootte-app-t04-"));
     const featDir = join(parent, "widget", "docs", "features", "tauri-desktop-app");
     mkdirSync(join(featDir, "tickets"), { recursive: true });
     writeFileSync(join(parent, "widget", "AGENTS.md"), "# widget\n"); // discoverProjects 판정(F3)
     writeFileSync(join(featDir, "spec.md"), "# 데스크톱 앱\n");
-    writeFileSync(join(featDir, "tickets", ticketFile), "# T04 — 신관례 문서 표시\n");
+    writeFileSync(join(featDir, "tickets", ticketFile), ticketBody);
     return parent;
   }
 
@@ -293,6 +293,26 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
       } finally {
         rmSync(projectRoot, { recursive: true, force: true });
         rmSync(home, { recursive: true, force: true });
+      }
+    }));
+
+  // T01 — 신관례 티켓의 `## Depends on` 도 API 응답에 실린다. 백로그엔 t03 이 없어
+  // 상태를 모르므로(pending) 의존 03 은 계속 대기다 — 응답 모양이 기대와 같은지가 관건.
+  test("신관례 티켓의 Depends on 이 blockedBy·waitingOn·startable 로 응답에 실린다", async () =>
+    withDataDir(async (dataDir) => {
+      const projectRoot = makeProjectRoot("T04.md", "# T04 — 신관례 문서 표시\n\n## Depends on\n- T03 (먼저 끝내기)\n");
+      try {
+        const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
+        const body = FeaturesResponse.parse(await (await app.request("/api/features/widget")).json());
+        const f = body.features.find((x) => x.slug === "tauri-desktop-app");
+        expect(f?.newTickets?.[0]).toMatchObject({
+          num: "04",
+          blockedBy: ["03"],
+          waitingOn: ["03"],
+          startable: false,
+        });
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
       }
     }));
 

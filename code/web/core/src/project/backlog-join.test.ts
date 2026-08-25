@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BacklogTaskDoc } from "../parse/backlog";
+import type { FeatureTicket } from "@gootte/contract";
 import { applyBacklogStatus, joinTicketBacklog } from "./backlog-join";
 import { feature } from "../plan/fixtures";
 
@@ -120,5 +121,63 @@ describe("applyBacklogStatus", () => {
     };
     const [joined] = applyBacklogStatus([withNew], [PARENT], "widget");
     expect(joined?.newTickets?.[0]?.backlogStatus).toBeNull();
+  });
+
+  /** 신관례 티켓 한 장 — blockedBy 를 줄 수 있다(T01). */
+  const newTicket = (
+    num: string,
+    overrides: Partial<FeatureTicket> = {},
+  ): FeatureTicket => ({
+    num,
+    slug: `T${num}`,
+    path: `tickets/T${num}.md`,
+    title: `티켓 T${num}`,
+    status: "pending",
+    sourceStatus: null,
+    statusKnown: false,
+    blockedBy: [],
+    unreadableBlockedBy: [],
+    waitingOn: [],
+    startable: true,
+    workedBy: [],
+    needsCaptainEye: false,
+    docConvention: "tickets",
+    backlogStatus: null,
+    backlogUrl: null,
+    ...overrides,
+  });
+
+  it("🔴 조인으로 선행이 완료되면 신관례 티켓의 대기도 풀린다 — 낡은 뷰 금지(INV-3, T01)", () => {
+    const base = feature("tauri-desktop-app");
+    const withNew = {
+      ...base,
+      newTickets: [
+        newTicket("01"),
+        newTicket("02", { blockedBy: ["01"], waitingOn: ["01"], startable: false }),
+      ],
+    };
+    // T01 은 Done, T02 는 Queued — T02 의 대기가 풀려 착수 가능이어야 한다.
+    const tasks = [PARENT, task({ id: "widget-tauri-t01", section: "done", checked: true }), task({ id: "widget-tauri-t02", section: "queued" })];
+    const [joined] = applyBacklogStatus([withNew], tasks, "widget");
+    expect(joined?.newTickets?.[0]?.status).toBe("done");
+    const t2 = joined?.newTickets?.[1];
+    expect(t2?.waitingOn).toEqual([]);
+    expect(t2?.startable).toBe(true);
+  });
+
+  it("조인 후에도 선행이 미완이면 대기로 남는다(T01)", () => {
+    const base = feature("tauri-desktop-app");
+    const withNew = {
+      ...base,
+      newTickets: [
+        newTicket("01"),
+        newTicket("02", { blockedBy: ["01"], waitingOn: ["01"], startable: false }),
+      ],
+    };
+    const tasks = [PARENT, task({ id: "widget-tauri-t01", section: "in_flight" }), task({ id: "widget-tauri-t02", section: "queued" })];
+    const [joined] = applyBacklogStatus([withNew], tasks, "widget");
+    const t2 = joined?.newTickets?.[1];
+    expect(t2?.waitingOn).toEqual(["01"]);
+    expect(t2?.startable).toBe(false);
   });
 });

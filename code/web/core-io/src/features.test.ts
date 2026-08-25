@@ -235,6 +235,22 @@ describe("readFeatures — 신관례(T04): tickets/·grill.md/design/·wayfinder
     expect(f?.newTickets?.map((t) => t.slug)).toEqual(["T01"]);
   });
 
+  it("🔴 `## Depends on` 을 blockedBy 로 읽고, 미완 선행이 있으면 대기로 판정한다(T01)", () => {
+    spec("f", "# f\n");
+    newTicket("f", "T01.md", "# T01 — a\n\n## Depends on\n- none\n");
+    newTicket("f", "T02.md", "# T02 — b\n\n## Depends on\n- T01 (먼저 끝내기)\n\n## Can run in parallel with\n- nothing\n");
+
+    const [f] = readFeatures(repo);
+    const t1 = f?.newTickets?.find((t) => t.num === "01");
+    const t2 = f?.newTickets?.find((t) => t.num === "02");
+    expect(t1?.blockedBy).toEqual([]);
+    expect(t1?.startable).toBe(true);
+    expect(t2?.blockedBy).toEqual(["01"]);
+    expect(t2?.waitingOn).toEqual(["01"]); // 빌드 시점의 신관례 상태는 백로그 조인 전(pending)
+    expect(t2?.startable).toBe(false);
+    expect(t2?.unreadableBlockedBy).toEqual([]);
+  });
+
   it("grill.md·design/·wayfinder.md 가 실재하면 문서 트리에 그대로 뜬다(원문 열람 경로 재사용)", () => {
     spec("tauri-desktop-app", "# 데스크톱 앱\n");
     doc("tauri-desktop-app", "grill.md", "# Grill\n");

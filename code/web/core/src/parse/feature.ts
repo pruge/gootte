@@ -317,12 +317,78 @@ export function parseFeatureSpec(slug: string, content: string): FeatureSpecDoc 
 // 다만 신관례는 숫자 앞에 "T" 가 붙는다.
 const NEW_TITLE_NUM_PREFIX = /^T?\d+\s*[—–.-]\s*/i;
 
+// ── 신관례 `## Depends on` 절(T01) ────────────────────────────────────────────
+
+// 옛 관례는 한 줄(`**Blocked by:** 01, 02`)이지만 신관례는 **여러 줄 목록**이다 —
+// 파서를 재사용하지 않고 신관례 전용으로 읽되, 결과는 같은 칸(`blockedBy`)에 싣는다(F2:
+// 같은 개념의 두 표기라 새 모델을 만들지 않는다).
+const NEW_DEPENDS_HEADING = /^##[ \t]+depends[ \t]+on\b[^\n]*$/im;
+// 절 안의 목록 항목 한 줄 — `- T02`, `- none`. 굵게 없는 `-` 와 `*` 를 받는다.
+const NEW_LIST_ITEM = /^[ \t]*[-*][ \t]+(.+)$/gm;
+// 절의 끝 = 다음 헤딩(아무 단계). 실물은 `## Can run in parallel with` 가 뒤따른다.
+const ANY_HEADING = /^#{1,6}[ \t]/m;
+// 항목 맨 앞의 티켓 번호 — 옛 관례 LEADING_NUM 과 같은 규율에 `T` 접두를 더했다.
+// `T02`·`T02 (사유)` 를 모두 02 로 읽고, 뒤의 사유·괄호는 주석이다.
+const NEW_LEADING_NUM = /^[Tt]?#?(\d{1,3})\b/;
+// 신관례의 "없음" 선언 — 실물은 `- none`·`- nothing` 이다. 옛 관례 NO_DEPS 에 nothing 은
+// 없으므로(옛 관례 동작 보호) 신관례 전용으로만 더 본다.
+const NEW_NOTHING = /^nothing\b/i;
+
+function isNewNoDeps(text: string): boolean {
+  return isNoDeps(text) || NEW_NOTHING.test(text);
+}
+
+/**
+ * `## Depends on` 절의 몸통 — 헤딩 줄 다음부터 다음 헤딩 전까지. 절이 없으면 null —
+ * 옛 관례가 `Blocked by:` **줄 없음**을 선행 없음으로 읽듯(parseBlockedByLine 과 일관, INV-4).
+ */
+function dependsSectionBody(content: string): string | null {
+  const m = NEW_DEPENDS_HEADING.exec(content);
+  if (!m) return null;
+  const rest = content.slice(m.index + m[0].length);
+  const end = ANY_HEADING.exec(rest)?.index ?? rest.length;
+  return rest.slice(0, end);
+}
+
+/**
+ * 신관례 티켓의 `## Depends on` 절 → 선행 목록. 결과는 옛 관례와 같은 칸에 싣는다(F2):
+ *
+ * - 항목이 번호(`T02`·`02`)로 시작하면 그 번호 — 뒤에 붙은 사유는 주석이다.
+ * - 항목이 `none`·`nothing`(또는 옛 관례의 없음 어휘)이면 의존 없음 선언 — 건너뛴다.
+ * - 번호도 없음 선언도 아닌 항목은 **막힘으로 세면서** verbatim 으로 남긴다 — 옛 관례가
+ *   번호 없는 진짜 막힘을 다루는 규율과 같다(development-order/17).
+ * - 절이 없으면 의존 없음 — 옛 관례의 줄 없음과 같다(INV-4, 문서가 말하지 않는 것을
+ *   지어내지 않되 빈 절을 오해도 하지 않는다).
+ */
+function parseNewDependsOn(content: string): BlockedByParse {
+  const body = dependsSectionBody(content);
+  if (body === null) return { blockedBy: [], unreadable: [] };
+  const blockedBy: string[] = [];
+  const unreadable: string[] = [];
+  for (const m of body.matchAll(NEW_LIST_ITEM)) {
+    const item = (m[1] ?? "").trim();
+    if (!item || isNewNoDeps(item)) continue;
+    const num = NEW_LEADING_NUM.exec(item)?.[1];
+    if (num !== undefined) {
+      if (!blockedBy.includes(num)) blockedBy.push(num);
+      continue;
+    }
+    if (!blockedBy.includes(item)) blockedBy.push(item);
+    if (!unreadable.includes(item)) unreadable.push(item);
+  }
+  return { blockedBy, unreadable };
+}
+
 /** `tickets/T<NN>.md` 한 장에서 읽어낸 것 — 상태는 여기 없다(SoT 는 백로그, T04). */
 export interface NewTicketDoc {
   num: string; // "04" — 파일명("T04.md")의 숫자
   slug: string; // 파일 basename(확장자 제거) — "T04"
   path: string; // 기능 폴더 기준 상대 경로("tickets/T04.md")
   title: string;
+  /** `## Depends on` 에서 읽은 선행 — 옛 관례 `blockedBy` 와 같은 칸이다(F2, T01). */
+  blockedBy: string[];
+  /** 번호도 없음 선언도 아닌 항목 — verbatim. 막히며 동시에 드러난다(development-order/17). */
+  unreadableBlockedBy: string[];
 }
 
 /**
@@ -332,10 +398,13 @@ export interface NewTicketDoc {
 export function parseNewTicket(fileName: string, content: string): NewTicketDoc {
   const slug = fileName.replace(/\.md$/i, "");
   const num = /^[Tt](\d+)/.exec(slug)?.[1] ?? "";
+  const { blockedBy, unreadable } = parseNewDependsOn(content);
   return {
     num,
     slug,
     path: `tickets/${fileName}`,
     title: heading(content)?.replace(NEW_TITLE_NUM_PREFIX, "").trim() || slug,
+    blockedBy,
+    unreadableBlockedBy: unreadable,
   };
 }
