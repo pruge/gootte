@@ -117,19 +117,21 @@ export function startWatchers(opts: WatchersOptions): Watchers {
 
   return {
     async rebind(nextRoots: string[]) {
-      await projectsWatcher.close();
+      const prev = projectsWatcher;
       // 이 소스의 실패는 새 묶음을 세우기 **전에** 푼다 — 백로그 감시기처럼 생성 중 동기로
       // onError 를 울리는 원천이 있는데, 시작 뒤에 풀면 그 방금 표시를 덮어 버려 폴백 폴러가
       // 이르게 내린다(INV-3). 시작이 동기로 실패하면 onError 가 도로 표시하고, 아래 sync 가
       // 최종 상태를 방송한다. 다른 소스의 실패는 그대로 남는다.
       failures.projects = false;
       projectsWatcher = startProjectsWatcher(nextRoots);
+      await prev.close();
       syncFallback();
     },
     async rebindBacklog(nextHome: string | null) {
-      await backlogWatcher.close();
+      const prev = backlogWatcher;
       failures.backlog = false;
       backlogWatcher = startBacklogWatcher(nextHome);
+      await prev.close();
       syncFallback();
     },
     async close() {

@@ -106,6 +106,48 @@ describe("startWatchers", () => {
     expect(backlogClosed).toBe(true);
   });
 
+  /** 시작된 가짜 감시기를 전부 기록하는 주입 impl — 닫힘 추적용. */
+  const track = <T>(): { impl: T; started: { closed: boolean }[] } => {
+    const started: { closed: boolean }[] = [];
+    const impl = (() => {
+      const w = {
+        closed: false,
+        async close() {
+          w.closed = true;
+        },
+      };
+      started.push(w);
+      return w;
+    }) as unknown as T;
+    return { impl, started };
+  };
+
+  test("겹치게 들어온 재묶음도 중간 감시기를 유령으로 남기지 않는다", async () => {
+    // 닫기 전에 새 감시기를 자리에 앉히지 않으면 두 재묶음이 같은 옛 감시기를 닫고 각각 새
+    // 감시기를 세운다 — 먼저 앉은 쪽은 영영 닫히지 않은 채 낡은 뿌리의 신호를 계속 낸다.
+    // 호출을 겹쳐 불러 그 누수를 결정적으로 잰다.
+    const p = track<typeof import("@gootte/core-io").watchProjects>();
+    const b = track<typeof import("@gootte/core-io").watchBacklog>();
+    watchers = startWatchers({
+      roots: [],
+      dataDir: "",
+      onChange: () => {},
+      watchProjectsImpl: p.impl,
+      watchBacklogImpl: b.impl,
+      watchPlanDbImpl: () => ({
+        async close() {},
+      }),
+    });
+
+    await Promise.all([watchers.rebind([]), watchers.rebind([])]);
+    expect(p.started.length).toBe(3); // 처음 것 + 재묶음 둘
+    expect(p.started.filter((w) => !w.closed)).toEqual([p.started[p.started.length - 1]]);
+
+    await Promise.all([watchers.rebindBacklog(null), watchers.rebindBacklog(null)]);
+    expect(b.started.length).toBe(3);
+    expect(b.started.filter((w) => !w.closed)).toEqual([b.started[b.started.length - 1]]);
+  });
+
   /**
    * tauri-desktop-app T03 — 감시 불가 → 폴백 폴러 신호. 실제 chokidar 오류를 강제하기는
    * 비결정적이므로, 가짜 감시기 주입으로 onError 배선만 결정적으로 잰다(위 close 테스트와 같은 원칙).
