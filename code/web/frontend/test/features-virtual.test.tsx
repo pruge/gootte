@@ -3,6 +3,9 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi } from "vitest";
 import type { Feature, FeaturesResponse } from "@gootte/contract";
+
+// 구관례 `issues/` 폴더 — issues 칸은 이 폴더가 실재할 때만 그려진다(FeatureTree 의 `{issues && ...}`, INV-4).
+const ISSUES_DIR = { kind: "dir" as const, name: "issues", path: "issues", children: [] };
 import { FeaturesView } from "../src/components/features/FeaturesView";
 import { qk } from "../src/lib/query";
 
@@ -34,7 +37,7 @@ function manyFeatures(n: number): Feature[] {
       status: "pending" as const,
       sourceStatus: "ready-for-agent",
       statusKnown: true,
-      docs: [],
+      docs: [ISSUES_DIR],
       tickets: [
         {
           num: "01",
