@@ -42,7 +42,9 @@ function isStatus(v: string): v is Status {
  * 줄이 여러 번 나오면 **첫 줄**(= 파일 상단)이 이긴다 — 하단 `## Comments` 의 인용에 흔들리지 않게.
  */
 export function parseStatusLine(content: string): StatusLine {
-  const rest = STATUS_LINE.exec(content)?.[1]?.trim();
+  // 🔴 구조(표시 줄)는 펜스 밖에서만 읽는다 — 예시로 인용한 `**Status:** resolved` 가 진짜 상태가
+  // 되면 안 된다(parseBlockedByLine·dependsSectionBody 와 같은 규율, 실제 결함 2026-08).
+  const rest = STATUS_LINE.exec(withoutFencedCode(content))?.[1]?.trim();
   if (!rest) return { raw: null, value: null, completedAt: null };
   // 값 토큰 = 공백·여는 괄호 앞까지. 알 수 없는 문자열도 그대로 잡아 원문에 싣는다.
   const raw = /^[^\s(]+/.exec(rest)?.[0] ?? rest;
@@ -127,7 +129,10 @@ export interface BlockedByParse {
  *   번호 없이 적힌 진짜 막힘이다.
  */
 export function parseBlockedByLine(content: string): BlockedByParse {
-  const rest = BLOCKED_LINE.exec(content)?.[1]?.trim();
+  // 펜스 안은 인용한 예시다 — 실물 티켓이 관례를 예시로 보여주는 것은 정상이고(steps-start-
+    // from-dependencies/T01.md), 그 예시를 진짜 막힘으로 읽으면 순환 의존이 지어진다(실제 결함,
+  // 2026-08). 신관례 dependsSectionBody 와 같은 규율이다.
+  const rest = BLOCKED_LINE.exec(withoutFencedCode(content))?.[1]?.trim();
   if (!rest || isNoDeps(rest)) return { blockedBy: [], unreadable: [] };
   const numbered: string[] = [];
   const proseWithDigits: string[] = [];
@@ -191,6 +196,7 @@ const CAPTAIN_EYE_DECORATION = /^[\p{S}\p{P}\s]+/u;
  * (`access-control/03`·`06`, `authorship/02`) 캡틴이 이미 "필요 없다" 고 적어 두신 것이라 세지 않는다.
  */
 function needsCaptainEyeFromTitle(content: string): boolean {
+  // 호출자가 이미 펜스를 걷어 넣는다 — 이 함수는 순수하게 헤딩만 본다.
   for (const m of content.matchAll(H2_HEADING)) {
     const text = (m[1] ?? "").replace(CAPTAIN_EYE_DECORATION, "");
     if (!text.startsWith("캡틴 확인") && !text.startsWith("캡틴확인")) continue;
@@ -222,7 +228,7 @@ export interface CaptainEyeLine {
  * 토큰만 뽑는다.
  */
 export function parseCaptainEyeLine(content: string): CaptainEyeLine {
-  const rest = CAPTAIN_EYE_LINE.exec(content)?.[1]?.trim();
+  const rest = CAPTAIN_EYE_LINE.exec(withoutFencedCode(content))?.[1]?.trim();
   if (!rest) return { raw: null, known: false, needsCaptainEye: null };
   // 값 토큰만 raw 에 싣는다(Status: 줄과 같은 원리) — `—` 뒤 자유 문구·괄호 날짜는 안 싣는다.
   if (CAPTAIN_EYE_NOT_NEEDED.test(rest)) return { raw: "필요 없음", known: true, needsCaptainEye: false };
@@ -238,9 +244,9 @@ export function parseCaptainEyeLine(content: string): CaptainEyeLine {
  * 표시 줄이 없어 전부 이 폴백을 그대로 탄다(캡틴 결정 2026-08-14, "앞으로만 잘하자").
  */
 export function parseNeedsCaptainEye(content: string): boolean {
-  const line = parseCaptainEyeLine(content);
+  const line = parseCaptainEyeLine(withoutFencedCode(content));
   if (line.known) return line.needsCaptainEye as boolean;
-  return needsCaptainEyeFromTitle(content);
+  return needsCaptainEyeFromTitle(withoutFencedCode(content));
 }
 
 /** 파일 한 장에서 읽어낸 티켓(막힘 해제는 아직 계산 전 — 그건 같은 기능의 다른 티켓을 알아야 한다). */
@@ -274,7 +280,8 @@ export interface FeatureSpecDoc {
 }
 
 function heading(content: string): string | null {
-  return H1.exec(content)?.[1]?.trim() ?? null;
+  // 표제도 구조다 — 펜스 안에 인용된 다른 문서의 `# 제목` 이 이 문서의 표제가 되지 않는다.
+  return H1.exec(withoutFencedCode(content))?.[1]?.trim() ?? null;
 }
 
 /**
@@ -330,6 +337,38 @@ const ANY_HEADING = /^#{1,6}[ \t]/m;
 // 항목 맨 앞의 티켓 번호 — 옛 관례 LEADING_NUM 과 같은 규율에 `T` 접두를 더했다.
 // `T02`·`T02 (사유)` 를 모두 02 로 읽고, 뒤의 사유·괄호는 주석이다.
 const NEW_LEADING_NUM = /^[Tt]?#?(\d{1,3})\b/;
+
+/**
+ * 펜스 코드 블록(``` · ~~~)을 빈 줄로 지운 사본 — 구조(표제·목록)를 읽기 전에 거른다.
+ * 펜스 안은 본문이 인용한 **예시**지 문서 구조가 아니다. 안 걸러 주면 실물 티켓
+ * (steps-start-from-dependencies/T01.md)의 구현 노트 속 예시 블록이 진짜
+ * `## Depends on` 절보다 먼저 걸려 엉뚱한 의존을 심고, 실제 의존과 합쳐져 순환으로
+ * 판정된다(실제 결함, 2026-08 — 자동 단계 배정이 전부 9999 가 된 발단).
+ */
+function withoutFencedCode(content: string): string {
+  const out: string[] = [];
+  let fenceChar = "";
+  let fenceLen = 0;
+  for (const line of content.split("\n")) {
+    const marker = /^[ \t]*(`{3,}|~{3,})/.exec(line);
+    if (fenceChar === "") {
+      if (marker) {
+        const mark = marker[1] ?? "";
+        fenceChar = mark.charAt(0);
+        fenceLen = mark.length;
+        out.push("");
+        continue;
+      }
+      out.push(line);
+    } else {
+      // 닫는 펜스 — 같은 문자, 여는 것 이상 길이, 뒤에는 공백뿐(CommonMark).
+      const close = new RegExp(`^[ \\t]*\\${fenceChar}{${fenceLen},}[ \\t]*$`).test(line);
+      if (close) fenceChar = "";
+      out.push("");
+    }
+  }
+  return out.join("\n");
+}
 // 신관례의 "없음" 선언 — 실물은 `- none`·`- nothing` 이다. 옛 관례 NO_DEPS 에 nothing 은
 // 없으므로(옛 관례 동작 보호) 신관례 전용으로만 더 본다.
 const NEW_NOTHING = /^nothing\b/i;
@@ -343,9 +382,11 @@ function isNewNoDeps(text: string): boolean {
  * 옛 관례가 `Blocked by:` **줄 없음**을 선행 없음으로 읽듯(parseBlockedByLine 과 일관, INV-4).
  */
 function dependsSectionBody(content: string): string | null {
-  const m = NEW_DEPENDS_HEADING.exec(content);
+  // 찾기와 자르기를 같은 사본에서 — 펜스가 빠진 사본의 인덱스로 원문을 자르면 엉뚱한 몸통이 나온다.
+  const stripped = withoutFencedCode(content);
+  const m = NEW_DEPENDS_HEADING.exec(stripped);
   if (!m) return null;
-  const rest = content.slice(m.index + m[0].length);
+  const rest = stripped.slice(m.index + m[0].length);
   const end = ANY_HEADING.exec(rest)?.index ?? rest.length;
   return rest.slice(0, end);
 }

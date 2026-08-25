@@ -447,6 +447,80 @@ describe("parseNeedsCaptainEye — 표시 줄과 제목의 우선순위(INV-E1·
   });
 });
 
+describe("펜스 코드 블록 — 구조는 펜스 밖에서만 읽는다(실제 결함 2026-08)", () => {
+  // 실물 발단: steps-start-from-dependencies/T01.md 의 구현 노트가 관례 자체를 예시로
+  // 보여주는데, 파서가 펜스 안의 예시를 진짜 구조로 읽었다. 티켓 문서가 관례를 예시로
+  // 보여주는 것은 정상이며 반복된다 — 파서 쪽이 걸러야 한다.
+
+  it("옛 관례 — 펜스 안의 `**Blocked by:**` 예시는 막힘이 아니다", () => {
+    const content = [
+      "# 03 — 티켓",
+      "",
+      "서식은 이렇다:",
+      "",
+      "```markdown",
+      "**Blocked by:** 01, 02",
+      "```",
+      "",
+      "**Blocked by:** 없음",
+    ].join("\n");
+    expect(parseBlockedByLine(content).blockedBy).toEqual([]);
+  });
+
+  it("옛 관례 — 펜스 뒤의 진짜 `Blocked by:` 줄은 정상적으로 읽는다", () => {
+    const content = [
+      "# 03 — 티켓",
+      "",
+      "~~~",
+      "**Blocked by:** 09 (없는 예시)",
+      "~~~",
+      "",
+      "**Blocked by:** 01, 02",
+    ].join("\n");
+    expect(parseBlockedByLine(content).blockedBy).toEqual(["01", "02"]);
+  });
+
+  it("Status — 펜스 안의 `**Status:** resolved` 예시가 완료로 만들지 않는다", () => {
+    const content = [
+      "# 04 — 티켓",
+      "",
+      "```markdown",
+      "**Status:** resolved (2026-08-01)",
+      "```",
+      "",
+      "**Status:** ready-for-agent",
+    ].join("\n");
+    expect(parseStatusLine(content).value).toBe("ready-for-agent");
+    expect(parseTicket("04-x.md", content).status).toBe("pending");
+  });
+
+  it("캡틴 확인 — 펜스 안의 예시 절·표시 줄이 눈 표시를 만들지 않는다", () => {
+    const content = [
+      "# 05 — 티켓",
+      "",
+      "```markdown",
+      "**캡틴 확인:** 필요",
+      "## 캡틴 확인",
+      "```",
+      "",
+      "본문뿐이다",
+    ].join("\n");
+    expect(parseCaptainEyeLine(content).known).toBe(false);
+    expect(parseNeedsCaptainEye(content)).toBe(false);
+  });
+
+  it("표제 — 펜스 안에 인용된 다른 문서의 `# 제목` 이 이 문서의 표제가 되지 않는다", () => {
+    const content = [
+      "```markdown",
+      "# T09 — 인용된 예시 표제",
+      "```",
+      "",
+      "# 06 — 진짜 표제",
+    ].join("\n");
+    expect(parseFeatureSpec("some-feature", content).title).toBe("06 — 진짜 표제");
+  });
+});
+
 describe("parseFeatureSpec", () => {
   it("표제와 상태를 읽는다", () => {
     const spec = parseFeatureSpec(
@@ -503,6 +577,56 @@ describe("parseNewTicket — `## Depends on` 을 읽는다(T01)", () => {
     const doc = t("## Depends on\n- 자매 기능이 먼저 끝나야");
     expect(doc.blockedBy).toEqual(["자매 기능이 먼저 끝나야"]);
     expect(doc.unreadableBlockedBy).toEqual(["자매 기능이 먼저 끝나야"]);
+  });
+
+  it("🔴 펜스 코드 블록 안의 예시 `## Depends on` 은 절로 읽지 않는다 — 구현 노트 속 인용이 의존을 지어내지 않는다(실물 결함, steps-start-from-dependencies/T01.md)", () => {
+    // 실물 T01.md 의 모양 — 본문 중간에 펜스로 인용된 예시가 있고, 진짜 절은 맨 밑에 있다.
+    const doc = parseNewTicket(
+      "T01.md",
+      [
+        "# T01 — 제목",
+        "",
+        "## Implementation notes",
+        "",
+        "실물은 이렇다:",
+        "",
+        "```markdown",
+        "## Depends on",
+        "- T02 (경로 설정값)",
+        "```",
+        "",
+        "## Can run in parallel with",
+        "- nothing",
+        "",
+        "## Depends on",
+        "",
+        "- none",
+        "",
+      ].join("\n"),
+    );
+    expect(doc.blockedBy).toEqual([]);
+    expect(doc.unreadableBlockedBy).toEqual([]);
+  });
+
+  it("🔴 펜스 뒤의 진짜 절은 정상적으로 읽는다 — 예시와 실제 의존이 섞이지 않는다", () => {
+    const doc = parseNewTicket(
+      "T02.md",
+      [
+        "# T02 — 제목",
+        "",
+        "예시:",
+        "",
+        "~~~",
+        "## Depends on",
+        "- T09 (없는 예시)",
+        "~~~",
+        "",
+        "## Depends on",
+        "- T01",
+        "",
+      ].join("\n"),
+    );
+    expect(doc.blockedBy).toEqual(["01"]);
   });
 
   it("제목·번호 읽기는 그대로 유지한다(회귀)", () => {
