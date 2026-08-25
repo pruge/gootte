@@ -1,0 +1,4 @@
+# gootte currently defines no GitHub Actions workflows, so no checks can ever register.
+# This declaration lets the no-mistakes pipeline treat a zero-check repository as
+# validation-complete instead of waiting forever at the CI step.
+no_ci: true
