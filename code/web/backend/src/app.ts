@@ -51,6 +51,19 @@ import {
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
+/**
+ * 읽음 기록 대상 문서인가 — **티켓뿐이다**(캡틴 결정 ②). 경로 모양만 본다(INV-4, 문서를 다시 안 읽는다).
+ * - 구관례: `issues/` 안의 문서(기존 동작 유지)
+ * - 신관례: `tickets/T<NN>.md` — 모양 규칙의 SoT 는 `core-io/src/features.ts` 의 `/^t\\d+\\.md$/i` 다.
+ *   두 자리가 어긋나면 "열어도 안 풀리는 초록" 또는 "티켓도 아닌데 남는 기록" 이 생기므로 같은 뜻을 유지한다.
+ *   `tickets/README.md` 같은 안내문은 티켓이 아니므로 기록 대상도 아니다.
+ */
+function isTicketDoc(path: string): boolean {
+  if (path.startsWith("issues/")) return true;
+  if (!path.startsWith("tickets/")) return false;
+  return /^t\d+\.md$/i.test(path.slice("tickets/".length));
+}
+
 /** env `GOOTTE_ROOTS`(콜론 구분) → discover 루트. 기본 `~/Documents/ai2/projects`. */
 export function defaultRoots(): string[] {
   const env = process.env.GOOTTE_ROOTS?.trim();
@@ -464,9 +477,8 @@ export function createApp(options: AppOptions = {}): Hono {
         return c.json(error, result.reason === "outside" ? 400 : 404);
       }
       // 티켓 원문을 열면 읽음이 된다(unread-tickets-show-themselves/01) — 세 탭 어디서 열었든
-      // 이 자리 하나로 모인다(spec F1·F2). 표시는 티켓에만 붙으므로(캡틴 결정 ②) `issues/` 바깥의
-      // 명세·결정 기록은 조용히 넘어간다 — 경로 모양만 보고 판정한다(INV-4, 문서를 다시 안 읽는다).
-      if (path.startsWith("issues/")) {
+      // 이 자리 하나로 모인다(spec F1·F2). 판정은 한 자리에서 한다 — 아래 `isTicketDoc`.
+      if (isTicketDoc(path)) {
         markDocRead(dataDir, basename(proj.path), feature, path);
       }
       return c.json(FeatureDocResponse.parse({ path, content: result.content }));
