@@ -14,24 +14,28 @@ interface FeatureTreeProps {
   query?: string;
 }
 
-/** `adr` → `issues` → 나머지(spec.md 등 낱장) 순으로 고정한다(캡틴 지시). 없으면 그 자리가 빈다. */
+/**
+ * `adr` → `issues` → `tickets`(T04 신관례) → 나머지(spec.md·grill.md·design/·wayfinder.md 등
+ * 낱장) 순으로 고정한다(캡틴 지시 + T04). 없으면 그 자리가 빈다.
+ */
 function splitDocs(docs: Feature["docs"]) {
   const pick = (name: string) => docs.find((d) => d.kind === "dir" && d.name === name) ?? null;
   const adr = pick("adr");
   const issues = pick("issues");
-  const rest = docs.filter((d) => d !== adr && d !== issues);
-  return { adr, issues, rest };
+  const tickets = pick("tickets");
+  const rest = docs.filter((d) => d !== adr && d !== issues && d !== tickets);
+  return { adr, issues, tickets, rest };
 }
 
 /**
- * `issues/` 안에서 티켓(.md)이 아닌 것 — 하위 폴더거나 `.md` 가 아닌 파일. 감추지 않고
- * 목록 끝에 그대로 띄운다(INV-4, feature-doc-browser/04 §숨기지 않는다). `.md` 판정은
+ * `issues/`·`tickets/` 안에서 티켓(.md)이 아닌 것 — 하위 폴더거나 `.md` 가 아닌 파일. 감추지
+ * 않고 목록 끝에 그대로 띄운다(INV-4, feature-doc-browser/04 §숨기지 않는다). `.md` 판정은
  * core-io 의 티켓 필터(`core-io/src/features.ts`)와 같은 규칙(대소문자 무시)이어야
  * 1:1 이 어긋나지 않는다.
  */
-function nonTicketEntries(issues: FeatureDocNode | null): FeatureDocNode[] {
-  if (!issues) return [];
-  return (issues.children ?? []).filter(
+function nonTicketEntries(dir: FeatureDocNode | null): FeatureDocNode[] {
+  if (!dir) return [];
+  return (dir.children ?? []).filter(
     (c) => !(c.kind === "file" && c.name.toLowerCase().endsWith(".md")),
   );
 }
@@ -48,8 +52,11 @@ function nonTicketEntries(issues: FeatureDocNode | null): FeatureDocNode[] {
  */
 export function FeatureTree({ feature, onOpenDoc, query = "" }: FeatureTreeProps) {
   const [issuesOpen, setIssuesOpen] = useState(true);
-  const { adr, issues, rest } = splitDocs(feature.docs);
-  const extras = nonTicketEntries(issues);
+  const [ticketsOpen, setTicketsOpen] = useState(true);
+  const { adr, issues, tickets, rest } = splitDocs(feature.docs);
+  const issuesExtras = nonTicketEntries(issues);
+  const ticketsExtras = nonTicketEntries(tickets);
+  const newTickets = feature.newTickets ?? [];
 
   return (
     <ul className="divide-y divide-border">
@@ -69,7 +76,7 @@ export function FeatureTree({ feature, onOpenDoc, query = "" }: FeatureTreeProps
           issues
         </button>
         {issuesOpen &&
-          (feature.tickets.length === 0 && extras.length === 0 ? (
+          (feature.tickets.length === 0 && issuesExtras.length === 0 ? (
             <p
               style={treeIndentStyle(TICKET_LIST_DEPTH)}
               className="py-3 pr-4 text-base text-muted"
@@ -87,7 +94,7 @@ export function FeatureTree({ feature, onOpenDoc, query = "" }: FeatureTreeProps
                   query={query}
                 />
               ))}
-              {extras.map((node) => (
+              {issuesExtras.map((node) => (
                 <DocTreeNode
                   key={node.path}
                   node={node}
@@ -99,6 +106,47 @@ export function FeatureTree({ feature, onOpenDoc, query = "" }: FeatureTreeProps
             </ul>
           ))}
       </li>
+      {/* `tickets/` 신관례(T04) — 실재할 때만 칸을 낸다(INV-4). `issues` 와 달리 없는 기능이
+          여전히 많으므로 빈 칸을 늘 그리지 않는다. */}
+      {tickets && (
+        <li>
+          <button
+            type="button"
+            aria-expanded={ticketsOpen}
+            onClick={() => setTicketsOpen((v) => !v)}
+            className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-sm font-medium text-muted hover:bg-surface-2/60"
+          >
+            <IconChevronRight
+              size={14}
+              className={`shrink-0 transition-transform ${ticketsOpen ? "rotate-90" : ""}`}
+            />
+            <IconListCheck size={15} className="shrink-0" />
+            tickets
+          </button>
+          {ticketsOpen && (
+            <ul className="divide-y divide-border border-t border-border/60">
+              {newTickets.map((t) => (
+                <TicketRow
+                  key={t.slug}
+                  ticket={t}
+                  featureSlug={feature.slug}
+                  onOpenDoc={onOpenDoc}
+                  query={query}
+                />
+              ))}
+              {ticketsExtras.map((node) => (
+                <DocTreeNode
+                  key={node.path}
+                  node={node}
+                  depth={TICKET_LIST_DEPTH}
+                  featureSlug={feature.slug}
+                  onOpenDoc={onOpenDoc}
+                />
+              ))}
+            </ul>
+          )}
+        </li>
+      )}
       {rest.map((node) => (
         <DocTreeNode
           key={node.path}

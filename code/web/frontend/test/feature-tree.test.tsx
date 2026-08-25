@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
-import type { Feature } from "@gootte/contract";
+import type { Feature, FeatureTicket } from "@gootte/contract";
 import { FeatureCard } from "../src/components/features/FeatureCard";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../src/lib/tree-indent";
 
@@ -397,5 +397,97 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
     expect(within(row).getByText("2026-08-08")).not.toHaveClass("invisible");
+  });
+});
+
+/** T04 신관례(`tickets/T<NN>.md`) 새 티켓 픽스처 — 파일에 상태가 없다(SoT = 백로그). */
+function newTicket(overrides: Partial<FeatureTicket> = {}): FeatureTicket {
+  return {
+    num: "04",
+    slug: "T04",
+    path: "tickets/T04.md",
+    title: "신관례 문서 표시",
+    status: "pending",
+    sourceStatus: null,
+    statusKnown: false,
+    blockedBy: [],
+    unreadableBlockedBy: [],
+    waitingOn: [],
+    startable: true,
+    workedBy: [],
+    needsCaptainEye: false,
+    docConvention: "tickets",
+    backlogStatus: null,
+    backlogUrl: null,
+    ...overrides,
+  };
+}
+
+describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
+  it("tickets/ 가 실재하면 칸이 뜬다", () => {
+    const withTickets: Feature = {
+      ...BASE,
+      docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [{ kind: "file", name: "T04.md", path: "tickets/T04.md" }] }],
+      newTickets: [newTicket()],
+    };
+    renderCard(withTickets);
+    open();
+    expect(screen.getByText("tickets")).toBeInTheDocument();
+    expect(screen.getByText("신관례 문서 표시")).toBeInTheDocument();
+  });
+
+  it("tickets/ 가 없으면 칸 자체가 없다(INV-4)", () => {
+    const withoutTickets: Feature = { ...BASE, docs: [], newTickets: [] };
+    renderCard(withoutTickets);
+    expect(screen.queryAllByText("tickets")).toHaveLength(0);
+  });
+
+  it("🔴 백로그 미조인 티켓은 '상태 줄 없음' 경고를 보여주지 않는다 — issues 관례와 다른 의미다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
+      newTickets: [newTicket()],
+    };
+    renderCard(feature);
+    open();
+    expect(screen.queryByText("상태 줄 없음")).toBeNull();
+    expect(screen.queryByText(/알 수 없는 상태/)).toBeNull();
+  });
+
+  it("백로그 조인되면 상태 배지가 뜬다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
+      newTickets: [newTicket({ status: "in_progress", backlogStatus: "in_progress" })],
+    };
+    renderCard(feature);
+    open();
+    expect(screen.getByText("in flight")).toBeInTheDocument();
+  });
+
+  it("줄을 누르면 tickets/T<NN>.md 경로로 드로어가 열린다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
+      newTickets: [newTicket()],
+    };
+    const { onOpenDoc } = renderCard(feature);
+    open();
+    fireEvent.click(screen.getByText("신관례 문서 표시"));
+    expect(onOpenDoc).toHaveBeenCalledWith("auth-login", "tickets/T04.md", expect.any(HTMLElement));
+  });
+
+  it("미조인 신관례 티켓은 착수 가능/진행중/대기 어느 단계도 아니다(모른다 ≠ 착수 가능)", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
+      newTickets: [newTicket()],
+    };
+    renderCard(feature);
+    open();
+    const row = screen.getByText("신관례 문서 표시").closest("button")!;
+    for (const label of ["착수 가능", "진행중", "대기"]) {
+      expect(within(row).getByText(label)).toHaveClass("invisible");
+    }
   });
 });

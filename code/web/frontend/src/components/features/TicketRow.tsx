@@ -15,11 +15,30 @@ import { HighlightedText } from "./HighlightedText";
 /** 트리 나머지가 쓰는 문서 아이콘 폭(15px) — 상태 아이콘도 여기 맞춘다(F20). 뜻·색은 그대로다. */
 const STATE_ICON_SIZE = 15;
 
+/** 백로그 다섯 값 → 배지 문구(T04) — 화면 어휘는 issues 관례와 같게 맞춘다. */
+const BACKLOG_STATUS_LABEL: Partial<Record<FeatureTicket["status"], string>> = {
+  pending: "queued",
+  in_progress: "in flight",
+  done: "done",
+  dropped: "dropped",
+};
+
+/**
+ * T04 — `tickets/` 신관례인데 백로그에 조인되지 않은 티켓. 파일에 상태가 없으므로 이 경우는
+ * "모른다" 지 "착수 가능" 이 아니다 — 조인 실패 시 상태를 안 보여주는 것이 정답이다
+ * (T04 §구현 원칙, 추측 금지).
+ */
+function isUnjoinedNewTicket(ticket: FeatureTicket): boolean {
+  return ticket.docConvention === "tickets" && !ticket.backlogStatus;
+}
+
 /**
  * 상태 아이콘 — semantic(장식 아님). 처리중 = active(작업중 신호), 착수 가능 = accent, 기다리는 중 = muted.
  * 원문 상태(`sourceStatus`)는 아이콘으로 뭉개지 않고 옆에 그대로 띄운다(결정 Q3).
  */
 function StateIcon({ ticket }: { ticket: FeatureTicket }) {
+  if (isUnjoinedNewTicket(ticket))
+    return <IconCircleDashed size={STATE_ICON_SIZE} className="shrink-0 text-muted" />;
   if (ticket.status === "done")
     return <IconCircleCheckFilled size={STATE_ICON_SIZE} className="shrink-0 text-accent" />;
   if (ticket.status === "dropped")
@@ -34,7 +53,8 @@ function StateIcon({ ticket }: { ticket: FeatureTicket }) {
 }
 
 /**
- * 단계 칸의 값 — 셋 중 하나거나(착수 가능·진행중·대기) 아예 없다(끝났거나 취소됐다).
+ * 단계 칸의 값 — 셋 중 하나거나(착수 가능·진행중·대기) 아예 없다(끝났거나 취소됐다, 또는
+ * 신관례인데 백로그 미조인 — 모르는 것을 "착수 가능" 으로 보여주지 않는다, T04).
  * 🔴 "임자만 있고 실제로는 안 도는" 티켓(claimed 인데 붙든 사본이 없음)은 여기 넷째 값으로
  * 끼워 넣지 않는다 — `waitingOn` 이 비었는데도 `startable` 이 false 인 경우가 바로 그 경우고,
  * 그건 이 칸이 아니라 "임자 없이 남은 표시"(FeaturesView)가 따로 드러낸다
@@ -43,6 +63,7 @@ function StateIcon({ ticket }: { ticket: FeatureTicket }) {
 type Stage = "startable" | "in_progress" | "waiting" | null;
 
 function stageOf(ticket: FeatureTicket): Stage {
+  if (isUnjoinedNewTicket(ticket)) return null;
   if (ticket.status === "done" || ticket.status === "dropped") return null;
   if (ticket.status === "in_progress") return "in_progress";
   if (ticket.waitingOn.length > 0) return "waiting";
@@ -138,7 +159,15 @@ export function TicketRow({
           </span>
         )}
 
-        {ticket.statusKnown ? (
+        {ticket.docConvention === "tickets" ? (
+          // T04 — 신관례는 파일에 상태가 없다(SoT = 백로그). 조인됐을 때만 배지를 낸다 —
+          // 조인 실패(미매칭)는 "상태 미표시" 가 정답이다(추측 금지, T04 §구현 원칙).
+          ticket.backlogStatus && (
+            <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
+              {BACKLOG_STATUS_LABEL[ticket.backlogStatus] ?? ticket.backlogStatus}
+            </span>
+          )
+        ) : ticket.statusKnown ? (
           <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
             {ticket.sourceStatus}
           </span>

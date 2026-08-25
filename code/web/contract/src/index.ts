@@ -85,6 +85,12 @@ export const FeatureTicket = z.object({
   // 이 계산을 거치지 않은 응답(예: plan 판)에서는 값이 아예 없어도 되기 때문 — 없으면 화면은
   // 읽은 것으로 본다(INV-U1, 조용한 쪽으로 기운다).
   unread: z.boolean().optional(),
+  // T04 — 어느 관례의 티켓인가. 없으면(예전 응답·픽스처) "issues" 로 본다(소비처 호환, optional).
+  docConvention: z.enum(["issues", "tickets"]).optional(),
+  // T04 — firstmate 홈 백로그(tasks-axi) 조인 결과. `tickets/` 신관례만 채워진다 — 상태의 단일
+  // 출처가 백로그이기 때문(D4). 조인 실패(미매칭)면 null/undefined — 추측하지 않는다(INV-4).
+  backlogStatus: TodoStatus.nullable().optional(),
+  backlogUrl: z.string().nullable().optional(), // 백로그 줄의 PR/머지 링크(있으면) verbatim.
 });
 export type FeatureTicket = z.infer<typeof FeatureTicket>;
 
@@ -120,6 +126,9 @@ export const Feature = z.object({
   // 안 읽은 티켓이 하나라도 있는가 — 카드 머리글의 초록 여부(unread-tickets-show-themselves/01).
   // `tickets[].unread` 를 다시 세지 않는다(INV-1 재계산은 서버 한 곳) — 화면은 이 값을 그대로 쓴다.
   hasUnreadTicket: z.boolean().optional(),
+  // T04 — `tickets/T<NN>.md` 신관례 티켓(INV-4: 실재하는 파일만). 예전 `issues/` 관례와는 별도
+  // 목록이다 — 상태 SoT 가 문서(issues)냐 백로그(tickets)냐가 갈리므로 계산 경로를 섞지 않는다.
+  newTickets: z.array(FeatureTicket).optional(),
 });
 export type Feature = z.infer<typeof Feature>;
 

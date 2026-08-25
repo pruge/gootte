@@ -1,5 +1,5 @@
 import type { Feature, FeatureDocNode, FeatureTicket, TodoStatus } from "@gootte/contract";
-import { parseCrossFeatureRef, type FeatureSpecDoc, type TicketDoc } from "../parse/feature";
+import { parseCrossFeatureRef, type FeatureSpecDoc, type NewTicketDoc, type TicketDoc } from "../parse/feature";
 
 /**
  * 기능 폴더 하나에서 읽어온 문서들 — core-io 가 read 하고 core 파서가 구조로 만든 결과.
@@ -12,6 +12,8 @@ export interface FeatureDocs {
   spec: FeatureSpecDoc | null;
   tickets: TicketDoc[];
   tree: FeatureDocNode[];
+  /** `tickets/T<NN>.md` 신관례(T04) — 상태는 없다(백로그 조인이 나중에 얹는다). 없으면 빈 배열. */
+  newTickets?: NewTicketDoc[];
 }
 
 /**
@@ -23,12 +25,38 @@ function numKey(num: string): number | null {
 }
 
 /** 번호 오름차순, 번호 없는 파일은 뒤로(그다음 slug). */
-function byNum(a: TicketDoc, b: TicketDoc): number {
+function byNum(a: { num: string; slug: string }, b: { num: string; slug: string }): number {
   const [x, y] = [numKey(a.num), numKey(b.num)];
   if (x === null && y === null) return a.slug.localeCompare(b.slug);
   if (x === null) return 1;
   if (y === null) return -1;
   return x === y ? a.slug.localeCompare(b.slug) : x - y;
+}
+
+/**
+ * `tickets/T<NN>.md` 신관례(T04) 한 장 → 계약 형태. 파일에는 상태가 없다 — `status: "pending"`,
+ * `statusKnown: false` 는 "모른다" 를 뜻하지 "이슈 관례의 알 수 없는 상태" 를 뜻하지 않는다
+ * (화면은 `docConvention` 으로 그 둘을 가른다). 백로그 조인은 `applyBacklogStatus` 가 나중에 얹는다.
+ */
+function toNewTicket(doc: NewTicketDoc): FeatureTicket {
+  return {
+    num: doc.num,
+    slug: doc.slug,
+    path: doc.path,
+    title: doc.title,
+    status: "pending",
+    sourceStatus: null,
+    statusKnown: false,
+    blockedBy: [],
+    unreadableBlockedBy: [],
+    waitingOn: [],
+    startable: true,
+    workedBy: [],
+    needsCaptainEye: false,
+    docConvention: "tickets",
+    backlogStatus: null,
+    backlogUrl: null,
+  };
 }
 
 /** 기능 하나의 번호 현황 — 다른 기능의 티켓을 가리키는 선행을 풀 때 함께 쓰인다. */
@@ -135,6 +163,7 @@ export function buildFeature(docs: FeatureDocs, crossIndex?: CrossFeatureIndex):
     statusKnown: docs.spec?.statusKnown ?? false,
     tickets: [...docs.tickets].sort(byNum).map((t) => toTicket(t, doneNums, index)),
     docs: docs.tree,
+    newTickets: [...(docs.newTickets ?? [])].sort(byNum).map(toNewTicket),
   };
 }
 

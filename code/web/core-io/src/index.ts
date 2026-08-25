@@ -5,5 +5,6 @@ export * from "./treehouse";
 export * from "./watch";
 export * from "./plan-watch";
 export * from "./backlog-watch";
+export * from "./backlog";
 export * from "./plan-store";
 export * from "./settings-store";

@@ -28,6 +28,20 @@ const ticket = (title: string, status: string, blockedBy?: string): string =>
     `**Status:** ${status}`,
   ].join("\n");
 
+/** `docs/features/<slug>/tickets/<file>` 합성(T04 신관례). */
+function newTicket(slug: string, file: string, body: string): void {
+  const dir = join(repo, "docs", "features", slug, "tickets");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, file), body);
+}
+
+/** `docs/features/<slug>/<file>` 낱장 문서 합성 — grill.md·wayfinder.md 등. */
+function doc(slug: string, file: string, body: string): void {
+  const dir = join(repo, "docs", "features", slug);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, file), body);
+}
+
 beforeEach(() => {
   repo = mkdtempSync(join(tmpdir(), "gootte-features-"));
 });
@@ -192,5 +206,52 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
       spec("f", "# f\n");
       expect(readFeatureDoc(repo, "f", "nope.md")).toEqual({ ok: false, reason: "not-found" });
     });
+  });
+});
+
+describe("readFeatures — 신관례(T04): tickets/·grill.md/design/·wayfinder.md", () => {
+  it("tickets/T<NN>.md 를 newTickets 로 뽑는다 — 파일에 상태가 없다(백로그가 SoT)", () => {
+    spec("tauri-desktop-app", "# 데스크톱 앱\n");
+    newTicket("tauri-desktop-app", "T04.md", "# T04 — 신관례 문서 표시 + 백로그 상태 조인\n\n## Goal\n본문\n");
+
+    const [f] = readFeatures(repo);
+    expect(f?.newTickets?.map((t) => [t.num, t.slug, t.path, t.title, t.status, t.docConvention])).toEqual([
+      ["04", "T04", "tickets/T04.md", "신관례 문서 표시 + 백로그 상태 조인", "pending", "tickets"],
+    ]);
+    expect(f?.newTickets?.[0]?.backlogStatus).toBeNull();
+  });
+
+  it("tickets/ 가 없으면 newTickets 가 빈 배열이다(INV-4: 실재하는 것만)", () => {
+    spec("f", "# f\n");
+    const [f] = readFeatures(repo);
+    expect(f?.newTickets).toEqual([]);
+  });
+
+  it("숫자가 아닌 파일(README 등)은 티켓으로 안 줍는다", () => {
+    spec("f", "# f\n");
+    newTicket("f", "T01.md", "# T01 — a\n");
+    newTicket("f", "README.md", "# 안내\n");
+    const [f] = readFeatures(repo);
+    expect(f?.newTickets?.map((t) => t.slug)).toEqual(["T01"]);
+  });
+
+  it("grill.md·design/·wayfinder.md 가 실재하면 문서 트리에 그대로 뜬다(원문 열람 경로 재사용)", () => {
+    spec("tauri-desktop-app", "# 데스크톱 앱\n");
+    doc("tauri-desktop-app", "grill.md", "# Grill\n");
+    doc("tauri-desktop-app", "wayfinder.md", "# Wayfinder\n");
+    mkdirSync(join(repo, "docs", "features", "tauri-desktop-app", "design"), { recursive: true });
+    writeFileSync(join(repo, "docs", "features", "tauri-desktop-app", "design", "0001-x.md"), "# 설계\n");
+
+    const [f] = readFeatures(repo);
+    const names = f?.docs.map((d) => d.name).sort();
+    expect(names).toEqual(["design", "grill.md", "spec.md", "wayfinder.md"]);
+    expect(readFeatureDoc(repo, "tauri-desktop-app", "grill.md")).toEqual({ ok: true, content: "# Grill\n" });
+    expect(readFeatureDoc(repo, "tauri-desktop-app", "design/0001-x.md")).toEqual({ ok: true, content: "# 설계\n" });
+  });
+
+  it("실재하지 않는 grill.md/design/wayfinder.md 는 트리에 나타나지 않는다(INV-4)", () => {
+    spec("f", "# f\n");
+    const [f] = readFeatures(repo);
+    expect(f?.docs.map((d) => d.name)).toEqual(["spec.md"]);
   });
 });

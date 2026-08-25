@@ -312,3 +312,30 @@ export function parseFeatureSpec(slug: string, content: string): FeatureSpecDoc 
     statusKnown: value !== null,
   };
 }
+
+// 제목 앞의 "T04 — " 접두(파일명이 이미 번호를 준다) — 이슈 관례의 TITLE_NUM_PREFIX 와 같은 원리,
+// 다만 신관례는 숫자 앞에 "T" 가 붙는다.
+const NEW_TITLE_NUM_PREFIX = /^T?\d+\s*[—–.-]\s*/i;
+
+/** `tickets/T<NN>.md` 한 장에서 읽어낸 것 — 상태는 여기 없다(SoT 는 백로그, T04). */
+export interface NewTicketDoc {
+  num: string; // "04" — 파일명("T04.md")의 숫자
+  slug: string; // 파일 basename(확장자 제거) — "T04"
+  path: string; // 기능 폴더 기준 상대 경로("tickets/T04.md")
+  title: string;
+}
+
+/**
+ * `tickets/T<NN>.md` 한 장 → 신관례 티켓(T04). 파일 안에 상태가 없다 — 백로그 조인이 채운다
+ * (`applyBacklogStatus`, `core/src/project/backlog-join.ts`). 번호는 파일명이 SoT(F3 과 같은 원리).
+ */
+export function parseNewTicket(fileName: string, content: string): NewTicketDoc {
+  const slug = fileName.replace(/\.md$/i, "");
+  const num = /^[Tt](\d+)/.exec(slug)?.[1] ?? "";
+  return {
+    num,
+    slug,
+    path: `tickets/${fileName}`,
+    title: heading(content)?.replace(NEW_TITLE_NUM_PREFIX, "").trim() || slug,
+  };
+}
