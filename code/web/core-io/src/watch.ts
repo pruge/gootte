@@ -43,7 +43,7 @@ const heavy = (p: string): boolean => p.split(sep).some((s) => HEAVY.has(s));
 export function watchProjects(
   roots: string[],
   onChange: (c: Change) => void,
-  opts: { debounceMs?: number } = {},
+  opts: { debounceMs?: number; onError?: (label: string, err: unknown) => void } = {},
 ): ProjectWatcher {
   const debounceMs = opts.debounceMs ?? 150;
   let projects = discoverProjects(roots);
@@ -95,6 +95,8 @@ export function watchProjects(
   const onWatchError = (label: string) => (err: unknown): void => {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[watch] ${label} 감시 실패(계속 진행): ${msg}\n`);
+    // 감시 불가는 폴백 판단의 근거다(tauri-desktop-app T03) — 소비처가 폴러로 갈아타게 통보한다.
+    opts.onError?.(label, err);
   };
 
   const content: FSWatcher = chokidar.watch(contentPaths(projects), {

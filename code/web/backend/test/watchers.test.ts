@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import type { ChangeEvent } from "@gootte/contract";
-import { migratePlanDb } from "@gootte/core-io";
+import { migratePlanDb, type ProjectWatcher } from "@gootte/core-io";
 import { createApp } from "../src/app";
 import { clearDiscoverCache } from "../src/discover-cache";
 import { startWatchers, type Watchers } from "../src/watchers";
@@ -67,15 +67,17 @@ describe("startWatchers", () => {
     await waitFor(() => events.some((e) => e.kind === "plan"));
   });
 
-  test("서버를 내리면 두 감시기가 함께 닫힌다", async () => {
+  test("서버를 내리면 감시기들이 함께 닫힌다", async () => {
     // 🔴 실제 fs 감시기로 "닫은 뒤 이벤트가 안 나오는가"를 재는 것은 감시기 자체를 다시 재는
-    // 일이다(이미 덮여 있다 — 위 주석). 여기서 잴 것은 배선 하나: close() 가 **둘 다** 부르는가.
+    // 일이다(이미 덮여 있다 — 위 주석). 여기서 잴 것은 배선 하나: close() 가 **전부** 부르는가.
     // 그래서 가짜 감시기를 주입해 fs 없이, 결정적으로 잰다.
     let projectsClosed = false;
     let planClosed = false;
+    let backlogClosed = false;
     watchers = startWatchers({
       roots: [],
       dataDir: "",
+      firstmateHome: "/tmp/어딘가",
       onChange: () => {},
       watchProjectsImpl: () => ({
         async close() {
@@ -87,12 +89,110 @@ describe("startWatchers", () => {
           planClosed = true;
         },
       }),
+      watchBacklogImpl: () => ({
+        async close() {
+          backlogClosed = true;
+        },
+      }),
     });
 
     await watchers.close();
 
     expect(projectsClosed).toBe(true);
     expect(planClosed).toBe(true);
+    expect(backlogClosed).toBe(true);
+  });
+
+  /**
+   * tauri-desktop-app T03 — 감시 불가 → 폴백 폴러 신호. 실제 chokidar 오류를 강제하기는
+   * 비결정적이므로, 가짜 감시기 주입으로 onError 배선만 결정적으로 잰다(위 close 테스트와 같은 원칙).
+   * 가짜는 주입 경계(type)를 통과하는 최소 형태만 지킨다.
+   */
+  describe("폴백 신호 (tauri-desktop-app T03)", () => {
+    /** opts.onError 를 밖에서 부를 수 있게 잡아 둔 문서 감시기 가짜. */
+    const errorFiringProjects = (): {
+      impl: typeof import("@gootte/core-io").watchProjects;
+      emitError: () => void;
+    } => {
+      let captured: ((label: string, err: unknown) => void) | null = null;
+      const impl = ((_roots: string[], _onChange: unknown, opts: { onError?: (label: string, err: unknown) => void }): ProjectWatcher => {
+        captured = opts.onError ?? null;
+        return { async close() {} };
+      }) as unknown as typeof import("@gootte/core-io").watchProjects;
+      return { impl, emitError: () => captured?.("콘텐츠", new Error("강제 실패")) };
+    };
+
+    test("감시 실패(onError) → watch-fallback active 방송, 되풀이 안 함", () => {
+      const events: ChangeEvent[] = [];
+      const p = errorFiringProjects();
+      watchers = startWatchers({
+        roots: [],
+        dataDir,
+        onChange: (e) => events.push(e),
+        watchProjectsImpl: p.impl,
+        watchPlanDbImpl: () => ({ async close() {} }),
+      });
+
+      p.emitError();
+      p.emitError(); // 두 번 망가져도 소식은 한 번뿐이다 — 방송 홍수 방지
+
+      expect(events.filter((e) => e.kind === "watch-fallback")).toEqual([
+        { kind: "watch-fallback", active: true },
+      ]);
+    });
+
+    test("재묶음(rebind) 성공 → active:false 로 회복 통보", async () => {
+      const events: ChangeEvent[] = [];
+      const p = errorFiringProjects();
+      watchers = startWatchers({
+        roots: [],
+        dataDir,
+        onChange: (e) => events.push(e),
+        watchProjectsImpl: p.impl,
+        watchPlanDbImpl: () => ({ async close() {} }),
+      });
+      p.emitError();
+
+      await watchers.rebind([]);
+
+      expect(events.filter((e) => e.kind === "watch-fallback")).toEqual([
+        { kind: "watch-fallback", active: true },
+        { kind: "watch-fallback", active: false },
+      ]);
+    });
+
+    test("firstmate 홈 재묶음도 폴백을 회복시킨다", async () => {
+      const events: ChangeEvent[] = [];
+      const p = errorFiringProjects();
+      watchers = startWatchers({
+        roots: [],
+        dataDir,
+        onChange: (e) => events.push(e),
+        watchProjectsImpl: p.impl,
+        watchPlanDbImpl: () => ({ async close() {} }),
+      });
+      p.emitError();
+
+      await watchers.rebindBacklog(null);
+
+      expect(
+        events.filter((e) => e.kind === "watch-fallback").map((e) => (e as { active: boolean }).active),
+      ).toEqual([true, false]);
+    });
+
+    test("폴백 없던 평시엔 watch-fallback 을 방송하지 않는다", async () => {
+      const events: ChangeEvent[] = [];
+      dataDir = mkdtempSync(join(tmpdir(), "gootte-watchers-db-"));
+      watchers = startWatchers({
+        roots: [],
+        dataDir,
+        firstmateHome: null,
+        onChange: (e) => events.push(e),
+      });
+      await sleep(300);
+
+      expect(events.filter((e) => e.kind === "watch-fallback")).toEqual([]);
+    });
   });
 
   test(
