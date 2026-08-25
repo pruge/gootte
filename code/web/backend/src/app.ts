@@ -265,9 +265,14 @@ export function createApp(options: AppOptions = {}): Hono {
   // 🔴 남은 일이 있는 기능 수는 **캐시하지 않는다** — 발견 결과와 달리 문서가 바뀔 때마다 변하는
   // 파생물이라 요청마다 다시 읽고 다시 센다(INV-1·INV-3). 문서 read 뿐이라 git 을 부르지 않는다.
   app.get("/api/projects", (c) => {
+    // 🔴 세기 전에 백로그 조인을 얹는다 — 신관례(`tickets/T<NN>.md`) 티켓은 파일에 상태가
+    // 없고(SoT = 백로그), 조인 없이는 전부 pending 으로 보여 백로그에서 다 끝난 기능까지
+    // "남은 일 있음" 으로 셔진다(실제 결함, 2026-08-25 실측: firstmate 사이드바 2 → 실제 0).
+    // features·plan 탭과 **같은 판정 자리**(`withBacklogStatus`)를 지난다.
+    const backlog = readBacklogTasks(readSettings(dataDir).firstmateHome);
     const projects = getProjects(effectiveRoots()).map((p) => ({
       ...p,
-      openFeatures: countOpenFeatures(readFeatures(p.path)),
+      openFeatures: countOpenFeatures(applyBacklogStatus(readFeatures(p.path), backlog, p.slug)),
     }));
     return c.json(ProjectsResponse.parse({ projects }));
   });
