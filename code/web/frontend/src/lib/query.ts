@@ -8,8 +8,10 @@ import {
   fetchFeatures,
   fetchFeatureDoc,
   fetchPlanBoard,
+  fetchSettings,
   movePlanCards,
   moveStep,
+  saveSettings,
 } from "./api";
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
@@ -24,6 +26,7 @@ export function makeQueryClient(): QueryClient {
 export const qk = {
   projects: ["projects"] as const,
   features: (slug: string) => ["features", slug] as const,
+  settings: ["settings"] as const,
   /**
    * 🔴 자리 둘을 동시에 만족해야 하는 열쇠다(`lib/live.ts`): 맨 앞이 `"plan"` 이라 계획 DB 변경
    * (`kind:"plan"`)에 걸리고, slug 를 담고 있어 그 프로젝트 문서 변경(`kind:"project"`)에도 걸린다.
@@ -36,6 +39,28 @@ export const qk = {
 
 export function useProjects() {
   return useQuery({ queryKey: qk.projects, queryFn: fetchProjects });
+}
+
+/** 설정(tauri-desktop-app T02) — 감시 루트·firstmate 홈. */
+export function useSettings() {
+  return useQuery({ queryKey: qk.settings, queryFn: fetchSettings });
+}
+
+/**
+ * 설정 저장 — 성공하면 프로젝트 목록을 무효화한다. 감시 루트가 바뀌면 발견되는 프로젝트
+ * 자체가 달라지므로(INV-3), 화면이 낡은 목록을 그리게 두지 않는다. 나머지 쿼리도 루트에
+ * 종속되지만 프로젝트 선택이 유지되는 동안엔 다음 조회에서 자연히 새 값이 온다.
+ */
+export function useSaveSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: saveSettings,
+    onSuccess: () => {
+      // 설정이 바뀌면 그것을 먹는 전부(프로젝트 발견·기능 목록·판)가 낡는다(INV-3) —
+      // 저장 즉시 적용은 화면이 다시 물어 보는 것으로 완성된다.
+      void qc.invalidateQueries();
+    },
+  });
 }
 
 /** 기능별 할일(docs/features/) — 서버가 매 요청 재계산(INV-3). */

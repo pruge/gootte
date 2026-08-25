@@ -9,7 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
@@ -19,10 +19,17 @@ import {
   FeaturesResponse,
   FeatureDocResponse,
   PlanBoardResponse,
+  SettingsResponse,
   ApiError,
   type Project,
 } from "@gootte/contract";
-import { migratePlanDb, readPlacements, readReadMarks, readSteps, writeStep } from "@gootte/core-io";
+import {
+  migratePlanDb,
+  readPlacements,
+  readReadMarks,
+  readSteps,
+  writeStep,
+} from "@gootte/core-io";
 import { createApp } from "../src/app";
 import {
   clearDiscoverCache,
@@ -983,4 +990,177 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
       expect(body.done.map((c) => c.feature.slug)).toEqual(["shipped"]);
       expect(body.waiting).toEqual([]);
     }));
+});
+
+// ── 설정 (tauri-desktop-app T02) ───────────────────────────
+// 설정 저장소도 주입한다 — 이 기계의 실제 `~/.gootte` 를 읽거나 쓰면 테스트가 기계에 종속되고
+// 캡틴의 실제 설정을 오염시킨다(2026-08-14 사고와 같은 그릇).
+describe("설정 GET/PUT /api/settings", () => {
+  const withSettingsDataDir = async (run: (dataDir: string) => Promise<void>) => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-settings-"));
+    try {
+      await run(dataDir);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  };
+
+  test("미설정이면 전부 null + 존재 false — 소비처는 기본값으로 떨어진다", async () =>
+    withSettingsDataDir(async (dataDir) => {
+      const app = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
+      const res = await app.request("/api/settings");
+      expect(res.status).toBe(200);
+      expect(SettingsResponse.parse(await res.json())).toEqual({
+        watchRoot: null,
+        firstmateHome: null,
+        watchRootExists: false,
+        firstmateHomeExists: false,
+      });
+    }));
+
+  test("저장하면 정규화되어 실리고, 존재 여부는 응답 때 다시 본다(INV-3)", async () =>
+    withSettingsDataDir(async (dataDir) => {
+      const app = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
+      const res = await app.request("/api/settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ watchRoot: FIXTURES, firstmateHome: "/없는/경로" }),
+      });
+      expect(res.status).toBe(200);
+      // FIXTURES 는 절대 경로라 정규화해도 자기 자신 — 존재 true.
+      expect(SettingsResponse.parse(await res.json())).toEqual({
+        watchRoot: FIXTURES,
+        firstmateHome: "/없는/경로",
+        watchRootExists: true,
+        firstmateHomeExists: false, // 없는 경로도 저장은 된다 — 경고는 화면이 이 값을 본다
+      });
+    }));
+
+  test("~ 로 입력한 경로는 홈으로 전개되어 저장된다", async () =>
+    withSettingsDataDir(async (dataDir) => {
+      const app = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
+      const body = SettingsResponse.parse(
+        await (
+          await app.request("/api/settings", {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ firstmateHome: "~/firstmate2" }),
+          })
+        ).json(),
+      );
+      expect(body.firstmateHome).toBe(join(homedir(), "firstmate2"));
+    }));
+
+  test("상대 경로는 400 으로 거절한다 — 조용히 CWD 에 붙이지 않는다", async () =>
+    withSettingsDataDir(async (dataDir) => {
+      const app = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
+      const res = await app.request("/api/settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ watchRoot: "relative/path" }),
+      });
+      expect(res.status).toBe(400);
+      expect(ApiError.parse(await res.json()).error).toContain("절대 경로");
+    }));
+
+  test("저장한 값은 재시작(새 앱 인스턴스) 후에도 산다 — 같은 저장소를 다시 읽으면 같은 값", async () =>
+    withSettingsDataDir(async (dataDir) => {
+      const opts = { roots, treehouse: NO_TREEHOUSE, dataDir };
+      await createApp(opts).request("/api/settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ watchRoot: FIXTURES }),
+      });
+      const body = SettingsResponse.parse(
+        await (await createApp(opts).request("/api/settings")).json(),
+      );
+      expect(body.watchRoot).toBe(FIXTURES);
+    }));
+
+  test("감시 루트를 바꾸면 다음 요청부터 그 루트의 프로젝트가 발견된다 — 재시작 없이", async () =>
+    withSettingsDataDir(async (dataDir) => {
+      // 기본 루트(FIXTURES=alpha) 말고 새 임시 루트에 프로젝트 하나를 심는다.
+      const newRoot = mkdtempSync(join(tmpdir(), "gootte-app-watchroot-"));
+      mkdirSync(join(newRoot, "beta", "docs", "features"), { recursive: true });
+      writeFileSync(join(newRoot, "beta", "AGENTS.md"), "# beta");
+      try {
+        const app = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
+        const slugsOf = async () =>
+          ProjectsResponse.parse(await (await app.request("/api/projects")).json()).projects.map(
+            (p) => p.slug,
+          );
+        expect((await slugsOf())).toContain("alpha");
+        await app.request("/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ watchRoot: newRoot }),
+        });
+        clearDiscoverCache();
+        const slugs = await slugsOf();
+        expect(slugs).toContain("beta");
+        expect(slugs).not.toContain("alpha");
+      } finally {
+        rmSync(newRoot, { recursive: true, force: true });
+      }
+    }));
+
+  test("null 로 지우면 기본 루트로 되돌아온다", async () =>
+    withSettingsDataDir(async (dataDir) => {
+      const app = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
+      const otherRoot = mkdtempSync(join(tmpdir(), "gootte-app-clear-"));
+      try {
+        await app.request("/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ watchRoot: otherRoot }),
+        });
+        clearDiscoverCache();
+        expect(
+          ProjectsResponse.parse(await (await app.request("/api/projects")).json()).projects.map(
+            (p) => p.slug,
+          ),
+        ).not.toContain("alpha");
+        await app.request("/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ watchRoot: null }),
+        });
+        clearDiscoverCache();
+        expect(
+          ProjectsResponse.parse(await (await app.request("/api/projects")).json()).projects.map(
+            (p) => p.slug,
+          ),
+        ).toContain("alpha");
+      } finally {
+        rmSync(otherRoot, { recursive: true, force: true });
+      }
+    }));
+});
+
+// review F3 — PUT 이 감시 루트를 바꾸면 감시기 재바인딩 통보가 간다(값은 저장 뒤 다시 읽은 것).
+describe("설정 PUT → onWatchRootChange", () => {
+  test("watchRoot 교체와 지움(null) 모두 새 값을 통보한다, 다른 키만 바꾸면 부르지 않는다", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-rebind-"));
+    try {
+      const seen: (string | null)[] = [];
+      const app = createApp({
+        roots,
+        treehouse: NO_TREEHOUSE,
+        dataDir,
+        onWatchRootChange: (w) => seen.push(w),
+      });
+      const put = (body: object) =>
+        app.request("/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      await put({ firstmateHome: "/f" }); // 루트 아님 → 통보 없음
+      await put({ watchRoot: FIXTURES }); // 교체
+      await put({ watchRoot: null }); // 지움
+      expect(seen).toEqual([FIXTURES, null]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
 });

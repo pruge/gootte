@@ -2,8 +2,9 @@
 //!
 //! 창은 얇다: 로컬 스택(hono backend ↔ vite frontend)을 자식 프로세스로 띄우고,
 //! 둘 다 포트를 열면 그때 창을 보여 주며(http://localhost:<frontend>), 닫히면
-//! 자식을 몰아 정리한다. UI 는 순수 http(same-origin fetch · WS /api/live)라
-//! IPC 를 하나도 쓰지 않는다 — 셸이 하는 일은 이 수명 관리가 전부다.
+//! 자식을 몰아 정리한다. UI 는 순수 http(same-origin fetch · WS /api/live)라 IPC 를 거의
+//! 쓰지 않는다 — 예외는 설정의 네이티브 폴더 다이얼로그 하나뿐(tauri-desktop-app T02)이고,
+//! 셸이 하는 일은 이 수명 관리가 전부다.
 
 use std::{
     net::TcpStream,
@@ -470,6 +471,9 @@ fn main() {
     });
 
     tauri::Builder::default()
+        // 폴더 다이얼로그(tauri-desktop-app T02) — UI 가 쓰는 유일한 IPC 다. 설정의
+        // "찾아보기…" 가 네이티브 폴더 선택기를 부른다(dialog:allow-open).
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             spawn_children(&cfg).unwrap_or_else(|e| fail_fatal(&e));
 

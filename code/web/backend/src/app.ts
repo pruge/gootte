@@ -9,8 +9,11 @@ import {
   PlanBoardResponse,
   PlanMoveRequest,
   StepMoveRequest,
+  SettingsResponse,
+  SettingsUpdateRequest,
   type ApiError,
   type Feature,
+  type Settings,
 } from "@gootte/contract";
 import {
   applyInProgress,
@@ -37,6 +40,10 @@ import {
   defaultPlanDataDir,
   defaultProjectRoots,
   defaultTreehouseRoot,
+  readSettings,
+  writeSettings,
+  normalizeDirPath,
+  dirExists,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
@@ -72,6 +79,11 @@ export interface AppOptions {
   dataDir?: string;
   /** 완료 칸에 찍을 시각 (테스트 주입). 없으면 `nowStamp()`. */
   now?: () => string;
+  /**
+   * 감시 루트 설정이 바뀐 뒤의 통보(tauri-desktop-app T02) — server.ts 가 문서 감시기를 새
+   * 뿌리로 다시 묶는 데 쓴다(INV-3: 감시기도 설정값을 따라간다). 값은 저장 뒤 다시 읽은 것.
+   */
+  onWatchRootChange?: (watchRoot: string | null) => void;
 }
 
 /**
@@ -88,15 +100,39 @@ export function nowStamp(at: Date = new Date()): string {
 /**
  * Hono 앱 팩토리 — CORE projections 를 CONTRACT envelope 로 서빙(INV-4 릴레이).
  * **관리대상에는 한 글자도 쓰지 않는다**(INV-2) — core-io read + core 순수 계산뿐이다.
- * 쓰기는 gootte 자기 계획 저장소(`plan.db`)에만 있고 둘뿐이다: 캡틴이 옮길 때(03)와
- * 상자가 전부 채워진 기능을 처음 볼 때(04, `planAutoClose`).
+ * 쓰기는 gootte 자기 저장소에만 있다: 계획(`plan.db`)과 설정(`settings.json` — 사용자가 정한
+ * 감시 루트·firstmate 홈. INV-5 가 저장을 허락하는 값이다).
  */
 export function createApp(options: AppOptions = {}): Hono {
-  const roots = options.roots ?? defaultRoots();
+  const fallbackRoots = options.roots ?? defaultRoots();
   const treehouse = options.treehouse ?? treehouseRoot();
   const dataDir = options.dataDir ?? planDataDir();
   const now = options.now ?? (() => nowStamp());
   const app = new Hono();
+
+  /**
+   * 지금 이 요청이 볼 discover 루트 — 설정값이 기본값을 이긴다(tauri-desktop-app T02).
+   * 🔴 생성 시 한 번 얼려 두지 않고 **요청마다 다시 읽는다**(INV-3) — 설정을 바꾸면 다음
+   * 요청부터 곧장 새 루트가 보여야 하고, 재시작 없이 적용된다는 것이 그래서 참이 된다.
+   * 파일 read 하나라 매 요청에 감당 가능하다. 미설정(null)이면 env·플랫폼 기본값으로 떨어진다.
+   */
+  const effectiveRoots = (): string[] => {
+    try {
+      const watchRoot = readSettings(dataDir).watchRoot;
+      if (watchRoot) return [watchRoot];
+    } catch {
+      // 설정 파일을 못 읽는 것은 기본값으로 떨어질 이유가 아니라 알릴 사실이다 — 아래
+      // /api/settings 가 같은 자리를 읽으며 큰 소리로 낸다. 여기선 서비스 연속성을 택한다.
+    }
+    return fallbackRoots;
+  };
+
+  /** 설정 + 응답 시점에 다시 본 존재 여부(INV-3 — 존재는 저장하지 않는다). */
+  const settingsWithExists = (s: Settings): SettingsResponse => ({
+    ...s,
+    watchRootExists: dirExists(s.watchRoot),
+    firstmateHomeExists: dirExists(s.firstmateHome),
+  });
 
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
 
@@ -150,11 +186,57 @@ export function createApp(options: AppOptions = {}): Hono {
     };
   };
 
+  // ── 설정 (tauri-desktop-app T02) ────────────────────────────
+  // GET /api/settings → SettingsResponse — 저장된 두 경로 + 응답 때 다시 본 존재 여부(INV-3).
+  app.get("/api/settings", (c) => {
+    try {
+      return c.json(SettingsResponse.parse(settingsWithExists(readSettings(dataDir))));
+    } catch (err) {
+      return c.json({ error: planError(err) } satisfies ApiError, 500);
+    }
+  });
+
+  // PUT /api/settings → SettingsResponse — 사용자가 정한 값이 설정 저장소에 닿는 유일한 입구.
+  // 🔴 존재하지 않는 경로도 **거절하지 않고 저장한다** — 저장 시점에 폴더가 아직 없을 수 있고,
+  // 경고 표시는 응답의 `*Exists` 를 본다(화면 몫). 거절하는 것은 절대 경로가 아닌 입력뿐이다.
+  app.put("/api/settings", zValidator("json", SettingsUpdateRequest), (c) => {
+    const update = c.req.valid("json");
+    const normalized: { watchRoot?: string | null; firstmateHome?: string | null } = {};
+    for (const key of ["watchRoot", "firstmateHome"] as const) {
+      const raw = update[key];
+      if (raw === undefined) continue;
+      if (raw === null) {
+        normalized[key] = null;
+        continue;
+      }
+      try {
+        normalized[key] = normalizeDirPath(raw);
+      } catch (err) {
+        return c.json({ error: planError(err) } satisfies ApiError, 400);
+      }
+    }
+    try {
+      writeSettings(dataDir, normalized);
+      // 감시 루트가 실제로 바뀌었다면 감시기에도 알린다 — 요청 경로(effectiveRoots)만 새 값이고
+      // 감시기가 낡은 뿌리를 보고 있으면 live 갱신이 어긋난다(INV-3).
+      if (update.watchRoot !== undefined) options.onWatchRootChange?.(readSettings(dataDir).watchRoot);
+    } catch (err) {
+      return c.json({ error: planError(err) } satisfies ApiError, 500);
+    }
+    // 저장된 값을 다시 읽어 답한다 — 방금 쓴 값으로 응답을 조립하면 그것이 곧 파일의 2차 사본이다
+    // (/move 와 같은 규율, INV-1·INV-3).
+    try {
+      return c.json(SettingsResponse.parse(settingsWithExists(readSettings(dataDir))));
+    } catch (err) {
+      return c.json({ error: planError(err) } satisfies ApiError, 500);
+    }
+  });
+
   // GET /api/projects → ProjectsResponse (discover, W2 캐시).
   // 🔴 남은 일이 있는 기능 수는 **캐시하지 않는다** — 발견 결과와 달리 문서가 바뀔 때마다 변하는
   // 파생물이라 요청마다 다시 읽고 다시 센다(INV-1·INV-3). 문서 read 뿐이라 git 을 부르지 않는다.
   app.get("/api/projects", (c) => {
-    const projects = getProjects(roots).map((p) => ({
+    const projects = getProjects(effectiveRoots()).map((p) => ({
       ...p,
       openFeatures: countOpenFeatures(readFeatures(p.path)),
     }));
@@ -168,7 +250,7 @@ export function createApp(options: AppOptions = {}): Hono {
   // 어디에도 저장하지 않는다. 티켓에 잇지 못한 작업은 `inProgress.unknown` 으로 드러난다.
   app.get("/api/features/:slug", zValidator("param", slugParam), (c) => {
     const { slug } = c.req.valid("param");
-    const proj = resolveSlug(roots, slug);
+    const proj = resolveSlug(effectiveRoots(), slug);
     if (!proj) return c.json(notFound(slug), 404);
     const project = basename(proj.path);
     const features = readFeatures(proj.path);
@@ -205,7 +287,7 @@ export function createApp(options: AppOptions = {}): Hono {
   // (04, `readBoard`). 그것이 gootte 가 스스로 쓰는 유일한 자리다(spec §gootte 가 스스로 쓰는 단 한 순간).
   app.get("/api/plan/:slug", zValidator("param", slugParam), (c) => {
     const { slug } = c.req.valid("param");
-    const proj = resolveSlug(roots, slug);
+    const proj = resolveSlug(effectiveRoots(), slug);
     if (!proj) return c.json(notFound(slug), 404);
     const project = basename(proj.path);
     try {
@@ -237,7 +319,7 @@ export function createApp(options: AppOptions = {}): Hono {
     (c) => {
       const { slug } = c.req.valid("param");
       const move = c.req.valid("json");
-      const proj = resolveSlug(roots, slug);
+      const proj = resolveSlug(effectiveRoots(), slug);
       if (!proj) return c.json(notFound(slug), 404);
       const project = basename(proj.path);
       try {
@@ -281,7 +363,7 @@ export function createApp(options: AppOptions = {}): Hono {
     (c) => {
       const { slug } = c.req.valid("param");
       const { feature, ticket, target } = c.req.valid("json");
-      const proj = resolveSlug(roots, slug);
+      const proj = resolveSlug(effectiveRoots(), slug);
       if (!proj) return c.json(notFound(slug), 404);
       const project = basename(proj.path);
       try {
@@ -322,7 +404,7 @@ export function createApp(options: AppOptions = {}): Hono {
     (c) => {
       const { slug, feature } = c.req.valid("param");
       const { path } = c.req.valid("query");
-      const proj = resolveSlug(roots, slug);
+      const proj = resolveSlug(effectiveRoots(), slug);
       if (!proj) return c.json(notFound(slug), 404);
       const result = readFeatureDoc(proj.path, feature, path);
       if (!result.ok) {

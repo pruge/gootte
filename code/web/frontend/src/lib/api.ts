@@ -4,10 +4,13 @@ import {
   FeaturesResponse,
   FeatureDocResponse,
   PlanBoardResponse,
+  SettingsResponse,
   ApiError,
   type PlanMoveRequest,
   type StepMoveRequest,
   type Project,
+  type SettingsUpdateRequest,
+  type SettingsResponse as SettingsResponseType,
 } from "@gootte/contract";
 
 /** same-origin(prod = backend가 정적 서빙) · dev = vite 프록시가 /api → backend. */
@@ -80,3 +83,18 @@ export const fetchFeatureDoc = (
     `/api/features/${encodeURIComponent(project)}/${encodeURIComponent(feature)}/doc?path=${encodeURIComponent(path)}`,
     FeatureDocResponse,
   );
+
+/** 설정 읽기(tauri-desktop-app T02) — 존재 여부는 서버가 응답 때 다시 본다(INV-3). */
+export const fetchSettings = (): Promise<SettingsResponseType> =>
+  get("/api/settings", SettingsResponse);
+
+/**
+ * 설정 바꾸기 — 응답은 **저장 뒤의 설정 전체**다. 화면이 자기 손으로 고친 값을 그대로 두지
+ * 않고 서버가 정규화·재판정한 값을 받는다(INV-1 — 화면이 판정의 2차 사본을 만들지 않게).
+ */
+export const saveSettings = (update: SettingsUpdateRequest): Promise<SettingsResponseType> =>
+  send("/api/settings", SettingsResponse, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(update),
+  });

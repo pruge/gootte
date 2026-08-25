@@ -3,6 +3,13 @@ import type { ChangeEvent } from "@gootte/contract";
 
 export interface Watchers {
   close(): Promise<void>;
+  /**
+   * 문서 감시기만 새 루트로 다시 묶는다(tauri-desktop-app T02) — 설정에서 감시 루트를 바꾸면
+   * 기존 감시기는 낡은 뿌리를 보고 있으니(INV-3), 닫고 같은 배선으로 새 뿌리를 세운다.
+   * 계획 감시기는 루트와 무관해 그대로 둔다. 일반화된 재구성 프레임워크가 아니다 —
+   * 전체 FS 이벤트 감시는 T03 의 몫이다.
+   */
+  rebind(roots: string[]): Promise<void>;
 }
 
 export interface WatchersOptions {
@@ -39,13 +46,21 @@ export function startWatchers(opts: WatchersOptions): Watchers {
     watchPlanDbImpl = watchPlanDb,
   } = opts;
 
-  const projectsWatcher = watchProjectsImpl(roots, (c: Change) => {
-    if (c.kind === "projects") onProjectsChange?.();
-    onChange(c);
-  });
   const planWatcher = watchPlanDbImpl(dataDir, () => onChange({ kind: "plan" }));
 
+  const startProjectsWatcher = (roots: string[]) =>
+    watchProjectsImpl(roots, (c: Change) => {
+      if (c.kind === "projects") onProjectsChange?.();
+      onChange(c);
+    });
+
+  let projectsWatcher = startProjectsWatcher(roots);
+
   return {
+    async rebind(nextRoots: string[]) {
+      await projectsWatcher.close();
+      projectsWatcher = startProjectsWatcher(nextRoots);
+    },
     async close() {
       await Promise.all([projectsWatcher.close(), planWatcher.close()]);
     },
