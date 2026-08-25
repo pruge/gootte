@@ -578,6 +578,82 @@ describe("GET /api/features/:slug/:feature/doc — 문서 본문(read-only, INV-
         await app.request("/api/features/alpha/doc-tree/doc?path=issues/01-a.md");
         expect(readReadMarks(dataDir, "alpha")).toEqual(new Set(["doc-tree/issues/01-a.md"]));
       }));
+
+    /** 신관례 전용 기능을 픽스처 사본에 심는 도우미 — 원본 fixture 는 건드리지 않는다. */
+    const withNewConvFeature = async (
+      dataDir: string,
+      fn: (app: ReturnType<typeof createApp>, projectRoot: string) => Promise<void> | void,
+    ): Promise<void> => {
+      const projectRoot = mkdtempSync(join(tmpdir(), "gootte-app-root-"));
+      cpSync(FIXTURES, projectRoot, { recursive: true });
+      mkdirSync(join(projectRoot, "alpha/docs/features/new-conv/tickets"), { recursive: true });
+      writeFileSync(
+        join(projectRoot, "alpha/docs/features/new-conv/tickets/T01.md"),
+        "# T01 — 신관례 샘플\n\n## Depends on\n- nothing\n",
+      );
+      try {
+        await fn(createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir }), projectRoot);
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+      }
+    };
+
+    test("🔴 신관례 티켓(tickets/T<NN>.md)을 열어도 읽음이 된다(실제 결함, 2026-08-26 캡틴 보고)", () =>
+      withDataDir((dataDir) =>
+        withNewConvFeature(dataDir, async (app) => {
+          const res = await app.request("/api/features/alpha/new-conv/doc?path=tickets/T01.md");
+          expect(res.status).toBe(200);
+          expect(readReadMarks(dataDir, "alpha")).toEqual(new Set(["new-conv/tickets/T01.md"]));
+        }),
+      ));
+
+    test("tickets/ 안의 비티켓 파일을 열어도 기록이 남지 않는다 — 티켓 모양은 T<NN>.md 뿐이다", () =>
+      withDataDir((dataDir) =>
+        withNewConvFeature(dataDir, async (app, projectRoot) => {
+          writeFileSync(join(projectRoot, "alpha/docs/features/new-conv/tickets/README.md"), "# 안내\n");
+          const res = await app.request("/api/features/alpha/new-conv/doc?path=tickets/README.md");
+          expect(res.status).toBe(200);
+          expect(readReadMarks(dataDir, "alpha")).toEqual(new Set());
+        }),
+      ));
+
+    test("신관례 티켓도 두 번 열면 한 번과 같다(멱등)", () =>
+      withDataDir((dataDir) =>
+        withNewConvFeature(dataDir, async (app) => {
+          await app.request("/api/features/alpha/new-conv/doc?path=tickets/T01.md");
+          await app.request("/api/features/alpha/new-conv/doc?path=tickets/T01.md");
+          expect(readReadMarks(dataDir, "alpha")).toEqual(new Set(["new-conv/tickets/T01.md"]));
+        }),
+      ));
+
+    test("🔴 신관례 전용 기능에서 티켓을 다 읽으면 초록이 풀린다(hasUnreadTicket === false)", () =>
+      withDataDir((dataDir) =>
+        withNewConvFeature(dataDir, async (app, projectRoot) => {
+          // 첫 요청 — 첫 깔기 때 있던 T01 은 읽음으로 깔린다.
+          const first = FeaturesResponse.parse(
+            await (await app.request("/api/features/alpha")).json(),
+          );
+          expect(first.features.find((f) => f.slug === "new-conv")?.hasUnreadTicket).toBe(false);
+
+          // 깔기 뒤에 생긴 T02 만 안 읽음이다.
+          writeFileSync(
+            join(projectRoot, "alpha/docs/features/new-conv/tickets/T02.md"),
+            "# T02 — 나중에 생긴 티켓\n\n## Depends on\n- nothing\n",
+          );
+          const second = FeaturesResponse.parse(
+            await (await app.request("/api/features/alpha")).json(),
+          );
+          expect(second.features.find((f) => f.slug === "new-conv")?.hasUnreadTicket).toBe(true);
+
+          // T02 원문을 열면 → 기록이 남고 → 초록이 풀린다.
+          const doc = await app.request("/api/features/alpha/new-conv/doc?path=tickets/T02.md");
+          expect(doc.status).toBe(200);
+          const third = FeaturesResponse.parse(
+            await (await app.request("/api/features/alpha")).json(),
+          );
+          expect(third.features.find((f) => f.slug === "new-conv")?.hasUnreadTicket).toBe(false);
+        }),
+      ));
   });
 });
 
