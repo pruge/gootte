@@ -14,8 +14,8 @@ export interface Watchers {
   /**
    * 문서 감시기만 새 루트로 다시 묶는다(tauri-desktop-app T02) — 설정에서 감시 루트를 바꾸면
    * 기존 감시기는 낡은 뿌리를 보고 있으니(INV-3), 닫고 같은 배선으로 새 뿌리를 세운다.
-   * 계획·백로그 감시기는 루트와 무관해 그대로 둔다. 재묶음이 성공하면 폴백도 함께 해제한다 —
-   * 새 감시기가 곧바로 또 실패하면 onError 가 다시 폴백을 선다.
+   * 계획·백로그 감시기는 루트와 무관해 그대로 둔다. 재묶음이 성공하면 그 소스의 실패를 풀고,
+   * 전 소스가 회복됐을 때만 폴백 해제를 방송한다.
    */
   rebind(roots: string[]): Promise<void>;
   /**
@@ -53,7 +53,8 @@ export interface WatchersOptions {
  * tauri-desktop-app T03 에서 백로그 감시기가 셋째로 합류하고, **감시 불가 → 폴백 신호**가
  * 더해졌다. 어느 감시기든 못 붙거나 도중에 망가지면 `{kind:"watch-fallback", active:true}` 를
  * 한 번 방송한다 — 프론트가 주기 풀스캔으로 갈아타는 근거다(INV-3: 조용한 stale 금지).
- * 재묶음(rebind)이 성공하면 `active:false` 로 회복을 알린다.
+ * 실패는 소스별로 기억하고, 망가진 소스의 재묶음이 성공해 **전부 회복됐을 때만** `active:false`
+ * 를 알린다 — 다른 소스의 재묶음이 남은 고장을 덮지 않게.
  *
  * 서버 진입 파일(server.ts) 안에서 곧바로 실행되던 코드라 테스트가 못 닿았다 — 이 함수로
  * 꺼내 배선 자체를 테스트가 닿는 자리로 옮긴다.
@@ -71,23 +72,30 @@ export function startWatchers(opts: WatchersOptions): Watchers {
   } = opts;
 
   /**
-   * 폴백 상태 — true 를 방송한 뒤엔 같은 소식을 되풀이하지 않는다(방송 홍수 방지).
-   * 회복(active:false)은 재묶음 성공 시 한 번만 싣는다.
+   * 폴백 상태 — 소스별로 실패를 기억하고 **전부 회복됐을 때만** active:false 를 싣는다.
+   * 한 소스의 재묶음이 다른 소스의 고장을 덮으면 프론트가 폴러를 내린 뒤에도 그 소스는
+   * 계속 못 보는 조용한 stale(INV-3)이 되므로, 회복 판정은 전체 집합으로 한다.
+   * active:true 는 첫 실패 때 한 번(방송 홍수 방지), 회복은 마지막 실패 해제 때 한 번만.
    */
+  const failures = { projects: false, plan: false, backlog: false };
   let fallbackActive = false;
-  const enterFallback = (): void => {
-    if (fallbackActive) return;
-    fallbackActive = true;
-    onChange({ kind: "watch-fallback", active: true });
+  const syncFallback = (): void => {
+    const any = failures.projects || failures.plan || failures.backlog;
+    if (any && !fallbackActive) {
+      fallbackActive = true;
+      onChange({ kind: "watch-fallback", active: true });
+    } else if (!any && fallbackActive) {
+      fallbackActive = false;
+      onChange({ kind: "watch-fallback", active: false });
+    }
   };
-  const exitFallbackIfAny = (): void => {
-    if (!fallbackActive) return;
-    fallbackActive = false;
-    onChange({ kind: "watch-fallback", active: false });
+  const onErrorFor = (source: keyof typeof failures) => (): void => {
+    failures[source] = true;
+    syncFallback();
   };
 
   const planWatcher: PlanWatcher = watchPlanDbImpl(dataDir, () => onChange({ kind: "plan" }), {
-    onError: enterFallback,
+    onError: onErrorFor("plan"),
   });
 
   const startProjectsWatcher = (roots: string[]): ProjectWatcher =>
@@ -98,26 +106,29 @@ export function startWatchers(opts: WatchersOptions): Watchers {
         onChange(c);
       },
       // 어떤 감시기 하나라도 실패하면 "이벤트가 온전하다" 는 보장이 깨진다 — 전부 폴백으로.
-      { onError: enterFallback },
+      { onError: onErrorFor("projects") },
     );
 
   let projectsWatcher = startProjectsWatcher(roots);
 
-  const backlogOnError = (): void => enterFallback();
   const startBacklogWatcher = (home: string | null): BacklogWatcher =>
-    watchBacklogImpl(home, () => onChange({ kind: "backlog" }), { onError: backlogOnError });
+    watchBacklogImpl(home, () => onChange({ kind: "backlog" }), { onError: onErrorFor("backlog") });
   let backlogWatcher = startBacklogWatcher(firstmateHome);
 
   return {
     async rebind(nextRoots: string[]) {
       await projectsWatcher.close();
       projectsWatcher = startProjectsWatcher(nextRoots);
-      exitFallbackIfAny();
+      // 새 묶음이 성공했다고 낙관하고 이 소스의 실패를 푼다 — 곧바로 또 실패하면 onError 가
+      // 다시 표시하고 sync 가 되풀이한다. 다른 소스의 실패는 그대로 남는다.
+      failures.projects = false;
+      syncFallback();
     },
     async rebindBacklog(nextHome: string | null) {
       await backlogWatcher.close();
       backlogWatcher = startBacklogWatcher(nextHome);
-      exitFallbackIfAny();
+      failures.backlog = false;
+      syncFallback();
     },
     async close() {
       await Promise.all([projectsWatcher.close(), planWatcher.close(), backlogWatcher.close()]);

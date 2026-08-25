@@ -161,7 +161,7 @@ describe("startWatchers", () => {
       ]);
     });
 
-    test("firstmate 홈 재묶음도 폴백을 회복시킨다", async () => {
+    test("다른 소스의 재묶음은 폴백을 덮지 않고, 해당 소스의 재묶음만 회복시킨다", async () => {
       const events: ChangeEvent[] = [];
       const p = errorFiringProjects();
       watchers = startWatchers({
@@ -171,13 +171,19 @@ describe("startWatchers", () => {
         watchProjectsImpl: p.impl,
         watchPlanDbImpl: () => ({ async close() {} }),
       });
-      p.emitError();
+      p.emitError(); // 문서 감시기 고장
 
+      // 백로그 재묶음으로 문서 고장이 회복된 것처럼 속이면 폴러가 이르게 내려간다(INV-3).
       await watchers.rebindBacklog(null);
+      expect(events.filter((e) => e.kind === "watch-fallback")).toEqual([
+        { kind: "watch-fallback", active: true },
+      ]);
 
-      expect(
-        events.filter((e) => e.kind === "watch-fallback").map((e) => (e as { active: boolean }).active),
-      ).toEqual([true, false]);
+      await watchers.rebind([]); // 망가진 소스 자체를 재묶음할 때만 회복한다
+      expect(events.filter((e) => e.kind === "watch-fallback")).toEqual([
+        { kind: "watch-fallback", active: true },
+        { kind: "watch-fallback", active: false },
+      ]);
     });
 
     test("폴백 없던 평시엔 watch-fallback 을 방송하지 않는다", async () => {
