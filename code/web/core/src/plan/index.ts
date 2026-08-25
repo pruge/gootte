@@ -1,3 +1,4 @@
+export * from "./auto-step";
 export * from "./board";
 export * from "./close";
 export * from "./move";

@@ -1,9 +1,12 @@
 import type { Feature, Placement, PlanArea, PlanMoveRequest } from "@gootte/contract";
+import { assignSteps } from "./auto-step";
 import { compareBySeq } from "./board";
+import { ticketBoxState } from "./close";
 
 /**
- * 캡틴이 카드를 올릴 때 티켓마다 붙는 단계(spec §올라온 카드는 9999 단계로 붙는다).
- * 맨 뒤에 쌓여 눈에 띄고, firstmate 가 진짜 번호를 매기면 사라진다.
+ * "아직 순서를 안 정했다" 가 붙는 단계(steps-start-from-dependencies/T02).
+ * 등록 시 의존에서 계산한 단계가 심어지고, 계산할 수 없는 티켓(순환 · 존재하지 않는
+ * 번호 · 해소되지 않는 산문)만 이 값으로 남아 눈에 띈다.
  *
  * 🔴 **이 숫자는 여기 한 곳에서만 나온다** — 화면이나 저장소가 따로 9999 를 알면 그 순간
  * "아직 순서를 안 정했다" 를 뜻하는 표현이 둘이 된다.
@@ -29,7 +32,7 @@ export interface PlanWritePlan {
   remove: string[];
   /** 단계 행을 통째로 지울 기능 — 작업 대상을 떠났다(spec §단계는 잠시 붙었다 사라지는 것이다). */
   clearSteps: string[];
-  /** 붙일 단계 행 — 작업 대상으로 올라온 기능의 티켓 전부, 9999. */
+  /** 붙일 단계 행 — 작업 대상으로 올라온 기능의 남은(open) 티켓, 의존에서 계산한 값. */
   setSteps: StepRow[];
 }
 
@@ -56,8 +59,8 @@ function closedAtFor(area: PlanArea, prev: Placement | undefined, now: string): 
  * 🔴 **문서가 없는 슬러그는 떨어진다** — 자리 행 하나로 카드를 지어내지 않는다
  * (`splitIntoAreas` 와 같은 규율). 요청에 그런 이름이 섞여 있으면 경계(backend)가 먼저 거절한다.
  *
- * 🔴 **옛 단계 숫자를 되살리지 않는다.** 되올린 카드도 9999 에서 다시 시작한다 — 살려 두면
- * 아무도 아직 맞는지 확인하지 않은 낡은 계획이 새 계획인 척한다(티켓 03 §만드는 것).
+ * 🔴 **옛 단계 숫자를 되살리지 않는다.** 되올린 카드도 지금 문서의 의존에서 새로 계산한다 —
+ * 살려 두면 아무도 아직 맞는지 확인하지 않은 낡은 계획이 새 계획인 척한다(티켓 03 §만드는 것).
  *
  * @param now 완료 칸에 들어가는 카드에 찍을 시각. 호출자가 준다 — 계산을 시계에서 떼어 놓는다.
  */
@@ -82,17 +85,24 @@ export function planMove(
     remove: move.area === null ? moved : [],
     // 떠나면 지운다 — 작업 대상 안에서 순서만 바꾼 카드는 떠난 것이 아니라 그대로 둔다.
     clearSteps: toActive ? [] : moved.filter(wasActive),
-    // 올라오면 붙는다 — 이미 작업 대상에 있던 카드의 단계는 건드리지 않는다(firstmate 가 매긴 값이다).
+    // 올라오면 붙인다 — 이미 작업 대상에 있던 카드의 단계는 건드리지 않는다(D1: 자동 배정은
+    // 등록 시 1회뿐이라 wasActive 필터가 그것을 보장한다). 심는 값은 의존 위상에서 계산한다(T02).
     setSteps: toActive
       ? moved
           .filter((slug) => !wasActive(slug))
-          .flatMap((slug) =>
-            (featureOf.get(slug)?.tickets ?? []).map((t) => ({
-              feature: slug,
-              ticket: t.slug,
-              step: UNRANKED_STEP,
-            })),
-          )
+          .flatMap((slug) => {
+            const tickets = featureOf.get(slug)?.tickets ?? [];
+            const steps = assignSteps(tickets);
+            // 끝난 티켓(done·dropped)에는 행 자체를 만들지 않는다(D2) — 단계 화면에는
+            // 남은 일만 선다. 선행으로서의 몫은 assignSteps 가 계산에서 이미 한다.
+            return tickets
+              .filter((t) => ticketBoxState(t) === "open")
+              .map((t) => ({
+                feature: slug,
+                ticket: t.slug,
+                step: steps.get(t.slug) ?? UNRANKED_STEP,
+              }));
+          })
       : [],
   };
 

@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest";
 import type { Feature, Placement, PlanMoveRequest } from "@gootte/contract";
+import { assignSteps } from "./auto-step";
 import { splitIntoAreas } from "./board";
-import { feature, row } from "./fixtures";
-import { planMove, UNRANKED_STEP, type PlanWritePlan } from "./move";
+import { feature, resolved, row, wontfix } from "./fixtures";
+import { planMove, type PlanWritePlan } from "./move";
 
 const NOW = "2026-08-12 17:40";
 
@@ -79,23 +80,52 @@ describe("planMove — 캡틴이 놓은 자리가 곧 정답이다(티켓 03)", 
     expect(areaOf(features, apply(rows, plan))("active")).toEqual(["a", "b"]);
   });
 
-  test("🔴 작업 대상으로 올라오면 그 기능 티켓 전부가 9999 단계로 붙는다", () => {
+  test("🔴 작업 대상으로 올라오면 의존에서 단계를 계산해 심는다 — 의존 없으면 전부 1단계", () => {
     const features = [feature("auth-login", ["01", "02"])];
     const plan = planMove(features, [], move(["auth-login"], "active"), NOW);
     expect(plan.setSteps).toEqual([
-      { feature: "auth-login", ticket: "01-x", step: UNRANKED_STEP },
-      { feature: "auth-login", ticket: "02-x", step: UNRANKED_STEP },
+      { feature: "auth-login", ticket: "01-x", step: 1 },
+      { feature: "auth-login", ticket: "02-x", step: 1 },
     ]);
     expect(plan.clearSteps).toEqual([]);
   });
 
-  test("🔴 되올린 카드도 9999 에서 다시 시작한다 — 옛 숫자를 되살리지 않는다", () => {
+  test("🔴 선형 의존이면 위상 순서대로 1·2·3단계가 심어진다(T02)", () => {
+    const features = [
+      feature("chain", ["01", { num: "02", blockedBy: ["01"] }, { num: "03", blockedBy: ["02"] }]),
+    ];
+    const plan = planMove(features, [], move(["chain"], "active"), NOW);
+    expect(plan.setSteps).toEqual([
+      { feature: "chain", ticket: "01-x", step: 1 },
+      { feature: "chain", ticket: "02-x", step: 2 },
+      { feature: "chain", ticket: "03-x", step: 3 },
+    ]);
+  });
+
+  test("🔴 되올린 카드도 새로 계산한 값을 심는다 — 옛 숫자를 되살리지 않는다", () => {
     const features = [feature("auth-login", ["01"])];
     // 예약에 내려가 있던 카드(단계는 내려갈 때 이미 지워졌다)를 다시 올린다.
     const rows = [row("auth-login", "reserved", 0)];
     const plan = planMove(features, rows, move(["auth-login"], "active"), NOW);
     expect(plan.setSteps).toEqual([
-      { feature: "auth-login", ticket: "01-x", step: UNRANKED_STEP },
+      { feature: "auth-login", ticket: "01-x", step: 1 },
+    ]);
+  });
+
+  test("🔴 되올라온 기능의 끝난 티켓(done·dropped)에는 단계 행을 만들지 않는다(D2)", () => {
+    const features = [
+      feature("re-raised", [
+        resolved("01", "2026-08-20"),
+        wontfix("02"),
+        { num: "03", blockedBy: ["01"] },
+      ]),
+    ];
+    // 예약에 내려가 있던 기능에 티켓이 생겨 다시 작업 대상으로 올라온다.
+    const rows = [row("re-raised", "reserved", 0)];
+    const plan = planMove(features, rows, move(["re-raised"], "active"), NOW);
+    // 끝난 01·02 에는 행이 없고, 남은 03 은 끝난 선행 위에서 계산된 단계를 받는다.
+    expect(plan.setSteps).toEqual([
+      { feature: "re-raised", ticket: "03-x", step: 2 },
     ]);
   });
 

@@ -705,13 +705,14 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
         expect(body.waiting).toEqual([]);
       }));
 
-    test("🔴 작업 대상으로 올라온 기능의 티켓 전부가 9999 단계로 붙는다", () =>
+    test("🔴 작업 대상으로 올라오면 의존에서 단계를 계산해 심는다 — 끝난 티켓에는 행이 없다(T02/D2)", () =>
       withDataDir(async (dataDir) => {
         await post(dataDir, { features: ["auth-login"], area: "active", index: 0 });
+        // fixture: 01(resolved) → 02 → 03. 끝난 01 에는 행이 없고(D2), 남은 티켓은
+        // 끝난 선행까지 포함한 위상 순서대로 2·3단계를 받는다.
         expect(readSteps(dataDir, "alpha")).toEqual([
-          { feature: "auth-login", ticket: "01-session", step: 9999 },
-          { feature: "auth-login", ticket: "02-screen", step: 9999 },
-          { feature: "auth-login", ticket: "03-social", step: 9999 },
+          { feature: "auth-login", ticket: "02-screen", step: 2 },
+          { feature: "auth-login", ticket: "03-social", step: 3 },
         ]);
       }));
 
