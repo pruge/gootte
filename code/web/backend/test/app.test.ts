@@ -332,6 +332,33 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         rmSync(projectRoot, { recursive: true, force: true });
       }
     }));
+
+  // 🔴 회귀 — 백로그 조인은 features 탭에만 걸려 있었고 plan/process 탭(GET /api/plan/:slug)에는
+  // 안 걸려 있어서, 그 탭의 신관례 티켓은 영원히 "상태 줄 없음" 으로만 보였다(캡틴 지시, 2026-08-25).
+  test("GET /api/plan/:slug 도 같은 백로그 조인을 받는다 — features 탭과 다른 말을 하지 않는다", async () =>
+    withDataDir(async (dataDir) => {
+      const projectRoot = makeProjectRoot();
+      const home = makeFirstmateHome(BACKLOG);
+      try {
+        const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
+        await app.request("/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ firstmateHome: home }),
+        });
+        const body = PlanBoardResponse.parse(await (await app.request("/api/plan/widget")).json());
+        const card = body.waiting.find((c) => c.feature.slug === "tauri-desktop-app");
+        expect(card?.feature.newTickets?.[0]).toMatchObject({
+          num: "04",
+          docConvention: "tickets",
+          status: "in_progress",
+          backlogStatus: "in_progress",
+        });
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
+        rmSync(home, { recursive: true, force: true });
+      }
+    }));
 });
 
 /**

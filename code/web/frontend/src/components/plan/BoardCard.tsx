@@ -3,6 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { IconArrowMoveRight, IconFileText } from "@tabler/icons-react";
 import type { PlanCard } from "@gootte/contract";
+import { allTickets } from "@gootte/core";
 import { closedDisplayAt } from "@gootte/core/plan";
 import { featureDescription } from "./cardTitle";
 
@@ -71,6 +72,9 @@ export function BoardCard({
   // 안 읽은 티켓이 하나라도 있는가 — 이미 실려 온 값을 쓴다(unread-tickets-show-themselves/03,
   // `features` 탭 머리글과 같은 판정, 여기서 다시 세지 않는다). 완료 칸의 카드에도 그대로 선다.
   const hasUnread = feature.hasUnreadTicket === true;
+  // 🔴 issues/(구관례)와 tickets/(신관례, T04) 를 합친다 — 안 그러면 tickets/ 만 쓰는 기능은
+  // 카드 머리글이 "티켓 0" 을 보여준다(캡틴 보고, 2026-08-25, `FeatureCard` 와 같은 결함).
+  const ticketCount = allTickets(feature).length;
 
   // 🔴 `role` 을 카드 자신의 것으로 못 박는다 — dnd-kit 기본값(`button`)이 붙으면 카드가
   // 카드가 아니게 되고, 안에 있는 머리글 버튼이 버튼 속 버튼이 된다.
@@ -174,7 +178,7 @@ export function BoardCard({
             </span>
           )}
           <span className="mono text-sm tabular-nums text-muted">
-            티켓 {feature.tickets.length}
+            티켓 {ticketCount}
           </span>
         </span>
 

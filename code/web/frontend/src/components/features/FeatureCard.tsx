@@ -4,13 +4,19 @@ import { featureDescription } from "../plan/cardTitle";
 import { FeatureTree, type OpenDocFn } from "./FeatureTree";
 import { HighlightedText } from "./HighlightedText";
 
-/** 남은 일 / 완료 / 착수 가능 / 처리중 세기 — 서버가 준 값을 세기만 한다(재계산 X, INV-1). */
+/**
+ * 남은 일 / 완료 / 착수 가능 / 처리중 세기 — 서버가 준 값을 세기만 한다(재계산 X, INV-1).
+ * 🔴 `issues/`(구관례, `tickets`)와 `tickets/`(신관례, `newTickets`)를 합쳐서 센다 — 안 그러면
+ * `tickets/` 만 쓰는 기능은 머리글이 전부 0을 보여주고 `plan` 버튼도 뜨지 않는다(`open > 0` 게이트
+ * 가 안 열린다) — 클릭해서 펼쳐야만 실제 티켓이 있다는 걸 알 수 있던 결함(2026-08-25 캡틴 보고).
+ */
 function counts(f: Feature) {
-  const done = f.tickets.filter((t) => t.status === "done").length;
-  const dropped = f.tickets.filter((t) => t.status === "dropped").length;
-  const working = f.tickets.filter((t) => t.status === "in_progress").length;
-  const open = f.tickets.length - done - dropped;
-  const startable = f.tickets.filter((t) => t.status === "pending" && t.startable).length;
+  const all = [...f.tickets, ...(f.newTickets ?? [])];
+  const done = all.filter((t) => t.status === "done").length;
+  const dropped = all.filter((t) => t.status === "dropped").length;
+  const working = all.filter((t) => t.status === "in_progress").length;
+  const open = all.length - done - dropped;
+  const startable = all.filter((t) => t.status === "pending" && t.startable).length;
   return { done, open, startable, working };
 }
 

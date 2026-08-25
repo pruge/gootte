@@ -177,6 +177,16 @@ export function createApp(options: AppOptions = {}): Hono {
     applyInProgress(features, scanWorkingCopies(treehouse, project)).features;
 
   /**
+   * 백로그 상태 조인을 얹은 기능 목록 — `features` 탭과 **같은 판정 자리**(`applyBacklogStatus`)를
+   * `plan`·`process` 탭에도 태운다(T04 후속, 캡틴 지시 2026-08-25). `tickets/T<NN>.md` 신관례
+   * 티켓은 파일에 상태가 없다(SoT = 백로그) — 이 조인이 없으면 그 탭의 신관례 티켓은 영원히
+   * "상태 줄 없음" 으로만 보인다. 홈 미설정·백로그 없음은 `readBacklogTasks` 가 빈 목록으로
+   * 흡수한다 — 조인 실패는 상태 미표시로만 드러난다(`/api/features/:slug` 와 같은 원칙).
+   */
+  const withBacklogStatus = (project: string, features: Feature[]): Feature[] =>
+    applyBacklogStatus(features, readBacklogTasks(readSettings(dataDir).firstmateHome), project);
+
+  /**
    * 판 하나를 그린다 — **판을 보는 모든 길이 이 한 자리를 지난다**(GET 도, 옮긴 뒤의 응답도).
    *
    * 🔴 여기서 **자동 닫힘**이 일어난다(plan-board/04): 상자가 전부 채워진 기능을 처음 보는 순간
@@ -315,7 +325,10 @@ export function createApp(options: AppOptions = {}): Hono {
     if (!proj) return c.json(notFound(slug), 404);
     const project = basename(proj.path);
     try {
-      const areas = readBoard(project, withInProgress(project, withReadState(project, readFeatures(proj.path))));
+      const areas = readBoard(
+        project,
+        withBacklogStatus(project, withInProgress(project, withReadState(project, readFeatures(proj.path)))),
+      );
       return c.json(PlanBoardResponse.parse({ project, ...areas }));
     } catch (err) {
       // 계획 DB 를 못 읽는 것은 빈 판이 아니다 — 빈 판으로 그리면 화면이 "아무 계획도 없다" 고
@@ -361,7 +374,10 @@ export function createApp(options: AppOptions = {}): Hono {
         // 2차 사본이고, 한 번이라도 어긋나면 화면이 옮겨진 척한다(INV-1·INV-3).
         // 그 길에 자동 닫힘도 함께 선다(04) — 상자가 다 채워진 카드를 캡틴이 다른 칸으로 옮겨도
         // 판을 그리는 규칙은 하나여야 한다. 옮기는 자리와 닫는 자리가 갈리면 화면이 둘을 다르게 본다.
-        const areas = readBoard(project, withInProgress(project, withReadState(project, features)));
+        const areas = readBoard(
+          project,
+          withBacklogStatus(project, withInProgress(project, withReadState(project, features))),
+        );
         return c.json(PlanBoardResponse.parse({ project, ...areas }));
       } catch (err) {
         return c.json({ error: planError(err) } satisfies ApiError, 500);
@@ -410,7 +426,10 @@ export function createApp(options: AppOptions = {}): Hono {
         const step = placeStep(features, placements, readSteps(dataDir, project), target);
         writeStep(dataDir, project, feature, ticket, step);
         // 옮긴 뒤의 판은 **다시 읽어** 만든다 — /move 와 같은 규율이다(INV-1·INV-3).
-        const areas = readBoard(project, withInProgress(project, withReadState(project, features)));
+        const areas = readBoard(
+          project,
+          withBacklogStatus(project, withInProgress(project, withReadState(project, features))),
+        );
         return c.json(PlanBoardResponse.parse({ project, ...areas }));
       } catch (err) {
         return c.json({ error: planError(err) } satisfies ApiError, 500);
