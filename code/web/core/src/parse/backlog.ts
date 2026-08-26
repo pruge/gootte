@@ -39,6 +39,7 @@ const REPO_TAG = /\(repo:\s*([^)]+)\)/;
 const DATE_TAG = /\((?:since|merged|done):?\s*([^)]+)\)/;
 const URL = /(https?:\/\/\S+)/;
 const INDENTED = /^[ \t]+\S/;
+const BLANK = /^\s*$/;
 
 /**
  * 백로그 전문 → 작업 목록. 절 헤딩이 없는 줄 위의 작업은 세지 않는다(소속을 모르는 채로
@@ -78,7 +79,9 @@ export function parseBacklog(content: string): BacklogTaskDoc[] {
     }
     if (current && INDENTED.test(line)) {
       current.note = current.note ? `${current.note}\n${line.trim()}` : line.trim();
-    } else {
+    } else if (!BLANK.test(line)) {
+      // 빈 줄은 메모 블록을 끊지 않는다 — 실물 백로그의 작업 메모는 문단 사이에 빈 줄이 낀다.
+      // 끊는 것은 헤딩·작업 줄(위에서 continue)과 들여쓰기 없는 비어 있지 않은 줄뿐이다.
       current = null;
     }
   }
