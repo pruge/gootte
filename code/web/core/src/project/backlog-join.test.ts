@@ -58,6 +58,47 @@ describe("joinTicketBacklog", () => {
   it("번호가 비어 있으면 null", () => {
     expect(joinTicketBacklog([PARENT], "widget", "tauri-desktop-app", "")).toBeNull();
   });
+
+  it("산문이 기능 경로를 인용하는 자식 항목들이 목록 앞에 있어도 진짜 부모가 뽑힌다(every-home T01)", () => {
+    // 실물 배열: in-flight/queued 자식들이 Done 부모보다 앞에 온다. 각 자식 메모는 자기 티켓
+    // 경로(docs/features/<slug>/tickets/T<NN>.md)를 인용하므로 needle 이 반드시 걸린다 —
+    // 과거 버그(findParentId hits 가 t03·t02·t01)가 바로 이 배치였다.
+    const childQuoting = (id: string, section: BacklogTaskDoc["section"], checked = false) =>
+      task({
+        id,
+        section,
+        checked,
+        note: "티켓: projects/widget/docs/features/tauri-desktop-app/tickets/T04.md",
+      });
+    const result = joinTicketBacklog(
+      [childQuoting("widget-tauri-t03", "done", true), childQuoting("widget-tauri-t04", "in_flight"), PARENT],
+      "widget",
+      "tauri-desktop-app",
+      "04",
+    );
+    expect(result).toEqual({ status: "in_progress", url: null, completedAt: null });
+  });
+
+  it("후보가 여럿이면 목록에서 먼저 오는 것 — 호출자(홈 병합)는 지도부 홈을 앞에 놓는다(T02 계약)", () => {
+    // 지도부(MAIN) 항목이 앞, 세컨드메이트(MATE)의 산문 인용 항목이 뒤 — T02 병합 순서의 계약.
+    // 메모 산문이 남의 기능 경로를 인용하는 항목은 자식 배제만으로 걸러지지 않으므로 순서 계약이
+    // 유일한 방어선이다(every-home-reports-its-status spec §함께 고쳐야 하는 것).
+    const mateQuoter = task({
+      id: "gootte-backlog-join",
+      repo: "gootte",
+      note: "지금 규칙은 docs/features/both-conventions-are-first-class/ 문자열의 첫 항목이다.",
+    });
+    const mainParent = task({ id: "gootte-both-conventions", repo: "gootte", note: "Artifacts: projects/gootte/docs/features/both-conventions-are-first-class/." });
+    const mainChild = task({ id: "gootte-both-conventions-t01", repo: "gootte", section: "done", checked: true, since: "2026-08-26", note: "티켓: docs/features/both-conventions-are-first-class/tickets/T01.md" });
+    const result = joinTicketBacklog([mainParent, mainChild, mateQuoter], "gootte", "both-conventions-are-first-class", "01");
+    expect(result).toEqual({ status: "done", url: null, completedAt: "2026-08-26" });
+  });
+
+  it("자식 id 모양(<...>-t<NN>)은 부모 후보가 아니다(every-home T01)", () => {
+    // 자식 t01 의 메모가 자기 티켓 경로를 인용한다 — needle 이 반드시 걸린다.
+    const childQuoting = task({ id: "widget-tauri-t01", note: "Artifacts: projects/widget/docs/features/tauri-desktop-app/." });
+    expect(joinTicketBacklog([childQuoting], "widget", "tauri-desktop-app", "04")).toBeNull();
+  });
 });
 
 describe("applyBacklogStatus", () => {

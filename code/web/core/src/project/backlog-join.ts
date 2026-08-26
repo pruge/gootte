@@ -20,13 +20,21 @@ export interface BacklogJoin {
 }
 
 /**
+ * 자식 id 모양 — D4 규약의 `<parent>-t<NN>`. 자식 메모도 자기 티켓 경로를 인용하므로 needle 이
+ * 반드시 걸린다. 자식은 부모 후보가 아니다(every-home-reports-its-status T01).
+ */
+const CHILD_ID = /-t\d+$/;
+
+/**
  * 부모 작업 id 찾기 — `(repo: <repo>)` 가 같고, 메모 안에 `docs/features/<slug>/` 문구가 있는
  * 작업(task-planning.md §Parent/child identity: 부모의 백로그 메모가 `<project>:<feature-slug>`
- * 쌍을 담는다). 후보가 없으면 null — 추측하지 않는다.
+ * 쌍을 담는다). **자식 id 모양(`<무엇>-t<숫자>`)은 후보에서 배제**하고, 후보가 여럿이면 목록에서
+ * 먼저 오는 것을 쓴다 — 호출자(홈 병합, T02)는 지도부 홈 항목을 앞에 놓을 계약이다.
+ * 후보가 없으면 null — 추측하지 않는다. 순수·결정적(INV-4).
  */
 function findParentId(tasks: readonly BacklogTaskDoc[], repo: string, featureSlug: string): string | null {
   const needle = `docs/features/${featureSlug}/`;
-  return tasks.find((t) => t.repo === repo && t.note.includes(needle))?.id ?? null;
+  return tasks.find((t) => t.repo === repo && !CHILD_ID.test(t.id) && t.note.includes(needle))?.id ?? null;
 }
 
 /**
