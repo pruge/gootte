@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 /**
  * 세컨드메이트 홈 명부(every-home-reports-its-status T02) — `<firstmateHome>/data/secondmates.md`
- * 의 `home: <경로>` 값을 읽어 홈 목록을 **파생**한다. 설정 계약(`contract` 의 `firstmateHome`
+ * 에서 홈 경로를 읽어 목록을 **파생**한다. 설정 계약(`contract` 의 `firstmateHome`
  * 단수 문자열)은 건드리지 않는다 — 목록은 사용자가 정하는 값이 아니라 지도부가 이미 유지하는
  * 명부에서 재생성되는 파생물이다(INV-1).
  *
@@ -15,16 +15,20 @@ export function secondmatesFile(firstmateHome: string): string {
   return join(firstmateHome, "data", "secondmates.md");
 }
 
-const HOME_LINE = /^\s*home:\s*(\S+)\s*$/;
+// 실물 명부 줄은 한 줄에 산문이 섞여 있다:
+// `- gootte-mate - 설명 (home: /…/firstmate2; scope: …; added 2026-08-26)`
+// 줄 어디서든 `home:` 을 찾되 경로는 공백·`;`·`)` 앞에서 끊는다. 단독 줄
+// `home: /경로` 도 같은 규칙이 받는다(상위집합). 빈 값(`home:` 로 끝)은 후보 아님.
+const HOME_TOKEN = /home:\s*([^\s;)]+)/;
 
 /**
- * 명부 내용 → 홈 경로 목록. `home: <경로>` 줄만 명부 순 그대로 뽑고(중복은 첫 번째만),
- * 나머지 줄은 무시한다 — 명부의 산문은 지도부의 것이니 여기선 해석하지 않는다.
+ * 명부 내용 → 홈 경로 목록. `home:` 토큰이 있는 줄에서 경로를 명부 순 그대로 뽑고
+ * (중복은 첫 번째만), 나머지 줄은 무시한다 — 명부의 산문은 지도부의 것이니 여기선 해석하지 않는다.
  */
 export function parseSecondmateHomes(content: string): string[] {
   const homes: string[] = [];
   for (const line of content.split("\n")) {
-    const match = HOME_LINE.exec(line);
+    const match = HOME_TOKEN.exec(line);
     const home = match?.[1];
     if (home && !homes.includes(home)) homes.push(home);
   }
