@@ -8,3 +8,4 @@ export * from "./backlog-watch";
 export * from "./backlog";
 export * from "./plan-store";
 export * from "./settings-store";
+export * from "./secondmates";

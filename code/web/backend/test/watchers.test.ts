@@ -44,6 +44,7 @@ describe("startWatchers", () => {
   let root = "";
   let dataDir = "";
   let home = "";
+  const mates: string[] = [];
   let watchers: Watchers | null = null;
 
   afterEach(async () => {
@@ -52,6 +53,8 @@ describe("startWatchers", () => {
     if (root) rmSync(root, { recursive: true, force: true });
     if (dataDir) rmSync(dataDir, { recursive: true, force: true });
     if (home) rmSync(home, { recursive: true, force: true });
+    for (const m of mates) rmSync(m, { recursive: true, force: true });
+    mates.length = 0;
     root = "";
     dataDir = "";
     home = "";
@@ -146,6 +149,52 @@ describe("startWatchers", () => {
     await Promise.all([watchers.rebindBacklog(null), watchers.rebindBacklog(null)]);
     expect(b.started.length).toBe(3);
     expect(b.started.filter((w) => !w.closed)).toEqual([b.started[b.started.length - 1]]);
+  });
+
+  test("명부에 등록된 세컨드메이트 홈마다 백로그 감시기를 건다(every-home T02)", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-watchers-"));
+    const mate1 = mkdtempSync(join(tmpdir(), "gootte-watchers-mate1-"));
+    const mate2 = mkdtempSync(join(tmpdir(), "gootte-watchers-mate2-"));
+    mates.push(mate1, mate2);
+    mkdirSync(join(root, "data"), { recursive: true });
+    // 실물 명부 모양(2026-08-26) — home: 줄이 감시 대상이 된다.
+    writeFileSync(join(root, "data", "secondmates.md"), `home: ${mate1}\nhome: ${mate2}\n`);
+
+    const b = track<typeof import("@gootte/core-io").watchBacklog>();
+    watchers = startWatchers({
+      roots: [],
+      dataDir: "",
+      firstmateHome: root,
+      onChange: () => {},
+      watchProjectsImpl: () => ({ async close() {} }),
+      watchPlanDbImpl: () => ({ async close() {} }),
+      watchBacklogImpl: b.impl,
+    });
+
+    // 지도부 + 세컨드메이트 둘 = 셋. 재묶음으로 null(명부 없음) 이 오면 지도부 자리 하나만.
+    expect(b.started.length).toBe(3);
+    await watchers.rebindBacklog(null);
+    expect(b.started.length).toBe(4);
+    expect(b.started.filter((w) => !w.closed).length).toBe(1);
+  });
+
+  test("세컨드메이트 홈 경로가 사라져도 폴백 신호가 나지 않는다(every-home T02 — 조용히 건너뛴다)", async () => {
+    // 실제 watchBacklog 을 쓴다 — 없는 경로면 생성 중 동기로 onError 를 울리지만 그것은
+    // 세컨드메이트 감시기이고, 폴백 배선은 지도부 감시기에만 연결되어 있다.
+    root = mkdtempSync(join(tmpdir(), "gootte-watchers-"));
+    mkdirSync(join(root, "data"), { recursive: true });
+    writeFileSync(join(root, "data", "secondmates.md"), "home: /사라진/세컨드메이트/홈\n");
+    dataDir = mkdtempSync(join(tmpdir(), "gootte-watchers-db-"));
+    const events: ChangeEvent[] = [];
+    watchers = startWatchers({
+      roots: [],
+      dataDir,
+      firstmateHome: root,
+      onChange: (e) => events.push(e),
+    });
+    await sleep(150);
+
+    expect(events.filter((e) => e.kind === "watch-fallback")).toEqual([]);
   });
 
   /**
