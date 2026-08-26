@@ -95,6 +95,16 @@ describe("computeNext — 작업 대상의 표시 1단계만(plan-board/05, spec
     expect(computeNext([], [], [])).toEqual([]);
   });
 
+  it("🔴 문서가 사라진 기능의 배치 행이 있어도 던지지 않는다(a-vanished-card-breaks-nothing)", () => {
+    const features = [feature("a", ["01"])];
+    const placements = [row("gone", "active", 0), row("a", "active", 1)];
+    const steps = [s("gone", "01", 1), s("a", "01", 2)];
+    expect(() => computeNext(features, placements, steps)).not.toThrow();
+    expect(computeNext(features, placements, steps)).toEqual([
+      { feature: "a", ticket: "01-x", title: "티켓 01", needsCaptainEye: false },
+    ]);
+  });
+
   it("🔴 캡틴 눈 여부는 이미 계산된 값을 그대로 싣는다 — 다시 세지 않는다(INV-E1)", () => {
     const features = [feature("a", [{ num: "01", needsCaptainEye: true }])];
     const placements = [row("a", "active", 0)];

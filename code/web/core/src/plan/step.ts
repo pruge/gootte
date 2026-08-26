@@ -25,8 +25,13 @@ function indexActiveSteps(
   // 실제 티켓만 담는다. 폐기도 당김에서는 완료와 같다(plan-board/12) — 폐기뿐인 단계도 빈다.
   const checkedOf = new Map<string, boolean>();
   for (const slug of activeSlugs) {
+    // 🔴 문서가 사라진 기능(배치 행은 남았지만 파싱 결과에 없는 slug)은 조용히 건너뛴다 —
+    // 그 카드 하나 때문에 판 전체(`/api/plan/:slug`)가 죽지 않게 한다(a-vanished-card-breaks-nothing).
+    // 배치 행은 지우지 않는다 — 문서가 돌아오면 카드도 돌아온다.
+    const f = featureOf.get(slug);
+    if (!f) continue;
     // 두 관례를 합쳐 본다 — 신관례 전용 기능의 단계도 여기서 걸러지지 않아야 한다.
-    for (const t of allTickets(featureOf.get(slug)!)) {
+    for (const t of allTickets(f)) {
       checkedOf.set(`${slug}/${t.slug}`, ticketBoxState(t) !== "open");
     }
   }

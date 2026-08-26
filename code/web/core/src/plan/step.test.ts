@@ -118,6 +118,20 @@ describe("computeDisplaySteps — 당김은 표시 계산이다(INV-B2, plan-boa
     const steps = [s("a", "01", 1), s("a", "99", 2)];
     expect(computeDisplaySteps(features, placements, steps)).toEqual({ a: { "01-x": 1 } });
   });
+
+  it("🔴 문서가 사라진 기능의 배치 행이 있어도 던지지 않고, 그 카드만 빠진다(a-vanished-card-breaks-nothing)", () => {
+    // gone 은 active 배치 행은 남았지만 파싱 결과(기능 문서)에 없다 — 옛 코드는
+    // `featureOf.get(slug)!` 의 비-널 단언으로 여기서 통째로 죽었다.
+    const features = [feature("a", ["01"]), feature("b", ["02"])];
+    const placements = [row("gone", "active", 0), row("a", "active", 1), row("b", "active", 2)];
+    const steps = [s("gone", "01", 1), s("a", "01", 2), s("b", "02", 3)];
+    expect(() => computeDisplaySteps(features, placements, steps)).not.toThrow();
+    // 살아 있는 카드의 표시는 하나도 안 바뀌고, 없어진 카드는 조용히 빠진다.
+    expect(computeDisplaySteps(features, placements, steps)).toEqual({
+      a: { "01-x": 1 },
+      b: { "02-x": 2 },
+    });
+  });
 });
 
 describe("placeStep — 놓은 자리 → 저장 숫자(plan-board/08)", () => {
