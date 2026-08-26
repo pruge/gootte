@@ -1,5 +1,5 @@
 import type { Feature, FeatureTicket, TodoStatus } from "@gootte/contract";
-import { featureNums, resolveWaitingOn, type CrossFeatureIndex } from "./features";
+import { featureNums, hasOpenWork, resolveWaitingOn, type CrossFeatureIndex } from "./features";
 import type { BacklogTaskDoc } from "../parse/backlog";
 
 /**
@@ -69,10 +69,47 @@ function joinTicket(ticket: FeatureTicket, tasks: readonly BacklogTaskDoc[], rep
   };
 }
 
+// ── 머리글 배지 파생(the-header-agrees-with-its-tickets/T01) ───────────────────
+
+/**
+ * 신관례(`tickets/`) 기능의 머리글 상태 배지 — **티켓 상태에서 파생한다**(D2). 손으로 쓴
+ * `spec.md` 의 `Status:` 줄은 출처가 아니다 — 앞의 네 수(`counts()`)와 같은 입력에서 나와야
+ * 같은 줄이 자기모순하지 않는다. 순수·결정적(INV-4), 어디에도 저장하지 않는다(INV-1).
+ *
+ * - 🔴 **판정 술어를 새로 만들지 않는다** — 처리중 = `in_progress` 존재, 완료 = 티켓이 있고
+ *   `hasOpenWork` 가 거짓(`featureFullyChecked` 와 같은 계산). 그 외는 남음.
+ * - 🔴 **조인 실패는 추측하지 않는다**(D5) — 티켓 하나라도 백로그에 조인되지 않아 상태를
+ *   모르면 null(배지를 안 띄운다). `isUnjoinedNewTicket`(TicketRow)이 티켓 줄에서 지키는
+ *   규율과 같다. 조인 실패를 "착수 가능" 이나 "완료" 로 읽는 것은 INV-4 위반이다.
+ * - 🔴 **구관례(`issues/`)는 여기서 다루지 않는다** — 티켓 목록이 비으면 null 이고 호출자는
+ *   기능을 그대로 둔다. 그쪽 배지는 문서 줄 verbatim 이고 문서가 SoT 이므로 지금이 옳다(D2).
+ */
+export interface FeatureHeaderBadge {
+  status: TodoStatus;
+  sourceStatus: string;
+  statusKnown: true;
+}
+
+/** 신관례 티켓 무리 → 머리글 배지. 구관례(빈 목록)·조인 실패는 null — 배지를 띄우지 않는다. */
+export function deriveHeaderBadge(tickets: readonly FeatureTicket[]): FeatureHeaderBadge | null {
+  if (tickets.length === 0) return null; // 구관례 — 문서가 SoT, 지금 그대로(D2)
+  // 하나라도 "모른다" 면 전체를 모른다 — 일부만 보고 완료·착수 가능을 말하는 것이 추측이다.
+  if (tickets.some((t) => t.backlogStatus == null)) return null;
+  if (tickets.some((t) => t.status === "in_progress"))
+    return { status: "in_progress", sourceStatus: "처리중", statusKnown: true };
+  if (!hasOpenWork(tickets)) return { status: "done", sourceStatus: "완료", statusKnown: true };
+  return { status: "pending", sourceStatus: "남음", statusKnown: true };
+}
+
 /**
  * 기능 목록의 `newTickets`(tickets/T<NN>.md, T04) 에 백로그 상태를 얹는다 — `applyInProgress` 와
  * 같은 원리(입력이 다른 파생물을 나중에 덮어씌운다, INV-1). `tickets`(issues 관례)는 건드리지
  * 않는다 — 그쪽 상태의 단일 출처는 여전히 문서다.
+ *
+ * 마지막에 **신관례 기능의 머리글 배지를 티켓 상태에서 다시 파생한다**(T01, D2) — 조인과 대기
+ * 재계산이 끝난 뒤라야 배지가 본 네 수와 같은 입력을 보는 순서다(INV-3). 구관례 기능은 한 글자도
+ * 바뀌지 않는다. 그 위에 **명시적 취소(`Status: wontfix`)가 계산을 이긴다**(T02, D3) — 취소는
+ * 백로그 조인이 `pending` 을 채운 **뒤** 덮쓴다(`applyInProgress` 와 같은 형태).
  */
 export function applyBacklogStatus(features: readonly Feature[], tasks: readonly BacklogTaskDoc[], repo: string): Feature[] {
   const joined = features.map((f) => ({
@@ -87,14 +124,41 @@ export function applyBacklogStatus(features: readonly Feature[], tasks: readonly
     joined.map((f) => [f.slug, featureNums([...f.tickets, ...(f.newTickets ?? [])])]),
   );
   return joined.map((f) => {
+    // 🔴 취소 선언이 계산을 이긴다(T02, D3) — `spec.md` 의 `Status: wontfix` 는 최종이다.
+    // 여기서 읽는 기능 수준 상태는 buildFeature 가 spec 줄에서 싣은 것(조인은 newTickets 만
+    // 건드린다): `mapFirstmateStatus` 가 dropped 로 사상하는 원문 값은 wontfix 하나뿐이고
+    // `statusKnown` 은 값을 알아봤다는 뜻이므로, 이 조건이 곧 "명시적 취소 선언" 이다. 새 파서도
+    // 새 어휘도 없다 — 이미 있는 parseStatusLine + mapFirstmateStatus 의 결과를 읽을 뿐이다.
+    const cancelled = f.status === "dropped" && f.statusKnown;
     const nums = index.get(f.slug);
-    if (!nums) return f;
-    return {
-      ...f,
-      newTickets: (f.newTickets ?? []).map((t) => {
-        const waiting = resolveWaitingOn(t.blockedBy, nums.done, index);
-        return { ...t, waitingOn: waiting, startable: waiting.length === 0 };
-      }),
-    };
+    const rejudged = !nums
+      ? f
+      : {
+          ...f,
+          newTickets: (f.newTickets ?? []).map((t) => {
+            const waiting = resolveWaitingOn(t.blockedBy, nums.done, index);
+            return { ...t, waitingOn: waiting, startable: waiting.length === 0 };
+          }),
+        };
+    const newTickets = rejudged.newTickets ?? [];
+    if (newTickets.length === 0) return rejudged; // 구관례·티켓 없음 — 지금 그대로(D2)
+    // 🔴 취소가 티켓까지 내려간다(T02, D4) — 아직 안 끝난 신관례 티켓은 dropped 로 취급하고,
+    // 이미 done 인 티켓은 done 으로 남는다(착지한 일을 없던 일로 만들지 않는다). 조인 여부를
+    // 가리지 않는다 — 기능 전체가 취소다. 백로그에 취소 상태를 만지 않는다(backlogStatus 는
+    // 조인 사실 그대로), 문서에도 아무것도 쓰지 않는다 — 매 read 다시 판정한다(INV-1).
+    if (cancelled)
+      return {
+        ...rejudged,
+        status: "dropped",
+        sourceStatus: "취소",
+        statusKnown: true,
+        newTickets: newTickets.map((t) =>
+          t.status === "done" ? t : { ...t, status: "dropped", startable: false },
+        ),
+      };
+    const badge = deriveHeaderBadge(newTickets);
+    // 배지를 못 정하면(조인 실패, D5) 손으로 쓴 낡은 `Status:` 글자를 내주지 않는다 —
+    // 썩은 배지(문제 1)의 반대편인 "없음" 이 답이다. 추측해서 채우지 않는다.
+    return badge ? { ...rejudged, ...badge } : { ...rejudged, sourceStatus: null, statusKnown: false };
   });
 }
