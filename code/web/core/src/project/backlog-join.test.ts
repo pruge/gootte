@@ -221,4 +221,66 @@ describe("applyBacklogStatus", () => {
     expect(t2?.waitingOn).toEqual(["01"]);
     expect(t2?.startable).toBe(false);
   });
+
+  // ── 머리글 배지 파생(the-header-agrees-with-its-tickets/T01) ───────────────────
+
+  describe("머리글 배지 파생(T01)", () => {
+  /** 신관례 기능 — spec 의 낡은 `Status:` 글자를 이미 달고 있는 모양(문제 1의 실물). */
+  const newConventionFeature = (tickets: FeatureTicket[]) => ({
+    ...feature("tauri-desktop-app", []),
+    status: "pending" as const,
+    sourceStatus: "ready-for-agent",
+    statusKnown: true,
+    newTickets: tickets,
+  });
+
+  it("전부 done 으로 조인되면 배지는 완료다 — 남은 일 0 과 모순하지 않는다", () => {
+    const f = newConventionFeature([newTicket("01"), newTicket("02")]);
+    const tasks = [
+      PARENT,
+      task({ id: "widget-tauri-t01", section: "done", checked: true }),
+      task({ id: "widget-tauri-t02", section: "done", checked: true }),
+    ];
+    const [joined] = applyBacklogStatus([f], tasks, "widget");
+    expect(joined?.sourceStatus).toBe("완료");
+    expect(joined?.status).toBe("done");
+    expect(joined?.statusKnown).toBe(true);
+  });
+
+  it("in_flight 티켓이 하나라도 있으면 배지는 처리중이다", () => {
+    const f = newConventionFeature([newTicket("01"), newTicket("02")]);
+    const tasks = [
+      PARENT,
+      task({ id: "widget-tauri-t01", section: "done", checked: true }),
+      task({ id: "widget-tauri-t02", section: "in_flight" }),
+    ];
+    const [joined] = applyBacklogStatus([f], tasks, "widget");
+    expect(joined?.sourceStatus).toBe("처리중");
+    expect(joined?.status).toBe("in_progress");
+  });
+
+  it("대기·착수 가능이 섞였으면 배지는 남음이다", () => {
+    const f = newConventionFeature([newTicket("01")]);
+    const tasks = [PARENT, task({ id: "widget-tauri-t01", section: "queued" })];
+    const [joined] = applyBacklogStatus([f], tasks, "widget");
+    expect(joined?.sourceStatus).toBe("남음");
+    expect(joined?.status).toBe("pending");
+  });
+
+  it("🔴 조인되지 않은 티켓이 하나라도 있으면 배지를 안 띄운다 — 추측 금지(D5)", () => {
+    // T01 은 조인됨(done), T02 는 백로그에 아직 없음 — 완료나 착수 가능으로 읽으면 INV-4 위반.
+    const f = newConventionFeature([newTicket("01"), newTicket("02")]);
+    const tasks = [PARENT, task({ id: "widget-tauri-t01", section: "done", checked: true })];
+    const [joined] = applyBacklogStatus([f], tasks, "widget");
+    expect(joined?.sourceStatus).toBeNull();
+    expect(joined?.statusKnown).toBe(false);
+  });
+
+  it("구관례(newTickets 없음) 기능은 배지도 나머지도 한 글자도 안 바뀐다", () => {
+    const base = feature("tauri-desktop-app", [{ num: "01", status: "pending" }]);
+    expect(base.sourceStatus).toBe("draft"); // 픽스처가 spec 줄 verbatim 을 드는 모양
+    const [joined] = applyBacklogStatus([base], [], "widget");
+    expect(joined).toEqual(base);
+  });
+  });
 });

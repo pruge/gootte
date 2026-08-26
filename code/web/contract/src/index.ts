@@ -118,6 +118,11 @@ export const FeatureDocNode: z.ZodType<FeatureDocNode> = z.lazy(() =>
 export const Feature = z.object({
   slug: z.string(), // 폴더명
   title: z.string(), // spec.md 표제(없으면 slug)
+  // 기능 수준 상태 셋 — 출처가 관례로 갈린다(the-header-agrees-with-its-tickets D2).
+  // 구관례(`issues/`): spec.md 의 손으로 쓴 `Status:` 줄(문서가 SoT) — verbatim.
+  // 신관례(`tickets/`): 티켓 상태에서 파생(applyBacklogStatus 의 deriveHeaderBadge) —
+  // `sourceStatus` 는 계산 라벨("완료"·"처리중"·"남음"), `statusKnown` 은 언제나 true.
+  // 조인 실패면 null/false — 추측하지 않는다(D5). 파생물이라 어디에도 저장하지 않는다(INV-1).
   status: TodoStatus,
   sourceStatus: z.string().nullable().default(null),
   statusKnown: z.boolean(),
