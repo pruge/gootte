@@ -108,7 +108,8 @@ export function deriveHeaderBadge(tickets: readonly FeatureTicket[]): FeatureHea
  *
  * 마지막에 **신관례 기능의 머리글 배지를 티켓 상태에서 다시 파생한다**(T01, D2) — 조인과 대기
  * 재계산이 끝난 뒤라야 배지가 본 네 수와 같은 입력을 보는 순서다(INV-3). 구관례 기능은 한 글자도
- * 바뀌지 않는다.
+ * 바뀌지 않는다. 그 위에 **명시적 취소(`Status: wontfix`)가 계산을 이긴다**(T02, D3) — 취소는
+ * 백로그 조인이 `pending` 을 채운 **뒤** 덮쓴다(`applyInProgress` 와 같은 형태).
  */
 export function applyBacklogStatus(features: readonly Feature[], tasks: readonly BacklogTaskDoc[], repo: string): Feature[] {
   const joined = features.map((f) => ({
@@ -123,6 +124,12 @@ export function applyBacklogStatus(features: readonly Feature[], tasks: readonly
     joined.map((f) => [f.slug, featureNums([...f.tickets, ...(f.newTickets ?? [])])]),
   );
   return joined.map((f) => {
+    // 🔴 취소 선언이 계산을 이긴다(T02, D3) — `spec.md` 의 `Status: wontfix` 는 최종이다.
+    // 여기서 읽는 기능 수준 상태는 buildFeature 가 spec 줄에서 싣은 것(조인은 newTickets 만
+    // 건드린다): `mapFirstmateStatus` 가 dropped 로 사상하는 원문 값은 wontfix 하나뿐이고
+    // `statusKnown` 은 값을 알아봤다는 뜻이므로, 이 조건이 곧 "명시적 취소 선언" 이다. 새 파서도
+    // 새 어휘도 없다 — 이미 있는 parseStatusLine + mapFirstmateStatus 의 결과를 읽을 뿐이다.
+    const cancelled = f.status === "dropped" && f.statusKnown;
     const nums = index.get(f.slug);
     const rejudged = !nums
       ? f
@@ -135,6 +142,20 @@ export function applyBacklogStatus(features: readonly Feature[], tasks: readonly
         };
     const newTickets = rejudged.newTickets ?? [];
     if (newTickets.length === 0) return rejudged; // 구관례·티켓 없음 — 지금 그대로(D2)
+    // 🔴 취소가 티켓까지 내려간다(T02, D4) — 아직 안 끝난 신관례 티켓은 dropped 로 취급하고,
+    // 이미 done 인 티켓은 done 으로 남는다(착지한 일을 없던 일로 만들지 않는다). 조인 여부를
+    // 가리지 않는다 — 기능 전체가 취소다. 백로그에 취소 상태를 만지 않는다(backlogStatus 는
+    // 조인 사실 그대로), 문서에도 아무것도 쓰지 않는다 — 매 read 다시 판정한다(INV-1).
+    if (cancelled)
+      return {
+        ...rejudged,
+        status: "dropped",
+        sourceStatus: "취소",
+        statusKnown: true,
+        newTickets: newTickets.map((t) =>
+          t.status === "done" ? t : { ...t, status: "dropped", startable: false },
+        ),
+      };
     const badge = deriveHeaderBadge(newTickets);
     // 배지를 못 정하면(조인 실패, D5) 손으로 쓴 낡은 `Status:` 글자를 내주지 않는다 —
     // 썩은 배지(문제 1)의 반대편인 "없음" 이 답이다. 추측해서 채우지 않는다.
