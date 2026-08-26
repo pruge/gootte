@@ -27,6 +27,25 @@ export function defaultProjectRoots(): string[] {
 }
 
 /**
+ * env `GOOTTE_ROOTS`(콜론 구분) 파싱 — backend `defaultRoots` 와 cli 가 **같은 규칙**을 쓰게
+ * 올려 둔 한 자리(the-terminal-agrees-with-the-screen T02). 값이 없거나 공백뿐이면 null —
+ * 호출자가 기본값으로 떨어진다. 빈 조각은 버린다.
+ */
+export function parseProjectRoots(raw: string | undefined): string[] | null {
+  const env = raw?.trim();
+  if (!env) return null;
+  return env.split(":").filter(Boolean);
+}
+
+/**
+ * discover 루트 — env `GOOTTE_ROOTS` 우선, 없으면 `defaultProjectRoots()`. backend(`defaultRoots`)
+ * 와 cli(`resolveProjectPath`)가 같은 규약을 쓴다. 인자로 값을 받으니 시험도 env 오염 없이 된다.
+ */
+export function effectiveProjectRoots(raw: string | undefined = process.env.GOOTTE_ROOTS): string[] {
+  return parseProjectRoots(raw) ?? defaultProjectRoots();
+}
+
+/**
  * firstmate 프로젝트 판정 — 루트 `AGENTS.md` **와** `docs/features/` 가 둘 다 있음.
  * 둘 다 요구하는 이유는 `docs/features/firstmate-project-source/spec.md` §설계 1.
  */

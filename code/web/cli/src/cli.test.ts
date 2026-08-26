@@ -2,9 +2,16 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, it, expect } from "vitest";
-import { discoverProjects, readPlacements, readSteps, writePlanMove } from "@gootte/core-io";
+import {
+  backlogFile,
+  discoverProjects,
+  readPlacements,
+  readSteps,
+  writePlanMove,
+  writeSettings,
+} from "@gootte/core-io";
 import { CliError } from "./args";
-import { boardText, discoverText, nextText, stepClearText, stepText } from "./commands";
+import { boardText, discoverText, nextText, resolveProjectPath, stepClearText, stepText } from "./commands";
 
 function w(root: string, rel: string, content: string): void {
   const full = join(root, rel);
@@ -253,5 +260,168 @@ describe("cli — step · step --clear · board · next(plan-board/05)", () => {
     activate(dataDir, slug(), "f");
     stepText([slug(), "f/01-a", "1"], dataDir, proj);
     expect(nextText([slug()], dataDir, proj)).toBe("f/01-a\ta 👁");
+  });
+});
+
+/**
+ * firstmate 홈 백로그 픽스처 — 부모 작업 하나(메모에 `docs/features/<기능>/`)와 자식 티켓 둘.
+ * T01 은 done, T02 는 queued — 조인이 얹히면 T01 만 사라져야 한다.
+ */
+function backlogWithT01Done(home: string, repo: string, feature: string): void {
+  const parent = `${repo}-plan`;
+  mkdirSync(join(home, "data"), { recursive: true });
+  writeFileSync(
+    backlogFile(home),
+    [
+      "# Backlog",
+      "",
+      "## Done",
+      `- [x] ${parent} - parent https://x/pr/9 (repo: ${repo}) (kind: plan) (merged 2026-08-20)`,
+      `    Artifacts: docs/features/${feature}/`,
+      `- [x] ${parent}-t01 - 첫 티켓 https://x/pr/1 (repo: ${repo}) (kind: ship) (merged 2026-08-21)`,
+      "",
+      "## Queued",
+      `- [ ] ${parent}-t02 - 둘째 티켓 (repo: ${repo})`,
+      "",
+    ].join("\n"),
+  );
+}
+
+/**
+ * 백로그 상태 조인(the-terminal-agrees-with-the-screen T01) — CLI `board`·`next` 가 화면과 **같은**
+ * 판정 자리(`applyBacklogStatus`)를 지나는가. 신관례(`tickets/T<NN>.md`) 티켓의 상태 단일 출처는
+ * firstmate 홈 백로그다 — 조인 없이 CLI 는 이미 끝난 티켓을 미완료로 보고 next 가 다시 내놓는다(spec §문제).
+ */
+describe("cli — board·next 에 백로그 조인(T01)", () => {
+  let proj: string;
+  let dataDir: string;
+  let home: string;
+
+  beforeEach(() => {
+    proj = mkdtempSync(join(tmpdir(), "gootte-backlog-proj-"));
+    dataDir = mkdtempSync(join(tmpdir(), "gootte-backlog-db-"));
+    home = mkdtempSync(join(tmpdir(), "gootte-backlog-home-"));
+    w(proj, "AGENTS.md", "# AGENTS\n");
+    w(proj, "docs/features/g/tickets/T01.md", "# T01 — c\n\n## Depends on\n- nothing\n");
+    w(proj, "docs/features/g/tickets/T02.md", "# T02 — d\n\n## Depends on\n- nothing\n");
+    activate(dataDir, slug(), "g");
+    backlogWithT01Done(home, slug(), "g");
+    writeSettings(dataDir, { firstmateHome: home });
+  });
+  afterEach(() => {
+    for (const p of [proj, dataDir, home]) rmSync(p, { recursive: true, force: true });
+  });
+
+  const slug = () => basename(proj);
+
+  it("next — 🔴 백로그에서 이미 done 인 신관례 티켓을 내보내지 않는다", () => {
+    stepText([slug(), "g/T01", "1"], dataDir, proj);
+    stepText([slug(), "g/T02", "2"], dataDir, proj);
+    // 조인 없었다면 1단계인 T01 이 나왔을 것이다 — done 로 조인됐으므로 T02 만 나온다.
+    expect(nextText([slug()], dataDir, proj)).toBe("g/T02\td");
+  });
+
+  it("board — 🔴 전부 끝난 신관례 기능은 완료 칸으로 넘어간다(조인 → 자동 닫힘 같은 자리)", () => {
+    // T02 도 백로그에서 done 으로 — 기능 g 의 티켓이 전부 완료된다.
+    writeFileSync(
+      backlogFile(home),
+      [
+        "# Backlog",
+        "",
+        "## Done",
+        `- [x] ${slug()}-plan - parent (repo: ${slug()})`,
+        `    Artifacts: docs/features/g/`,
+        `- [x] ${slug()}-plan-t01 - 첫 (repo: ${slug()})`,
+        `- [x] ${slug()}-plan-t02 - 둘째 (repo: ${slug()})`,
+        "",
+      ].join("\n"),
+    );
+    const out = boardText([slug()], dataDir, proj);
+    expect(out).toContain("## 완료 (1)");
+    expect(out).toContain("- g");
+    expect(out).not.toContain("## 작업 대상 (1)");
+    // 화면 없이도 계획 DB 에 닫힘이 남는다 — CLI 만 쓰는 세션이 같은 판을 본다.
+    expect(readPlacements(dataDir, slug())).toContainEqual({
+      feature: "g",
+      area: "done",
+      seq: 0,
+      closedAt: null,
+    });
+  });
+
+  it("홈 미설정(설정 파일 없음) — 명령이 죽지 않고 조인만 꺼진다(INV-U1)", () => {
+    const bareDataDir = mkdtempSync(join(tmpdir(), "gootte-bare-db-"));
+    try {
+      activate(bareDataDir, slug(), "g");
+      stepText([slug(), "g/T01", "1"], bareDataDir, proj);
+      stepText([slug(), "g/T02", "2"], bareDataDir, proj);
+      // 조인이 꺼졌으므로 문서만으로 판정 — T01 은 여전히 미완료로 보여 next 에 나온다.
+      expect(nextText([slug()], bareDataDir, proj)).toBe("g/T01\tc");
+    } finally {
+      rmSync(bareDataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("백로그 파일이 아직 없어도 조용히 조인 없이 지난다", () => {
+    rmSync(backlogFile(home));
+    stepText([slug(), "g/T01", "1"], dataDir, proj);
+    stepText([slug(), "g/T02", "2"], dataDir, proj);
+    expect(nextText([slug()], dataDir, proj)).toBe("g/T01\tc");
+  });
+});
+
+/**
+ * GOOTTE_ROOTS(the-terminal-agrees-with-the-screen T02) — `resolveProjectPath` 가 백엔드
+ * `effectiveRoots` 와 같은 규약(core-io `effectiveProjectRoots`)으로 뿌리를 정하는가.
+ */
+describe("cli — resolveProjectPath 는 GOOTTE_ROOTS 도 본다(T02)", () => {
+  function projectAt(dir: string): string {
+    mkdirSync(join(dir, "docs", "features"), { recursive: true });
+    writeFileSync(join(dir, "AGENTS.md"), "# AGENTS\n");
+    return dir;
+  }
+
+  function withEnv<T>(value: string | undefined, fn: () => T): T {
+    const prev = process.env.GOOTTE_ROOTS;
+    if (value === undefined) delete process.env.GOOTTE_ROOTS;
+    else process.env.GOOTTE_ROOTS = value;
+    try {
+      return fn();
+    } finally {
+      if (prev === undefined) delete process.env.GOOTTE_ROOTS;
+      else process.env.GOOTTE_ROOTS = prev;
+    }
+  }
+
+  it("env 뿌리에서 프로젝트를 찾는다 — cwd 에 없어도", () => {
+    const root = mkdtempSync(join(tmpdir(), "gootte-roots-a-"));
+    const p = projectAt(join(root, "proj-a"));
+    try {
+      withEnv(root, () => {
+        expect(resolveProjectPath("proj-a", "/nonexistent-cwd")).toBe(p);
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("콜론 구분 여러 뿌리 — 두 번째 뿌리의 프로젝트도 찾는다", () => {
+    const rootA = mkdtempSync(join(tmpdir(), "gootte-roots-b1-"));
+    const rootB = mkdtempSync(join(tmpdir(), "gootte-roots-b2-"));
+    const p = projectAt(join(rootB, "proj-b"));
+    try {
+      withEnv(`${rootA}:${rootB}`, () => {
+        expect(resolveProjectPath("proj-b", "/nonexistent-cwd")).toBe(p);
+      });
+    } finally {
+      rmSync(rootA, { recursive: true, force: true });
+      rmSync(rootB, { recursive: true, force: true });
+    }
+  });
+
+  it("env 가 없으면 기존과 같다 — cwd 최우선은 기존 시험 전체가 증거", () => {
+    withEnv(undefined, () => {
+      expect(resolveProjectPath("ghost-proj-nowhere", "/nonexistent-cwd")).toBeNull();
+    });
   });
 });

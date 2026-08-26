@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { discoverProjects, defaultProjectRoots } from "./discover";
+import { discoverProjects, defaultProjectRoots, parseProjectRoots, effectiveProjectRoots } from "./discover";
 
 let root: string;
 
@@ -63,5 +63,29 @@ describe("defaultProjectRoots", () => {
     const roots = defaultProjectRoots();
     expect(roots).toHaveLength(1);
     expect(roots[0]).toMatch(new RegExp(`${join("Documents", "ai2", "projects")}$`));
+  });
+});
+
+/**
+ * env `GOOTTE_ROOTS` 파싱(the-terminal-agrees-with-the-screen T02) — backend `defaultRoots` 가
+ * 지금까지 쓰던 규칙을 그대로 올려 온 것이다: **전체 trim 후** 콜론 갈라, 빈 조각은 버린다.
+ * 조각 안의 공백은 버리지 않는다 — 백엔드 동작이 하나도 안 바뀌는 것이 이 티켓의 조건이다.
+ */
+describe("parseProjectRoots · effectiveProjectRoots — GOOTTE_ROOTS 규약의 한 자리", () => {
+  it("콜론 구분 — 빈 조각은 버린다", () => {
+    expect(parseProjectRoots("/a:/b")).toEqual(["/a", "/b"]);
+    expect(parseProjectRoots("/a::/b")).toEqual(["/a", "/b"]);
+  });
+
+  it("앞뒤 공백만 잘라 내고, 없으면 null — 호출자가 기본값으로 떨어진다", () => {
+    expect(parseProjectRoots(undefined)).toBeNull();
+    expect(parseProjectRoots("")).toBeNull();
+    expect(parseProjectRoots("   ")).toBeNull();
+    expect(parseProjectRoots(" /x ")).toEqual(["/x"]);
+  });
+
+  it("effectiveProjectRoots — env 있으면 이기고, 없으면 기본 뿌리", () => {
+    expect(effectiveProjectRoots("/a:/b")).toEqual(["/a", "/b"]);
+    expect(effectiveProjectRoots(undefined)).toEqual(defaultProjectRoots());
   });
 });
