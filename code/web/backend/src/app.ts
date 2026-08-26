@@ -41,13 +41,13 @@ import {
   markDocRead,
   scanWorkingCopies,
   defaultPlanDataDir,
-  defaultProjectRoots,
   defaultTreehouseRoot,
   readSettings,
   writeSettings,
   normalizeDirPath,
   dirExists,
   suggestFirstmateHome,
+  effectiveProjectRoots,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
@@ -66,9 +66,8 @@ function isTicketDoc(path: string): boolean {
 
 /** env `GOOTTE_ROOTS`(콜론 구분) → discover 루트. 기본 `~/Documents/ai2/projects`. */
 export function defaultRoots(): string[] {
-  const env = process.env.GOOTTE_ROOTS?.trim();
-  if (env) return env.split(":").filter(Boolean);
-  return defaultProjectRoots();
+  // 🔴 파싱 규칙은 core-io `effectiveProjectRoots` 하나뿐이다(T02) — cli 가 같은 함수를 쓴다.
+  return effectiveProjectRoots();
 }
 
 /** env `GOOTTE_TREEHOUSE` → 격리 사본 뿌리. 기본 `~/.treehouse`. 기계마다 다를 수 있다. */

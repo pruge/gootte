@@ -1,13 +1,16 @@
-import { allTickets, computeDisplaySteps, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
+import { allTickets, applyBacklogStatus, computeDisplaySteps, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
+import { type Feature } from "@gootte/contract";
 import {
   clearStep,
   defaultPlanDataDir,
-  defaultProjectRoots,
   discoverProjects,
+  effectiveProjectRoots,
   migratePlanDb,
+  readBacklogTasks,
   readFeatures,
   readPlacements,
   readPlacementsWithAutoClose,
+  readSettings,
   readSteps,
   writeStep,
 } from "@gootte/core-io";
@@ -21,9 +24,13 @@ export function discoverText(roots: string[]): string {
   return found.map((p) => `${p.slug}\t${p.path}`).join("\n");
 }
 
-/** 프로젝트 slug → 저장소 경로. `discover` 와 같은 뿌리(cwd + `GOOTTE_ROOTS` 기본값)에서 찾는다. */
+/**
+ * 프로젝트 slug → 저장소 경로. `discover` 와 같은 뿌리에서 찾는다 — cwd 최우선(크루가 자기 작업
+ * 사본을 먼저 본다), 그 뒤는 env `GOOTTE_ROOTS`(콜론 구분), 없으면 기본 뿌리(T02) — 백엔드
+ * `effectiveRoots`(backend/src/app.ts)와 **같은 규약**을 core-io `effectiveProjectRoots` 하나로 쓴다.
+ */
 export function resolveProjectPath(project: string, cwd: string = process.cwd()): string | null {
-  const found = discoverProjects([cwd, ...defaultProjectRoots()]);
+  const found = discoverProjects([cwd, ...effectiveProjectRoots()]);
   return found.find((p) => p.slug === project)?.path ?? null;
 }
 
@@ -130,6 +137,28 @@ const AREA_LABEL: Record<AreaId, string> = {
 };
 
 /**
+ * 백로그 상태 조인을 얹은 기능 목록 — 화면(backend `withBacklogStatus`)과 **같은 판정 자리**
+ * (`applyBacklogStatus`, core)를 지난다(the-terminal-agrees-with-the-screen T01).
+ *
+ * 🔴 신관례(`tickets/T<NN>.md`) 티켓의 상태 단일 출처는 firstmate 홈 백로그다(SoT — 파일에는
+ * 상태가 없다). 이 조인 없이 CLI 는 이미 끝난 티켓을 미완료로 보고 `next` 가 다시 내놓는다.
+ * firstmate 홈은 기존 설정 저장소(`settings.json` 의 `firstmateHome`, dataDir 는 CLI 기존
+ * `planDataDir()` 과 같은 `GOOTTE_DATA_DIR` 규약)에서 읽는다 — 새 설정 칸·새 저장 파일 없다.
+ *
+ * 홈 미설정·백로그 파일 없음은 `readBacklogTasks` 가 빈 목록으로 흡수하고(INV-U1), 설정 저장소를
+ * 못 읽는 것도 **조인만 꺼진다** — 계획 DB 의 고장을 board/next 전체의 죽음으로 전파하지 않는다.
+ */
+function withBacklogStatus(project: string, dataDir: string, features: Feature[]): Feature[] {
+  let home: string | null;
+  try {
+    home = readSettings(dataDir).firstmateHome;
+  } catch {
+    return features;
+  }
+  return applyBacklogStatus(features, readBacklogTasks(home), project);
+}
+
+/**
  * `board <프로젝트>` — 다섯 칸 현황을 읽는다. **읽기 전용**(spec §자리를 옮기는 명령은 두지
  * 않는다) — 여기서 자리나 순서를 바꾸는 길은 없다.
  *
@@ -138,6 +167,9 @@ const AREA_LABEL: Record<AreaId, string> = {
  * 🔴 화면과 같은 자리에서 자동 닫힘(04)도 태운다(`readPlacementsWithAutoClose`, core-io) — 다
  * 끝난 카드가 화면을 한 번도 켜지 않고도 완료 칸으로 넘어간다. 판정(`planAutoClose`)은 그대로
  * core 하나뿐이고, 여기는 화면이 지나는 것과 같은 쓰기·재읽기 자리를 지날 뿐이다.
+ *
+ * 🔴 화면과 같은 자리에서 백로그 상태 조인(`withBacklogStatus`, T01)도 태운다 — 신관례 티켓의
+ * 완료가 백로그에서만 오므로, 조인을 안 지나면 자동 닫힘도 영원히 못 일어난다.
  */
 export function boardText(
   argv: readonly string[],
@@ -148,7 +180,7 @@ export function boardText(
   const [project] = argv;
   if (!project) throw new CliError("usage: gootte board <프로젝트>");
   const path = requireProjectPath(project, cwd);
-  const features = readFeatures(path);
+  const features = withBacklogStatus(project, dataDir, readFeatures(path));
   const placements = readPlacementsWithAutoClose(dataDir, project, features);
   const areas = splitIntoAreas(features, placements);
   const displaySteps = computeDisplaySteps(features, placements, readSteps(dataDir, project));
@@ -178,6 +210,9 @@ export function boardText(
  *
  * 🔴 `board` 와 같이, 자동 닫힘(04)도 같은 자리(`readPlacementsWithAutoClose`)를 지난다 — 다
  * 끝난 기능은 작업 대상을 떠나므로 `computeNext` 가 더 이상 그 티켓을 말하지 않는다.
+ *
+ * 🔴 `board` 와 같이 백로그 상태 조인(`withBacklogStatus`, T01)도 먼저 태운다 — 그래야 이미 done
+ * 인 신관례 티켓이 next 에 다시 나오지 않는다(화면과 같은 상태, spec §결정).
  */
 export function nextText(
   argv: readonly string[],
@@ -188,7 +223,7 @@ export function nextText(
   const [project] = argv;
   if (!project) throw new CliError("usage: gootte next <프로젝트>");
   const path = requireProjectPath(project, cwd);
-  const features = readFeatures(path);
+  const features = withBacklogStatus(project, dataDir, readFeatures(path));
   const placements = readPlacementsWithAutoClose(dataDir, project, features);
   const steps = readSteps(dataDir, project);
   const tickets = computeNext(features, placements, steps);
