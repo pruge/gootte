@@ -95,6 +95,59 @@ describe("joinTicketBacklog", () => {
     expect(result).toEqual({ status: "done", url: null, completedAt: "2026-08-26" });
   });
 
+  // 실물 done-archive.md 모양 — 여러 줄 메모 안에 경로가 산문으로 섞인 인용 행(이번 결함의
+  // 실물: gootte-backlog-join 이 자기 결함 재현 기록에서 남의 기능 경로를 인용). 파서는 들여쓴
+  // 줄을 trim 해 \n 로 잇는다(parseBacklog), 그래서 픽스처도 그 결과 모양이다.
+  const quoterNote = [
+    "## 결함 (실측)",
+    "",
+    "2026-08-26 실측(진짜 data/backlog.md 로 재현): `gootte-both-conventions` 의 파싱 노트가",
+    "첫 문단 한 줄만 남고 `docs/features/both-conventions-are-first-class/` 문구(67행)가 버려짐.",
+    "findParentId hits 가 t03·t02·t01(자식 셋), join 결과 전부 null. 데이터는 완전하고 코드만 틀렸다.",
+  ].join("\n");
+
+  it("인용 행이 목록 앞에 와도, 자식 행을 가진 진짜 부모가 이긴다(gootte-quoted-path T01)", () => {
+    // 실물 배열: 가짜 후보(자식 없음)가 Done 절에서 먼저 온다 — 선착순만으론 가짜가 이긴다.
+    const quoter = task({ id: "gootte-backlog-join", repo: "gootte", note: quoterNote });
+    const realParent = task({ id: "gootte-both-conventions", repo: "gootte", note: "두 관례 모두 일급으로… 기획: docs/features/both-conventions-are-first-class/ (spec.md, tickets/T01~T03)" });
+    const children = ["01", "02", "03"].map((n) =>
+      task({ id: `gootte-both-conventions-t${n}`, repo: "gootte", section: "done" as const, checked: true, since: `2026-08-26`, note: `티켓: docs/features/both-conventions-are-first-class/tickets/T${n}.md` }),
+    );
+    expect(joinTicketBacklog([quoter, realParent, ...children], "gootte", "both-conventions-are-first-class", "01"))
+      .toEqual({ status: "done", url: null, completedAt: "2026-08-26" });
+    expect(joinTicketBacklog([quoter, realParent, ...children], "gootte", "both-conventions-are-first-class", "03"))
+      .toEqual({ status: "done", url: null, completedAt: "2026-08-26" });
+  });
+
+  it("자식 행을 가진 후보가 둘 이상이면 선착순이 유지된다(T02 지도부 우선 계약)", () => {
+    // 좁혀진 집합 안에서는 순서 규칙 그대로 — 먼저 오는 쪽이 이긴다. 둘 다 자기 t02 를 가지되
+    // 상태가 다르다: 세컨드메이트(beta)를 앞에 놓으면 beta 의 done 이 나와야 한다.
+    const parentBeta = task({ id: "gootte-beta", repo: "gootte", note: "참고: docs/features/quoted-path/ 검토.", section: "done" as const, checked: true });
+    const childBeta = task({ id: "gootte-beta-t02", repo: "gootte", section: "done" as const, checked: true, since: "2026-08-27" });
+    const parentAlpha = task({ id: "gootte-alpha", repo: "gootte", note: "Artifacts: docs/features/quoted-path/." });
+    const childAlpha = task({ id: "gootte-alpha-t02", repo: "gootte", section: "in_flight" as const });
+    expect(joinTicketBacklog([parentBeta, childBeta, parentAlpha, childAlpha], "gootte", "quoted-path", "02"))
+      .toEqual({ status: "done", url: null, completedAt: "2026-08-27" });
+    // 순서만 뒤집으면 alpha(in_flight)가 이긴다 — 판정은 배열 순서의 결정적 함수다(INV-4).
+    expect(joinTicketBacklog([parentAlpha, childAlpha, parentBeta, childBeta], "gootte", "quoted-path", "02"))
+      .toEqual({ status: "in_progress", url: null, completedAt: null });
+  });
+
+  it("자식 행을 가진 후보가 하나도 없으면 기존대로 선착순 첫 후보(D3, 기획 직후 방어)", () => {
+    // 자식 행이 아직 백로그에 없어도 부모는 잃지 않는다 — 두 후보 모두 자식 없음 → 첫째.
+    const first = task({ id: "gootte-plan-a", repo: "gootte", note: "Artifacts: docs/features/fresh-plan/." });
+    const second = task({ id: "gootte-plan-b", repo: "gootte", note: "참고: docs/features/fresh-plan/ 검토.", section: "queued" as const });
+    expect(joinTicketBacklog([first, second], "gootte", "fresh-plan", "01")).toBeNull(); // 첫 후보 id 로 자식을 찾지만 없음
+    // 조인 자체는 null 이지만 부모 판정이 첫 후보였다는 것은, 자식을 얹으면 바로 보인다:
+    const child = task({ id: "gootte-plan-a-t01", repo: "gootte", section: "queued" as const });
+    expect(joinTicketBacklog([first, second, child], "gootte", "fresh-plan", "01"))
+      .toEqual({ status: "pending", url: null, completedAt: null });
+  });
+
+  it("후보가 아예 없으면 null — 추측하지 않는다(기존 규칙 유지)", () => {
+    expect(joinTicketBacklog([], "gootte", "no-such-feature", "01")).toBeNull();
+  });
+
   it("자식 id 모양(<...>-t<NN>)은 부모 후보가 아니다(every-home T01)", () => {
     // 자식 t01 의 메모가 자기 티켓 경로를 인용한다 — needle 이 반드시 걸린다.
     const childQuoting = task({ id: "widget-tauri-t01", note: "Artifacts: projects/widget/docs/features/tauri-desktop-app/." });
