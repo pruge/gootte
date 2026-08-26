@@ -84,9 +84,16 @@ describe("readBacklogTasks — firstmate 홈 백로그 리더(T04)", () => {
     expect(readBacklogTasks(home).map((t) => t.id)).toEqual(["widget-t01"]);
   });
 
-  /** 명부에 등록된 세컨드메이트 홈을 만든다 — 지도부 홈 `data/secondmates.md` 로 발견된다. */
+  /**
+   * 명부에 등록된 세컨드메이트 홈을 만든다 — 지도부 홈 `data/secondmates.md` 로 발견된다.
+   * 실물 명부 줄은 한 줄에 산문이 섞인 모양(`- 이름 - 설명 (home: …; scope: …)`)이므로
+   * 그 형식을 그대로 쓴다 — 지어낸 단독 줄로 실물 케이스를 대신하지 않는다.
+   */
   const withRoster = (matePaths: string[]): void => {
-    writeFileSync(secondmatesFile(home), matePaths.map((p) => `home: ${p}\n`).join(""));
+    writeFileSync(
+      secondmatesFile(home),
+      matePaths.map((p) => `- 메이트 - 설명 (home: ${p}; scope: 시험; added 2026-08-26)\n`).join(""),
+    );
   };
 
   it("명부에 등록된 세컨드메이트 홈의 백로그까지 함께 읽는다(every-home T02)", () => {
