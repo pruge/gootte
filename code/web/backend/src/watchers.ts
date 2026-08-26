@@ -2,6 +2,7 @@ import {
   watchBacklog,
   watchProjects,
   watchPlanDb,
+  readSecondmateHomes,
   type BacklogWatcher,
   type Change,
   type ProjectWatcher,
@@ -113,7 +114,24 @@ export function startWatchers(opts: WatchersOptions): Watchers {
 
   const startBacklogWatcher = (home: string | null): BacklogWatcher =>
     watchBacklogImpl(home, () => onChange({ kind: "backlog" }), { onError: onErrorFor("backlog") });
-  let backlogWatcher = startBacklogWatcher(firstmateHome);
+
+  /**
+   * 감시할 백로그 홈 목록 — 지도부 홈 + 명부에 등록된 세컨드메이트 홈(every-home T02).
+   * 지도부 감시기의 실패만 폴백 신호로 잡는다 — 세컨드메이트 홈은 **가산** 데이터 원천이라
+   * 하나가 사라져도(경로 부재) 판은 지도부 상태를 계속 본다. 거기서 onError 를 폴백에
+   * 연결하면 없는 홈 하나가 영구 폴백 폴링을 만든다 — 조용히 건너뛴다(watchBacklog 이
+   * stderr 로는 남긴다). 홈 미설정도 감시기 자리 하나는 유지한다 — 재묶음이 항상 새 묶음을
+   * 앉히는 불변식(유령 감시기 금지)이 null 케이스에서도 같아야 하고, watchBacklog 이 null 을
+   * 흡수한다.
+   */
+  const startBacklogWatchers = (home: string | null): BacklogWatcher[] =>
+    home?.trim()
+      ? [
+          startBacklogWatcher(home),
+          ...readSecondmateHomes(home).map((h) => watchBacklogImpl(h, () => onChange({ kind: "backlog" }), {})),
+        ]
+      : [startBacklogWatcher(null)];
+  let backlogWatchers = startBacklogWatchers(firstmateHome);
 
   return {
     async rebind(nextRoots: string[]) {
@@ -128,14 +146,14 @@ export function startWatchers(opts: WatchersOptions): Watchers {
       syncFallback();
     },
     async rebindBacklog(nextHome: string | null) {
-      const prev = backlogWatcher;
+      const prev = backlogWatchers;
       failures.backlog = false;
-      backlogWatcher = startBacklogWatcher(nextHome);
-      await prev.close();
+      backlogWatchers = startBacklogWatchers(nextHome);
+      await Promise.all(prev.map((w) => w.close()));
       syncFallback();
     },
     async close() {
-      await Promise.all([projectsWatcher.close(), planWatcher.close(), backlogWatcher.close()]);
+      await Promise.all([projectsWatcher.close(), planWatcher.close(), ...backlogWatchers.map((w) => w.close())]);
     },
   };
 }

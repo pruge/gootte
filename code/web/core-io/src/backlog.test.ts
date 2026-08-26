@@ -3,12 +3,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { archivedBacklogFile, backlogFile } from "./backlog-watch";
+import { secondmatesFile } from "./secondmates";
 import { readBacklogTasks } from "./backlog";
 
 let home = "";
+const mates: string[] = [];
 afterEach(() => {
   if (home) rmSync(home, { recursive: true, force: true });
   home = "";
+  for (const m of mates) rmSync(m, { recursive: true, force: true });
+  mates.length = 0;
 });
 
 describe("readBacklogTasks — firstmate 홈 백로그 리더(T04)", () => {
@@ -78,5 +82,49 @@ describe("readBacklogTasks — firstmate 홈 백로그 리더(T04)", () => {
       "# Backlog\n\n## In flight\n- [ ] widget-t01 - 제목 (repo: widget) (kind: ship) (since 2026-08-25)\n",
     );
     expect(readBacklogTasks(home).map((t) => t.id)).toEqual(["widget-t01"]);
+  });
+
+  /** 명부에 등록된 세컨드메이트 홈을 만든다 — 지도부 홈 `data/secondmates.md` 로 발견된다. */
+  const withRoster = (matePaths: string[]): void => {
+    writeFileSync(secondmatesFile(home), matePaths.map((p) => `home: ${p}\n`).join(""));
+  };
+
+  it("명부에 등록된 세컨드메이트 홈의 백로그까지 함께 읽는다(every-home T02)", () => {
+    home = mkdtempSync(join(tmpdir(), "gootte-backlogread-"));
+    const mate = mkdtempSync(join(tmpdir(), "gootte-backlogread-mate-"));
+    mates.push(mate);
+    mkdirSync(join(home, "data"), { recursive: true });
+    mkdirSync(join(mate, "data"), { recursive: true });
+    writeFileSync(backlogFile(home), "# Backlog\n\n## In flight\n- [ ] main-t01 - 지도부 작업 (repo: widget) (kind: ship) (since 2026-08-25)\n");
+    writeFileSync(backlogFile(mate), "# Backlog\n\n## Done\n- [x] mate-t01 - 세컨드메이트가 끝낸 작업 https://x/pr/9 (repo: widget) (kind: ship) (merged 2026-08-26)\n");
+    withRoster([mate]);
+
+    const tasks = readBacklogTasks(home);
+    expect(tasks.map((t) => [t.id, t.section])).toEqual([
+      ["main-t01", "in_flight"],
+      ["mate-t01", "done"],
+    ]);
+  });
+
+  it("같은 id 가 두 홈에 있으면 지도부 것이 이긴다(T02)", () => {
+    home = mkdtempSync(join(tmpdir(), "gootte-backlogread-"));
+    const mate = mkdtempSync(join(tmpdir(), "gootte-backlogread-mate-"));
+    mates.push(mate);
+    mkdirSync(join(home, "data"), { recursive: true });
+    mkdirSync(join(mate, "data"), { recursive: true });
+    writeFileSync(backlogFile(home), "# Backlog\n\n## In flight\n- [ ] shared-t01 - 지도부 사본: 진행중 (repo: widget) (kind: ship) (since 2026-08-25)\n");
+    writeFileSync(backlogFile(mate), "# Backlog\n\n## Done\n- [x] shared-t01 - 세컨드메이트 사본: 끝남 (repo: widget) (kind: ship) (merged 2026-08-26)\n");
+    withRoster([mate]);
+
+    expect(readBacklogTasks(home).map((t) => [t.id, t.section])).toEqual([["shared-t01", "in_flight"]]);
+  });
+
+  it("명부가 없거나 홈 경로가 사라져도 지도부 상태는 그대로 읽힌다(INV-U1)", () => {
+    home = mkdtempSync(join(tmpdir(), "gootte-backlogread-"));
+    mkdirSync(join(home, "data"), { recursive: true });
+    writeFileSync(backlogFile(home), "# Backlog\n\n## In flight\n- [ ] main-t01 - 지도부 작업 (repo: widget) (kind: ship) (since 2026-08-25)\n");
+    withRoster(["/사라진/세컨드메이트/홈"]);
+
+    expect(readBacklogTasks(home).map((t) => t.id)).toEqual(["main-t01"]);
   });
 });
