@@ -26,15 +26,28 @@ export interface BacklogJoin {
 const CHILD_ID = /-t\d+$/;
 
 /**
+ * `<id>-t<NN>` 자식 행을 실제로 가진 후보인가 — 백로그에 그 모양의 행이 존재하는지로만 판정한다
+ * (추측·유사성 없음, INV-4). 자식 메모도 티켓 경로를 인용하므로 `CHILD_ID` 배제와 함께 쓴다.
+ */
+function hasChildRow(tasks: readonly BacklogTaskDoc[], id: string): boolean {
+  return tasks.some((t) => t.id.startsWith(`${id}-t`) && CHILD_ID.test(t.id));
+}
+
+/**
  * 부모 작업 id 찾기 — `(repo: <repo>)` 가 같고, 메모 안에 `docs/features/<slug>/` 문구가 있는
  * 작업(task-planning.md §Parent/child identity: 부모의 백로그 메모가 `<project>:<feature-slug>`
- * 쌍을 담는다). **자식 id 모양(`<무엇>-t<숫자>`)은 후보에서 배제**하고, 후보가 여럿이면 목록에서
- * 먼저 오는 것을 쓴다 — 호출자(홈 병합, T02)는 지도부 홈 항목을 앞에 놓을 계약이다.
+ * 쌍을 담는다). **자식 id 모양(`<무엇>-t<숫자>`)은 후보에서 배제**하고(두 방어는 서로 다른 사고를
+ * 막는다), 다른 작업의 산문이 그 경로를 인용해 후보로 잘못 걸리는 일은 **실제 자식 행 보유**로
+ * 갈라낸다 — 자식(`${id}-t<NN>`)을 가진 후보만 남기되 그중에서도 목록에서 먼저 오는 것을 쓴다
+ * (호출자·홈 병합, T02 는 지도부 홈 항목을 앞에 놓을 계약이다). 자식을 가진 후보가 하나도 없으면
+ * 기획 직후처럼 자식 행이 아직 없는 경우를 지키기 위해 기존 규칙대로 선착순 첫 후보를 쓴다.
  * 후보가 없으면 null — 추측하지 않는다. 순수·결정적(INV-4).
  */
 function findParentId(tasks: readonly BacklogTaskDoc[], repo: string, featureSlug: string): string | null {
   const needle = `docs/features/${featureSlug}/`;
-  return tasks.find((t) => t.repo === repo && !CHILD_ID.test(t.id) && t.note.includes(needle))?.id ?? null;
+  const candidates = tasks.filter((t) => t.repo === repo && !CHILD_ID.test(t.id) && t.note.includes(needle));
+  if (candidates.length === 0) return null;
+  return candidates.find((c) => hasChildRow(tasks, c.id))?.id ?? candidates[0]?.id ?? null;
 }
 
 /**
