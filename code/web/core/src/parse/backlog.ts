@@ -20,6 +20,11 @@ export interface BacklogTaskDoc {
   url: string | null; // 줄에 있는 첫 URL(PR·머지 링크 등) verbatim
   since: string | null; // `(since|merged|done: ...)` 값 verbatim
   note: string; // 줄 아래 들여쓴 메모(부모 작업의 "Artifacts: ..." 가 여기 온다) — 없으면 ""
+  // T01(a-ticket-tells-how-long-it-took) — 메모 안 `time: started=... finished=...` 줄에서
+  // 읽은 시각 verbatim. firstmate 가 쓰고 gootte 는 읽기만 한다(INV-2). 줄이 없으면 둘 다 null.
+  // 분은 여기 저장하지 않는다(INV-1) — 매 read 마다 `elapsedPhrase` 가 다시 잰다.
+  startedAt: string | null;
+  finishedAt: string | null; // 없으면 진행 중(줄은 있되 finished= 없음) 또는 착수 자체를 모름
 }
 
 const SECTION_HEADING: Readonly<Record<string, BacklogSection>> = {
@@ -38,6 +43,8 @@ const TASK_LINE = /^-\s\[([ xX])\]\s+(\S+)\s-\s(.*)$/;
 const REPO_TAG = /\(repo:\s*([^)]+)\)/;
 const DATE_TAG = /\((?:since|merged|done):?\s*([^)]+)\)/;
 const URL = /(https?:\/\/\S+)/;
+// 메모 안 어디에 있어도 되는 한 줄(spec D2) — `time: started=<iso> finished=<iso>`, finished 는 optional.
+const TIME_LINE = /^time:\s*started=(\S+)(?:\s+finished=(\S+))?\s*$/;
 const INDENTED = /^[ \t]+\S/;
 const BLANK = /^\s*$/;
 
@@ -72,13 +79,24 @@ export function parseBacklog(content: string): BacklogTaskDoc[] {
         url: URL.exec(rest)?.[1] ?? null,
         since: DATE_TAG.exec(rest)?.[1]?.trim() ?? null,
         note: "",
+        startedAt: null,
+        finishedAt: null,
       };
       tasks.push(task);
       current = task;
       continue;
     }
     if (current && INDENTED.test(line)) {
-      current.note = current.note ? `${current.note}\n${line.trim()}` : line.trim();
+      const trimmed = line.trim();
+      current.note = current.note ? `${current.note}\n${trimmed}` : trimmed;
+      // 첫 `time:` 줄이 이긴다(기존 `Status:` 파싱과 같은 규율) — 이후 중복 줄은 무시한다.
+      if (current.startedAt === null) {
+        const timeMatch = TIME_LINE.exec(trimmed);
+        if (timeMatch) {
+          current.startedAt = timeMatch[1] ?? null;
+          current.finishedAt = timeMatch[2] ?? null;
+        }
+      }
     } else if (!BLANK.test(line)) {
       // 빈 줄은 메모 블록을 끊지 않는다 — 실물 백로그의 작업 메모는 문단 사이에 빈 줄이 낀다.
       // 끊는 것은 헤딩·작업 줄(위에서 continue)과 들여쓰기 없는 비어 있지 않은 줄뿐이다.

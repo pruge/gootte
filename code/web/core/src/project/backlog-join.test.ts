@@ -14,6 +14,8 @@ function task(overrides: Partial<BacklogTaskDoc>): BacklogTaskDoc {
     url: null,
     since: null,
     note: "",
+    startedAt: null,
+    finishedAt: null,
     ...overrides,
   };
 }

@@ -95,6 +95,10 @@ export const FeatureTicket = z.object({
   // 출처가 백로그이기 때문(D4). 조인 실패(미매칭)면 null/undefined — 추측하지 않는다(INV-4).
   backlogStatus: TodoStatus.nullable().optional(),
   backlogUrl: z.string().nullable().optional(), // 백로그 줄의 PR/머지 링크(있으면) verbatim.
+  // T01(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구(`약 14분` 꼴, core `elapsedPhrase`).
+  // 백로그 메모의 `time:` 줄이 없거나 파싱 실패면 없음(undefined) — 지어내지 않는다(INV-4).
+  // 분은 여기 저장하지 않는다(INV-1) — 매 응답마다 시각에서 다시 잰다.
+  elapsed: z.string().optional(),
 });
 export type FeatureTicket = z.infer<typeof FeatureTicket>;
 
