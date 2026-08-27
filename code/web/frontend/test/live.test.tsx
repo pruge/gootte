@@ -116,9 +116,9 @@ describe("useLiveSync", () => {
     ws.open();
 
     ws.emit({ kind: "watch-fallback", active: true });
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(15_000);
     expect(spy).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(15_000);
     expect(spy).toHaveBeenCalledTimes(2);
 
     // 회복 신호 → 폴러 해제. 이후 아무리 기다려도 invalidate 가 늘지 않는다.
@@ -130,7 +130,7 @@ describe("useLiveSync", () => {
     // 같은 신호가 되풀이돼도 타이머는 하나다 — 중복 기동 없음.
     ws.emit({ kind: "watch-fallback", active: true });
     ws.emit({ kind: "watch-fallback", active: true });
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(15_000);
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
