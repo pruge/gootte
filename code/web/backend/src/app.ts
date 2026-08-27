@@ -50,7 +50,7 @@ import {
   effectiveProjectRoots,
   deriveWatchRoots,
 } from "@gootte/core-io";
-import { getProjects, resolveSlug } from "./discover-cache";
+import { getProjects, getProjectsPayload, resolveSlug } from "./discover-cache";
 
 /**
  * 읽음 기록 대상 문서인가 — **티켓뿐이다**(캡틴 결정 ②). 경로 모양만 본다(INV-4, 문서를 다시 안 읽는다).
@@ -278,11 +278,17 @@ export function createApp(options: AppOptions = {}): Hono {
     // 없고(SoT = 백로그), 조인 없이는 전부 pending 으로 보여 백로그에서 다 끝난 기능까지
     // "남은 일 있음" 으로 셔진다(실제 결함, 2026-08-25 실측: firstmate 사이드바 2 → 실제 0).
     // features·plan 탭과 **같은 판정 자리**(`withBacklogStatus`)를 지난다.
-    const backlog = readBacklogTasks(readSettings(dataDir).firstmateHome);
-    const projects = getProjects(effectiveRoots()).map((p) => ({
-      ...p,
-      openFeatures: countOpenFeatures(applyBacklogStatus(readFeatures(p.copies), backlog, p.slug)),
-    }));
+    // 🔴 전체 페이로드 캐시(fix/projects-listing-spin) — 사본마다 git 하위프로세스를 도는
+    // `readFeatures` 를 매 요청 재실행하면 ~13초가 돼 스피너가 멈추지 않는다. discover 캐시와
+    // 같은 5초 TTL·같은 무효화 신호(`clearDiscoverCache`)라 stale 폭은 감시가 닫힌 환경의
+    // 폴백 폴링 주기(15초) 이하로 유지된다. `build` 는 캐시 미스 시에만 호출된다.
+    const projects = getProjectsPayload(effectiveRoots(), () => {
+      const backlog = readBacklogTasks(readSettings(dataDir).firstmateHome);
+      return getProjects(effectiveRoots()).map((p) => ({
+        ...p,
+        openFeatures: countOpenFeatures(applyBacklogStatus(readFeatures(p.copies), backlog, p.slug)),
+      }));
+    });
     return c.json(ProjectsResponse.parse({ projects }));
   });
 
