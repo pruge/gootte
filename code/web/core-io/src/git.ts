@@ -18,6 +18,22 @@ function gitSafe(repo: string, args: string[]): string | null {
 }
 
 /**
+ * `gitSafe` 와 같지만 **선두 공백을 지우지 않는다** — porcelain 출력의 첫 줄(예: " M path")은
+ * 상태 코드 두 칸(`XY`)이 공백으로 시작할 수 있어, 전체 트림이 그 칸을 먹어 파싱이 밀린다
+ * (실측 결함, T04). 끝의 개행만 없앤다.
+ */
+function gitSafeRaw(repo: string, args: string[]): string | null {
+  try {
+    return execFileSync("git", ["-C", repo, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).replace(/\n+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+/**
  * HEAD 가 올라가 있는 브랜치. **detached HEAD 면 빈 문자열**, git 이 답하지 못하면 **null**.
  *
  * 🔴 실패를 빈 문자열로 접지 않는다. 접으면 "읽지 못했다" 가 "유휴다" 로 둔갑해
@@ -63,6 +79,52 @@ export function hasUncommittedChange(repo: string, path: string): boolean | null
   const out = gitSafe(repo, ["status", "--porcelain", "--", path]);
   if (out === null) return null;
   return out.trim().length > 0;
+}
+
+/**
+ * `paths`(repo 루트 기준) 중 추적 제외된 것 — `git check-ignore --stdin` 한 번으로 전부 묻는다
+ * (T04 §구현 노트, 기능 폴더 단위로 호출 수를 줄인다). 돌려주는 Set 은 `paths` 의 부분집합
+ * (매치된 줄을 그대로 돌려주는 `check-ignore` 의 성질을 그대로 쓴다 — 다시 파싱하지 않는다).
+ * 아무것도 안 걸리면 빈 Set(exit 1 은 오류가 아니라 "전부 추적됨"). git 이 답하지 못하면(저장소
+ * 아님 등) null — 판정 불가와 "제외 없음" 을 구분한다(호출자가 표식 없이 그대로 보여줘야 한다).
+ */
+export function checkIgnored(repo: string, paths: readonly string[]): Set<string> | null {
+  if (paths.length === 0) return new Set();
+  try {
+    const out = execFileSync("git", ["-C", repo, "check-ignore", "--stdin"], {
+      input: `${paths.join("\n")}\n`,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return new Set(out.split("\n").map((l) => l.trim()).filter(Boolean));
+  } catch (e: unknown) {
+    const status = (e as { status?: number }).status;
+    if (status === 1) return new Set(); // exit 1 = 아무 경로도 안 걸림(정상 결과, 오류 아님)
+    return null; // 128 등 — 저장소가 아니거나 그 밖의 이유로 못 물었다
+  }
+}
+
+/**
+ * `dir`(repo 루트 기준) 아래에서 커밋 안 된(미착지) 경로들 — `git status --porcelain -- <dir>`
+ * 한 번으로 기능 폴더 전체를 묻는다(T04 §구현 노트). 추적 안 됨(`??`)과 고쳐짐(` M` 등)을
+ * 가르지 않는다 — 캡틴께는 둘 다 "아직 안 올라간 것"(T04 §구현 노트). git 이 답하지 않으면 null.
+ */
+export function unlandedPaths(repo: string, dir: string): Set<string> | null {
+  // `--untracked-files=all` — 기본값은 새 폴더를 통째로 한 줄(`?? issues/`)로 뭉쳐 파일별 경로를
+  // 못 준다. 문서 트리 노드 하나하나에 표식을 실으려면 파일 단위 경로가 있어야 한다.
+  // 🔴 `gitSafe`(전체 trim) 를 쓰지 않는다 — porcelain 첫 줄(" M path")의 선두 공백이 상태 코드
+  // 칸이라 트림에 먹히면 파싱이 한 칸 밀린다(실측 결함).
+  const out = gitSafeRaw(repo, ["status", "--porcelain", "--untracked-files=all", "--", dir]);
+  if (out === null) return null;
+  const set = new Set<string>();
+  for (const line of out.split("\n")) {
+    if (!line.trim()) continue;
+    // porcelain V1 한 줄 = "XY <경로>"(2 문자 코드 + 공백 + 경로). rename 은 "R  a -> b" 라
+    // 화살표 뒤 새 경로를 쓴다 — 문서 파일 이름 변경은 흔치 않지만 감추지 않는다.
+    const path = line.includes(" -> ") ? line.split(" -> ").pop()!.trim() : line.slice(3).trim();
+    if (path) set.add(path);
+  }
+  return set;
 }
 
 /**

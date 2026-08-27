@@ -401,3 +401,102 @@ describe("readFeatures — 여러 사본 합집합 + 나중 판 (T02)", () => {
     expect(readFeatureDoc([a, b], "f", "../../secret.txt")).toEqual({ ok: false, reason: "outside" });
   });
 });
+
+// ── T04 — 미착지 표식 + 추적 제외 파일 제외 (실물 git 저장소, `.git/info/exclude` 실물 줄) ──
+describe("readFeatures — 미착지 표식 · 추적 제외 (T04)", () => {
+  let tmp: string;
+  let a: string;
+
+  const initRepo = (dir: string): void => {
+    mkdirSync(dir, { recursive: true });
+    execFileSync("git", ["init", "-q", dir], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "config", "user.email", "crew@example.com"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "config", "user.name", "crew"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "config", "commit.gpgsign", "false"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "symbolic-ref", "HEAD", "refs/heads/main"], { stdio: "ignore" });
+  };
+  const commit = (dir: string, msg: string): void => {
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-q", "-m", msg], { stdio: "ignore" });
+  };
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "gootte-unlanded-"));
+    a = join(tmp, "a");
+    initRepo(a);
+    repo = a; // 위 module-scope `spec`/`issue`/`doc` 헬퍼가 이 변수를 쓴다 — 이 describe 안에서는 a 를 가리키게 한다.
+  });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  it("AC1 — 추적 제외된 design/*.html 은 문서 트리에 뜨지 않는다(실물: docs/features/*/design/)", () => {
+    spec("f", "# f\n\nStatus: draft\n");
+    mkdirSync(join(a, ".git", "info"), { recursive: true });
+    writeFileSync(join(a, ".git", "info", "exclude"), "docs/features/*/design/\n");
+    mkdirSync(join(a, "docs", "features", "f", "design"), { recursive: true });
+    writeFileSync(join(a, "docs", "features", "f", "design", "delete-dialog.html"), "<html></html>\n");
+    commit(a, "init");
+    const [f] = readFeatures([a]);
+    expect(f?.docs.map((d) => d.name)).toEqual(["spec.md"]);
+  });
+
+  it("AC2 — 추적 중이지만 커밋 안 된 문서에 미착지 표식이 붙는다", () => {
+    spec("f", "# f\n\nStatus: draft\n");
+    commit(a, "init");
+    writeFileSync(join(a, "docs", "features", "f", "spec.md"), "# f\n\nStatus: draft\n\n고침\n");
+    const [f] = readFeatures([a]);
+    const node = f?.docs.find((d) => d.name === "spec.md");
+    expect(node?.unlanded).toBe(true);
+  });
+
+  it("AC3 — 추적 안 된 새 문서도 트리에 뜨고 같은 표식이 붙는다", () => {
+    spec("f", "# f\n\nStatus: draft\n");
+    commit(a, "init");
+    doc("f", "wayfinder.md", "# Wayfinder\n");
+    const [f] = readFeatures([a]);
+    const node = f?.docs.find((d) => d.name === "wayfinder.md");
+    expect(node?.unlanded).toBe(true);
+  });
+
+  it("AC4 — 착지 완료된 문서에는 표식이 없다(기존 화면 불변)", () => {
+    spec("f", "# f\n\nStatus: draft\n");
+    commit(a, "init");
+    const [f] = readFeatures([a]);
+    const node = f?.docs.find((d) => d.name === "spec.md");
+    expect(node?.unlanded).toBeUndefined();
+  });
+
+  it("🔴 추적 제외이면서 미착지인 파일은 제외가 이긴다(안 보인다)", () => {
+    spec("f", "# f\n\nStatus: draft\n");
+    mkdirSync(join(a, ".git", "info"), { recursive: true });
+    writeFileSync(join(a, ".git", "info", "exclude"), "docs/features/*/design/\n");
+    commit(a, "init");
+    mkdirSync(join(a, "docs", "features", "f", "design"), { recursive: true });
+    writeFileSync(join(a, "docs", "features", "f", "design", "new-idea.html"), "<html></html>\n"); // 새로 생김 = 미착지 후보이기도 함
+    const [f] = readFeatures([a]);
+    expect(f?.docs.map((d) => d.name)).toEqual(["spec.md"]);
+  });
+
+  it("티켓(issues/)에도 같은 표식이 실린다 — docs.tree 와 같은 판정을 옮겨 쓴다", () => {
+    spec("f", "# f\n\nStatus: draft\n");
+    commit(a, "init");
+    issue("f", "01-a.md", ticket("01 — a", "draft"));
+    const [f] = readFeatures([a]);
+    expect(f?.tickets[0]?.unlanded).toBe(true);
+  });
+
+  it("AC6 — git 이 답하지 않는 사본(plain 디렉토리)의 문서는 표식 없이 그대로 보인다", () => {
+    const plain = join(tmp, "plain");
+    spec2(plain, "f", "# plain\n\nStatus: draft\n");
+    const [f] = readFeatures([plain]);
+    const node = f?.docs.find((d) => d.name === "spec.md");
+    expect(node?.unlanded).toBeUndefined();
+    expect(f?.docs.map((d) => d.name)).toEqual(["spec.md"]);
+  });
+});
+
+/** T04 헬퍼 — 임의 루트 아래 `docs/features/<slug>/spec.md` 합성(plain 디렉토리 픽스처용). */
+function spec2(root: string, slug: string, body: string): void {
+  const dir = join(root, "docs", "features", slug);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "spec.md"), body);
+}

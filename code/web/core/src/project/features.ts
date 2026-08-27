@@ -26,6 +26,22 @@ function numKey(num: string): number | null {
   return /^\d{1,3}$/.test(num) ? Number.parseInt(num, 10) : null;
 }
 
+/**
+ * `docs.tree` 안에서 `path` 와 일치하는 노드의 `unlanded` 값을 찾는다(T04) — 판정 자리는
+ * `FeatureDocNode.unlanded` 하나뿐이고, 티켓 목록은 여기서 그 값을 그대로 옮겨 싣는다.
+ * 못 찾으면(트리에 아직 없는 경우 등) undefined — 표식을 지어내지 않는다(INV-4).
+ */
+function unlandedAt(tree: readonly FeatureDocNode[], path: string): boolean | undefined {
+  for (const node of tree) {
+    if (node.path === path) return node.unlanded;
+    if (node.kind === "dir") {
+      const found = unlandedAt(node.children ?? [], path);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+}
+
 /** 번호 오름차순, 번호 없는 파일은 뒤로(그다음 slug). */
 function byNum(a: { num: string; slug: string }, b: { num: string; slug: string }): number {
   const [x, y] = [numKey(a.num), numKey(b.num)];
@@ -40,10 +56,16 @@ function byNum(a: { num: string; slug: string }, b: { num: string; slug: string 
  * `statusKnown: false` 는 "모른다" 를 뜻하지 "이슈 관례의 알 수 없는 상태" 를 뜻하지 않는다
  * (화면은 `docConvention` 으로 그 둘을 가른다). 백로그 조인은 `applyBacklogStatus` 가 나중에 얹는다.
  */
-function toNewTicket(doc: NewTicketDoc, doneNums: ReadonlySet<number>, crossIndex: CrossFeatureIndex): FeatureTicket {
+function toNewTicket(
+  doc: NewTicketDoc,
+  doneNums: ReadonlySet<number>,
+  crossIndex: CrossFeatureIndex,
+  tree: readonly FeatureDocNode[],
+): FeatureTicket {
   // 옛 관례와 **같은 계산**을 거친다(T01) — `## Depends on` 은 같은 개념의 다른 표기일 뿐이다(F2).
   // 임자는 여기 없다(상태의 SoT 가 백로그라 claimed 도 문서에 없다).
   const waiting = waitingOn(doc.blockedBy, doneNums, crossIndex);
+  const unlanded = unlandedAt(tree, doc.path);
   return {
     num: doc.num,
     slug: doc.slug,
@@ -61,6 +83,7 @@ function toNewTicket(doc: NewTicketDoc, doneNums: ReadonlySet<number>, crossInde
     docConvention: "tickets",
     backlogStatus: null,
     backlogUrl: null,
+    ...(unlanded !== undefined ? { unlanded } : {}),
   };
 }
 
@@ -145,11 +168,17 @@ export function resolveWaitingOn(
   return waitingOn(blockedBy, doneNums, crossIndex);
 }
 
-function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>, crossIndex: CrossFeatureIndex): FeatureTicket {
+function toTicket(
+  doc: TicketDoc,
+  doneNums: ReadonlySet<number>,
+  crossIndex: CrossFeatureIndex,
+  tree: readonly FeatureDocNode[],
+): FeatureTicket {
   const waiting = waitingOn(doc.blockedBy, doneNums, crossIndex);
   // 임자 있음 = 문서가 claimed 라고 말한다. 처리중을 만들지는 않는다(그건 applyInProgress 의 몫) —
   // 여기서는 착수 가능 판정에서만 뺀다(work-claims-its-ticket/01 §C).
   const claimed = doc.sourceStatus === "claimed";
+  const unlanded = unlandedAt(tree, doc.path);
   return {
     num: doc.num,
     slug: doc.slug,
@@ -167,6 +196,7 @@ function toTicket(doc: TicketDoc, doneNums: ReadonlySet<number>, crossIndex: Cro
     // 문서만으로는 언제나 빈 값 — 처리중은 격리 사본 관측이 얹는다(`applyInProgress`).
     workedBy: [],
     needsCaptainEye: doc.needsCaptainEye,
+    ...(unlanded !== undefined ? { unlanded } : {}),
   };
 }
 
@@ -194,9 +224,11 @@ export function buildFeature(docs: FeatureDocs, crossIndex?: CrossFeatureIndex):
     status: docs.spec?.status ?? "pending",
     sourceStatus: docs.spec?.sourceStatus ?? null,
     statusKnown: docs.spec?.statusKnown ?? false,
-    tickets: [...docs.tickets].sort(byNum).map((t) => toTicket(t, doneNums, index)),
+    tickets: [...docs.tickets].sort(byNum).map((t) => toTicket(t, doneNums, index, docs.tree)),
     docs: docs.tree,
-    newTickets: [...(docs.newTickets ?? [])].sort(byNum).map((t) => toNewTicket(t, doneNums, index)),
+    newTickets: [...(docs.newTickets ?? [])]
+      .sort(byNum)
+      .map((t) => toNewTicket(t, doneNums, index, docs.tree)),
     conflict: docs.conflict ?? [],
   };
 }

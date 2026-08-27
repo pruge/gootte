@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
-import type { FeatureTicket, PlanCard } from "@gootte/contract";
+import type { FeatureConflict, FeatureTicket, PlanCard } from "@gootte/contract";
 import { allTickets } from "@gootte/core";
 import { closedDisplayAt, ticketBoxState, UNRANKED_STEP } from "@gootte/core/plan";
 import { BACKLOG_STATUS_LABEL } from "../../lib/backlogStatusLabel";
+import { ConflictBadge } from "../features/ConflictBadge";
+import { UnlandedBadge } from "../features/FeatureTree";
 import { featureDescription } from "./cardTitle";
 
 /**
@@ -50,6 +52,8 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
   // 이 대화상자가 "티켓 0 · 티켓이 없습니다" 를 보여준다(캡틴 보고, 2026-08-25).
   const tickets = allTickets(feature);
   const orderedTickets = orderByStep(tickets, steps);
+  // T03 — 갈라진 파일 경로 → 그 사실. 대화상자도 같은 화법을 쓴다(화면·CLI 가 같은 사실을 말한다).
+  const conflictByPath = new Map<string, FeatureConflict>((feature.conflict ?? []).map((c) => [c.path, c]));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -89,6 +93,8 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
             <p className="mono mt-1.5 flex flex-wrap items-baseline gap-x-2.5 text-sm tabular-nums text-muted">
               <span>티켓 {tickets.length}</span>
               {closedDisplay && <span>닫힘 {closedDisplay}</span>}
+              {/* T03 — 이 기능이 갈라졌으면 대화상자도 조용히 넘기지 않는다(ADR-0001). */}
+              <ConflictBadge conflicts={feature.conflict ?? []} />
             </p>
           </div>
           <button
@@ -164,6 +170,9 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                           안 읽음
                         </span>
                       )}
+                      {conflictByPath.has(t.path) && (
+                        <ConflictBadge conflicts={[conflictByPath.get(t.path)!]} />
+                      )}
                       {inProgress && (
                         // 색 말고도 붙들 것이 있다(INV-C2) — 처리중은 배경과 이 글자로만 말한다,
                         // 테두리는 얹지 않는다(캡틴 지시 2026-08-13: "처리중 보더를 제거해봐").
@@ -171,6 +180,8 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                           처리중
                         </span>
                       )}
+                      {/* T04 — 미착지 표식(캡틴 결정 Q4). 어느 사본에서 왔는지는 말하지 않는다. */}
+                      {t.unlanded && <UnlandedBadge />}
                       {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게.
                           `features` 탭 `TicketRow` 와 같은 판정 — tickets/ 신관례는 파일에 상태가
                           없다(SoT = 백로그), 조인됐을 때만 배지를 낸다(T04 §구현 원칙, 추측 금지). */}
