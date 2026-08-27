@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
-import type { FeatureTicket, PlanCard } from "@gootte/contract";
+import type { FeatureConflict, FeatureTicket, PlanCard } from "@gootte/contract";
 import { allTickets } from "@gootte/core";
 import { closedDisplayAt, ticketBoxState, UNRANKED_STEP } from "@gootte/core/plan";
 import { BACKLOG_STATUS_LABEL } from "../../lib/backlogStatusLabel";
+import { ConflictBadge } from "../features/ConflictBadge";
 import { featureDescription } from "./cardTitle";
 
 /**
@@ -50,6 +51,8 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
   // 이 대화상자가 "티켓 0 · 티켓이 없습니다" 를 보여준다(캡틴 보고, 2026-08-25).
   const tickets = allTickets(feature);
   const orderedTickets = orderByStep(tickets, steps);
+  // T03 — 갈라진 파일 경로 → 그 사실. 대화상자도 같은 화법을 쓴다(화면·CLI 가 같은 사실을 말한다).
+  const conflictByPath = new Map<string, FeatureConflict>((feature.conflict ?? []).map((c) => [c.path, c]));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -89,6 +92,8 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
             <p className="mono mt-1.5 flex flex-wrap items-baseline gap-x-2.5 text-sm tabular-nums text-muted">
               <span>티켓 {tickets.length}</span>
               {closedDisplay && <span>닫힘 {closedDisplay}</span>}
+              {/* T03 — 이 기능이 갈라졌으면 대화상자도 조용히 넘기지 않는다(ADR-0001). */}
+              <ConflictBadge conflicts={feature.conflict ?? []} />
             </p>
           </div>
           <button
@@ -163,6 +168,9 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                         >
                           안 읽음
                         </span>
+                      )}
+                      {conflictByPath.has(t.path) && (
+                        <ConflictBadge conflicts={[conflictByPath.get(t.path)!]} />
                       )}
                       {inProgress && (
                         // 색 말고도 붙들 것이 있다(INV-C2) — 처리중은 배경과 이 글자로만 말한다,

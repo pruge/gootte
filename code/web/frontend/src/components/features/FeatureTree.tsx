@@ -5,7 +5,8 @@ import {
   IconFile,
   IconListCheck,
 } from "@tabler/icons-react";
-import type { Feature, FeatureDocNode } from "@gootte/contract";
+import type { Feature, FeatureConflict, FeatureDocNode } from "@gootte/contract";
+import { ConflictBadge } from "./ConflictBadge";
 import { TicketRow } from "./TicketRow";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
 import { triggerKey } from "./docTrigger";
@@ -71,6 +72,11 @@ export function FeatureTree({
   const issuesExtras = nonTicketEntries(issues);
   const ticketsExtras = nonTicketEntries(tickets);
   const newTickets = feature.newTickets ?? [];
+  // T03 — 갈라진 파일 경로 → 그 사실(어느 사본들인지). 파일 줄이 이 경로와 맞으면 갈라짐
+  // 표시를 낸다(기능 수준 배지는 FeatureCard 가 이미 낸다, 여기는 어느 파일인지 짚는 자리).
+  const conflictByPath = new Map<string, FeatureConflict>(
+    (feature.conflict ?? []).map((c) => [c.path, c]),
+  );
 
   return (
     <ul className="divide-y divide-border">
@@ -80,6 +86,7 @@ export function FeatureTree({
           depth={0}
           featureSlug={feature.slug}
           onOpenDoc={onOpenDoc}
+          conflictByPath={conflictByPath}
         />
       )}
       {/* `issues/` 구관례 — 실재할 때만 칸을 낸다(INV-4, tickets 칸과 같은 규칙). 신관례만 쓰는
@@ -116,6 +123,7 @@ export function FeatureTree({
                     featureSlug={feature.slug}
                     onOpenDoc={onOpenDoc}
                     query={query}
+                    conflict={conflictByPath.get(t.path)}
                   />
                 ))}
                 {issuesExtras.map((node) => (
@@ -125,6 +133,7 @@ export function FeatureTree({
                     depth={TICKET_LIST_DEPTH}
                     featureSlug={feature.slug}
                     onOpenDoc={onOpenDoc}
+                    conflictByPath={conflictByPath}
                   />
                 ))}
               </ul>
@@ -156,6 +165,7 @@ export function FeatureTree({
                   featureSlug={feature.slug}
                   onOpenDoc={onOpenDoc}
                   query={query}
+                  conflict={conflictByPath.get(t.path)}
                 />
               ))}
               {ticketsExtras.map((node) => (
@@ -165,6 +175,7 @@ export function FeatureTree({
                   depth={TICKET_LIST_DEPTH}
                   featureSlug={feature.slug}
                   onOpenDoc={onOpenDoc}
+                  conflictByPath={conflictByPath}
                 />
               ))}
             </ul>
@@ -178,6 +189,7 @@ export function FeatureTree({
           depth={0}
           featureSlug={feature.slug}
           onOpenDoc={onOpenDoc}
+          conflictByPath={conflictByPath}
         />
       ))}
     </ul>
@@ -189,11 +201,14 @@ function DocTreeNode({
   depth,
   featureSlug,
   onOpenDoc,
+  conflictByPath,
 }: {
   node: FeatureDocNode;
   depth: number;
   featureSlug: string;
   onOpenDoc: OpenDocFn;
+  /** T03 — 갈라진 파일 경로 → 그 사실(어느 사본들인지). `dir` 는 자식에게 그대로 물려준다. */
+  conflictByPath: ReadonlyMap<string, FeatureConflict>;
 }) {
   const [open, setOpen] = useState(false);
   const indent = treeIndentStyle(depth);
@@ -224,6 +239,7 @@ function DocTreeNode({
                 depth={depth + 1}
                 featureSlug={featureSlug}
                 onOpenDoc={onOpenDoc}
+                conflictByPath={conflictByPath}
               />
             ))}
           </ul>
@@ -231,6 +247,8 @@ function DocTreeNode({
       </li>
     );
   }
+
+  const conflict = conflictByPath.get(node.path);
 
   return (
     <li>
@@ -243,6 +261,7 @@ function DocTreeNode({
       >
         <IconFile size={15} className="shrink-0 text-muted" />
         {node.name}
+        {conflict && <ConflictBadge conflicts={[conflict]} />}
       </button>
     </li>
   );
