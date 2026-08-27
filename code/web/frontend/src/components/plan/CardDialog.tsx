@@ -138,12 +138,14 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                     >
                       <span
                         className={`mono shrink-0 text-sm ${closed ? "text-accent" : "text-muted"}`}
+                        // T02(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구를 기존 title 에
+                        // 이어 붙인다. 기존 문구가 먼저다(수용 기준 5) — 값이 없으면 아무것도 안 붙인다(INV-4).
                         title={
-                          box === "done"
+                          (box === "done"
                             ? "문서가 완료라고 말한다"
                             : box === "dropped"
                               ? "문서가 폐기라고 말한다"
-                              : "아직 완료가 아니다"
+                              : "아직 완료가 아니다") + (t.elapsed ? `\n${t.elapsed}` : "")
                         }
                       >
                         {glyph}

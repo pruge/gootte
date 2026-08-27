@@ -131,6 +131,34 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
     ]);
   });
 
+  it("🔴 걸린 시간 문구(ticket.elapsed)를 그대로 옮긴다 — 다시 재지 않는다(T02)", () => {
+    const cards = [card("a", [{ num: "01", elapsed: "약 14분" }], { "01-x": 1 })];
+    expect(groupProcessSteps(cards)).toEqual([
+      {
+        step: 1,
+        rows: [
+          {
+            feature: "a",
+            ticket: "01-x",
+            num: "01",
+            title: "티켓 01",
+            path: "issues/01-x.md",
+            box: "open",
+            unread: false,
+            inProgress: false,
+            elapsed: "약 14분",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("걸린 시간 기록이 없으면 elapsed 칸이 없다 — 빈 값을 지어내지 않는다(INV-4)", () => {
+    const cards = [card("a", ["01"], { "01-x": 1 })];
+    const rows = groupProcessSteps(cards)[0]?.rows ?? [];
+    expect(rows[0]?.elapsed).toBeUndefined();
+  });
+
   it("🔴 두 관례가 섞인 기능은 합쳐서 같은 단계 묶음에 선다", () => {
     const cards = [
       card("mixed", ["01", { num: "02", newConvention: true }], { "01-x": 1, T02: 1 }),
