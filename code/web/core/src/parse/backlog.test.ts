@@ -36,6 +36,49 @@ describe("parseBacklog", () => {
     expect(parent?.note).toContain("projects/widget/docs/features/tauri-desktop-app/");
   });
 
+  /** 실물 모양 — 티켓 경로 메모와 `time:` 줄이 나란히 산다(spec D2). */
+  const WITH_TIME = `# Backlog
+
+## In flight
+- [ ] widget-tauri-t04 - New-convention docs tree (repo: widget) (kind: ship) (since 2026-08-25)
+  Artifacts: projects/widget/docs/features/tauri-desktop-app/.
+  time: started=2026-08-27T12:48:43+09:00 finished=2026-08-27T13:02:43+09:00
+`;
+
+  it("`time:` 줄에서 착수·완료 시각을 읽는다(기존 메모와 나란히)", () => {
+    const [task] = parseBacklog(WITH_TIME);
+    expect(task?.startedAt).toBe("2026-08-27T12:48:43+09:00");
+    expect(task?.finishedAt).toBe("2026-08-27T13:02:43+09:00");
+    expect(task?.note).toContain("projects/widget/docs/features/tauri-desktop-app/");
+  });
+
+  it("`finished=` 가 없으면 진행 중 — finishedAt 은 null", () => {
+    const doc = `## In flight
+- [ ] a-t01 - x (repo: r)
+  time: started=2026-08-27T12:00:00+09:00
+`;
+    const [task] = parseBacklog(doc);
+    expect(task?.startedAt).toBe("2026-08-27T12:00:00+09:00");
+    expect(task?.finishedAt).toBeNull();
+  });
+
+  it("`time:` 줄이 없으면 startedAt·finishedAt 모두 null", () => {
+    const [task] = parseBacklog(BACKLOG);
+    expect(task?.startedAt).toBeNull();
+    expect(task?.finishedAt).toBeNull();
+  });
+
+  it("`time:` 줄이 여러 번이면 첫 줄이 이긴다(Status: 파싱과 같은 규율)", () => {
+    const doc = `## In flight
+- [ ] a-t01 - x (repo: r)
+  time: started=2026-08-27T10:00:00+09:00 finished=2026-08-27T10:10:00+09:00
+  time: started=2026-08-27T20:00:00+09:00 finished=2026-08-27T20:10:00+09:00
+`;
+    const [task] = parseBacklog(doc);
+    expect(task?.startedAt).toBe("2026-08-27T10:00:00+09:00");
+    expect(task?.finishedAt).toBe("2026-08-27T10:10:00+09:00");
+  });
+
   it("완료 작업의 URL·머지일을 읽는다", () => {
     const tasks = parseBacklog(BACKLOG);
     const done = tasks.find((t) => t.id === "widget-tauri-t03");

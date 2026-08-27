@@ -1,6 +1,7 @@
 import type { Feature, FeatureTicket, TodoStatus } from "@gootte/contract";
 import { featureNums, hasOpenWork, resolveWaitingOn, type CrossFeatureIndex } from "./features";
 import type { BacklogTaskDoc } from "../parse/backlog";
+import { elapsedPhrase } from "../parse/elapsed";
 
 /**
  * `tickets/T<NN>.md` 신관례 티켓 ↔ firstmate 홈 백로그 조인(T04). 상태의 단일 출처는 백로그다
@@ -17,6 +18,9 @@ export interface BacklogJoin {
   status: TodoStatus;
   url: string | null;
   completedAt: string | null; // done 일 때만 채운다 — 백로그의 `(merged|done: ...)` verbatim
+  // T01(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구(`elapsedPhrase`). 모르면 없음
+  // (undefined) — `time:` 줄이 없거나 파싱 실패면 지어내지 않는다(INV-4).
+  elapsed?: string;
 }
 
 /**
@@ -59,6 +63,9 @@ export function joinTicketBacklog(
   repo: string,
   featureSlug: string,
   ticketNum: string,
+  // T01 — 진행 중 어림에 쓰는 현재 시각(ISO 8601). 호출자가 준다(테스트가 시계에 흔들리지
+  // 않게, spec §구현 노트) — 기본값은 기존 호출자(다수 테스트·app.ts)를 안 깨기 위함이다.
+  now: string = new Date().toISOString(),
 ): BacklogJoin | null {
   if (!ticketNum) return null;
   const parentId = findParentId(tasks, repo, featureSlug);
@@ -67,11 +74,23 @@ export function joinTicketBacklog(
   const task = tasks.find((t) => t.id === childId);
   if (!task) return null;
   const status = SECTION_STATUS[task.section];
-  return { status, url: task.url, completedAt: status === "done" ? task.since : null };
+  const elapsed = elapsedPhrase(task.startedAt, task.finishedAt, now) ?? undefined;
+  return {
+    status,
+    url: task.url,
+    completedAt: status === "done" ? task.since : null,
+    ...(elapsed ? { elapsed } : {}),
+  };
 }
 
-function joinTicket(ticket: FeatureTicket, tasks: readonly BacklogTaskDoc[], repo: string, featureSlug: string): FeatureTicket {
-  const join = joinTicketBacklog(tasks, repo, featureSlug, ticket.num);
+function joinTicket(
+  ticket: FeatureTicket,
+  tasks: readonly BacklogTaskDoc[],
+  repo: string,
+  featureSlug: string,
+  now: string,
+): FeatureTicket {
+  const join = joinTicketBacklog(tasks, repo, featureSlug, ticket.num, now);
   if (!join) return ticket;
   return {
     ...ticket,
@@ -79,6 +98,7 @@ function joinTicket(ticket: FeatureTicket, tasks: readonly BacklogTaskDoc[], rep
     backlogStatus: join.status,
     backlogUrl: join.url,
     ...(join.completedAt ? { completedAt: join.completedAt } : {}),
+    ...(join.elapsed ? { elapsed: join.elapsed } : {}),
   };
 }
 
@@ -124,10 +144,15 @@ export function deriveHeaderBadge(tickets: readonly FeatureTicket[]): FeatureHea
  * 바뀌지 않는다. 그 위에 **명시적 취소(`Status: wontfix`)가 계산을 이긴다**(T02, D3) — 취소는
  * 백로그 조인이 `pending` 을 채운 **뒤** 덮쓴다(`applyInProgress` 와 같은 형태).
  */
-export function applyBacklogStatus(features: readonly Feature[], tasks: readonly BacklogTaskDoc[], repo: string): Feature[] {
+export function applyBacklogStatus(
+  features: readonly Feature[],
+  tasks: readonly BacklogTaskDoc[],
+  repo: string,
+  now: string = new Date().toISOString(),
+): Feature[] {
   const joined = features.map((f) => ({
     ...f,
-    newTickets: (f.newTickets ?? []).map((t) => joinTicket(t, tasks, repo, f.slug)),
+    newTickets: (f.newTickets ?? []).map((t) => joinTicket(t, tasks, repo, f.slug, now)),
   }));
   // 🔴 조인으로 상태가 바뀌었으니 신관례 티켓의 대기·착수 가능도 **다시** 계산한다(INV-3 —
   // 낡은 뷰 금지). buildFeatures 시점엔 백로그 상태를 모르므로(전부 pending) 신관례끼리의
