@@ -199,6 +199,11 @@ export function boardText(
     lines.push(`## ${AREA_LABEL[id]} (${cards.length})`);
     for (const card of cards) {
       lines.push(`- ${card.feature.slug}`);
+      // T03 — 갈라진 사본은 조용히 고르지 않고 화면이 말한다. CLI 도 같은 사실을 한 줄로 낸다
+      // (the-terminal-agrees-with-the-screen 의 규율) — 어느 칸의 카드든 감추지 않는다.
+      for (const c of card.feature.conflict ?? []) {
+        lines.push(`    ! 갈라짐: ${c.path} (${c.copies.join(", ")})`);
+      }
       if (id !== "active") continue;
       for (const t of allTickets(card.feature)) {
         const step = displaySteps[card.feature.slug]?.[t.slug];
