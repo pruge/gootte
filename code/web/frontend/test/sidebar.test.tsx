@@ -8,8 +8,8 @@ import { ThemeProvider } from "../src/theme/ThemeProvider";
 import { qk } from "../src/lib/query";
 
 const PROJECTS: Project[] = [
-  { slug: "jinwooauto", path: "/home/ai/jinwooauto" },
-  { slug: "tuya", path: "/home/ai/tuya" },
+  { slug: "jinwooauto", path: "/home/ai/jinwooauto", copies: ["/home/ai/jinwooauto"] },
+  { slug: "tuya", path: "/home/ai/tuya", copies: ["/home/ai/tuya"] },
 ];
 
 function renderSeeded(ui: ReactElement, projects = PROJECTS) {
@@ -35,8 +35,8 @@ describe("Sidebar", () => {
   // firstmate-project-source 01 — 발견 규칙이 바뀐 뒤 캡틴이 실제로 보는 목록
   it("firstmate 프로젝트가 목록에 뜬다 (jinwooauto · gootte)", () => {
     renderSeeded(<Sidebar selected={null} onSelect={() => {}} />, [
-      { slug: "jinwooauto", path: "/Users/x/Documents/ai2/projects/jinwooauto" },
-      { slug: "gootte", path: "/Users/x/Documents/ai2/projects/gootte" },
+      { slug: "jinwooauto", path: "/Users/x/Documents/ai2/projects/jinwooauto", copies: ["/Users/x/Documents/ai2/projects/jinwooauto"] },
+      { slug: "gootte", path: "/Users/x/Documents/ai2/projects/gootte", copies: ["/Users/x/Documents/ai2/projects/gootte"] },
     ]);
     // "gootte" 는 사이드바 제목에도 있어 역할로 좁힌다 — 목록 항목만 본다
     expect(screen.getByRole("button", { name: /jinwooauto/ })).toBeInTheDocument();
@@ -62,9 +62,9 @@ describe("Sidebar", () => {
    */
   it("남은 일 있는 기능 수 배지 — 0 도 표시하고, 미설정만 감춘다", () => {
     renderSeeded(<Sidebar selected={null} onSelect={() => {}} />, [
-      { slug: "jinwooauto", path: "/home/ai/jinwooauto", openFeatures: 3 },
-      { slug: "tuya", path: "/home/ai/tuya", openFeatures: 0 },
-      { slug: "unknown", path: "/home/ai/unknown" },
+      { slug: "jinwooauto", path: "/home/ai/jinwooauto", copies: ["/home/ai/jinwooauto"], openFeatures: 3 },
+      { slug: "tuya", path: "/home/ai/tuya", copies: ["/home/ai/tuya"], openFeatures: 0 },
+      { slug: "unknown", path: "/home/ai/unknown", copies: ["/home/ai/unknown"] },
     ]);
     expect(screen.getByRole("button", { name: /jinwooauto/ })).toHaveTextContent("3");
     const tuya = screen.getByRole("button", { name: /tuya/ });
@@ -72,5 +72,20 @@ describe("Sidebar", () => {
     expect(
       screen.getByRole("button", { name: /unknown/ }).querySelector("span[title]"),
     ).toBeNull();
+  });
+
+  /**
+   * 🔴 T01 — 사본이 있어도 slug 기준으로 한 번만 렌더되고(`key={p.slug}`), title 은 대표 경로.
+   * 같은 slug 가 두 번 안 뜨는 것은 discover 가 묶어 내는 덕이지만, 여기선 key 와 title 이
+   * 그 묶인 결과 위에서 올바르게 붙는지 본다.
+   */
+  it("사본(copies)이 있어도 slug 기준 한 번만 렌더되고 title 은 대표 경로", () => {
+    renderSeeded(<Sidebar selected={null} onSelect={() => {}} />, [
+      { slug: "dup", path: "/home/a/dup", copies: ["/home/a/dup", "/work/b/dup"] },
+    ]);
+    const btn = screen.getByRole("button", { name: /dup/ });
+    expect(btn).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /dup/ })).toHaveLength(1);
+    expect(btn).toHaveAttribute("title", "/home/a/dup");
   });
 });

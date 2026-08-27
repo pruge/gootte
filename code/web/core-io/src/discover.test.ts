@@ -56,6 +56,29 @@ describe("discoverProjects — firstmate 판정(루트 AGENTS.md + docs/features
     writeFileSync(join(nested, "AGENTS.md"), "# AGENTS\n");
     expect(slugs([root, root])).toEqual(["deep-proj"]);
   });
+
+  /**
+   * 🔴 T01 — 같은 slug(디렉토리 basename)의 사본은 하나의 Project 로 묶는다. 그래서 목록에
+   * 같은 이름이 두 번 안 뜬다(ADR-0001 이 뒤엎으려 한 상태). 묶는 키는 basename 하나뿐.
+   */
+  it("같은 slug 의 사본 둘이면 목록엔 1개, copies 는 2개, path 는 뿌리 순서 첫 사본", () => {
+    const a = candidate("dup", { agents: true, features: true });
+    const bRoot = join(root, "other");
+    const b = candidate(join("other", "dup"), { agents: true, features: true });
+    const found = discoverProjects([root, bRoot]);
+    expect(found.map((p) => p.slug)).toEqual(["dup"]); // 🔴 이름 두 번 안 뜸
+    const dup = found[0];
+    expect(dup?.copies).toEqual([a, b]); // 뿌리 순서 그대로
+    expect(dup?.path).toBe(a); // 대표 = 첫 사본
+  });
+
+  it("사본이 하나면 copies=[path] 로 바뀌는 것 없다(수용 기준 3)", () => {
+    const alone = candidate("alone", { agents: true, features: true });
+    const found = discoverProjects([root]);
+    const p = found.find((x) => x.slug === "alone")!;
+    expect(p.path).toBe(alone);
+    expect(p.copies).toEqual([alone]);
+  });
 });
 
 describe("defaultProjectRoots", () => {

@@ -71,14 +71,25 @@ export function watchProjects(
    * 후자를 읽던 worktree 배지(`scanWorktrees`)는 cling 시절 경로였고 같이 삭제됐다.
    * 처리중 관측은 그쪽이 아니라 격리 사본 뿌리(`GOOTTE_TREEHOUSE`)가 준다(`scanWorkingCopies`).
    */
+  // 🔴 같은 slug 의 사본이 여럿일 수 있다(T01). 대표 경로(`path`)뿐 아니라 **모든 사본**의
+  // `docs/features` 를 감시한다 — 그래야 어느 사본의 문서가 바뀌어도 재조회가 나가고, 바뀐
+  // 경로는 `projectOf` 가 같은 slug 로 접는다. 사본 하나만 보면 나머지 사본 변경이 조용히
+  // 빠져 stale 뷰가 된다(INV-3).
   const contentPaths = (ps: typeof projects): string[] =>
-    ps.map((p) => join(p.path, "docs", "features"));
+    ps.flatMap((p) => p.copies.map((c) => join(c, "docs", "features")));
 
   const projectOf = (abs: string): string | null => {
     let best: { slug: string; len: number } | null = null;
+    // 🔴 같은 slug 의 사본이 여럿일 수 있다(T01). 대표 경로(`path`)뿐 아니라 **모든 사본**을
+    // 후보로 놓고 최장 접두로 고른다 — 그래서 어느 사본 안의 경로를 주어도 같은 slug 로 접힌다.
     for (const p of projects) {
-      if ((abs === p.path || abs.startsWith(p.path + sep)) && (!best || p.path.length > best.len)) {
-        best = { slug: p.slug, len: p.path.length };
+      for (const copyPath of p.copies) {
+        if (
+          (abs === copyPath || abs.startsWith(copyPath + sep)) &&
+          (!best || copyPath.length > best.len)
+        ) {
+          best = { slug: p.slug, len: copyPath.length };
+        }
       }
     }
     return best?.slug ?? null;

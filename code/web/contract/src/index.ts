@@ -17,6 +17,10 @@ export type TodoStatus = z.infer<typeof TodoStatus>;
 export const Project = z.object({
   slug: z.string(),
   path: z.string(),
+  // 그 slug 로 발견된 **모든 사본**의 절대 경로, 뿌리 순서 그대로(T01 — 묶기).
+  // `path` 는 대표 경로(= `copies[0]`)로 남아 기존 소비처를 깨지 않는다. 파생물이라
+  // 어디에도 저장하지 않는다(INV-1·INV-4 — 묶는 기준은 디렉토리 basename 하나뿐).
+  copies: z.array(z.string()).default([]),
   source: z.string().optional(),
   // 남은 일이 있는 기능 수 — projects 목록 enrich(discover 는 미설정이라 optional).
   // 파생물이라 요청마다 다시 센다(INV-1·INV-3). 0 과 "미설정" 은 다른 값이다 —

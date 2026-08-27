@@ -45,6 +45,31 @@ describe("cli — discover wiring", () => {
   it("discover — 표식 없는 디렉토리는 빈 목록 문구", () => {
     expect(discoverText([mkdtempSync(join(tmpdir(), "gootte-empty-"))])).toBe("(프로젝트 없음)");
   });
+
+  /**
+   * 🔴 T01 — 같은 slug 의 사본은 하나로 묶는다. 단일 사본은 기존 줄(`slug\tpath`) 그대로,
+   * 사본이 둘 이상이면 개수를 덧붙인다. 단일 줄은 수용 기준 3(한 글자도 안 바뀜)을 만족.
+   */
+  it("discover — 사본이 둘 이상이면 개수를 덧붙이고, 단일은 기존 줄 그대로", () => {
+    const root = mkdtempSync(join(tmpdir(), "gootte-disc-root-"));
+    const a = join(root, "dup");
+    const bRoot = mkdtempSync(join(tmpdir(), "gootte-disc-b-"));
+    const b = join(bRoot, "dup");
+    for (const d of [a, b]) {
+      w(d, "AGENTS.md", "# AGENTS\n");
+      w(d, "docs/features/f/issues/01-x.md", "# 01 — x\n\n**Status:** ready-for-agent\n");
+    }
+    const solo = mkdtempSync(join(tmpdir(), "gootte-disc-solo-"));
+    w(solo, "AGENTS.md", "# AGENTS\n");
+    w(solo, "docs/features/f/issues/01-x.md", "# 01 — x\n\n**Status:** ready-for-agent\n");
+    try {
+      expect(discoverText([root, bRoot])).toBe(`dup\t${a}\t(2 copies)`);
+      // 단일 사본은 기존 줄(`slug\tpath`) 그대로 — 한 글자도 안 바뀜(수용 기준 3).
+      expect(discoverText([solo])).toBe(`${basename(solo)}\t${solo}`);
+    } finally {
+      for (const d of [root, bRoot, solo]) rmSync(d, { recursive: true, force: true });
+    }
+  });
 });
 
 /**

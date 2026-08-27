@@ -129,6 +129,52 @@ describe("GET /api/projects", () => {
   });
 });
 
+// T01 — 같은 slug 의 사본을 하나로 묶는다. discover 가 묶어 내므로 /api/projects 목록에 같은
+// 이름이 두 번 안 뜬다. 픽스처는 실물과 같은 배치(<홈>/projects/<프로젝트>/{AGENTS.md,docs/features}).
+describe("GET /api/projects — T01 사본 묶기", () => {
+  const makeProject = (root: string, slug: string): string => {
+    const dir = join(root, slug);
+    mkdirSync(join(dir, "docs", "features"), { recursive: true });
+    writeFileSync(join(dir, "AGENTS.md"), "# AGENTS\n");
+    return dir;
+  };
+
+  test("같은 slug 사본이 둘 있으면 목록에 1개, copies 는 2개, path 는 뿌리 순서 첫 사본", async () => {
+    clearDiscoverCache();
+    const rootA = mkdtempSync(join(tmpdir(), "gootte-api-copy-a-"));
+    const rootB = mkdtempSync(join(tmpdir(), "gootte-api-copy-b-"));
+    const first = makeProject(rootA, "dup");
+    const second = makeProject(rootB, "dup");
+    try {
+      const app = createApp({ roots: [rootA, rootB], treehouse: NO_TREEHOUSE, dataDir: DATA_DIR });
+      const body = ProjectsResponse.parse(await (await app.request("/api/projects")).json());
+      // 🔴 같은 이름이 두 번 안 뜬다.
+      expect(body.projects.filter((p) => p.slug === "dup")).toHaveLength(1);
+      const dup = body.projects.find((p) => p.slug === "dup")!;
+      expect(dup.copies).toEqual([first, second]); // 뿌리 순서 그대로
+      expect(dup.path).toBe(first); // 대표 = 첫 사본 — 기존 소비처 호환 칸
+    } finally {
+      rmSync(rootA, { recursive: true, force: true });
+      rmSync(rootB, { recursive: true, force: true });
+    }
+  });
+
+  test("사본이 하나뿐이면 copies=[path] 이고 기존 모양과 같다(수용 기준 3)", async () => {
+    clearDiscoverCache();
+    const root = mkdtempSync(join(tmpdir(), "gootte-api-copy-solo-"));
+    const only = makeProject(root, "solo");
+    try {
+      const app = createApp({ roots: [root], treehouse: NO_TREEHOUSE, dataDir: DATA_DIR });
+      const body = ProjectsResponse.parse(await (await app.request("/api/projects")).json());
+      const solo = body.projects.find((p) => p.slug === "solo")!;
+      expect(solo.path).toBe(only);
+      expect(solo.copies).toEqual([only]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 // fixture alpha 의 docs/features/auth-login — 01 resolved · 02 blocked by 01 · 03 알 수 없는 상태
 describe("GET /api/features/:slug", () => {
   test("FeaturesResponse envelope — 기능별 티켓 + 계산된 막힘 해제", async () => {
@@ -1082,22 +1128,23 @@ describe("discover 캐시 (W2)", () => {
   });
 });
 
-describe("slug 충돌 (W1)", () => {
-  test("같은 slug ≥2 → first-match + ambiguous", () => {
+describe("slug 해소 (W1 — T01 묶기 이후)", () => {
+  // discover 가 같은 slug 의 사본을 하나의 Project(copies 배열)로 묶어 내므로 여기엔 slug 당
+  // 하나만 온다. 중복은 이제 정상 상태 — ambiguous 플래그·stderr 경고는 없다.
+  test("같은 slug 의 사본은 discover 가 하나로 묶는다 — pickBySlug 는 묶인 프로젝트를 그대로 준다", () => {
     const projects: Project[] = [
-      { slug: "dup", path: "/home/a/dup" },
-      { slug: "dup", path: "/work/b/dup" },
-      { slug: "solo", path: "/x/solo" },
+      { slug: "dup", path: "/home/a/dup", copies: ["/home/a/dup", "/work/b/dup"] },
+      { slug: "solo", path: "/x/solo", copies: ["/x/solo"] },
     ];
     const dup = pickBySlug(projects, "dup");
-    expect(dup.ambiguous).toBe(true);
-    expect(dup.project?.path).toBe("/home/a/dup"); // first-match
+    expect(dup?.path).toBe("/home/a/dup"); // 대표 = 첫 사본
+    expect(dup?.copies).toEqual(["/home/a/dup", "/work/b/dup"]); // 뿌리 순서 그대로
 
     const solo = pickBySlug(projects, "solo");
-    expect(solo.ambiguous).toBe(false);
-    expect(solo.project?.path).toBe("/x/solo");
+    expect(solo?.path).toBe("/x/solo");
+    expect(solo?.copies).toEqual(["/x/solo"]);
 
-    expect(pickBySlug(projects, "none").project).toBeNull();
+    expect(pickBySlug(projects, "none")).toBeNull();
   });
 });
 

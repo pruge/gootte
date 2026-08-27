@@ -154,4 +154,24 @@ describe("watchProjects (022)", () => {
     await sleep(300);
     expect(events.length).toBe(n);
   });
+
+  /**
+   * 🔴 T01 — 같은 slug 의 사본이 둘 있으면 discover 가 하나로 묶는다. 묶인 결과 위에서 감시기는
+   * **모든 사본**의 docs 를 보고, 어느 사본에서 바뀌어도 `projectOf` 가 같은 slug 로 접는다
+   * (수용 기준 4). 대표 경로가 첫 뿌리의 사본이므로 두 번째 뿌리의 변경도 같은 slug 로 온다.
+   */
+  it("같은 slug 사본 둘 — 어느 사본의 문서 변경도 같은 slug 로 접힌다", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-watch-"));
+    const other = mkdtempSync(join(tmpdir(), "gootte-watch-other-"));
+    makeProject(root, "dup");
+    makeProject(other, "dup");
+    const events: Change[] = [];
+    w = watchProjects([root, other], (c) => events.push(c), { debounceMs: 40 });
+    await sleep(500);
+    events.length = 0;
+
+    // 두 번째 뿌리(비대표) 사본의 문서 변경 → {project: dup} (같은 slug 로 접힘).
+    writeFileSync(join(other, "dup", TICKET), "# 01 — x\n\n**Status:** resolved (2026-08-09)\n");
+    await waitFor(() => events.some((e) => e.kind === "project" && e.project === "dup"));
+  });
 });

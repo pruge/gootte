@@ -53,15 +53,26 @@ export function isFirstmateProject(dir: string): boolean {
   return existsSync(join(dir, "AGENTS.md")) && isDir(join(dir, "docs", "features"));
 }
 
-/** 머신 scan: root + 2단계 하위에서 프로젝트를 센다. 판정은 firstmate 규칙 하나뿐이다. */
+/**
+ * 머신 scan: root + 2단계 하위에서 프로젝트를 센다. 판정은 firstmate 규칙 하나뿐이다.
+ *
+ * 🔴 **같은 slug(디렉토리 basename)의 사본은 하나의 `Project` 로 묶는다(T01)** — 그래서 목록에
+ * 같은 이름이 두 번 뜨지 않는다. 묶는 키는 basename 하나뿐(유사 이름 추정 금지, INV-4). 뿌리
+ * 순서가 곧 `copies` 순서이고, 첫 것이 대표 경로(`path`)다. 파생물이라 어디에도 저장하지 않는다
+ * (INV-1). 중복 판정은 **경로** 단위로 하고(`seen`), basename 단위로 묶는다 — 그래서 같은
+ * 디렉토리가 여러 뿌리에서 겹쳐 들어와도 한 번만 센다.
+ */
 export function discoverProjects(roots: string[]): Project[] {
-  const found: Project[] = [];
-  const seen = new Set<string>();
+  const bySlug = new Map<string, { path: string; copies: string[] }>();
+  const seen = new Set<string>(); // 경로 단위 중복 방지
   const check = (dir: string): void => {
     if (seen.has(dir)) return;
     if (!isFirstmateProject(dir)) return;
     seen.add(dir);
-    found.push({ slug: basename(dir), path: dir });
+    const slug = basename(dir);
+    const entry = bySlug.get(slug);
+    if (entry) entry.copies.push(dir); // 뿌리 순서 그대로 → copies[0] 가 대표
+    else bySlug.set(slug, { path: dir, copies: [dir] });
   };
   for (const root of roots) {
     if (!isDir(root)) continue;
@@ -76,5 +87,5 @@ export function discoverProjects(roots: string[]): Project[] {
       }
     }
   }
-  return found;
+  return [...bySlug.values()].map((v) => ({ slug: basename(v.path), path: v.path, copies: v.copies }));
 }
