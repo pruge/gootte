@@ -1,20 +1,22 @@
 import type { Project } from "@gootte/contract";
 import { discoverProjects } from "@gootte/core-io";
-
-/**
- * discover 캐시 (W2) — 머신 scan 은 무거워 매 요청 재실행 금지. 프로세스 메모리에 TTL 캐시.
- * 프로젝트 목록은 자주 안 변하니 안전. 기능·티켓 문서 내용은 이 캐시에 담기지 않음(INV-3) —
- * `/api/features/:slug` 는 매 요청 다시 읽는다.
- */
+import { clearSnapshot, clearSnapshotMemory } from "./snapshot";
+ 
+ /**
+  * discover 캐시 (W2) — 머신 scan 은 무거워 매 요청 재실행 금지. 프로세스 메모리에 TTL 캐시.
+  * 프로젝트 목록은 자주 안 변하니 안전. 기능·티켓 문서 내용은 이 캐시에 담기지 않음(INV-3) —
+  * `/api/features/:slug` 는 매 요청 다시 읽는다… 가 T03 이전의 이야기다. 문서 내용의 영구
+  * 스냅샷은 `snapshot.ts` 가 따로 갖고, 이 캐시는 discover 목록의 짧은 메모만 남는다.
+  */
 export const DISCOVER_TTL_MS = 5_000;
-
+ 
 interface CacheEntry {
   at: number;
   key: string;
   projects: Project[];
 }
 let cache: CacheEntry | null = null;
-
+ 
 /** roots 의 firstmate 프로젝트 (TTL 내 재사용). `now` 주입 = 테스트용. */
 export function getProjects(roots: string[], now: number = Date.now()): Project[] {
   const key = roots.join("\x00");
@@ -23,11 +25,19 @@ export function getProjects(roots: string[], now: number = Date.now()): Project[
   cache = { at: now, key, projects };
   return projects;
 }
-
-/** 캐시 무효화 (테스트·수동 refresh). discover 와 페이로드 둘 다 같은 신호로 비운다. */
+ 
+/** 캐시 무효화 (테스트·수동 refresh). discover·페이로드·영구 스냅샷이 같은 신호로 비워진다. */
 export function clearDiscoverCache(): void {
   cache = null;
   payloadCache = null;
+  clearSnapshot();
+}
+
+/** 메모리 캐시만 비운다 (재시작 시뮬레이션용). 디스크 스냅샷 파일은 건드리지 않는다. */
+export function clearDiscoverCacheMemory(): void {
+  cache = null;
+  payloadCache = null;
+  clearSnapshotMemory();
 }
 
 /**

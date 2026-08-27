@@ -528,6 +528,7 @@ describe("GET /api/features/:slug — 읽음 기록", () => {
           join(projectRoot, "alpha", "docs/features/auth-login/issues/09-new.md"),
           "# 09 — 새 티켓\n\nStatus: ready-for-agent\n",
         );
+        clearDiscoverCache();
 
         // "서버 재기동" 흉내 — 같은 dataDir 로 새 `createApp` · 새 요청.
         const second = await requestFeatures();
@@ -697,6 +698,7 @@ describe("GET /api/features/:slug/:feature/doc — 문서 본문(read-only, INV-
             join(projectRoot, "alpha/docs/features/new-conv/tickets/T02.md"),
             "# T02 — 나중에 생긴 티켓\n\n## Depends on\n- nothing\n",
           );
+          clearDiscoverCache();
           const second = FeaturesResponse.parse(
             await (await app.request("/api/features/alpha")).json(),
           );

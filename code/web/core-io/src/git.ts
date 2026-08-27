@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 /** IO 층 — git CLI 위임. 전부 읽기 전용(INV-2). */
 
@@ -62,11 +64,12 @@ export function commitTouchedFiles(repo: string, range: string): string[] {
 
 /** 저장소인가 — `.git` 이 있으면 true, 아니면 false(저장소가 아닌 사본은 건너뛴다, T02). */
 export function isRepo(repo: string): boolean {
-  return gitSafe(repo, ["rev-parse", "--git-dir"]) !== null;
+  return existsSync(join(repo, ".git")) && gitSafe(repo, ["rev-parse", "--git-dir"]) !== null;
 }
 
 /** HEAD 가 가리키는 commit 해시. detached 도 해시로 답한다. 못 읽으면 null. */
 export function headCommit(repo: string): string | null {
+  if (!isRepo(repo)) return null;
   return gitSafe(repo, ["rev-parse", "HEAD"]);
 }
 

@@ -51,6 +51,7 @@ import {
   deriveWatchRoots,
 } from "@gootte/core-io";
 import { getProjects, getProjectsPayload, resolveSlug } from "./discover-cache";
+import { recordProjectScan, snapshotFeatures } from "./snapshot";
 
 /**
  * 읽음 기록 대상 문서인가 — **티켓뿐이다**(캡틴 결정 ②). 경로 모양만 본다(INV-4, 문서를 다시 안 읽는다).
@@ -159,6 +160,20 @@ export function createApp(options: AppOptions = {}): Hono {
       ? suggestFirstmateHome(options.firstmateHomeSuggestionCandidates)
       : suggestFirstmateHome(),
   });
+
+  /**
+   * `readFeatures` 의 스냅샷 우선 버전(fast-cold-start T03). 스냅샷에 같은 slug·같은 사본
+   * 구성의 기록이 있으면 git 하위프로세스 없이 그대로 답하고, 없으면 스캔해 그 자리에서
+   * 스탬프와 함께 영구 기록한다. 무효화는 `clearDiscoverCache` 와 같은 신호(감시 변경)가
+   * 스냅샷까지 지운다 — 재부팅 직후의 stale 폭은 T04 의 재검증이 닫는다(adr/0001).
+   */
+  const featuresFor = (slug: string, copies: readonly string[], path: string): Feature[] => {
+    const hit = snapshotFeatures(dataDir, slug, copies);
+    if (hit) return hit;
+    const features = readFeatures([...copies]);
+    recordProjectScan(dataDir, { slug, path, copies: [...copies] }, features);
+    return features;
+  };
 
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
 
@@ -278,15 +293,13 @@ export function createApp(options: AppOptions = {}): Hono {
     // 없고(SoT = 백로그), 조인 없이는 전부 pending 으로 보여 백로그에서 다 끝난 기능까지
     // "남은 일 있음" 으로 셔진다(실제 결함, 2026-08-25 실측: firstmate 사이드바 2 → 실제 0).
     // features·plan 탭과 **같은 판정 자리**(`withBacklogStatus`)를 지난다.
-    // 🔴 전체 페이로드 캐시(fix/projects-listing-spin) — 사본마다 git 하위프로세스를 도는
-    // `readFeatures` 를 매 요청 재실행하면 ~13초가 돼 스피너가 멈추지 않는다. discover 캐시와
-    // 같은 5초 TTL·같은 무효화 신호(`clearDiscoverCache`)라 stale 폭은 감시가 닫힌 환경의
-    // 폴백 폴링 주기(15초) 이하로 유지된다. `build` 는 캐시 미스 시에만 호출된다.
+    // 🔴 readFeatures 는 스냅샷 우선(fast-cold-start T03) — 재부팅 직후에도 git 없이 즉시.
+    // 백로그 조인·카운트는 요청마다 다시 한다(INV-1 — 스냅샷에 담지 않는 파생물).
     const projects = getProjectsPayload(effectiveRoots(), () => {
       const backlog = readBacklogTasks(readSettings(dataDir).firstmateHome);
       return getProjects(effectiveRoots()).map((p) => ({
         ...p,
-        openFeatures: countOpenFeatures(applyBacklogStatus(readFeatures(p.copies), backlog, p.slug)),
+        openFeatures: countOpenFeatures(applyBacklogStatus(featuresFor(p.slug, p.copies, p.path), backlog, p.slug)),
       }));
     });
     return c.json(ProjectsResponse.parse({ projects }));
@@ -302,7 +315,7 @@ export function createApp(options: AppOptions = {}): Hono {
     const proj = resolveSlug(effectiveRoots(), slug);
     if (!proj) return c.json(notFound(slug), 404);
     const project = basename(proj.path);
-    const features = readFeatures(proj.copies);
+    const features = featuresFor(proj.slug, proj.copies, proj.path);
     // 이 기능이 이 프로젝트에서 처음 올라간 순간 있던 티켓은 읽은 것으로 깐다 — 한 번만 선다
     // (unread-tickets-show-themselves/01 §첫 화면이 통째로 초록이면 안 된다).
     //
