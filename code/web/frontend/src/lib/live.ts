@@ -20,8 +20,8 @@ function liveUrl(): string {
  * - 끊기면 backoff 재연결, 재연결 open 시 전체 invalidate(끊긴 새 놓친 변경 흡수).
  */
 
-/** 폴백 폴링 주기 — 감시 불가 환경에서의 최악의 stale 폭. 수 초 반영 기준의 상한선이다. */
-const FALLBACK_POLL_MS = 5_000;
+/** 폴백 폴링 주기 — 감시 불가 환경에서의 최악의 stale 폭. 수 초 반영 기준의 상한선이다. 15초로 조정하여 스피너 멈춤 문제 해결. */
+const FALLBACK_POLL_MS = 15_000;
 
 export function useLiveSync(qc: QueryClient): void {
   useEffect(() => {
@@ -34,7 +34,15 @@ export function useLiveSync(qc: QueryClient): void {
     let pollTimer: ReturnType<typeof setInterval> | null = null;
     const setFallbackPolling = (active: boolean): void => {
       if (active && !pollTimer) {
-        pollTimer = setInterval(() => void qc.invalidateQueries(), FALLBACK_POLL_MS);
+        // 🔴 `projects` 목록은 무거워 폴백 폴링에서 제외 — 문서 변경 신호가 올 때만 갱신한다.
+        // 감시가 닫힌 환경에서 5초마다 목록을 다시 읽으면 스피너가 멈추지 않는다(fix/projects-listing-spin).
+        pollTimer = setInterval(
+          () =>
+            void qc.invalidateQueries({
+              predicate: (q) => !(Array.isArray(q.queryKey) && q.queryKey[0] === "projects"),
+            }),
+          FALLBACK_POLL_MS,
+        );
       } else if (!active && pollTimer) {
         clearInterval(pollTimer);
         pollTimer = null;
