@@ -290,6 +290,9 @@ describe("GET /api/features/:slug", () => {
  * **라우트가 설정된 firstmateHome 을 실제로 읽어 잇는가**다.
  */
 describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
+  // T05 — firstmateHome 은 이제 감시 뿌리도 함께 파생하므로(discover → `<홈>/projects`), 백로그
+  // 조인만 확인하려는 이 그룹의 픽스처도 프로젝트를 그 홈의 `projects/` 아래에 둔다 — 그래야
+  // 홈을 설정한 뒤에도 discover 가 여전히 이 프로젝트를 찾는다(실물 배치와 같은 모양).
   function makeProjectRoot(ticketFile = "T04.md", ticketBody = "# T04 — 신관례 문서 표시\n"): string {
     const parent = mkdtempSync(join(tmpdir(), "gootte-app-t04-"));
     const featDir = join(parent, "widget", "docs", "features", "tauri-desktop-app");
@@ -305,6 +308,17 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
     mkdirSync(join(home, "data"), { recursive: true });
     writeFileSync(join(home, "data", "backlog.md"), backlog);
     return home;
+  }
+
+  /**
+   * 프로젝트를 홈의 `projects/` 아래로 옮겨 심는다 — firstmateHome 을 설정한 뒤에도
+   * discover 가 `<홈>/projects` 에서 이 프로젝트를 계속 찾도록(T05). `makeProjectRoot` 가
+   * 만든 `<parent>/widget` 을 `<home>/projects/widget` 으로 복사하고, 원래 parent 는 지운다.
+   */
+  function relocateUnderHomeProjects(projectRoot: string, home: string): void {
+    const dest = join(home, "projects", "widget");
+    cpSync(join(projectRoot, "widget"), dest, { recursive: true });
+    rmSync(projectRoot, { recursive: true, force: true });
   }
 
   const BACKLOG = [
@@ -339,30 +353,27 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
       const projectRoot = makeProjectRoot();
       const home = makeFirstmateHome(DONE_BACKLOG);
       try {
+        const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
         const count = async () =>
           ProjectsResponse.parse(
-            await (
-              await createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir }).request(
-                "/api/projects",
-              )
-            ).json(),
+            await (await app.request("/api/projects")).json(),
           ).projects.find((p) => p.slug === "widget")?.openFeatures;
 
         // 조인 전(홈 미설정 = 백로그 없음): 티켓 상태를 모르니 pending — 남은 일 있는 기능 1개.
         expect(await count()).toBe(1);
 
+        // T05 — 홈을 설정하면 감시 뿌리도 그 홈의 projects/ 로 갈아탄다(discover 입력이 바뀐다).
+        // 같은 프로젝트를 계속 찾게 하려면 그 아래로 옮겨 심어야 한다(실물 배치와 같은 모양).
+        relocateUnderHomeProjects(projectRoot, home);
+
         // 홈을 설정해 조인하면: 그 티켓은 백로그에서 done — 더 이상 남은 일이 아니다.
-        await createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir }).request(
-          "/api/settings",
-          {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ firstmateHome: home }),
-          },
-        );
+        await app.request("/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ firstmateHome: home }),
+        });
         expect(await count()).toBe(0);
       } finally {
-        rmSync(projectRoot, { recursive: true, force: true });
         rmSync(home, { recursive: true, force: true });
       }
     }));
@@ -372,6 +383,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
       const projectRoot = makeProjectRoot();
       const home = makeFirstmateHome(BACKLOG);
       try {
+        relocateUnderHomeProjects(projectRoot, home);
         const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
         await app.request("/api/settings", {
           method: "PUT",
@@ -387,7 +399,6 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
           backlogStatus: "in_progress",
         });
       } finally {
-        rmSync(projectRoot, { recursive: true, force: true });
         rmSync(home, { recursive: true, force: true });
       }
     }));
@@ -417,6 +428,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
       const projectRoot = makeProjectRoot("T09.md"); // 백로그엔 t04 만 있다
       const home = makeFirstmateHome(BACKLOG);
       try {
+        relocateUnderHomeProjects(projectRoot, home);
         const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
         await app.request("/api/settings", {
           method: "PUT",
@@ -430,7 +442,6 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         expect(f?.newTickets?.[0]?.backlogStatus).toBeNull();
         expect(f?.newTickets?.[0]?.status).toBe("pending");
       } finally {
-        rmSync(projectRoot, { recursive: true, force: true });
         rmSync(home, { recursive: true, force: true });
       }
     }));
@@ -456,6 +467,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
       const projectRoot = makeProjectRoot();
       const home = makeFirstmateHome(BACKLOG);
       try {
+        relocateUnderHomeProjects(projectRoot, home);
         const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
         await app.request("/api/settings", {
           method: "PUT",
@@ -471,7 +483,6 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
           backlogStatus: "in_progress",
         });
       } finally {
-        rmSync(projectRoot, { recursive: true, force: true });
         rmSync(home, { recursive: true, force: true });
       }
     }));
@@ -1345,7 +1356,7 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     }));
 });
 
-// ── 설정 (tauri-desktop-app T02) ───────────────────────────
+// ── 설정 (tauri-desktop-app T02·T03, one-setting-finds-every-copy T05 로 한 칸화) ──────
 // 설정 저장소도 주입한다 — 이 기계의 실제 `~/.gootte` 를 읽거나 쓰면 테스트가 기계에 종속되고
 // 캡틴의 실제 설정을 오염시킨다(2026-08-14 사고와 같은 그릇).
 describe("설정 GET/PUT /api/settings", () => {
@@ -1358,7 +1369,7 @@ describe("설정 GET/PUT /api/settings", () => {
     }
   };
 
-  test("미설정이면 전부 null + 존재 false — 소비처는 기본값으로 떨어진다", async () =>
+  test("미설정이면 null + 존재 false — 소비처는 기본값으로 떨어진다", async () =>
     withSettingsDataDir(async (dataDir) => {
       const app = createApp({
         roots,
@@ -1369,9 +1380,7 @@ describe("설정 GET/PUT /api/settings", () => {
       const res = await app.request("/api/settings");
       expect(res.status).toBe(200);
       expect(SettingsResponse.parse(await res.json())).toEqual({
-        watchRoot: null,
         firstmateHome: null,
-        watchRootExists: false,
         firstmateHomeExists: false,
         firstmateHomeSuggestion: null,
       });
@@ -1388,15 +1397,13 @@ describe("설정 GET/PUT /api/settings", () => {
       const res = await app.request("/api/settings", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ watchRoot: FIXTURES, firstmateHome: "/없는/경로" }),
+        body: JSON.stringify({ firstmateHome: FIXTURES }),
       });
       expect(res.status).toBe(200);
       // FIXTURES 는 절대 경로라 정규화해도 자기 자신 — 존재 true.
       expect(SettingsResponse.parse(await res.json())).toEqual({
-        watchRoot: FIXTURES,
-        firstmateHome: "/없는/경로",
-        watchRootExists: true,
-        firstmateHomeExists: false, // 없는 경로도 저장은 된다 — 경고는 화면이 이 값을 본다
+        firstmateHome: FIXTURES,
+        firstmateHomeExists: true,
         firstmateHomeSuggestion: null,
       });
     }));
@@ -1452,7 +1459,7 @@ describe("설정 GET/PUT /api/settings", () => {
       const res = await app.request("/api/settings", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ watchRoot: "relative/path" }),
+        body: JSON.stringify({ firstmateHome: "relative/path" }),
       });
       expect(res.status).toBe(400);
       expect(ApiError.parse(await res.json()).error).toContain("절대 경로");
@@ -1464,20 +1471,21 @@ describe("설정 GET/PUT /api/settings", () => {
       await createApp(opts).request("/api/settings", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ watchRoot: FIXTURES }),
+        body: JSON.stringify({ firstmateHome: FIXTURES }),
       });
       const body = SettingsResponse.parse(
         await (await createApp(opts).request("/api/settings")).json(),
       );
-      expect(body.watchRoot).toBe(FIXTURES);
+      expect(body.firstmateHome).toBe(FIXTURES);
     }));
 
-  test("감시 루트를 바꾸면 다음 요청부터 그 루트의 프로젝트가 발견된다 — 재시작 없이", async () =>
+  // T05 — firstmate 홈을 바꾸면 다음 요청부터 그 홈의 `<홈>/projects` 에서 프로젝트가 발견된다.
+  test("firstmate 홈을 바꾸면 다음 요청부터 <홈>/projects 의 프로젝트가 발견된다 — 재시작 없이", async () =>
     withSettingsDataDir(async (dataDir) => {
-      // 기본 루트(FIXTURES=alpha) 말고 새 임시 루트에 프로젝트 하나를 심는다.
-      const newRoot = mkdtempSync(join(tmpdir(), "gootte-app-watchroot-"));
-      mkdirSync(join(newRoot, "beta", "docs", "features"), { recursive: true });
-      writeFileSync(join(newRoot, "beta", "AGENTS.md"), "# beta");
+      // 기본 루트(FIXTURES=alpha) 말고 새 임시 홈의 projects/ 아래에 프로젝트 하나를 심는다.
+      const newHome = mkdtempSync(join(tmpdir(), "gootte-app-fmhome-root-"));
+      mkdirSync(join(newHome, "projects", "beta", "docs", "features"), { recursive: true });
+      writeFileSync(join(newHome, "projects", "beta", "AGENTS.md"), "# beta");
       try {
         const app = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
         const slugsOf = async () =>
@@ -1488,26 +1496,26 @@ describe("설정 GET/PUT /api/settings", () => {
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ watchRoot: newRoot }),
+          body: JSON.stringify({ firstmateHome: newHome }),
         });
         clearDiscoverCache();
         const slugs = await slugsOf();
         expect(slugs).toContain("beta");
         expect(slugs).not.toContain("alpha");
       } finally {
-        rmSync(newRoot, { recursive: true, force: true });
+        rmSync(newHome, { recursive: true, force: true });
       }
     }));
 
   test("null 로 지우면 기본 루트로 되돌아온다", async () =>
     withSettingsDataDir(async (dataDir) => {
       const app = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
-      const otherRoot = mkdtempSync(join(tmpdir(), "gootte-app-clear-"));
+      const otherHome = mkdtempSync(join(tmpdir(), "gootte-app-clear-"));
       try {
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ watchRoot: otherRoot }),
+          body: JSON.stringify({ firstmateHome: otherHome }),
         });
         clearDiscoverCache();
         expect(
@@ -1518,7 +1526,7 @@ describe("설정 GET/PUT /api/settings", () => {
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ watchRoot: null }),
+          body: JSON.stringify({ firstmateHome: null }),
         });
         clearDiscoverCache();
         expect(
@@ -1527,14 +1535,39 @@ describe("설정 GET/PUT /api/settings", () => {
           ),
         ).toContain("alpha");
       } finally {
-        rmSync(otherRoot, { recursive: true, force: true });
+        rmSync(otherHome, { recursive: true, force: true });
       }
+    }));
+
+  // T05 수용 기준 6 — 저장 파일에 남은 옛 watchRoot 값이 있어도 무시되고 오류가 없다.
+  test("저장 파일에 남은 옛 watchRoot 값은 무시된다 — GET 이 오류 없이 firstmateHome 만 답한다", async () =>
+    withSettingsDataDir(async (dataDir) => {
+      mkdirSync(dataDir, { recursive: true });
+      writeFileSync(
+        join(dataDir, "settings.json"),
+        `${JSON.stringify({ watchRoot: "/옛/감시루트", firstmateHome: FIXTURES }, null, 2)}\n`,
+      );
+      const app = createApp({
+        roots,
+        treehouse: NO_TREEHOUSE,
+        dataDir,
+        firstmateHomeSuggestionCandidates: [],
+      });
+      const res = await app.request("/api/settings");
+      expect(res.status).toBe(200);
+      expect(SettingsResponse.parse(await res.json())).toEqual({
+        firstmateHome: FIXTURES,
+        firstmateHomeExists: true,
+        firstmateHomeSuggestion: null,
+      });
     }));
 });
 
-// review F3 — PUT 이 감시 루트를 바꾸면 감시기 재바인딩 통보가 간다(값은 저장 뒤 다시 읽은 것).
-describe("설정 PUT → onWatchRootChange", () => {
-  test("watchRoot 교체와 지움(null) 모두 새 값을 통보한다, 다른 키만 바꾸면 부르지 않는다", async () => {
+// review F3, T05 로 확장 — PUT 이 firstmate 홈을 바꾸면 감시기 재바인딩 통보가 간다
+// (값은 저장 뒤 다시 읽은 것). 하나의 통보가 문서 감시기와 백로그 감시기 둘 다를 재묶는 배선은
+// server.ts 몫이라 여기서는 통보 자체가 나가는지만 본다.
+describe("설정 PUT → onFirstmateHomeChange", () => {
+  test("firstmateHome 교체와 지움(null) 모두 새 값을 통보한다, 값이 그대로면 부르지 않는다", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-rebind-"));
     try {
       const seen: (string | null)[] = [];
@@ -1542,7 +1575,7 @@ describe("설정 PUT → onWatchRootChange", () => {
         roots,
         treehouse: NO_TREEHOUSE,
         dataDir,
-        onWatchRootChange: (w) => seen.push(w),
+        onFirstmateHomeChange: (h) => seen.push(h),
       });
       const put = (body: object) =>
         app.request("/api/settings", {
@@ -1550,9 +1583,9 @@ describe("설정 PUT → onWatchRootChange", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         });
-      await put({ firstmateHome: "/f" }); // 루트 아님 → 통보 없음
-      await put({ watchRoot: FIXTURES }); // 교체
-      await put({ watchRoot: null }); // 지움
+      await put({}); // 키 없음 → 통보 없음
+      await put({ firstmateHome: FIXTURES }); // 교체
+      await put({ firstmateHome: null }); // 지움
       expect(seen).toEqual([FIXTURES, null]);
     } finally {
       rmSync(dataDir, { recursive: true, force: true });

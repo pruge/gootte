@@ -2,7 +2,14 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { discoverProjects, defaultProjectRoots, parseProjectRoots, effectiveProjectRoots } from "./discover";
+import {
+  discoverProjects,
+  defaultProjectRoots,
+  parseProjectRoots,
+  effectiveProjectRoots,
+  deriveWatchRoots,
+} from "./discover";
+import { secondmatesFile } from "./secondmates";
 
 let root: string;
 
@@ -110,5 +117,63 @@ describe("parseProjectRoots · effectiveProjectRoots — GOOTTE_ROOTS 규약의 
   it("effectiveProjectRoots — env 있으면 이기고, 없으면 기본 뿌리", () => {
     expect(effectiveProjectRoots("/a:/b")).toEqual(["/a", "/b"]);
     expect(effectiveProjectRoots(undefined)).toEqual(defaultProjectRoots());
+  });
+});
+
+/**
+ * firstmate 홈 → 감시 뿌리 파생(one-setting-finds-every-copy T05) — backend·cli 가 같이 쓰는
+ * 유일한 자리(`the-terminal-agrees-with-the-screen` 규율). 명부 파서 자체(`readSecondmateHomes`)
+ * 는 `secondmates.test.ts` 가 이미 실물 줄로 덮었다 — 여기서 보는 것은 파생 규칙(순서·합치기)뿐이다.
+ */
+describe("deriveWatchRoots — firstmate 홈에서 감시 뿌리를 파생한다", () => {
+  let home = "";
+  const mates: string[] = [];
+
+  afterEach(() => {
+    if (home) rmSync(home, { recursive: true, force: true });
+    for (const m of mates) rmSync(m, { recursive: true, force: true });
+    mates.length = 0;
+    home = "";
+  });
+
+  it("홈 미설정(null/빈 문자열)이면 빈 목록 — 호출자가 기본 뿌리로 떨어진다", () => {
+    expect(deriveWatchRoots(null)).toEqual([]);
+    expect(deriveWatchRoots(undefined)).toEqual([]);
+    expect(deriveWatchRoots("")).toEqual([]);
+    expect(deriveWatchRoots("   ")).toEqual([]);
+  });
+
+  it("명부가 없으면 지도부 홈의 projects 하나만", () => {
+    home = mkdtempSync(join(tmpdir(), "gootte-derive-home-"));
+    expect(deriveWatchRoots(home)).toEqual([join(home, "projects")]);
+  });
+
+  it("명부에 항해사 홈이 있으면 지도부 + 항해사들의 projects 를 명부 순 그대로 낸다", () => {
+    home = mkdtempSync(join(tmpdir(), "gootte-derive-home-"));
+    const mateA = mkdtempSync(join(tmpdir(), "gootte-derive-mate-a-"));
+    const mateB = mkdtempSync(join(tmpdir(), "gootte-derive-mate-b-"));
+    mates.push(mateA, mateB);
+    mkdirSync(join(home, "data"), { recursive: true });
+    writeFileSync(secondmatesFile(home), `home: ${mateA}\nhome: ${mateB}\n`);
+    expect(deriveWatchRoots(home)).toEqual([
+      join(home, "projects"),
+      join(mateA, "projects"),
+      join(mateB, "projects"),
+    ]);
+  });
+
+  it("항해사 홈 경로 하나가 없어도 나머지는 그대로 뜬다 — 없는 뿌리는 discoverProjects 가 건너뛴다", () => {
+    home = mkdtempSync(join(tmpdir(), "gootte-derive-home-"));
+    const missing = join(tmpdir(), "gootte-derive-없는-홈");
+    const mateB = mkdtempSync(join(tmpdir(), "gootte-derive-mate-b-"));
+    mates.push(mateB);
+    mkdirSync(join(home, "data"), { recursive: true });
+    writeFileSync(secondmatesFile(home), `home: ${missing}\nhome: ${mateB}\n`);
+    // 파생 자체는 존재 여부를 판정하지 않는다 — 목록에 그대로 실리고, 걸러내는 것은 discoverProjects 몫.
+    expect(deriveWatchRoots(home)).toEqual([
+      join(home, "projects"),
+      join(missing, "projects"),
+      join(mateB, "projects"),
+    ]);
   });
 });

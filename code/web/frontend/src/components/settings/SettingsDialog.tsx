@@ -14,7 +14,9 @@ interface SettingsDialogProps {
 }
 
 /**
- * 설정(tauri-desktop-app T02) — 감시 루트 폴더와 firstmate 홈 경로.
+ * 설정(tauri-desktop-app T02, one-setting-finds-every-copy T05 로 한 칸화) — firstmate 홈
+ * 경로 하나. 감시 뿌리(`<홈>/projects` + 명부의 모든 항해사 홈 `projects`)는 이 홈에서
+ * **파생**되므로 화면에 따로 적을 칸이 없다(캡틴 지시 2026-08-27).
  *
  * 🔴 입력 칸의 빈 값은 **지움(unset)** 이다 — 지우면 서버가 null 을 저장하고 소비처는 기본값으로
  * 떨어진다. "기본값으로 돌아가는" 길이 이것 하나뿐이라 별도 버튼을 두지 않는다.
@@ -25,10 +27,8 @@ interface SettingsDialogProps {
 export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const { data } = useSettings();
   const save = useSaveSettings();
-  const [watchRoot, setWatchRoot] = useState("");
   const [firstmateHome, setFirstmateHome] = useState("");
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [pickErrorWatchRoot, setPickErrorWatchRoot] = useState<string | null>(null);
   const [pickErrorFirstmateHome, setPickErrorFirstmateHome] = useState<string | null>(null);
   /** 열림 전환 감지 — data 가 바뀔 때마다가 아니라 닫힘→열림 전환에서만 입력을 채운다(F4). */
   const wasOpenRef = useRef(false);
@@ -41,7 +41,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
    */
   useEffect(() => {
     if (open && !wasOpenRef.current && data) {
-      setWatchRoot(data.watchRoot ?? "");
       setFirstmateHome(data.firstmateHome ?? "");
     }
     wasOpenRef.current = open;
@@ -50,7 +49,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // 저장 성공 — 서버가 정규화해 돌려준 값을 입력 칸에 앉힌다(2차 사본이 아니라 판정값).
   useEffect(() => {
     if (!save.isSuccess || !save.data) return;
-    setWatchRoot(save.data.watchRoot ?? "");
     setFirstmateHome(save.data.firstmateHome ?? "");
   }, [save.isSuccess, save.data]);
 
@@ -65,9 +63,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   if (!open) return null;
 
-  const dirty =
-    watchRoot !== (data?.watchRoot ?? "") ||
-    firstmateHome !== (data?.firstmateHome ?? "");
+  const dirty = firstmateHome !== (data?.firstmateHome ?? "");
 
   const submit = () => {
     const trimToNull = (v: string) => {
@@ -76,7 +72,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     };
     setSavedAt(null);
     save.mutate(
-      { watchRoot: trimToNull(watchRoot), firstmateHome: trimToNull(firstmateHome) },
+      { firstmateHome: trimToNull(firstmateHome) },
       { onSuccess: () => setSavedAt(Date.now()) },
     );
   };
@@ -109,44 +105,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
         <div className="flex flex-col gap-5 px-5 py-4">
           <Field
-            id="settings-watch-root"
-            label="감시 루트 폴더"
-            hint="이 폴더 아래의 프로젝트를 발견합니다. 비우면 기본 위치를 씁니다."
-            value={watchRoot}
-            onChange={setWatchRoot}
-            existsWarning={
-              data && data.watchRoot !== null && !data.watchRootExists
-                ? `이 경로가 없거나 폴더가 아닙니다: ${data.watchRoot}`
-                : pickErrorWatchRoot
-            }
-          >
-            {isTauri() && (
-              <button
-                type="button"
-                onClick={() => {
-                  setPickErrorWatchRoot(null);
-                  pickFolder()
-                    .then((p) => {
-                      if (p !== null) setWatchRoot(p);
-                    })
-                    .catch((e: unknown) => {
-                      // 다이얼로그 실패(플러그인 오류·권한 박탈)를 조용히 흘리지 않는다(review F2).
-                      setPickErrorWatchRoot(
-                        `폴더 선택 실패: ${e instanceof Error ? e.message : String(e)}`,
-                      );
-                    });
-                }}
-                className="mono inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-accent hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-              >
-                <IconFolderOpen size={16} stroke={1.75} /> 찾아보기…
-              </button>
-            )}
-          </Field>
-
-          <Field
             id="settings-firstmate-home"
             label="firstmate 홈 경로"
-            hint="티켓 상태 조인과 백로그 감시에 쓰는 firstmate 홈(<홈>/data/backlog.md)입니다. 비어 있으면 상태 조인과 백로그 감시가 꺼집니다."
+            hint="이 홈의 <홈>/projects 와 명부에 등록된 모든 항해사 홈의 projects 가 감시 대상이 되고, 티켓 상태 조인과 백로그 감시에도 씁니다. 비어 있으면 기본 위치를 쓰고 상태 조인·백로그 감시는 꺼집니다."
             placeholder={data?.firstmateHomeSuggestion ?? undefined}
             value={firstmateHome}
             onChange={setFirstmateHome}

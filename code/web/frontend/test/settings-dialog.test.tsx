@@ -25,9 +25,7 @@ const mockPickFolder = vi.mocked(pickFolder);
 
 function settings(partial: Partial<SettingsResponseType>): SettingsResponseType {
   return SettingsResponse.parse({
-    watchRoot: null,
     firstmateHome: null,
-    watchRootExists: false,
     firstmateHomeExists: false,
     firstmateHomeSuggestion: null,
     ...partial,
@@ -49,16 +47,16 @@ afterEach(() => {
 });
 
 describe("SettingsDialog", () => {
-  it("저장은 두 경로를 PUT 하고 성공 표시를 낸다", async () => {
+  it("저장은 firstmate 홈 경로 하나를 PUT 하고 성공 표시를 낸다", async () => {
     renderDialog();
-    mockSave.mockResolvedValue(settings({ watchRoot: "/tmp/watch", watchRootExists: true }));
-    fireEvent.change(screen.getByLabelText("감시 루트 폴더"), {
-      target: { value: "/tmp/watch" },
+    mockSave.mockResolvedValue(settings({ firstmateHome: "/tmp/fm", firstmateHomeExists: true }));
+    fireEvent.change(screen.getByLabelText("firstmate 홈 경로"), {
+      target: { value: "/tmp/fm" },
     });
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
     await waitFor(() => expect(mockSave).toHaveBeenCalled());
     // react-query 가 mutationFn 에 두 번째 인수(context)를 주므로 첫 인수만 본다.
-    expect(mockSave.mock.calls[0]![0]).toEqual({ watchRoot: "/tmp/watch", firstmateHome: null });
+    expect(mockSave.mock.calls[0]![0]).toEqual({ firstmateHome: "/tmp/fm" });
     expect(await screen.findByText(/저장했습니다/)).toBeInTheDocument();
   });
 
@@ -67,7 +65,7 @@ describe("SettingsDialog", () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     qc.setQueryData(
       qk.settings,
-      settings({ watchRoot: "/없는/경로", watchRootExists: false }),
+      settings({ firstmateHome: "/없는/경로", firstmateHomeExists: false }),
     );
     render(
       <QueryClientProvider client={qc}>
@@ -81,35 +79,34 @@ describe("SettingsDialog", () => {
 
   it("입력 칸을 비워 저장하면 unset(null) 이 간다 — 기본값으로 돌아가는 유일한 길", async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    qc.setQueryData(qk.settings, settings({ watchRoot: "/tmp/watch", watchRootExists: true }));
+    qc.setQueryData(qk.settings, settings({ firstmateHome: "/tmp/fm", firstmateHomeExists: true }));
     render(
       <QueryClientProvider client={qc}>
         <SettingsDialog open onClose={() => {}} />
       </QueryClientProvider>,
     );
     mockSave.mockResolvedValue(settings({}));
-    fireEvent.change(screen.getByLabelText("감시 루트 폴더"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("firstmate 홈 경로"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
     await waitFor(() => expect(mockSave).toHaveBeenCalled());
-    expect(mockSave.mock.calls[0]![0]).toEqual(expect.objectContaining({ watchRoot: null }));
+    expect(mockSave.mock.calls[0]![0]).toEqual(expect.objectContaining({ firstmateHome: null }));
   });
 
-  it("firstmate 홈 안내문은 실제 동작을 말한다 — 비우면 조인·감시가 꺼진다", () => {
+  it("firstmate 홈 안내문은 실제 동작을 말한다 — 감시 뿌리 파생과 백로그 감시를 함께 안내한다", () => {
     renderDialog();
-    expect(screen.getByText(/조인과 백로그 감시가 꺼집니다/)).toBeInTheDocument();
+    expect(screen.getByText(/감시 대상이 되고/)).toBeInTheDocument();
   });
 
-  it("firstmate 홈 필드에도 찾아보기 버튼이 있다(Tauri 셸에서) — watchRoot 와 동일 UX", () => {
+  it("입력은 firstmate 홈 하나뿐이다(수용 기준 1) — 찾아보기 버튼도 하나", () => {
     renderDialog();
     const buttons = screen.getAllByRole("button", { name: /찾아보기/ });
-    expect(buttons).toHaveLength(2);
+    expect(buttons).toHaveLength(1);
   });
 
   it("firstmate 홈 찾아보기로 고르면 그 값이 입력 칸에 앉는다", async () => {
     mockPickFolder.mockResolvedValue("/골라온/경로");
     renderDialog();
-    const buttons = screen.getAllByRole("button", { name: /찾아보기/ });
-    fireEvent.click(buttons[1]!); // 0=감시 루트, 1=firstmate 홈
+    fireEvent.click(screen.getByRole("button", { name: /찾아보기/ }));
     await waitFor(() =>
       expect(screen.getByLabelText("firstmate 홈 경로")).toHaveValue("/골라온/경로"),
     );
@@ -118,18 +115,8 @@ describe("SettingsDialog", () => {
   it("찾아보기 다이얼로그가 실패하면 조용히 흘리지 않고 경고를 보여준다(review F2)", async () => {
     mockPickFolder.mockRejectedValue(new Error("플러그인 오류"));
     renderDialog();
-    const buttons = screen.getAllByRole("button", { name: /찾아보기/ });
-    fireEvent.click(buttons[1]!); // firstmate 홈 쪽 버튼
+    fireEvent.click(screen.getByRole("button", { name: /찾아보기/ }));
     expect(await screen.findByText(/폴더 선택 실패: 플러그인 오류/)).toBeInTheDocument();
-  });
-
-  it("감시 루트 찾아보기도 같은 길을 탄다", async () => {
-    mockPickFolder.mockResolvedValue("/감시/루트");
-    renderDialog();
-    fireEvent.click(screen.getAllByRole("button", { name: /찾아보기/ })[0]!);
-    await waitFor(() =>
-      expect(screen.getByLabelText("감시 루트 폴더")).toHaveValue("/감시/루트"),
-    );
   });
 
   it("firstmate 홈 미설정 시 placeholder 에 서버가 준 추천 경로가 보인다", () => {
