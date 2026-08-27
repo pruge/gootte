@@ -25,6 +25,7 @@ function feature(slug: string, ticketStatus: "done" | "pending"): Feature {
     status: "pending",
     sourceStatus: null,
     statusKnown: true,
+    conflict: [],
     docs: [],
     tickets: [
       {
@@ -523,6 +524,7 @@ function featureWithTickets(slug: string, paths: string[]): Feature {
     status: "pending",
     sourceStatus: null,
     statusKnown: true,
+    conflict: [],
     docs: [],
     tickets: paths.map((path, i) => ({
       num: String(i + 1).padStart(2, "0"),

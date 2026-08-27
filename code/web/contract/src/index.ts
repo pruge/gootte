@@ -119,6 +119,14 @@ export const FeatureDocNode: z.ZodType<FeatureDocNode> = z.lazy(() =>
 );
 
 /** `docs/features/<기능>/` 한 폴더 = spec 1장 + 티켓 N장 + 문서 트리. */
+export const FeatureConflict = z.object({
+  // 기능 폴더 기준 상대 경로("spec.md" · "issues/01-a.md") — 어느 파일이 갈라졌나.
+  path: z.string(),
+  // 그 파일을 둘 이상 가진 사본의 절대 경로들 — 어느 사본들이 안 맞나(T03 가 말한다).
+  copies: z.array(z.string()),
+});
+export type FeatureConflict = z.infer<typeof FeatureConflict>;
+
 export const Feature = z.object({
   slug: z.string(), // 폴더명
   title: z.string(), // spec.md 표제(없으면 slug)
@@ -138,6 +146,11 @@ export const Feature = z.object({
   // T04 — `tickets/T<NN>.md` 신관례 티켓(INV-4: 실재하는 파일만). 예전 `issues/` 관례와는 별도
   // 목록이다 — 상태 SoT 가 문서(issues)냐 백로그(tickets)냐가 갈리므로 계산 경로를 섞지 않는다.
   newTickets: z.array(FeatureTicket).optional(),
+  // T02 — 같은 파일이 여러 사본에 있어 어느 쪽도 나중 판이라 말할 수 없는 경우(T02 §Decisions
+  // 4단계 마지막 갈래). 🔴 빈 배열이면 "갈라지지 않았다" 다. `readFeatures`·`buildFeature` 가
+  // 항상 채운다(INV-1 매 read) — 화면이 "갈라졌다" 고 거짓말하지 않게. T03 이 이걸 화면에 말한다.
+  // 파생물이라 저장하지 않는다. 선택적(opt-out 아님) — 수동으로 만든 픽스처는 생략해도 된다.
+  conflict: z.array(FeatureConflict).optional(),
 });
 export type Feature = z.infer<typeof Feature>;
 

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,7 +54,7 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
     issue("firstmate-project-source", "01-discover.md", ticket("01 — 발견 규칙 전환", "resolved (2026-08-08)"));
     issue("firstmate-project-source", "02-read.md", ticket("02 — 할일 목록", "ready-for-agent", "01"));
 
-    const [f] = readFeatures(repo);
+    const [f] = readFeatures([repo]);
     expect(f?.slug).toBe("firstmate-project-source");
     expect(f?.title).toBe("관리 대상 전환");
     expect(f?.sourceStatus).toBe("ready-for-agent");
@@ -71,7 +72,7 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
     issue("f", "01-a.md", ticket("01 — a", "ready-for-agent"));
     issue("f", "02-b.md", ticket("02 — b", "ready-for-agent", "01"));
 
-    const b = readFeatures(repo)[0]?.tickets.find((t) => t.num === "02");
+    const b = readFeatures([repo])[0]?.tickets.find((t) => t.num === "02");
     expect(b?.startable).toBe(false);
     expect(b?.waitingOn).toEqual(["01"]);
   });
@@ -80,7 +81,7 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
     spec("f", "# f\n\nStatus: 이상한값\n");
     issue("f", "01-a.md", ticket("01 — a", "진행중"));
 
-    const [f] = readFeatures(repo);
+    const [f] = readFeatures([repo]);
     expect(f?.statusKnown).toBe(false);
     expect(f?.sourceStatus).toBe("이상한값");
     expect(f?.tickets).toHaveLength(1);
@@ -97,7 +98,7 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
     issue("alpha", "10-j.md", ticket("10 — j", "draft"));
     issue("alpha", "02-b.md", ticket("02 — b", "draft"));
 
-    const features = readFeatures(repo);
+    const features = readFeatures([repo]);
     expect(features.map((f) => f.slug).sort()).toEqual(["alpha", "zeta"]);
     expect(features.find((f) => f.slug === "alpha")?.tickets.map((t) => t.num)).toEqual([
       "02",
@@ -107,7 +108,7 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
 
   it("spec.md 없는 기능 폴더도 티켓을 싣는다(표제 = 폴더명)", () => {
     issue("no-spec", "01-a.md", ticket("01 — a", "draft"));
-    const [f] = readFeatures(repo);
+    const [f] = readFeatures([repo]);
     expect(f?.title).toBe("no-spec");
     expect(f?.statusKnown).toBe(false);
     expect(f?.tickets).toHaveLength(1);
@@ -116,30 +117,30 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
   it("issues/ 없는 기능도, 폴더 안 md 아닌 파일도 넘어간다", () => {
     spec("only-spec", "# only\n\nStatus: draft\n");
     writeFileSync(join(repo, "docs", "features", "only-spec", "notes.txt"), "무시");
-    expect(readFeatures(repo)[0]?.tickets).toEqual([]);
+    expect(readFeatures([repo])[0]?.tickets).toEqual([]);
   });
 
   it("adr/ 는 읽지 않는다 — 이번 범위 밖", () => {
     spec("f", "# f\n\nStatus: draft\n");
     mkdirSync(join(repo, "docs", "features", "f", "adr"), { recursive: true });
     writeFileSync(join(repo, "docs", "features", "f", "adr", "0001-x.md"), "# ADR\n\nStatus: accepted\n");
-    expect(readFeatures(repo)[0]?.tickets).toEqual([]);
+    expect(readFeatures([repo])[0]?.tickets).toEqual([]);
   });
 
   it("docs/features/ 가 없으면 빈 목록 — 예외로 죽지 않는다", () => {
-    expect(() => readFeatures(repo)).not.toThrow();
-    expect(readFeatures(repo)).toEqual([]);
-    expect(readFeatures(join(repo, "nope"))).toEqual([]);
+    expect(() => readFeatures([repo])).not.toThrow();
+    expect(readFeatures([repo])).toEqual([]);
+    expect(readFeatures([join(repo, "nope")])).toEqual([]);
   });
 
   it("파일이 바뀌면 다음 read 가 곧바로 반영한다(INV-3 — 캐시 없음)", () => {
     spec("f", "# f\n\nStatus: draft\n");
     issue("f", "01-a.md", ticket("01 — a", "ready-for-agent"));
     issue("f", "02-b.md", ticket("02 — b", "ready-for-agent", "01"));
-    expect(readFeatures(repo)[0]?.tickets[1]?.startable).toBe(false);
+    expect(readFeatures([repo])[0]?.tickets[1]?.startable).toBe(false);
 
     issue("f", "01-a.md", ticket("01 — a", "resolved (2026-08-09)"));
-    expect(readFeatures(repo)[0]?.tickets[1]?.startable).toBe(true);
+    expect(readFeatures([repo])[0]?.tickets[1]?.startable).toBe(true);
   });
 
   describe("문서 트리 — 폴더에 실제로 있는 것만(티켓 01 §설계 3)", () => {
@@ -150,7 +151,7 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
       mkdirSync(join(repo, "docs", "features", "f", "adr"), { recursive: true });
       writeFileSync(join(repo, "docs", "features", "f", "adr", "0001-x.md"), "# ADR\n");
 
-      const [f] = readFeatures(repo);
+      const [f] = readFeatures([repo]);
       expect(f?.docs).toEqual([
         { kind: "dir", name: "adr", path: "adr", children: [{ kind: "file", name: "0001-x.md", path: "adr/0001-x.md" }] },
         { kind: "file", name: "architecture.md", path: "architecture.md" },
@@ -163,7 +164,7 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
       spec("f", "# f\n\nStatus: draft\n");
       issue("f", "01-a.md", ticket("01 — a", "draft"));
 
-      const [f] = readFeatures(repo);
+      const [f] = readFeatures([repo]);
       expect(f?.docs.map((d) => d.name)).not.toContain("adr");
       expect(f?.docs.map((d) => d.name)).toEqual(["issues", "spec.md"]);
     });
@@ -172,39 +173,39 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
   describe("readFeatureDoc — 기능 폴더 문서 본문 읽기(read-only, INV-2)", () => {
     it("기능 폴더 안의 문서를 읽는다", () => {
       spec("f", "# f\n\n어떤 내용\n");
-      const r = readFeatureDoc(repo, "f", "spec.md");
+      const r = readFeatureDoc([repo], "f", "spec.md");
       expect(r).toEqual({ ok: true, content: "# f\n\n어떤 내용\n" });
     });
 
     it("adr/ 같은 하위 경로도 읽는다", () => {
       mkdirSync(join(repo, "docs", "features", "f", "adr"), { recursive: true });
       writeFileSync(join(repo, "docs", "features", "f", "adr", "0001-x.md"), "# ADR\n");
-      expect(readFeatureDoc(repo, "f", "adr/0001-x.md")).toEqual({ ok: true, content: "# ADR\n" });
+      expect(readFeatureDoc([repo], "f", "adr/0001-x.md")).toEqual({ ok: true, content: "# ADR\n" });
     });
 
     it("🔴 상위 경로 탈출(`../`)은 거절한다 — 저장소 밖 파일을 내주지 않는다", () => {
       spec("f", "# f\n");
       writeFileSync(join(repo, "secret.txt"), "비밀");
-      const r = readFeatureDoc(repo, "f", "../../secret.txt");
+      const r = readFeatureDoc([repo], "f", "../../secret.txt");
       expect(r).toEqual({ ok: false, reason: "outside" });
     });
 
     it("🔴 형제 기능 폴더로도 새지 않는다 — 접두 문자열만 같은 폴더('f-evil')를 f 안으로 오인하지 않는다", () => {
       spec("f", "# f\n");
       spec("f-evil", "# 다른 기능\n\n민감\n");
-      const r = readFeatureDoc(repo, "f", "../f-evil/spec.md");
+      const r = readFeatureDoc([repo], "f", "../f-evil/spec.md");
       expect(r).toEqual({ ok: false, reason: "outside" });
     });
 
     it("🔴 절대경로를 줘도 기능 폴더 밖이면 거절한다", () => {
       spec("f", "# f\n");
-      const r = readFeatureDoc(repo, "f", "/etc/passwd");
+      const r = readFeatureDoc([repo], "f", "/etc/passwd");
       expect(r).toEqual({ ok: false, reason: "outside" });
     });
 
     it("없는 문서는 not-found — 조용히 빈 내용이 아니라 무엇이 잘못됐는지 구분된다", () => {
       spec("f", "# f\n");
-      expect(readFeatureDoc(repo, "f", "nope.md")).toEqual({ ok: false, reason: "not-found" });
+      expect(readFeatureDoc([repo], "f", "nope.md")).toEqual({ ok: false, reason: "not-found" });
     });
   });
 });
@@ -214,7 +215,7 @@ describe("readFeatures — 신관례(T04): tickets/·grill.md/design/·wayfinder
     spec("tauri-desktop-app", "# 데스크톱 앱\n");
     newTicket("tauri-desktop-app", "T04.md", "# T04 — 신관례 문서 표시 + 백로그 상태 조인\n\n## Goal\n본문\n");
 
-    const [f] = readFeatures(repo);
+    const [f] = readFeatures([repo]);
     expect(f?.newTickets?.map((t) => [t.num, t.slug, t.path, t.title, t.status, t.docConvention])).toEqual([
       ["04", "T04", "tickets/T04.md", "신관례 문서 표시 + 백로그 상태 조인", "pending", "tickets"],
     ]);
@@ -223,7 +224,7 @@ describe("readFeatures — 신관례(T04): tickets/·grill.md/design/·wayfinder
 
   it("tickets/ 가 없으면 newTickets 가 빈 배열이다(INV-4: 실재하는 것만)", () => {
     spec("f", "# f\n");
-    const [f] = readFeatures(repo);
+    const [f] = readFeatures([repo]);
     expect(f?.newTickets).toEqual([]);
   });
 
@@ -231,7 +232,7 @@ describe("readFeatures — 신관례(T04): tickets/·grill.md/design/·wayfinder
     spec("f", "# f\n");
     newTicket("f", "T01.md", "# T01 — a\n");
     newTicket("f", "README.md", "# 안내\n");
-    const [f] = readFeatures(repo);
+    const [f] = readFeatures([repo]);
     expect(f?.newTickets?.map((t) => t.slug)).toEqual(["T01"]);
   });
 
@@ -240,7 +241,7 @@ describe("readFeatures — 신관례(T04): tickets/·grill.md/design/·wayfinder
     newTicket("f", "T01.md", "# T01 — a\n\n## Depends on\n- none\n");
     newTicket("f", "T02.md", "# T02 — b\n\n## Depends on\n- T01 (먼저 끝내기)\n\n## Can run in parallel with\n- nothing\n");
 
-    const [f] = readFeatures(repo);
+    const [f] = readFeatures([repo]);
     const t1 = f?.newTickets?.find((t) => t.num === "01");
     const t2 = f?.newTickets?.find((t) => t.num === "02");
     expect(t1?.blockedBy).toEqual([]);
@@ -258,16 +259,145 @@ describe("readFeatures — 신관례(T04): tickets/·grill.md/design/·wayfinder
     mkdirSync(join(repo, "docs", "features", "tauri-desktop-app", "design"), { recursive: true });
     writeFileSync(join(repo, "docs", "features", "tauri-desktop-app", "design", "0001-x.md"), "# 설계\n");
 
-    const [f] = readFeatures(repo);
+    const [f] = readFeatures([repo]);
     const names = f?.docs.map((d) => d.name).sort();
     expect(names).toEqual(["design", "grill.md", "spec.md", "wayfinder.md"]);
-    expect(readFeatureDoc(repo, "tauri-desktop-app", "grill.md")).toEqual({ ok: true, content: "# Grill\n" });
-    expect(readFeatureDoc(repo, "tauri-desktop-app", "design/0001-x.md")).toEqual({ ok: true, content: "# 설계\n" });
+    expect(readFeatureDoc([repo], "tauri-desktop-app", "grill.md")).toEqual({ ok: true, content: "# Grill\n" });
+    expect(readFeatureDoc([repo], "tauri-desktop-app", "design/0001-x.md")).toEqual({ ok: true, content: "# 설계\n" });
   });
 
   it("실재하지 않는 grill.md/design/wayfinder.md 는 트리에 나타나지 않는다(INV-4)", () => {
     spec("f", "# f\n");
-    const [f] = readFeatures(repo);
+    const [f] = readFeatures([repo]);
     expect(f?.docs.map((d) => d.name)).toEqual(["spec.md"]);
+  });
+});
+
+// ── T02 — 여러 사본 합집합 + 나중 판 판정 (🔴 실물 git 저장소 두 벌, 지어낸 출력 없음) ──
+describe("readFeatures — 여러 사본 합집합 + 나중 판 (T02)", () => {
+  let tmp: string;
+  let a: string;
+  let b: string;
+
+  const initRepo = (dir: string): void => {
+    mkdirSync(dir, { recursive: true });
+    execFileSync("git", ["init", "-q", dir], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "config", "user.email", "crew@example.com"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "config", "user.name", "crew"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "config", "commit.gpgsign", "false"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "symbolic-ref", "HEAD", "refs/heads/main"], { stdio: "ignore" });
+  };
+  const commit = (dir: string, msg: string): void => {
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-q", "-m", msg], { stdio: "ignore" });
+  };
+  const feat = (dir: string, slug: string, specBody: string): void => {
+    const d = join(dir, "docs", "features", slug);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, "spec.md"), specBody);
+  };
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "gootte-merge-"));
+    a = join(tmp, "a");
+    b = join(tmp, "b");
+  });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  it("AC1/AC2 — 한쪽 사본에만 있는 기능이 합집합에 뜬다", () => {
+    initRepo(a);
+    feat(a, "onlyA", "# A 만\n\nStatus: draft\n");
+    commit(a, "a");
+    initRepo(b);
+    feat(b, "onlyB", "# B 만\n\nStatus: draft\n");
+    commit(b, "b");
+    expect(readFeatures([a, b]).map((f) => f.slug).sort()).toEqual(["onlyA", "onlyB"]);
+  });
+
+  it("AC3 — 양쪽에 있고 내용이 같으면 한 벌만(spec.md §절차 1)", () => {
+    initRepo(a);
+    feat(a, "f", "# 같음\n\nStatus: draft\n");
+    commit(a, "a");
+    execFileSync("git", ["clone", "-q", a, b], { stdio: "ignore" });
+    const [f] = readFeatures([a, b]);
+    expect(f?.slug).toBe("f");
+    expect(f?.title).toBe("같음");
+    expect(f?.conflict).toEqual([]);
+  });
+
+  it("AC4 — 양쪽에 있고 B 만 미커밋 변경이 있으면 B 의 내용이 뜬다(절차 2)", () => {
+    initRepo(a);
+    feat(a, "f", "# A 커밋됨\n\nStatus: draft\n");
+    commit(a, "a");
+    execFileSync("git", ["clone", "-q", a, b], { stdio: "ignore" });
+    feat(b, "f", "# B 커밋됨\n\nStatus: draft\n");
+    commit(b, "b");
+    // A 는 커밋 안 한 채 고친다(미커밋) — B 가 이긴다.
+    feat(a, "f", "# A 작업중\n\nStatus: draft\n");
+    const [f] = readFeatures([a, b]);
+    expect(f?.title).toBe("A 작업중");
+    expect(f?.conflict).toEqual([]);
+  });
+
+  it("AC5 — 양쪽 커밋 상태이고 B HEAD 가 A 후손이면 B 의 내용이 뜬다(절차 3)", () => {
+    initRepo(a);
+    feat(a, "f", "# base\n\nStatus: draft\n");
+    commit(a, "a");
+    execFileSync("git", ["clone", "-q", a, b], { stdio: "ignore" });
+    feat(b, "f", "# B 나중\n\nStatus: draft\n");
+    commit(b, "b");
+    const [f] = readFeatures([a, b]);
+    expect(f?.title).toBe("B 나중");
+    expect(f?.conflict).toEqual([]);
+  });
+
+  it("AC6 — 조상 관계가 어느 쪽도 아니면 고르지 않고 conflict 에 실린다(절차 4)", () => {
+    initRepo(a);
+    feat(a, "f", "# base\n\nStatus: draft\n");
+    commit(a, "a");
+    execFileSync("git", ["clone", "-q", a, b], { stdio: "ignore" });
+    // A 가 독립 커밋, B 도 독립 커밋 → 어느 쪽도 상대 HEAD 의 조상이 아님(진짜 갈라짐).
+    feat(a, "f", "# A 쪽\n\nStatus: draft\n");
+    commit(a, "a2");
+    feat(b, "f", "# B 쪽\n\nStatus: draft\n");
+    commit(b, "b2");
+    const [f] = readFeatures([a, b]);
+    expect(f?.conflict).toEqual([{ path: "spec.md", copies: [a, b].sort() }]);
+  });
+
+  it("AC7 — 사본 하나뿐이면 지금과 같은 내용이 뜬다(merge = 단일 사본)", () => {
+    initRepo(a);
+    feat(a, "f", "# 단독\n\nStatus: ready-for-agent\n");
+    mkdirSync(join(a, "docs", "features", "f", "issues"), { recursive: true });
+    writeFileSync(join(a, "docs", "features", "f", "issues", "01-x.md"), "# 01\n\n**Status:** draft\n");
+    commit(a, "a");
+    const [f] = readFeatures([a]);
+    expect(f?.slug).toBe("f");
+    expect(f?.title).toBe("단독");
+    expect(f?.tickets.map((t) => t.num)).toEqual(["01"]);
+    expect(f?.conflict).toEqual([]);
+  });
+
+  it("AC8 — 사본 경로 하나가 없거나 저장소가 아니어도 나머지가 그대로 뜬다", () => {
+    initRepo(a);
+    feat(a, "f", "# A\n\nStatus: draft\n");
+    commit(a, "a");
+    // 존재하지 않는 경로는 무시되고 a 가 보인다.
+    expect(readFeatures([a, join(tmp, "nope")]).map((f) => f.slug)).toEqual(["f"]);
+    // .git 없는 plain 디렉토리(저장소 아님)는 git 질의 불가 사본으로 건너뛴다.
+    const plain = join(tmp, "plain");
+    feat(plain, "f", "# plain\n\nStatus: draft\n");
+    const got = readFeatures([a, plain]);
+    expect(got.map((f) => f.slug)).toEqual(["f"]);
+    expect(got[0]?.title).toBe("A"); // git 저장소 a 의 내용이 이긴다
+  });
+
+  it("AC9 — readFeatureDoc 는 각 사본 경계 밖 경로를 거절한다", () => {
+    initRepo(a);
+    feat(a, "f", "# A\n\nStatus: draft\n");
+    commit(a, "a");
+    execFileSync("git", ["clone", "-q", a, b], { stdio: "ignore" });
+    expect(readFeatureDoc([a, b], "f", "spec.md")).toEqual({ ok: true, content: "# A\n\nStatus: draft\n" });
+    expect(readFeatureDoc([a, b], "f", "../../secret.txt")).toEqual({ ok: false, reason: "outside" });
   });
 });

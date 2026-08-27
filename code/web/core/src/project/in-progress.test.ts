@@ -28,6 +28,7 @@ const feature = (slug: string, tickets: FeatureTicket[], newTickets?: FeatureTic
   statusKnown: true,
   tickets,
   docs: [],
+  conflict: [],
   ...(newTickets ? { newTickets } : {}),
 });
 

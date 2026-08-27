@@ -542,6 +542,7 @@ describe("sortFeatures — 화면 순서(무리 → 처리중 → 폴더명, 티
     statusKnown: true,
     tickets,
     docs: [],
+    conflict: [],
   });
 
   it("남은 일이 있는 기능이 전부 끝난 기능보다 앞에 온다(1단계)", () => {

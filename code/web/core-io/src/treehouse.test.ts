@@ -79,7 +79,7 @@ function makeProject(): void {
 
 /** 화면이 받는 것과 같은 계산 — 문서 read + 사본 관측 + 순수 계산. */
 function observe(scanRoot = root) {
-  return applyInProgress(readFeatures(project), scanWorkingCopies(scanRoot, PROJECT));
+  return applyInProgress(readFeatures([project]), scanWorkingCopies(scanRoot, PROJECT));
 }
 const ticketOf = (features: ReturnType<typeof observe>["features"], slug: string) =>
   features.find((f) => f.slug === "auth")?.tickets.find((t) => t.slug === slug);
@@ -309,7 +309,7 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
       "",
     );
     // 관측한 처리중이 티켓 파일에 되쓰이지 않았다 — 두 번째 기록이 생기는 순간이 desync 의 시작이다(INV-1).
-    expect(readFeatures(project).flatMap((f) => f.tickets).map((t) => t.sourceStatus)).toEqual([
+    expect(readFeatures([project]).flatMap((f) => f.tickets).map((t) => t.sourceStatus)).toEqual([
       "ready-for-agent",
       "ready-for-agent",
     ]);

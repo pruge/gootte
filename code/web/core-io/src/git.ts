@@ -43,3 +43,43 @@ export function commitTouchedFiles(repo: string, range: string): string[] {
   if (!out) return [];
   return [...new Set(out.split("\n").map((l) => l.trim()).filter(Boolean))];
 }
+
+/** 저장소인가 — `.git` 이 있으면 true, 아니면 false(저장소가 아닌 사본은 건너뛴다, T02). */
+export function isRepo(repo: string): boolean {
+  return gitSafe(repo, ["rev-parse", "--git-dir"]) !== null;
+}
+
+/** HEAD 가 가리키는 commit 해시. detached 도 해시로 답한다. 못 읽으면 null. */
+export function headCommit(repo: string): string | null {
+  return gitSafe(repo, ["rev-parse", "HEAD"]);
+}
+
+/**
+ * `path`(repo 루트 기준)에 커밋 안 된 변경이 있는가 — `git status --porcelain -- <path>`.
+ * 빈 출력이면 커밋 상태(false), 비었으면 미커밋(true). 못 읽으면 null(판정 불가).
+ * 파일 하나만 묻는다 — 사본 전체를 훑지 않는다(T02 §구현 메모).
+ */
+export function hasUncommittedChange(repo: string, path: string): boolean | null {
+  const out = gitSafe(repo, ["status", "--porcelain", "--", path]);
+  if (out === null) return null;
+  return out.trim().length > 0;
+}
+
+/**
+ * `descendant` 가 `ancestor` 의 후손인가(조상 관계). `repo` 는 두 commit 을 모두 가진 저장소여야
+ * 한다(T02 — 사본들이 객체를 공유하는 clone 관계라면 한쪽에 둘 다 있다). true: 조상, false: 아님,
+ * null: 못 판정(git 이 답하지 않음). exit 1 = "조상 아님" 이지 오류가 아니다.
+ */
+export function isAncestor(repo: string, ancestor: string, descendant: string): boolean | null {
+  try {
+    execFileSync("git", ["-C", repo, "merge-base", "--is-ancestor", ancestor, descendant], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return true;
+  } catch (e: unknown) {
+    const status = (e as { status?: number }).status;
+    if (status === 1) return false; // 조상 아님 — 정상 판정
+    return null; // 오류(commit 을 모름 등) — 판정 불가
+  }
+}
