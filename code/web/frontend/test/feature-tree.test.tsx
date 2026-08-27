@@ -751,6 +751,42 @@ describe("FeatureTree — 실재하는 관례의 칸만 그린다(빈 issues 칸
   });
 });
 
+describe("T04 — 미착지 표식(캡틴 결정 Q4, 출처는 싣지 않는다)", () => {
+  it("문서 트리 파일 노드에 unlanded 가 있으면 '미착지' 배지가 뜬다", () => {
+    const feature: Feature = {
+      ...BASE,
+      tickets: [],
+      docs: [{ kind: "file", name: "wayfinder.md", path: "wayfinder.md", unlanded: true }],
+    };
+    renderCard(feature);
+    open();
+    expect(screen.getByText("미착지")).toBeInTheDocument();
+  });
+
+  it("unlanded 가 없으면 배지가 없다(착지 완료 문서는 화면 불변)", () => {
+    const feature: Feature = {
+      ...BASE,
+      tickets: [],
+      docs: [{ kind: "file", name: "spec.md", path: "spec.md" }],
+    };
+    renderCard(feature);
+    open();
+    expect(screen.queryByText("미착지")).toBeNull();
+  });
+
+  it("🔴 티켓 줄에도 같은 배지가 뜬다 — 어느 사본에서 왔는지는 말하지 않는다", () => {
+    const feature: Feature = {
+      ...BASE,
+      docs: [issuesDir()],
+      tickets: [{ ...BASE.tickets[0]!, unlanded: true }],
+    };
+    renderCard(feature);
+    open();
+    const row = screen.getByText("세션 발급").closest("button")!;
+    expect(within(row).getByText("미착지")).toBeInTheDocument();
+  });
+});
+
 // T03 — 갈라진 사본은 조용히 고르지 않고 화면이 말한다(ADR-0001).
 describe("FeatureCard/FeatureTree — 갈라짐 표시(T03)", () => {
   it("conflict 가 비어 있으면(기본) 갈라짐 표시가 없다 — 기존 화면 불변(AC3)", () => {

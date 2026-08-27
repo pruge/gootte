@@ -95,6 +95,10 @@ export const FeatureTicket = z.object({
   // 출처가 백로그이기 때문(D4). 조인 실패(미매칭)면 null/undefined — 추측하지 않는다(INV-4).
   backlogStatus: TodoStatus.nullable().optional(),
   backlogUrl: z.string().nullable().optional(), // 백로그 줄의 PR/머지 링크(있으면) verbatim.
+  // T04 — 이 티켓 파일이 아직 착지하지 않았는가(추적 안 됨 또는 커밋 안 된 변경) — `docs.tree`
+  // 안의 같은 경로 노드에서 그대로 옮겨 싣는다(판정 자리는 `FeatureDocNode.unlanded` 하나뿐).
+  // git 이 못 답한 사본은 이 값이 아예 없다(표식 없이 그대로 보여준다).
+  unlanded: z.boolean().optional(),
 });
 export type FeatureTicket = z.infer<typeof FeatureTicket>;
 
@@ -108,6 +112,10 @@ export interface FeatureDocNode {
   name: string; // 파일/폴더명
   path: string; // 기능 폴더 기준 상대 경로("adr/0001-x.md") — 문서 읽기 API 의 `path` 로 그대로 쓴다
   children?: FeatureDocNode[]; // kind: "dir" 일 때만
+  // T04 — 아직 착지하지 않았는가(추적 안 됨 또는 커밋 안 된 변경). git 이 답하지 못한 사본은
+  // 이 값이 아예 없다(표식 없이 그대로 보여준다, 캡틴 결정 Q4 — 출처는 싣지 않는다).
+  // 🔴 추적 제외이면서 미착지인 파일은 트리에서 아예 빠진다 — 제외가 이긴다(그 파일에는 이 값이 없다).
+  unlanded?: boolean;
 }
 export const FeatureDocNode: z.ZodType<FeatureDocNode> = z.lazy(() =>
   z.object({
@@ -115,6 +123,7 @@ export const FeatureDocNode: z.ZodType<FeatureDocNode> = z.lazy(() =>
     name: z.string(),
     path: z.string(),
     children: z.array(FeatureDocNode).optional(),
+    unlanded: z.boolean().optional(),
   }),
 );
 

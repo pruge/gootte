@@ -261,8 +261,24 @@ function DocTreeNode({
       >
         <IconFile size={15} className="shrink-0 text-muted" />
         {node.name}
+        {node.unlanded && <UnlandedBadge />}
         {conflict && <ConflictBadge conflicts={[conflict]} />}
       </button>
     </li>
+  );
+}
+
+/**
+ * T04 — 미착지 표식 하나뿐(캡틴 결정 Q4, 출처는 싣지 않는다). 문서 트리 파일 줄과
+ * `TicketRow` 둘 다 이 배지를 쓴다(판정 자리가 하나면 표시도 하나).
+ */
+export function UnlandedBadge() {
+  return (
+    <span
+      role="status"
+      className="mono shrink-0 rounded bg-partial/15 px-1.5 py-0.5 text-sm text-partial"
+    >
+      미착지
+    </span>
   );
 }
