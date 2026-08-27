@@ -54,7 +54,7 @@ export function Sidebar({ selected, onSelect }: SidebarProps) {
           const active = p.slug === selected;
           const Icon = active ? IconFolderFilled : IconFolder;
           return (
-            <li key={p.path}>
+            <li key={p.slug}>
               <button
                 type="button"
                 aria-current={active ? "true" : undefined}

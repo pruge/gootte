@@ -21,7 +21,13 @@ import { CliError, parseTicketRef } from "./args";
 export function discoverText(roots: string[]): string {
   const found = discoverProjects(roots);
   if (found.length === 0) return "(프로젝트 없음)";
-  return found.map((p) => `${p.slug}\t${p.path}`).join("\n");
+  // 단일 사본이면 기존 줄 그대로(`slug\tpath`) — 한 글자도 안 바뀐다(수용 기준 3).
+  // 사본이 둘 이상이면 개수를 덧붙여 같은 slug 가 묶였음을 알린다(T01).
+  return found
+    .map((p) =>
+      p.copies.length > 1 ? `${p.slug}\t${p.path}\t(${p.copies.length} copies)` : `${p.slug}\t${p.path}`,
+    )
+    .join("\n");
 }
 
 /**
