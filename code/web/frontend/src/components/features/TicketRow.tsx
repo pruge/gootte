@@ -10,6 +10,7 @@ import type { FeatureTicket } from "@gootte/contract";
 import { BACKLOG_STATUS_LABEL } from "../../lib/backlogStatusLabel";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
 import { triggerKey } from "./docTrigger";
+import { UnlandedBadge } from "./FeatureTree";
 import type { OpenDocFn } from "./FeatureTree";
 import { HighlightedText } from "./HighlightedText";
 
@@ -151,6 +152,9 @@ export function TicketRow({
             안 읽음
           </span>
         )}
+
+        {/* T04 — 미착지 표식(캡틴 결정 Q4). 어느 사본에서 왔는지는 말하지 않는다. */}
+        {ticket.unlanded && <UnlandedBadge />}
 
         {ticket.docConvention === "tickets" ? (
           // T04 — 신관례는 파일에 상태가 없다(SoT = 백로그). 조인됐을 때만 배지를 낸다 —

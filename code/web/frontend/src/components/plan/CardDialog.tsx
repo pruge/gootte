@@ -4,6 +4,7 @@ import type { FeatureTicket, PlanCard } from "@gootte/contract";
 import { allTickets } from "@gootte/core";
 import { closedDisplayAt, ticketBoxState, UNRANKED_STEP } from "@gootte/core/plan";
 import { BACKLOG_STATUS_LABEL } from "../../lib/backlogStatusLabel";
+import { UnlandedBadge } from "../features/FeatureTree";
 import { featureDescription } from "./cardTitle";
 
 /**
@@ -171,6 +172,8 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                           처리중
                         </span>
                       )}
+                      {/* T04 — 미착지 표식(캡틴 결정 Q4). 어느 사본에서 왔는지는 말하지 않는다. */}
+                      {t.unlanded && <UnlandedBadge />}
                       {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게.
                           `features` 탭 `TicketRow` 와 같은 판정 — tickets/ 신관례는 파일에 상태가
                           없다(SoT = 백로그), 조인됐을 때만 배지를 낸다(T04 §구현 원칙, 추측 금지). */}
