@@ -6,8 +6,9 @@ import {
   IconLock,
   IconProgress,
 } from "@tabler/icons-react";
-import type { FeatureTicket } from "@gootte/contract";
+import type { FeatureConflict, FeatureTicket } from "@gootte/contract";
 import { BACKLOG_STATUS_LABEL } from "../../lib/backlogStatusLabel";
+import { ConflictBadge } from "./ConflictBadge";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
 import { triggerKey } from "./docTrigger";
 import type { OpenDocFn } from "./FeatureTree";
@@ -115,12 +116,15 @@ export function TicketRow({
   featureSlug,
   onOpenDoc,
   query = "",
+  conflict,
 }: {
   ticket: FeatureTicket;
   featureSlug: string;
   onOpenDoc: OpenDocFn;
   /** 검색어 — 이 티켓이 검색으로 걸렸다면 걸린 자리를 노란 칩으로 보여준다. */
   query?: string;
+  /** T03 — 이 티켓 파일이 갈라졌으면 그 사실(어느 사본들인지). 없으면 갈라지지 않았다. */
+  conflict?: FeatureConflict;
 }) {
   const stage = stageOf(ticket);
   const unread = ticket.unread === true;
@@ -151,6 +155,8 @@ export function TicketRow({
             안 읽음
           </span>
         )}
+
+        {conflict && <ConflictBadge conflicts={[conflict]} />}
 
         {ticket.docConvention === "tickets" ? (
           // T04 — 신관례는 파일에 상태가 없다(SoT = 백로그). 조인됐을 때만 배지를 낸다 —

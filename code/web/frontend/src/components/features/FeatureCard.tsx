@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Feature } from "@gootte/contract";
 import { featureDescription } from "../plan/cardTitle";
+import { ConflictBadge } from "./ConflictBadge";
 import { FeatureTree, type OpenDocFn } from "./FeatureTree";
 import { HighlightedText } from "./HighlightedText";
 
@@ -109,6 +110,8 @@ export function FeatureCard({
               {feature.sourceStatus}
             </span>
           )}
+          {/* T03 — 갈라진 사본이 있으면 조용히 하나를 고르지 않고 화면이 말한다(ADR-0001). */}
+          <ConflictBadge conflicts={feature.conflict ?? []} />
           {/* 네 수는 항상 뜬다 — 0 이어도 칸이 사라지지 않는다(티켓 01 §설계 5 🔴). */}
           <span className="mono ml-auto text-sm tabular-nums text-muted">
             남은 일 {open} · 완료 {done}

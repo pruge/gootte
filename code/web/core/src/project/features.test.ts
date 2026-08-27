@@ -162,6 +162,22 @@ describe("buildFeature — 막힘 해제는 계산된다(INV-1)", () => {
     expect(b.sourceStatus).toBe("blocked"); // 그래도 외부 대기라는 사실은 살아 있다
     expect(b.status).toBe("pending");
   });
+
+  // T03 — `buildFeature` 는 T02 가 이미 정한 갈라짐 사실을 릴레이만 한다(INV-4, 여기서 다시
+  // 정하지 않는다). `docs.conflict` 가 그대로 `Feature.conflict` 로 나가는지만 본다.
+  it("T03 — docs.conflict 를 Feature.conflict 로 그대로 릴레이한다(다시 판정하지 않는다)", () => {
+    const withConflict = {
+      ...docs({ file: "01-a.md", body: ticket("ready-for-agent") }),
+      conflict: [{ path: "spec.md", copies: ["/a", "/b"] }],
+    };
+    const f = buildFeature(withConflict);
+    expect(f.conflict).toEqual([{ path: "spec.md", copies: ["/a", "/b"] }]);
+  });
+
+  it("docs.conflict 가 없으면 빈 배열 — '갈라지지 않았다' 를 항상 채운다(계약 주석)", () => {
+    const f = buildFeature(docs({ file: "01-a.md", body: ticket("ready-for-agent") }));
+    expect(f.conflict).toEqual([]);
+  });
 });
 
 describe("buildFeatures — 기능 목록", () => {

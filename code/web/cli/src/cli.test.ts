@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -226,6 +227,61 @@ describe("cli — step · step --clear · board · next(plan-board/05)", () => {
     const out = boardText([slug()], dataDir, proj);
     expect(out).toContain("## 작업 대상 (1)");
     expect(out).not.toContain("## 완료 (1)");
+  });
+
+  /**
+   * T03 — 갈라진 사본은 조용히 고르지 않고 화면이 말한다. CLI 도 같은 사실을 한 줄로 낸다
+   * (the-terminal-agrees-with-the-screen 의 규율, AC4). 실물 git 저장소 두 벌로 진짜 갈라짐을
+   * 만든다(T02 의 픽스처 규율과 같다 — 지어낸 git 출력을 쓰지 않는다).
+   */
+  it("board — 🔴 갈라진 사본은 조용히 고르지 않고 CLI 도 그 사실을 한 줄로 낸다(T03)", () => {
+    const root = mkdtempSync(join(tmpdir(), "gootte-conflict-root-"));
+    const a = join(root, "conflict-proj");
+    const bRoot = mkdtempSync(join(tmpdir(), "gootte-conflict-b-"));
+    const b = join(bRoot, "conflict-proj");
+    const initRepo = (dir: string): void => {
+      mkdirSync(dir, { recursive: true });
+      execFileSync("git", ["init", "-q", dir], { stdio: "ignore" });
+      execFileSync("git", ["-C", dir, "config", "user.email", "crew@example.com"], { stdio: "ignore" });
+      execFileSync("git", ["-C", dir, "config", "user.name", "crew"], { stdio: "ignore" });
+      execFileSync("git", ["-C", dir, "config", "commit.gpgsign", "false"], { stdio: "ignore" });
+      execFileSync("git", ["-C", dir, "symbolic-ref", "HEAD", "refs/heads/main"], { stdio: "ignore" });
+    };
+    const commit = (dir: string, msg: string): void => {
+      execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+      execFileSync("git", ["-C", dir, "commit", "-q", "-m", msg], { stdio: "ignore" });
+    };
+    try {
+      initRepo(a);
+      w(a, "AGENTS.md", "# AGENTS\n");
+      w(a, "docs/features/f/spec.md", "# f\n\nStatus: draft\n");
+      commit(a, "a");
+      execFileSync("git", ["clone", "-q", a, b], { stdio: "ignore" });
+      // 양쪽 다 독립 커밋 — 조상 관계가 어느 쪽으로도 성립하지 않는다(진짜 갈라짐).
+      w(a, "docs/features/f/spec.md", "# f — A 쪽\n\nStatus: draft\n");
+      commit(a, "a2");
+      w(b, "docs/features/f/spec.md", "# f — B 쪽\n\nStatus: draft\n");
+      commit(b, "b2");
+
+      const out = boardText(["conflict-proj"], dataDir, root);
+      const prevRoots = process.env.GOOTTE_ROOTS;
+      process.env.GOOTTE_ROOTS = `${root}:${bRoot}`;
+      let out2: string;
+      try {
+        out2 = boardText(["conflict-proj"], dataDir, root);
+      } finally {
+        if (prevRoots === undefined) delete process.env.GOOTTE_ROOTS;
+        else process.env.GOOTTE_ROOTS = prevRoots;
+      }
+      // 뿌리 하나만 주면 사본이 하나뿐이라 갈라질 일이 없다 — 대조군(회귀 방지).
+      expect(out).not.toContain("갈라짐");
+      // 두 사본을 다 보게 하면 갈라짐 사실이 한 줄로 실린다 — 어느 파일·어느 사본인지 말한다(AC2).
+      expect(out2).toContain("! 갈라짐: spec.md");
+      expect(out2).toContain(a);
+      expect(out2).toContain(b);
+    } finally {
+      for (const d of [root, bRoot]) rmSync(d, { recursive: true, force: true });
+    }
   });
 
   /**
