@@ -258,6 +258,40 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     expect(within(readRow).queryByText("안 읽음")).toBeNull();
   });
 
+  /**
+   * T02(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구가 기존 hover 문구에 이어 붙는다.
+   * 값은 core `elapsedPhrase` 가 만들고 여기는 옮겨 싣기만 한다(INV-1) — `process` 탭
+   * `ProcessView` 와 **같은 문구**를 보여야 한다(process.test.tsx 의 같은 이름 시험과 짝).
+   */
+  it("🔴 걸린 시간 문구가 기존 hover 문구 뒤에 이어 붙는다 — 기존 문구는 살아 있다", () => {
+    const f = feature("a", [["01", "끝난 것", "done", "2026-08-01"]]);
+    const withElapsed: Feature = { ...f, tickets: f.tickets.map((t) => ({ ...t, elapsed: "약 14분" })) };
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(withElapsed)] });
+    const opened = openCard("a 제목");
+    const row = within(opened).getByText("끝난 것").closest("button") as HTMLElement;
+    const glyph = within(row).getByText("[x]");
+    expect(glyph.getAttribute("title")).toBe("문서가 완료라고 말한다\n약 14분");
+  });
+
+  it("걸린 시간 기록이 없으면 hover 문구에 아무것도 덧붙지 않는다(INV-4)", () => {
+    const f = feature("a", [["01", "끝난 것", "done", "2026-08-01"]]);
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(f)] });
+    const opened = openCard("a 제목");
+    const row = within(opened).getByText("끝난 것").closest("button") as HTMLElement;
+    const glyph = within(row).getByText("[x]");
+    expect(glyph.getAttribute("title")).toBe("문서가 완료라고 말한다");
+  });
+
+  it("진행 중인 티켓의 걸린 시간 문구는 '진행 중' 이 그대로 실려 온다", () => {
+    const f = feature("a", [["01", "붙들린 것", "in_progress"]]);
+    const withElapsed: Feature = { ...f, tickets: f.tickets.map((t) => ({ ...t, elapsed: "약 5분 진행 중" })) };
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(withElapsed)] });
+    const opened = openCard("a 제목");
+    const row = within(opened).getByText("붙들린 것").closest("button") as HTMLElement;
+    const glyph = within(row).getByText("[ ]");
+    expect(glyph.getAttribute("title")).toBe("아직 완료가 아니다\n약 5분 진행 중");
+  });
+
   it("확인을 누르면 창이 닫힌다 — 열림은 화면의 상태일 뿐 저장되지 않는다(캡틴 결정)", () => {
     renderBoard({ ...EMPTY_BOARD, waiting: [card(feature("auth-login", [["01", "세션 발급"]]))] });
     openCard("auth-login 제목");

@@ -327,6 +327,29 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
     expect(gaps[0]).toHaveAttribute("aria-label", "여기에 놓으면 새 단계가 생긴다");
   });
 
+  /**
+   * T02(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구가 기존 hover 문구 뒤에 이어
+   * 붙는다. `plan` 탭 `CardDialog` 와 **같은 문구**여야 한다(plan.test.tsx 의 같은 이름 시험과
+   * 짝) — 한쪽만 재면 갈라진 것을 못 잡는다.
+   */
+  it("🔴 걸린 시간 문구가 기존 hover 문구 뒤에 이어 붙는다 — 기존 문구는 살아 있다", () => {
+    const f = feature("a", [["01", "끝난 것", "done", "2026-08-01"]]);
+    const withElapsed: Feature = { ...f, tickets: f.tickets.map((t) => ({ ...t, elapsed: "약 14분" })) };
+    renderProcess({ ...EMPTY_BOARD, active: [card(withElapsed, { "01-x": 1 })] });
+    const row = screen.getByText("끝난 것").closest("button") as HTMLElement;
+    // getByTitle 은 기본 normalizer 가 공백을 접는다 — 실제 title 은 줄바꿈으로 이어 붙는다(속성값 자체는 위 CardDialog·ProcessView 코드가 만든다).
+    expect(within(row).getByTitle("문서가 완료라고 말한다 약 14분")).toBeInTheDocument();
+  });
+
+  it("걸린 시간 기록이 없으면 hover 문구에 아무것도 덧붙지 않는다(INV-4)", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(feature("a", [["01", "끝난 것", "done", "2026-08-01"]]), { "01-x": 1 })],
+    });
+    const row = screen.getByText("끝난 것").closest("button") as HTMLElement;
+    expect(within(row).getByTitle("문서가 완료라고 말한다")).toBeInTheDocument();
+  });
+
   it("작업 대상이 비면 안내 한 줄이 보인다", () => {
     renderProcess(EMPTY_BOARD);
     expect(screen.getByText("작업 대상에 올라온 것이 없다")).toBeInTheDocument();

@@ -21,6 +21,10 @@ export interface ProcessRow {
   // 처리중 표시(status-colors-tell-apart/02) — `ticket.status === "in_progress"` 를 그대로
   // 옮긴다. 판정 자리는 격리 사본 관측(`applyInProgress`, core) 하나뿐 — 여기서 다시 정하지 않는다.
   inProgress: boolean;
+  // 걸린 시간 어림 문구(`약 14분` 꼴, a-ticket-tells-how-long-it-took/T02) — `ticket.elapsed` 를
+  // 그대로 옮긴다. 어림 계산 자리는 `elapsedPhrase`(core) 하나뿐이다 — 여기서 다시 재지 않는다.
+  // 값이 없으면 undefined — 지어내지 않는다(INV-4).
+  elapsed?: string;
 }
 
 /** `process` 탭 단계 묶음 하나 — 제목과 그 밑 줄들. */
@@ -58,6 +62,7 @@ export function groupProcessSteps(cards: readonly PlanCard[]): ProcessStepGroup[
         box: ticketBoxState(ticket),
         unread: ticket.unread === true,
         inProgress: ticket.status === "in_progress",
+        elapsed: ticket.elapsed,
       };
       const list = byStep.get(step);
       if (list) list.push(row);

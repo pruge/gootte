@@ -24,6 +24,8 @@ export interface TicketSpec {
    * core-io 가 실물에서 뽑는 모양(`T04` · `tickets/T04.md`)으로 만든다.
    */
   newConvention?: boolean;
+  /** 걸린 시간 어림 문구(`elapsedPhrase` 결과, T02) — 기본은 없음. */
+  elapsed?: string;
 }
 
 /**
@@ -58,6 +60,7 @@ export function feature(slug: string, tickets: readonly (string | TicketSpec)[] 
       workedBy: [],
       needsCaptainEye: spec.needsCaptainEye ?? false,
       ...(spec.newConvention ? ({ docConvention: "tickets", backlogStatus: null } as const) : {}),
+      ...(spec.elapsed ? { elapsed: spec.elapsed } : {}),
     };
   };
   return {
