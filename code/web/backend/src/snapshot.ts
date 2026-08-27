@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from "node:path";
 import { Feature, type Feature as FeatureT, type Project } from "@gootte/contract";
 import { z } from "zod";
-import { headCommit } from "@gootte/core-io";
+import { discoverProjects, headCommit, readFeatures } from "@gootte/core-io";
 
 /**
  * discover + readFeatures 스캔 결과의 **영구 스냅샷** (fast-cold-start T03, adr/0001).
@@ -114,4 +114,92 @@ export function clearSnapshot(): void {
 /** 메모리 캐시만 비운다 (재시작 시뮬레이션용). 디스크 스냅샷 파일은 보존한다. */
 export function clearSnapshotMemory(): void {
   memo.clear();
+}
+
+export interface SnapshotStampInfo {
+  slug: string;
+  copies: string[];
+  stamps: { repo: string; head: string | null }[];
+}
+
+/** 디스크 스냅샷에 기록된 stamps 및 copies 사본 구성을 반환한다. */
+export function readSnapshotStamps(dataDir: string): SnapshotStampInfo[] | null {
+  const doc = loadDoc(dataDir);
+  if (!doc) return null;
+  return doc.projects.map((p) => ({
+    slug: p.slug,
+    copies: p.copies,
+    stamps: p.stamps,
+  }));
+}
+
+
+/** 스냅샷에서 사라진 discover 프로젝트 하나를 제거한다. 목록 수준 변화다(T04). */
+function removeProjectScan(dataDir: string, slug: string): void {
+  const prev = loadDoc(dataDir);
+  if (!prev || !prev.projects.some((p) => p.slug === slug)) return;
+  const doc: SnapshotDocT = {
+    ...prev,
+    projects: prev.projects.filter((p) => p.slug !== slug),
+  };
+  const file = snapshotPath(dataDir);
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, JSON.stringify(doc));
+  renameSync(tmp, file);
+  memo.set(dataDir, doc);
+}
+
+export interface SnapshotRevalidationResult {
+  changedProjects: string[];
+  projectsChanged: boolean;
+}
+
+const sameCopies = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((copy, i) => copy === b[i]);
+
+const sameStamps = (
+  saved: SnapshotStampInfo["stamps"],
+  currentCopies: readonly string[],
+): boolean => {
+  if (saved.length !== currentCopies.length) return false;
+  return currentCopies.every((repo, i) => saved[i]?.repo === repo && saved[i]?.head === headCommit(repo));
+};
+
+/**
+ * 부팅 직후 현재 discover/HEAD 와 영구 스냅샷을 대조한다(T04).
+ * 변경이 없으면 파일을 건드리지 않는다. 새/변경 프로젝트만 readFeatures 로 다시 계산하고,
+ * 계산이 끝난 뒤 recordProjectScan 이 현재 HEAD 를 새 스탬프로 기록한다.
+ */
+export function revalidateSnapshot(
+  dataDir: string,
+  roots: readonly string[],
+): SnapshotRevalidationResult {
+  if (!loadDoc(dataDir)) return { changedProjects: [], projectsChanged: false };
+
+  const currentProjects = discoverProjects([...roots]);
+  const saved = readSnapshotStamps(dataDir) ?? [];
+  const currentBySlug = new Map(currentProjects.map((project) => [project.slug, project]));
+  const savedBySlug = new Map(saved.map((project) => [project.slug, project]));
+
+  let projectsChanged = false;
+  const changedProjects: string[] = [];
+
+  for (const savedProject of saved) {
+    if (!currentBySlug.has(savedProject.slug)) {
+      removeProjectScan(dataDir, savedProject.slug);
+      projectsChanged = true;
+    }
+  }
+
+  for (const project of currentProjects) {
+    const previous = savedBySlug.get(project.slug);
+    if (!previous || !sameCopies(previous.copies, project.copies) || !sameStamps(previous.stamps, project.copies)) {
+      const features = readFeatures([...project.copies]);
+      recordProjectScan(dataDir, project, features);
+      changedProjects.push(project.slug);
+      if (!previous) projectsChanged = true;
+    }
+  }
+
+  return { changedProjects, projectsChanged };
 }

@@ -3,6 +3,7 @@ import { createNodeWebSocket } from "@hono/node-ws";
 import { createApp, mountFallback, defaultRoots, planDataDir } from "./app";
 import { createLiveHub } from "./live";
 import { clearDiscoverCache } from "./discover-cache";
+import { createSnapshotRevalidator } from "./snapshot-revalidator";
 import { startWatchers, type Watchers } from "./watchers";
 import { readSettings, deriveWatchRoots } from "@gootte/core-io";
 
@@ -34,6 +35,15 @@ const watcherRoots = (firstmateHome: string | null): string[] => {
 };
 
 const hub = createLiveHub();
+const snapshotRevalidator = createSnapshotRevalidator({
+  dataDir,
+  roots: () => watcherRoots(readSettings(dataDir).firstmateHome),
+  onChange: (event) => {
+    if (event.kind === "projects") clearDiscoverCache();
+    hub.broadcast(event);
+  },
+});
+
 /**
  * 지금 폴백 폴링 모드인가(tauri-desktop-app T03) — 접속이 늦은 클라이언트도 알아야 한다.
  * 방송은 이미 연결된 소켓만 닿으니, 열림 순간 마지막 상태를 한 줄 greeting 으로 넘긴다(INV-3).
@@ -79,7 +89,10 @@ let watchers: Watchers;
     dataDir,
     firstmateHome: savedFirstmateHome,
     onChange: (c) => {
-      if (c.kind === "watch-fallback") watchFallbackActive = c.active;
+      if (c.kind === "watch-fallback") {
+        watchFallbackActive = c.active;
+        snapshotRevalidator.setFallbackPolling(c.active);
+      }
       hub.broadcast(c);
     },
     onProjectsChange: clearDiscoverCache,
@@ -93,8 +106,11 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
   process.stdout.write(`  live: WS /api/live · watcher on(문서·계획·백로그)\n`);
 });
 injectWebSocket(server);
+// 첫 요청은 스냅샷으로 즉시 서빙한 뒤 다음 이벤트 루프에서 HEAD 재검증을 시작한다(T04).
+setImmediate(snapshotRevalidator.run);
 
 const shutdown = (): void => {
+  snapshotRevalidator.stop();
   void watchers.close();
   process.exit(0);
 };

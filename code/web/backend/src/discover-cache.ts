@@ -1,6 +1,6 @@
 import type { Project } from "@gootte/contract";
-import { discoverProjects } from "@gootte/core-io";
-import { clearSnapshot, clearSnapshotMemory } from "./snapshot";
+import { discoverProjects, headCommit, readFeatures } from "@gootte/core-io";
+import { clearSnapshot, clearSnapshotMemory, readSnapshotStamps, recordProjectScan } from "./snapshot";
  
  /**
   * discover 캐시 (W2) — 머신 scan 은 무거워 매 요청 재실행 금지. 프로세스 메모리에 TTL 캐시.
