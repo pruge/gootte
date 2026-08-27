@@ -61,7 +61,7 @@ export function suggestFirstmateHome(
   return candidates.find((p) => dirExists(p)) ?? null;
 }
 
-const DEFAULTS: SettingsT = { watchRoot: null, firstmateHome: null };
+const DEFAULTS: SettingsT = { firstmateHome: null };
 
 /**
  * 설정 읽기 — 파일이 없으면 기본값(전부 null). 소비처는 null 이면 기존 기본값(env·플랫폼)으로
@@ -81,11 +81,10 @@ export function readSettings(dataDir: string): SettingsT {
  */
 export function writeSettings(
   dataDir: string,
-  update: Partial<Pick<SettingsUpdateRequest, "watchRoot" | "firstmateHome">>,
+  update: Partial<Pick<SettingsUpdateRequest, "firstmateHome">>,
 ): SettingsT {
   const current = readSettings(dataDir);
   const next: SettingsT = {
-    watchRoot: update.watchRoot === undefined ? current.watchRoot : update.watchRoot,
     firstmateHome:
       update.firstmateHome === undefined ? current.firstmateHome : update.firstmateHome,
   };

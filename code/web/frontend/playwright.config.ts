@@ -8,7 +8,7 @@ import { join } from "node:path";
 // 결정적 e2e — jinwooauto(머신 종속) 대신 backend 픽스처(alpha)로 discover.
 const FIXTURES = fileURLToPath(new URL("../backend/test/fixtures/roots", import.meta.url));
 
-// backend 의 계획·설정 저장소도 이 e2e 전용 임시 저장소로 갈라 놓는다 — 저장된 watchRoot 는
+// backend 의 계획·설정 저장소도 이 e2e 전용 임시 저장소로 갈라 놓는다 — 저장된 firstmateHome 은
 // env 루트(effectiveRoots·부팅 감시기)를 이기므로, 호스트의 ~/.gootte/settings.json 이
 // 남아 있는 기계에서는 픽스처 대신 실제 데이터를 보고 e2e 가 엉뚱한 깨짐을 낳는다.
 const DATA_DIR = mkdtempSync(join(tmpdir(), "gootte-e2e-data-"));

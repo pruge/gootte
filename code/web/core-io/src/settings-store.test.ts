@@ -22,47 +22,54 @@ afterEach(() => {
 });
 
 describe("readSettings", () => {
-  test("파일이 없으면 전부 null — 소비처는 기본값으로 떨어진다", () => {
-    expect(readSettings(dataDir)).toEqual({ watchRoot: null, firstmateHome: null });
+  test("파일이 없으면 null — 소비처는 기본값으로 떨어진다", () => {
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: null });
   });
 
   test("저장한 값을 그대로 읽는다", () => {
-    writeSettings(dataDir, { watchRoot: "/tmp/watch", firstmateHome: "/tmp/fm" });
-    expect(readSettings(dataDir)).toEqual({
-      watchRoot: "/tmp/watch",
-      firstmateHome: "/tmp/fm",
-    });
+    writeSettings(dataDir, { firstmateHome: "/tmp/fm" });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm" });
   });
 
   test("망가진 JSON 은 빈 설정으로 위장하지 않고 던진다", () => {
     writeFileSync(settingsFile(dataDir), "{ not json");
     expect(() => readSettings(dataDir)).toThrow();
   });
+
+  // 수용 기준 6 — 저장 파일에 남아 있는 옛 watchRoot 값은 무시하고 오류 없이 읽는다
+  // (spec §Data and migration: 지우는 마이그레이션도 하지 않는다).
+  test("저장 파일에 남은 옛 watchRoot 값은 무시된다 — 오류 없이 firstmateHome 만 읽는다", () => {
+    writeFileSync(
+      settingsFile(dataDir),
+      `${JSON.stringify({ watchRoot: "/옛/값", firstmateHome: "/tmp/fm" }, null, 2)}\n`,
+    );
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm" });
+  });
 });
 
 describe("writeSettings", () => {
   test("들어온 키만 갈아 끼운다(merge)", () => {
-    writeSettings(dataDir, { watchRoot: "/a" });
+    writeSettings(dataDir, {});
     writeSettings(dataDir, { firstmateHome: "/b" });
-    expect(readSettings(dataDir)).toEqual({ watchRoot: "/a", firstmateHome: "/b" });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/b" });
   });
 
   test("null 은 지움(unset)이다", () => {
-    writeSettings(dataDir, { watchRoot: "/a", firstmateHome: "/b" });
-    writeSettings(dataDir, { watchRoot: null });
-    expect(readSettings(dataDir)).toEqual({ watchRoot: null, firstmateHome: "/b" });
+    writeSettings(dataDir, { firstmateHome: "/b" });
+    writeSettings(dataDir, { firstmateHome: null });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: null });
   });
 
   test("재시작(새 read) 후에도 유지된다 — 같은 자리를 다시 읽으면 같은 값", () => {
-    writeSettings(dataDir, { watchRoot: "/persisted" });
+    writeSettings(dataDir, { firstmateHome: "/persisted" });
     // 새 프로세스가 파일에서 다시 읽는 것과 같다 — readSettings 는 메모리 캐시가 없다.
-    expect(readSettings(dataDir).watchRoot).toBe("/persisted");
+    expect(readSettings(dataDir).firstmateHome).toBe("/persisted");
   });
 
   test("데이터 디렉터리가 없어도 만들고 쓴다", () => {
     const nested = join(dataDir, "deep", "dir");
-    writeSettings(nested, { watchRoot: "/x" });
-    expect(readSettings(nested).watchRoot).toBe("/x");
+    writeSettings(nested, { firstmateHome: "/x" });
+    expect(readSettings(nested).firstmateHome).toBe("/x");
   });
 });
 

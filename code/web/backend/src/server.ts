@@ -4,7 +4,7 @@ import { createApp, mountFallback, defaultRoots, planDataDir } from "./app";
 import { createLiveHub } from "./live";
 import { clearDiscoverCache } from "./discover-cache";
 import { startWatchers, type Watchers } from "./watchers";
-import { readSettings } from "@gootte/core-io";
+import { readSettings, deriveWatchRoots } from "@gootte/core-io";
 
 /** 로컬 dev/prod 엔트리. PORT env 가 포트를 정한다(기본값은 prod `start` 몫). */
 // dev 포트의 SoT 는 code/web/.ports.* 이고 scripts/dev-backend.sh 가 그 값을 PORT 로 넣어준다 —
@@ -14,9 +14,10 @@ const roots = defaultRoots();
 const dataDir = planDataDir();
 
 /**
- * 부팅 시점의 설정된 감시 루트(tauri-desktop-app T02) — 요청 경로(app 의 effectiveRoots)와 같은
- * 규칙: 설정값이 기본값을 이긴다. 감시기도 이 값을 따라가야 live 갱신이 사용자가 정한 폴더를
- * 덮는다(INV-3). 설정 파일을 못 읽으면 기본값으로 서비스를 계속한다 — 앱 기동을 죽이지 않는다.
+ * 부팅 시점의 설정된 firstmate 홈(tauri-desktop-app T02·T03, one-setting-finds-every-copy T05 로
+ * 한 칸화) — 요청 경로(app 의 effectiveRoots)와 같은 규칙: 홈에서 파생된 뿌리가 기본값을 이긴다.
+ * 감시기도 이 값을 따라가야 live 갱신이 사용자가 정한 홈을 덮는다(INV-3). 설정 파일을 못 읽으면
+ * 기본값으로 서비스를 계속한다 — 앱 기동을 죽이지 않는다.
  */
 const savedSettings = (() => {
   try {
@@ -25,10 +26,12 @@ const savedSettings = (() => {
     return null;
   }
 })();
-const savedWatchRoot = savedSettings?.watchRoot ?? null;
-/** 부팅 시점의 firstmate 홈(tauri-desktop-app T03) — 백로그 감시기의 시작 뿌리. 미설정이면 감시 없음. */
+/** 부팅 시점의 firstmate 홈 — 문서 감시기·백로그 감시기 둘 다의 시작 뿌리. 미설정이면 감시 없음. */
 const savedFirstmateHome = savedSettings?.firstmateHome ?? null;
-const watcherRoots = (watchRoot: string | null): string[] => (watchRoot ? [watchRoot] : roots);
+const watcherRoots = (firstmateHome: string | null): string[] => {
+  const derived = deriveWatchRoots(firstmateHome);
+  return derived.length > 0 ? derived : roots;
+};
 
 const hub = createLiveHub();
 /**
@@ -39,10 +42,13 @@ let watchFallbackActive = false;
 const app = createApp({
   roots,
   dataDir,
-  // PUT /api/settings 가 감시 루트·firstmate 홈을 바꾸면 해당 감시기를 새 값으로 다시 묶는다 —
-  // 일반화된 재구성 프레임워크가 아니라 있던 startWatchers 위의 배선이다(T02 문서 · T03 백로그).
-  onWatchRootChange: (watchRoot) => void watchers.rebind(watcherRoots(watchRoot)),
-  onFirstmateHomeChange: (firstmateHome) => void watchers.rebindBacklog(firstmateHome),
+  // PUT /api/settings 가 firstmate 홈을 바꾸면 문서 감시기와 백로그 감시기를 **둘 다** 새
+  // 홈에서 파생된 값으로 다시 묶는다 — 일반화된 재구성 프레임워크가 아니라 있던 startWatchers
+  // 위의 배선이다(T02 문서 · T03 백로그 · T05 로 한 통보에서 둘 다 재묶임).
+  onFirstmateHomeChange: (firstmateHome) => {
+    void watchers.rebind(watcherRoots(firstmateHome));
+    void watchers.rebindBacklog(firstmateHome);
+  },
 });
 
 // WS `/api/live` — 실시간 push 채널(2b, ADR-0002). 🔴 캐치올(mountFallback) *전*에 등록해야 `*` 에 안 먹힘.
@@ -64,11 +70,12 @@ mountFallback(app);
 // 문서·계획·백로그 감시기 → coarse invalidate broadcast (INV-3 웹 실현, plan-board/09 · tauri-desktop-app T03).
 // 셋을 한 함수(startWatchers)로 함께 세운다 — 하나만 세우고 잊는 일이 없게. 어느 하나라도
 // 감시 불가면 watch-fallback 신호가 나가고 프론트가 주기 풀스캔으로 갈아탄다.
-// 시작 뿌리는 저장된 설정값이 이긴다(위 watcherRoots·savedFirstmateHome) — 부팅부터 설정값을 본다.
+// 시작 뿌리는 저장된 firstmate 홈에서 파생된 값이 이긴다(위 watcherRoots·savedFirstmateHome) —
+// 부팅부터 설정값을 본다.
 let watchers: Watchers;
 {
   const w = startWatchers({
-    roots: watcherRoots(savedWatchRoot),
+    roots: watcherRoots(savedFirstmateHome),
     dataDir,
     firstmateHome: savedFirstmateHome,
     onChange: (c) => {

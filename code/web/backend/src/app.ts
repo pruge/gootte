@@ -48,6 +48,7 @@ import {
   dirExists,
   suggestFirstmateHome,
   effectiveProjectRoots,
+  deriveWatchRoots,
 } from "@gootte/core-io";
 import { getProjects, resolveSlug } from "./discover-cache";
 
@@ -96,13 +97,9 @@ export interface AppOptions {
   /** 완료 칸에 찍을 시각 (테스트 주입). 없으면 `nowStamp()`. */
   now?: () => string;
   /**
-   * 감시 루트 설정이 바뀐 뒤의 통보(tauri-desktop-app T02) — server.ts 가 문서 감시기를 새
-   * 뿌리로 다시 묶는 데 쓴다(INV-3: 감시기도 설정값을 따라간다). 값은 저장 뒤 다시 읽은 것.
-   */
-  onWatchRootChange?: (watchRoot: string | null) => void;
-  /**
-   * firstmate 홈 설정이 바뀐 뒤의 통보(tauri-desktop-app T03) — 백로그 감시기가 새 홈을
-   * 보도록 재묶는 데 쓴다. 문서 감시기 재묶음(T02)과 같은 INV-3 근거다.
+   * firstmate 홈 설정이 바뀐 뒤의 통보(tauri-desktop-app T03, one-setting-finds-every-copy T05
+   * 로 확장) — 문서 감시기와 백로그 감시기를 **둘 다** 새 홈에서 파생된 뿌리로 다시 묶는 데
+   * 쓴다(INV-3: 감시기도 설정값을 따라간다). 값은 저장 뒤 다시 읽은 것.
    */
   onFirstmateHomeChange?: (firstmateHome: string | null) => void;
   /**
@@ -137,15 +134,16 @@ export function createApp(options: AppOptions = {}): Hono {
   const app = new Hono();
 
   /**
-   * 지금 이 요청이 볼 discover 루트 — 설정값이 기본값을 이긴다(tauri-desktop-app T02).
-   * 🔴 생성 시 한 번 얼려 두지 않고 **요청마다 다시 읽는다**(INV-3) — 설정을 바꾸면 다음
-   * 요청부터 곧장 새 루트가 보여야 하고, 재시작 없이 적용된다는 것이 그래서 참이 된다.
-   * 파일 read 하나라 매 요청에 감당 가능하다. 미설정(null)이면 env·플랫폼 기본값으로 떨어진다.
+   * 지금 이 요청이 볼 discover 루트 — firstmate 홈에서 파생된 뿌리가 기본값을 이긴다
+   * (one-setting-finds-every-copy T05, `deriveWatchRoots`). 🔴 생성 시 한 번 얼려 두지 않고
+   * **요청마다 다시 읽는다**(INV-3) — 설정을 바꾸면 다음 요청부터 곧장 새 루트가 보여야 하고,
+   * 재시작 없이 적용된다는 것이 그래서 참이 된다. 파일 read 하나라 매 요청에 감당 가능하다.
+   * 홈 미설정이면 `deriveWatchRoots` 가 빈 목록을 내고 env·플랫폼 기본값으로 떨어진다.
    */
   const effectiveRoots = (): string[] => {
     try {
-      const watchRoot = readSettings(dataDir).watchRoot;
-      if (watchRoot) return [watchRoot];
+      const derived = deriveWatchRoots(readSettings(dataDir).firstmateHome);
+      if (derived.length > 0) return derived;
     } catch {
       // 설정 파일을 못 읽는 것은 기본값으로 떨어질 이유가 아니라 알릴 사실이다 — 아래
       // /api/settings 가 같은 자리를 읽으며 큰 소리로 낸다. 여기선 서비스 연속성을 택한다.
@@ -156,7 +154,6 @@ export function createApp(options: AppOptions = {}): Hono {
   /** 설정 + 응답 시점에 다시 본 존재 여부(INV-3 — 존재는 저장하지 않는다). */
   const settingsWithExists = (s: Settings): SettingsResponse => ({
     ...s,
-    watchRootExists: dirExists(s.watchRoot),
     firstmateHomeExists: dirExists(s.firstmateHome),
     firstmateHomeSuggestion: options.firstmateHomeSuggestionCandidates
       ? suggestFirstmateHome(options.firstmateHomeSuggestionCandidates)
@@ -240,8 +237,8 @@ export function createApp(options: AppOptions = {}): Hono {
   // 경고 표시는 응답의 `*Exists` 를 본다(화면 몫). 거절하는 것은 절대 경로가 아닌 입력뿐이다.
   app.put("/api/settings", zValidator("json", SettingsUpdateRequest), (c) => {
     const update = c.req.valid("json");
-    const normalized: { watchRoot?: string | null; firstmateHome?: string | null } = {};
-    for (const key of ["watchRoot", "firstmateHome"] as const) {
+    const normalized: { firstmateHome?: string | null } = {};
+    for (const key of ["firstmateHome"] as const) {
       const raw = update[key];
       if (raw === undefined) continue;
       if (raw === null) {
@@ -256,9 +253,9 @@ export function createApp(options: AppOptions = {}): Hono {
     }
     try {
       writeSettings(dataDir, normalized);
-      // 감시 루트·firstmate 환이 실제로 바뀌었다면 감시기에도 알린다 — 요청 경로(effectiveRoots)
-      // 만 새 값이고 감시기가 낡은 뿌리를 보고 있으면 live 갱신이 어긋난다(INV-3).
-      if (update.watchRoot !== undefined) options.onWatchRootChange?.(readSettings(dataDir).watchRoot);
+      // firstmate 홈이 실제로 바뀌었다면 감시기에도 알린다 — 요청 경로(effectiveRoots) 만
+      // 새 값이고 감시기가 낡은 뿌리를 보고 있으면 live 갱신이 어긋난다(INV-3). 문서 감시기와
+      // 백로그 감시기 둘 다 이 하나의 통보로 다시 묶인다(server.ts 배선).
       if (update.firstmateHome !== undefined)
         options.onFirstmateHomeChange?.(readSettings(dataDir).firstmateHome);
     } catch (err) {

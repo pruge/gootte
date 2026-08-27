@@ -2,6 +2,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import type { Project } from "@gootte/contract";
+import { readSecondmateHomes } from "./secondmates";
 
 function isDir(p: string): boolean {
   try {
@@ -43,6 +44,20 @@ export function parseProjectRoots(raw: string | undefined): string[] | null {
  */
 export function effectiveProjectRoots(raw: string | undefined = process.env.GOOTTE_ROOTS): string[] {
   return parseProjectRoots(raw) ?? defaultProjectRoots();
+}
+
+/**
+ * firstmate 홈 → 감시 뿌리 목록(one-setting-finds-every-copy T05) — 이 파생을 두는 **유일한
+ * 자리**다(backend·cli 가 같은 함수를 쓴다, the-terminal-agrees-with-the-screen 의 규율).
+ * `<홈>/projects` 가 먼저, 그다음 명부(`readSecondmateHomes`)에 등록된 항해사 홈들의
+ * `projects` — 명부 순서 그대로. 홈 미설정(null/빈 문자열)이면 빈 목록 — 호출자가
+ * `effectiveProjectRoots()` 기본값으로 떨어진다(INV-1 파생물만, 결정적·LLM-free — INV-4).
+ * 존재하지 않는 뿌리는 `discoverProjects` 가 이미 건너뛰므로 여기서 걸러내지 않는다.
+ */
+export function deriveWatchRoots(firstmateHome: string | null | undefined): string[] {
+  if (!firstmateHome?.trim()) return [];
+  const homes = [firstmateHome, ...readSecondmateHomes(firstmateHome)];
+  return homes.map((h) => join(h, "projects"));
 }
 
 /**
