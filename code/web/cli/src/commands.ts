@@ -53,10 +53,12 @@ export function dbMigrateText(dataDir = defaultPlanDataDir()): string {
   return lines.join("\n");
 }
 
-function requireProjectPath(project: string, cwd: string): string {
-  const path = resolveProjectPath(project, cwd);
-  if (!path) throw new CliError(`프로젝트 없음: ${project}`);
-  return path;
+/** 프로젝트 slug → 그 프로젝트의 **모든 사본 경로**(T01 묶음). `readFeatures` 가 합집합으로 읽는다. */
+function requireProjectPath(project: string, cwd: string): string[] {
+  const found = discoverProjects([cwd, ...effectiveProjectRoots()]);
+  const p = found.find((x) => x.slug === project);
+  if (!p) throw new CliError(`프로젝트 없음: ${project}`);
+  return p.copies;
 }
 
 /** `--why` 를 비롯해 이 명령 셋은 어떤 플래그도 받지 않는다(spec §`--why` 를 받지 않는다). */
@@ -70,7 +72,7 @@ function rejectFlags(argv: readonly string[]): void {
  * 판정은 이 한 줄만 하고, 나머지(당김·순서)는 `core` 의 `computeDisplaySteps` 몫이다.
  */
 function assertActiveTicket(
-  projectPath: string,
+  projectPath: string[],
   dataDir: string,
   project: string,
   feature: string,

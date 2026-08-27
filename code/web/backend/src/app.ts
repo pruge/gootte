@@ -284,7 +284,7 @@ export function createApp(options: AppOptions = {}): Hono {
     const backlog = readBacklogTasks(readSettings(dataDir).firstmateHome);
     const projects = getProjects(effectiveRoots()).map((p) => ({
       ...p,
-      openFeatures: countOpenFeatures(applyBacklogStatus(readFeatures(p.path), backlog, p.slug)),
+      openFeatures: countOpenFeatures(applyBacklogStatus(readFeatures(p.copies), backlog, p.slug)),
     }));
     return c.json(ProjectsResponse.parse({ projects }));
   });
@@ -299,7 +299,7 @@ export function createApp(options: AppOptions = {}): Hono {
     const proj = resolveSlug(effectiveRoots(), slug);
     if (!proj) return c.json(notFound(slug), 404);
     const project = basename(proj.path);
-    const features = readFeatures(proj.path);
+    const features = readFeatures(proj.copies);
     // 이 기능이 이 프로젝트에서 처음 올라간 순간 있던 티켓은 읽은 것으로 깐다 — 한 번만 선다
     // (unread-tickets-show-themselves/01 §첫 화면이 통째로 초록이면 안 된다).
     //
@@ -345,7 +345,7 @@ export function createApp(options: AppOptions = {}): Hono {
     try {
       const areas = readBoard(
         project,
-        withBacklogStatus(project, withInProgress(project, withReadState(project, readFeatures(proj.path)))),
+        withBacklogStatus(project, withInProgress(project, withReadState(project, readFeatures(proj.copies)))),
       );
       return c.json(PlanBoardResponse.parse({ project, ...areas }));
     } catch (err) {
@@ -378,7 +378,7 @@ export function createApp(options: AppOptions = {}): Hono {
       if (!proj) return c.json(notFound(slug), 404);
       const project = basename(proj.path);
       try {
-        const features = readFeatures(proj.path);
+        const features = readFeatures(proj.copies);
         const known = new Set(features.map((f) => f.slug));
         const missing = move.features.filter((f) => !known.has(f));
         if (missing.length > 0) {
@@ -425,7 +425,7 @@ export function createApp(options: AppOptions = {}): Hono {
       if (!proj) return c.json(notFound(slug), 404);
       const project = basename(proj.path);
       try {
-        const features = readFeatures(proj.path);
+        const features = readFeatures(proj.copies);
         const f = features.find((x) => x.slug === feature);
         if (!f) return c.json({ error: `문서가 없는 기능입니다: ${feature}` } satisfies ApiError, 400);
         if (!allTickets(f).some((t) => t.slug === ticket)) {
@@ -467,7 +467,7 @@ export function createApp(options: AppOptions = {}): Hono {
       const { path } = c.req.valid("query");
       const proj = resolveSlug(effectiveRoots(), slug);
       if (!proj) return c.json(notFound(slug), 404);
-      const result = readFeatureDoc(proj.path, feature, path);
+      const result = readFeatureDoc(proj.copies, feature, path);
       if (!result.ok) {
         const error: ApiError =
           result.reason === "outside"

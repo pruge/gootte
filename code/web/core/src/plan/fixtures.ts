@@ -67,6 +67,7 @@ export function feature(slug: string, tickets: readonly (string | TicketSpec)[] 
     sourceStatus: "draft",
     statusKnown: true,
     docs: [],
+    conflict: [],
     tickets: specs.filter((s) => !s.newConvention).map(toTicket),
     // 신관례 칸(T04) — 신관례 전용 기능도 만들 수 있게 한다. 옛 관례 티켓이 하나도 없으면
     // `tickets` 는 실물과 같이 빈 배열이다.

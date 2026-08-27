@@ -16,7 +16,7 @@ if (!root) {
 }
 
 const project = root.split("/").filter(Boolean).pop() ?? root;
-const features = applyBacklogStatus(readFeatures(root), readBacklogTasks(home), project);
+const features = applyBacklogStatus(readFeatures([root]), readBacklogTasks(home), project);
 
 for (const f of features) {
   const tickets = allTickets(f);
