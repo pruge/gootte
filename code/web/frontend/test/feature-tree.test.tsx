@@ -342,18 +342,16 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
           ...BASE.tickets[0]!,
           status: "done",
           sourceStatus: "resolved",
-          completedAt: "2024-01-15 10:30",
+          startable: true,
         },
       ],
     };
     renderCard(feature);
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
-    // 완료 티켓은 단계 대신 완료일이 보인다
-    expect(within(row).getByText("2024-01-15 10:30")).toBeInTheDocument();
-    // 단계 라벨은 안 보인다(통합 칸에 단계가 없음)
+    // 세 후보 라벨이 전부 DOM 에 있다(폭 계산용) — 그러나 셋 다 비어 보인다. 대체 문자는 없다.
     for (const label of ["착수 가능", "진행중", "대기"]) {
-      expect(within(row).queryByText(label)).not.toBeInTheDocument();
+      expect(within(row).getByText(label)).toHaveClass("invisible");
     }
   });
 
@@ -373,11 +371,8 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     renderCard(feature);
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
-    // 취소 티켓도 단계 대신 빈 칸(placeholder invisible)
-    const cell = within(row).getByText("0000-00-00 00:00");
-    expect(cell).toHaveClass("invisible");
     for (const label of ["착수 가능", "진행중", "대기"]) {
-      expect(within(row).queryByText(label)).not.toBeInTheDocument();
+      expect(within(row).getByText(label)).toHaveClass("invisible");
     }
   });
 
@@ -386,8 +381,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     renderCard(feature);
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
-    // 통합 칸에서 착수 가능 라벨이 보인다
-    expect(within(row).getByText("착수 가능")).toBeInTheDocument();
+    expect(within(row).getByText("착수 가능")).not.toHaveClass("invisible");
   });
 
   it("살아 있는 사본이 붙든 티켓 → 진행중, 그리고 가지 이름이 계속 보인다", () => {
@@ -405,7 +399,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     renderCard(feature);
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
-    expect(within(row).getByText("진행중")).toBeInTheDocument();
+    expect(within(row).getByText("진행중")).not.toHaveClass("invisible");
     expect(within(row).getByText("fm/session-work")).toBeInTheDocument();
   });
 
@@ -425,7 +419,8 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     renderCard(feature);
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
-    expect(within(row).getByText("대기")).toBeInTheDocument();
+    expect(within(row).getByText("대기")).not.toHaveClass("invisible");
+    expect(within(row).getByText("→ 02")).toBeInTheDocument();
   });
 
   it("🔴 네 상태가 한 목록에 섞여 있어도 네 줄의 단계 칸이 모두 그려진다", () => {
@@ -440,7 +435,6 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
           path: "issues/01-a.md",
           title: "완료",
           status: "done",
-          completedAt: "2024-01-15 10:30",
         },
         {
           ...BASE.tickets[0]!,
@@ -472,14 +466,18 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     };
     renderCard(feature);
     open();
-    // 완료 티켓: 완료일
-    expect(within(screen.getByText("완료").closest("button")!).getByText("2024-01-15 10:30")).toBeInTheDocument();
-    // 진행중: 단계
-    expect(within(screen.getByText("진행중인 것").closest("button")!).getByText("진행중")).toBeInTheDocument();
-    // 대기: 단계
-    expect(within(screen.getByText("대기중인 것").closest("button")!).getByText("대기")).toBeInTheDocument();
-    // 착수 가능: 단계
-    expect(within(screen.getByText("착수 가능한 것").closest("button")!).getByText("착수 가능")).toBeInTheDocument();
+    for (const title of [
+      "완료",
+      "진행중인 것",
+      "대기중인 것",
+      "착수 가능한 것",
+    ]) {
+      const row = screen.getByText(title).closest("button")!;
+      // 세 후보 모두 DOM 에 있다 — 칸의 존재 자체는 상태와 무관하게 늘 그려진다.
+      for (const label of ["착수 가능", "진행중", "대기"]) {
+        expect(within(row).getByText(label)).toBeInTheDocument();
+      }
+    }
   });
 
   it("임자만 있고 붙든 사본이 없는 티켓은 단계 칸에 끌어들이지 않는다 — 셋 다 비어 보인다", () => {
@@ -498,11 +496,8 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     renderCard(feature);
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
-    // stage가 null이고 completedAt도 없으므로 빈 칸(placeholder invisible)
-    const cell = within(row).getByText("0000-00-00 00:00");
-    expect(cell).toHaveClass("invisible");
     for (const label of ["착수 가능", "진행중", "대기"]) {
-      expect(within(row).queryByText(label)).not.toBeInTheDocument();
+      expect(within(row).getByText(label)).toHaveClass("invisible");
     }
   });
 
@@ -605,13 +600,12 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
       ...BASE,
       docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
       newTickets: [
-        newTicket({ status: "done", backlogStatus: "done" }),
+        newTicket({ status: "in_progress", backlogStatus: "in_progress" }),
       ],
     };
     renderCard(feature);
     open();
-    // 신관례: done만 상태 위치에 표시, 그 외는 단계/완료일 컬럼에
-    expect(screen.getByText("done")).toBeInTheDocument();
+    expect(screen.getByText("in flight")).toBeInTheDocument();
   });
 
   it("줄을 누르면 tickets/T<NN>.md 경로로 드로어가 열린다", () => {
@@ -639,9 +633,9 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     renderCard(feature);
     open();
     const row = screen.getByText("신관례 문서 표시").closest("button")!;
-    // 단계/완료일 통합 칸: 미조인 티켓은 stage=null, completedAt 없음 → 빈 칸(placeholder invisible)
-    const cell = within(row).getByText("0000-00-00 00:00");
-    expect(cell).toHaveClass("invisible");
+    for (const label of ["착수 가능", "진행중", "대기"]) {
+      expect(within(row).getByText(label)).toHaveClass("invisible");
+    }
   });
 
   it("🔴 조인된 신관례 티켓이 선행이 있으면 '대기 → 02' 로 보여준다(T01)", () => {
@@ -660,6 +654,7 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     open();
     const row = screen.getByText("신관례 문서 표시").closest("button")!;
     expect(within(row).getByText("대기")).not.toHaveClass("invisible");
+    expect(within(row).getByText("→ 02")).toBeInTheDocument();
   });
 
   /**

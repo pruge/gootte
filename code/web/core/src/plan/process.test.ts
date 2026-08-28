@@ -1,15 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PlanCard } from "@gootte/contract";
-import { UNRANKED_STEP, type StepRow } from "./move";
+import { UNRANKED_STEP } from "./move";
 import { groupProcessSteps } from "./process";
-import { computeDisplaySteps } from "./step";
-import { feature, resolved, row, wontfix } from "./fixtures";
-
-const s = (feat: string, ticket: string, step: number): StepRow => ({
-  feature: feat,
-  ticket: `${ticket}-x`,
-  step,
-});
+import { feature, resolved, wontfix } from "./fixtures";
 
 const card = (
   slug: string,
@@ -64,16 +57,13 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
     expect(groupProcessSteps([card("a", ["01"], {})])).toEqual([]);
   });
 
-  it("🔴 완료 티켓은 steps 탭에서 사라진다 — computeDisplaySteps 가 표시 단계를 안 주고 groupProcessSteps 가 그리지 않는다(plan-board/07)", () => {
-    const features = [feature("a", [resolved("01", "2026-08-01"), "02"])];
-    const placements = [row("a", "active", 0)];
-    // 저장 단계엔 01 이 1단계로 있어도 computeDisplaySteps 가 완료 티켓을 걸러내 02 만 남긴다.
-    const steps = computeDisplaySteps(features, placements, [s("a", "01", 1), s("a", "02", 1)]);
-    const cards = [card("a", [resolved("01", "2026-08-01"), "02"], steps["a"] ?? {})];
+  it("완료 티켓도 그 단계가 아직 점유돼 있으면 상자만 채워진 채 함께 나온다", () => {
+    const cards = [card("a", [resolved("01", "2026-08-01"), "02"], { "01-x": 1, "02-x": 1 })];
     expect(groupProcessSteps(cards)).toEqual([
       {
         step: 1,
         rows: [
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "done", unread: false, inProgress: false },
           { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", path: "issues/02-x.md", box: "open", unread: false, inProgress: false },
         ],
       },
@@ -101,15 +91,13 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
     ]);
   });
 
-  it("🔴 폐기 티켓도 steps 탭에서 사라진다 — computeDisplaySteps 가 표시 단계를 안 주고 groupProcessSteps 가 그리지 않는다(plan-board/12)", () => {
-    const features = [feature("a", [wontfix("01"), "02"])];
-    const placements = [row("a", "active", 0)];
-    const steps = computeDisplaySteps(features, placements, [s("a", "01", 1), s("a", "02", 1)]);
-    const cards = [card("a", [wontfix("01"), "02"], steps["a"] ?? {})];
+  it("🔴 폐기 티켓은 dropped 상자로 나온다(plan-board/12) — done 과 다른 값이다", () => {
+    const cards = [card("a", [wontfix("01"), "02"], { "01-x": 1, "02-x": 1 })];
     expect(groupProcessSteps(cards)).toEqual([
       {
         step: 1,
         rows: [
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "dropped", unread: false, inProgress: false },
           { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", path: "issues/02-x.md", box: "open", unread: false, inProgress: false },
         ],
       },

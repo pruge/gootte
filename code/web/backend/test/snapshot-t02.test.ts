@@ -2,18 +2,10 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type { ChangeEvent } from "@gootte/contract";
 import { fetchOrigin, resolveTicketDone, ticketGitCacheExists } from "@gootte/core-io";
 import { createSnapshotRevalidator } from "../src/snapshot-revalidator";
-
-// 🔴 실제 `git fetch`(네트워크/디스크) 는 부팅 비차단 경로(`fetchOriginAsync`) 로만 흐르고, 이 테스트는
-// 자체적으로 `git fetch origin` 으로 origin/main 을 갱신하므로 — 재검증 루프의 fetch 는 no-op 으로 목킹해
-// 테스트가 fetch 속도(기본 5s 타임아웃) 에 좌우되지 않게 한다(fast-cold-start, plan-board/13).
-vi.mock("@gootte/core-io", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@gootte/core-io")>();
-  return { ...actual, fetchOriginAsync: vi.fn(async () => {}) };
-});
 
 // 🔴 이 저장소 자신의 docs/ 를 픽스처로 쓰지 않는다 — 임시 디렉토리에 합성한다(verify gate 규율).
 
@@ -75,7 +67,7 @@ afterEach(() => {
 });
 
 describe("snapshot-revalidator — T02 배경 트리거 + origin fetch", () => {
-  test("캡틴이 push 하면(T05) 재검증 tick 에 리졸버 캐시 갱신 → 화면 알림(projects)", async () => {
+  test("캡틴이 push 하면(T05) 재검증 tick 에 리졸버 캐시 갱신 → 화면 알림(projects)", () => {
     const events: ChangeEvent[] = [];
     const rev = createSnapshotRevalidator({
       dataDir,
@@ -83,7 +75,7 @@ describe("snapshot-revalidator — T02 배경 트리거 + origin fetch", () => {
       onChange: (e) => events.push(e),
     });
 
-    await rev.run(); // 첫 tick — origin/main = init 커밋, T05 없음
+    rev.run(); // 첫 tick — origin/main = init 커밋, T05 없음
     expect(resolveTicketDone(repo, "proj", "05", dataDir)).toBe(false);
     expect(ticketGitCacheExists(dataDir)).toBe(true); // 캐시는 최초 1회 생성됨
 
@@ -92,22 +84,22 @@ describe("snapshot-revalidator — T02 배경 트리거 + origin fetch", () => {
     git(repo, "push", "-q", "origin", "main");
     git(repo, "fetch", "-q", "origin");
 
-    await rev.run(); // 다음 tick — fetch 가 origin/main 을 따라가고 리졸버가 갱신된다
+    rev.run(); // 다음 tick — fetch 가 origin/main 을 따라가고 리졸버가 갱신된다
     expect(resolveTicketDone(repo, "proj", "05", dataDir)).toBe(true);
     expect(events.some((e) => e.kind === "ticket")).toBe(true); // 화면에 알림(전용 kind, 검토 3)
   });
 
-  test("origin/main 불변 → 리졸버 미호출(재스캔 없음), 완료 판정 그대로", async () => {
+  test("origin/main 불변 → 리졸버 미호출(재스캔 없음), 완료 판정 그대로", () => {
     const rev = createSnapshotRevalidator({
       dataDir,
       roots: () => [root],
       onChange: () => {},
     });
-    await rev.run();
+    rev.run();
     expect(resolveTicketDone(repo, "proj", "05", dataDir)).toBe(false);
 
     // push 없이 재검증만 한 번 더 — SHA 불변이므로 git log 0회, 판정 변함없음
-    await rev.run();
+    rev.run();
     expect(resolveTicketDone(repo, "proj", "05", dataDir)).toBe(false);
   });
 

@@ -998,26 +998,24 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
     // 🔴 auth-login 01-session 은 fixture 상 `resolved` — 완료 티켓이라 표시 계산에서 걷힌다.
     // 그래서 이동 시나리오는 02-screen · 03-social(auth-login) · 01-a(doc-tree) 셋을 쓴다.
 
-    test("🔴 같은 기능 안에서 단계 위에 놓으면 그 단계 저장 숫자를 받는다(기능별 스코프 — 다른 기능은 안 섞임)", () =>
+    test("이미 있는 단계 위에 놓으면 그 단계의 저장 숫자를 그대로 받는다", () =>
       withDataDir(async (dataDir) => {
         place(dataDir, "auth-login", "active", 0);
         place(dataDir, "doc-tree", "active", 1);
         writeStep(dataDir, "alpha", "auth-login", "02-screen", 1);
         writeStep(dataDir, "alpha", "auth-login", "03-social", 2);
         const res = await post(dataDir, {
-          feature: "auth-login",
-          ticket: "03-social",
-          target: { kind: "onStep", displayStep: 1 },
+          feature: "doc-tree",
+          ticket: "01-a",
+          target: { kind: "onStep", displayStep: 2 },
         });
         expect(res.status).toBe(200);
-        // auth-login 안에서 1단계(저장 1) 위에 놓였으니 저장 1 을 받는다 — doc-tree 가 1·2단계를
-        // 점유해도 auth-login 스코프라 섞이지 않는다.
         expect(readSteps(dataDir, "alpha")).toEqual(
-          expect.arrayContaining([{ feature: "auth-login", ticket: "03-social", step: 1 }]),
+          expect.arrayContaining([{ feature: "doc-tree", ticket: "01-a", step: 2 }]),
         );
       }));
 
-    test("단계와 단계 사이에 놓으면 새 단계가 생기고, 다른 티켓의 저장 숫자는 바뀌지 않는다(기능별)", () =>
+    test("단계와 단계 사이에 놓으면 새 단계가 생기고, 다른 티켓의 저장 숫자는 바뀌지 않는다", () =>
       withDataDir(async (dataDir) => {
         place(dataDir, "auth-login", "active", 0);
         place(dataDir, "doc-tree", "active", 1);
@@ -1032,10 +1030,8 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
         const body = await board(res);
         const auth = body.active.find((c) => c.feature.slug === "auth-login");
         const doc = body.active.find((c) => c.feature.slug === "doc-tree");
-        // 기능별 모델 — doc-tree 는 자기 티켓이 없어 01-a 가 그 기능의 1단계가 된다. auth-login 은
-        // 건드리지 않았으니 02-screen·03-social 저장 숫자 그대로다.
-        expect(auth?.steps).toEqual({ "02-screen": 1, "03-social": 2 });
-        expect(doc?.steps).toEqual({ "01-a": 1 });
+        expect(auth?.steps).toEqual({ "02-screen": 1, "03-social": 3 });
+        expect(doc?.steps).toEqual({ "01-a": 2 });
         // 사이에 끼워 넣어도 원래 있던 행 둘은 저장 숫자가 그대로다.
         expect(readSteps(dataDir, "alpha")).toEqual(
           expect.arrayContaining(before.map((s) => expect.objectContaining(s))),
@@ -1149,10 +1145,10 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
 describe("discover 캐시 (W2)", () => {
   test("TTL 내 재사용, TTL 경과 후 재스캔", () => {
     clearDiscoverCache();
-    const a = getProjects(roots, { now: 1_000 });
-    const b = getProjects(roots, { now: 1_000 + DISCOVER_TTL_MS - 1 }); // TTL 내 = 같은 인스턴스
+    const a = getProjects(roots, 1_000);
+    const b = getProjects(roots, 1_000 + DISCOVER_TTL_MS - 1); // TTL 내 = 같은 인스턴스
     expect(b).toBe(a);
-    const c = getProjects(roots, { now: 1_000 + DISCOVER_TTL_MS + 1 }); // TTL 경과 = 재스캔
+    const c = getProjects(roots, 1_000 + DISCOVER_TTL_MS + 1); // TTL 경과 = 재스캔
     expect(c).not.toBe(a);
   });
 });
