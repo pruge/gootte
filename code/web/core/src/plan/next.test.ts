@@ -11,12 +11,14 @@ const s = (feat: string, num: string, step: number): StepRow => ({
 });
 
 describe("computeNext — 작업 대상의 표시 1단계만(plan-board/05, spec §next)", () => {
-  it("1단계 티켓만 내보낸다", () => {
+  it("🔴 기능별(level) 모델 — 각 활성 기능의 1단계 티켓을 모두 내보낸다(전역 단계가 아님)", () => {
     const features = [feature("a", ["01"]), feature("b", ["02"])];
     const placements = [row("a", "active", 0), row("b", "active", 1)];
+    // a·b 각 남은 티켓 하나씩 — 둘 다 기능별 1단계라 둘 다 '다음' 이 된다.
     const steps = [s("a", "01", 1), s("b", "02", 2)];
     expect(computeNext(features, placements, steps)).toEqual([
       { feature: "a", ticket: "01-x", title: "티켓 01", needsCaptainEye: false },
+      { feature: "b", ticket: "02-x", title: "티켓 02", needsCaptainEye: false },
     ]);
   });
 
@@ -121,11 +123,12 @@ describe("computeNext — 작업 대상의 표시 1단계만(plan-board/05, spec
       feature("c", ["04"]),
     ];
     const placements = [row("a", "active", 0), row("b", "active", 1), row("c", "active", 2)];
-    // a-01 은 끝났으니 안 비고(02 도 같은 1단계라 안 비었다), b 는 2단계 — b 만 당겨져 1단계가 된다.
+    // 기능별(level) 모델 — a·b·c 각 남은 티켓이 하나씩이니 모두 표시 1단계다. 완료된 a-01 은
+    // 화면에서 걷히고, next 는 각 기능의 첫 남은 티켓(a-02·b-03·c-04)을 말한다.
     const steps = [s("a", "01", 1), s("a", "02", 1), s("b", "03", 2), s("c", "04", 3)];
 
     const display = computeDisplaySteps(features, placements, steps);
-    // 화면이 그리는 "표시 1단계" 집합 — 완료·폐기까지 포함해 그 번호에 걸린 전부.
+    // 화면이 그리는 "표시 1단계" 집합 — 완료·폐기 티켓은 이미 걸러져 있으므로 안 끝난 티켓만.
     const shownAsStepOne = Object.entries(display).flatMap(([feat, tickets]) =>
       Object.entries(tickets)
         .filter(([, step]) => step === 1)
@@ -133,9 +136,9 @@ describe("computeNext — 작업 대상의 표시 1단계만(plan-board/05, spec
     );
     const nextSet = computeNext(features, placements, steps).map((t) => `${t.feature}/${t.ticket}`);
 
-    // next 는 이미 끝난 a-01 을 뺀다 — 그래도 "표시 1단계"라는 같은 판정에서 갈라져 나온 부분집합이다.
-    expect(shownAsStepOne).toEqual(["a/01-x", "a/02-x"]);
-    expect(nextSet).toEqual(["a/02-x"]);
+    // next 는 이미 끝난 a-01 을 뺀다 — 표시 1단계(기능별)의 각 기능 첫 티켓이 그대로 next 다.
+    expect(shownAsStepOne).toEqual(["a/02-x", "b/03-x", "c/04-x"]);
+    expect(nextSet).toEqual(["a/02-x", "b/03-x", "c/04-x"]);
     expect(nextSet.every((k) => shownAsStepOne.includes(k))).toBe(true);
   });
 });

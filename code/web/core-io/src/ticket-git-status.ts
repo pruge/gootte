@@ -21,11 +21,23 @@ import { defaultPlanDataDir } from "./plan-store";
 
 const CACHE_FILE = "ticket-git-status.json";
 
+/**
+ * 캐시 포맷 버전 — v2: 완료 시점(`doneAt`)과 소요시간(`elapsed`) 저장 추가(a-ticket-tells-how-long-it-took).
+ * v1 캐시는 자동 무효화되어 전체 재스캔한다.
+ */
+export const TICKET_GIT_CACHE_VERSION = 2;
+
+interface TicketDoneInfo {
+  doneAt: string;      // ISO 8601 (예: 2026-08-26T12:23:00+09:00)
+  elapsed?: string;    // 인간 읽기 가능 문구 (예: "2시간 13분")
+}
+
 interface TicketGitCache {
+  version: number;
   /** repo(Clone 경로)별로 본 마지막 `origin/main` SHA — 바뀌면 그 repo 만 증분 재검증(grill D2). */
   shas: Record<string, string | null>;
-  /** repo별 `T<NN>` 토큰 집합(`done[repo]["05"]`). 🔴 slug 는 git 신호에 없다(grill D3) — num 기준. */
-  done: Record<string, Record<string, true>>;
+  /** repo별 `T<NN>` 토큰 정보 — `done[repo]["05"] = { doneAt, elapsed }` */
+  done: Record<string, Record<string, TicketDoneInfo>>;
 }
 
 // `T<NN>` 토큰 — 대소문자 구분 안 함. 제목·본문·trailer 모두에서 본다(grill D3).
@@ -38,10 +50,10 @@ function cachePath(dataDir: string): string {
 function readCache(dataDir: string): TicketGitCache | null {
   try {
     const parsed = JSON.parse(readFileSync(cachePath(dataDir), "utf8")) as Partial<TicketGitCache>;
-    // 🔴 구형(전역 `originMainSha`/`done`) 캐시는 무효 — per-repo 로 버린다.
+    if (parsed.version !== TICKET_GIT_CACHE_VERSION) return null;
     if (typeof parsed.shas !== "object" || parsed.shas === null) return null;
     if (typeof parsed.done !== "object" || parsed.done === null) return null;
-    return { shas: parsed.shas as Record<string, string | null>, done: parsed.done as Record<string, Record<string, true>> };
+    return { version: parsed.version, shas: parsed.shas as Record<string, string | null>, done: parsed.done as Record<string, Record<string, TicketDoneInfo>> };
   } catch {
     return null;
   }
@@ -53,6 +65,38 @@ function writeCache(dataDir: string, cache: TicketGitCache): void {
   } catch {
     // 저장 실패는 치명하지 않다 — 다음 호출이 다시 시도한다
   }
+}
+
+/**
+ * ISO 8601 문자열을 `YYYY-MM-DD HH:MM` 로 변환 (표시용).
+ */
+function formatDoneAt(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return iso.slice(0, 16).replace("T", " ");
+  }
+}
+
+/**
+ * 두 시점 차이를 인간 읽기 가능 문구로 — a-ticket-tells-how-long-it-took.
+ * 예: "3분", "1시간 23분", "2일 5시간"
+ */
+function formatElapsed(startIso: string, endIso: string): string {
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  if (isNaN(start) || isNaN(end) || end < start) return "";
+  const diffMs = end - start;
+  const days = Math.floor(diffMs / 86400000);
+  const hours = Math.floor((diffMs % 86400000) / 3600000);
+  const minutes = Math.floor((diffMs % 3600000) / 60000);
+  const parts: string[] = [];
+  if (days) parts.push(`${days}일`);
+  if (hours) parts.push(`${hours}시간`);
+  if (minutes || parts.length === 0) parts.push(`${minutes}분`);
+  return parts.join(" ");
 }
 
 /**
@@ -73,16 +117,29 @@ export function revalidateTicketGitStatus(repo: string, dataDir: string = defaul
   const cachedSha = prev?.shas[repo] ?? null;
   if (cachedSha === sha) return false; // 이 repo 캐시 히트, git log 0회
   const range = cachedSha ? `${cachedSha}..origin/main` : "origin/main";
-  const repoDone: Record<string, true> = prev?.done[repo] ? { ...prev.done[repo] } : {};
+  const repoDone: Record<string, TicketDoneInfo> = prev?.done[repo] ? { ...prev.done[repo] } : {};
   for (const line of commitMessagesInRange(repo, range)) {
-    const message = line.includes("\x1f") ? line.slice(line.indexOf("\x1f") + 1) : line;
+    // format: hash\x1fdate\x1fmessage
+    const parts = line.split("\x1f");
+    if (parts.length < 3) continue;
+    const commitDate = parts[1];
+    if (!commitDate) continue;
+    const message = parts[2] ?? "";
     for (const m of message.matchAll(TICKET_TOKEN)) {
-      repoDone[m[1]!] = true;
+      const num = m[1]!;
+      // 기존 것보다 최신 커밋이면 갱신 (git log는 최신순이므로 첫 매칭이 최신)
+      if (!repoDone[num]) {
+        const prevDoneAt = prev?.done[repo]?.[num]?.doneAt as string | undefined;
+        repoDone[num] = {
+          doneAt: formatDoneAt(commitDate),
+          elapsed: prevDoneAt ? formatElapsed(prevDoneAt, commitDate) : "",
+        };
+      }
     }
   }
   const shas = { ...(prev?.shas ?? {}), [repo]: sha };
   const done = { ...(prev?.done ?? {}), [repo]: repoDone };
-  writeCache(dataDir, { shas, done });
+  writeCache(dataDir, { version: TICKET_GIT_CACHE_VERSION, shas, done });
   return true;
 }
 
@@ -103,7 +160,21 @@ export function resolveTicketDone(
 ): boolean {
   revalidateTicketGitStatus(repo, dataDir);
   const cache = readCache(dataDir);
-  return cache ? cache.done[repo]?.[num] === true : false;
+  return cache ? cache.done[repo]?.[num] !== undefined : false;
+}
+
+/**
+ * 완료 티켓의 상세 정보 반환 (완료 시점, 소요시간) — 프론트엔드 표시용.
+ */
+export function resolveTicketDoneDetail(
+  repo: string,
+  slug: string,
+  num: string,
+  dataDir: string = defaultPlanDataDir(),
+): TicketDoneInfo | null {
+  revalidateTicketGitStatus(repo, dataDir);
+  const cache = readCache(dataDir);
+  return cache?.done[repo]?.[num] ?? null;
 }
 
 /** 테스트/디버그용 — 캐시 파일이 실제로 쓰였는지 확인한다. */

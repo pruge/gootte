@@ -4,16 +4,21 @@ import type { BacklogTaskDoc } from "../parse/backlog";
 import { elapsedPhrase } from "../parse/elapsed";
 
 /**
- * 신관례 완료(done) 리졸버. 단일 출처 = git(`resolveTicketDone`, T01/grill D1). core-io 가 갖고
- * core 는 순환 의존 없이 쓰려고 주입받는다. 기본값은 "아무것도 완료 아님" — 호출처가 startup 에
- * `setTicketDoneResolver` 로 진짜 리졸버를 꽂는다(backend/app.ts · cli/commands.ts · scripts).
+ * 신관례 완료(done) 리졸버 — 기본: boolean(완료 여부).
+ * 상세 정보(완료시점/소요시간)용 별도 리졸버도 제공한다.
  */
 export type TicketDoneResolver = (repo: string, slug: string, num: string) => boolean;
+export type TicketDoneDetailResolver = (repo: string, slug: string, num: string) => { doneAt: string; elapsed?: string } | null;
 
 let ticketDoneResolver: TicketDoneResolver = () => false;
+let ticketDoneDetailResolver: TicketDoneDetailResolver = () => null;
 
 export function setTicketDoneResolver(resolver: TicketDoneResolver): void {
   ticketDoneResolver = resolver;
+}
+
+export function setTicketDoneDetailResolver(resolver: TicketDoneDetailResolver): void {
+  ticketDoneDetailResolver = resolver;
 }
 
 /**
@@ -115,10 +120,18 @@ function joinTicket(
   }
   // 🔴 완료(done) 단일 출처 = git 리졸버(T01/grill D1). 리졸버가 true 면 백로그가 뭐라 해도 done.
   if (ticketDoneResolver(repo, featureSlug, ticket.num)) {
-    return { ...ticket, status: "done", backlogStatus: "done", waitingOn: [] };
+    const detail = ticketDoneDetailResolver(repo, featureSlug, ticket.num);
+    return {
+      ...ticket,
+      status: "done",
+      backlogStatus: "done",
+      waitingOn: [],
+      completedAt: detail?.doneAt,
+      elapsed: detail?.elapsed,
+    };
   }
   // 리졸버가 false 면 백로그를 따르되 — 백로그가 "done" 이어도 git 이 완료를 안 박았으니
-  // done 으로는 쓰지 않는다(백로그는 완료를 말할 권한이 없다). 처리중/대기/url/elapsed 는 백로그 것.
+  // done 으로 쓰는 않는다(백로그는 완료를 말할 권한이 없다). 처리중/대기/url/elapsed 는 백로그 것.
   const join = joinTicketBacklog(tasks, repo, featureSlug, ticket.num, now);
   if (!join) return ticket;
   const joinedStatus = join.status === "done" ? "pending" : join.status;

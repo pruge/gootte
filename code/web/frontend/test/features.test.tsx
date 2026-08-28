@@ -223,7 +223,6 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
     openCard("로그인");
     const blocked = screen.getByText("소셜 로그인").closest("li")!;
     expect(within(blocked).getByText("대기")).toBeInTheDocument();
-    expect(within(blocked).getByText("→ 02")).toBeInTheDocument();
     const ready = screen.getByText("로그인 화면").closest("li")!;
     expect(within(ready).getByText("착수 가능")).toBeInTheDocument();
   });

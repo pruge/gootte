@@ -78,27 +78,6 @@ const STAGE_CLASS: Record<Exclude<Stage, null>, string> = {
 };
 
 /**
- * 단계 칸 — 값이 없어도 늘 그린다. 세 후보를 **같은 칸에 겹쳐** 렌더링해 안 보이는 것까지
- * 폭 계산에 넣는다 — 글자 수로 셈하지 않고 실제로 그려지는 폭 중 가장 넓은 것을 칸이 갖는다
- * (완료일 칸과 같은 원리, 다만 셋의 글자 수가 서로 달라 같은 트릭을 그대로는 못 써 grid 로 겹친다).
- * 값이 없으면(끝남·취소) 셋 다 안 보이는 채로 칸만 남는다 — 대체 문자를 넣지 않는다.
- */
-function StageCell({ stage }: { stage: Stage }) {
-  return (
-    <span className="mono grid shrink-0 text-sm">
-      {(Object.keys(STAGE_LABEL) as Exclude<Stage, null>[]).map((key) => (
-        <span
-          key={key}
-          className={`col-start-1 row-start-1 ${STAGE_CLASS[key]} ${stage === key ? "" : "invisible"}`}
-        >
-          {STAGE_LABEL[key]}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-/**
  * 티켓 한 줄 — 번호 · 제목 · **원문 상태** · 단계(계산) · 완료일 · 딸린 상세.
  *
  * 🔴 상태를 못 읽은 티켓을 숨기지 않는다. 숨기면 화면이 "할 일이 없다" 고 거짓말한다 —
@@ -137,91 +116,92 @@ export function TicketRow({
         style={treeIndentStyle(TICKET_LIST_DEPTH)}
         data-doc-trigger={triggerKey({ featureSlug, path: ticket.path })}
         onClick={(e) => onOpenDoc(featureSlug, ticket.path, e.currentTarget)}
-        className={`flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 pr-4 py-2.5 text-left ${
+        className={`flex w-full items-center gap-2 pr-4 py-2.5 text-left ${
           unread ? "bg-unread hover:bg-unread-strong" : "hover:bg-surface-2/60"
         } ${ticket.status === "done" || ticket.status === "dropped" ? "text-muted" : ""}`}
       >
         <StateIcon ticket={ticket} />
         <span className="mono shrink-0 text-sm tabular-nums text-muted">{ticket.num || "—"}</span>
-        <span className={`min-w-0 flex-1 truncate ${stage === "waiting" ? "text-muted" : ""}`}>
+        <span className="min-w-0 flex-1 truncate">
           <HighlightedText text={ticket.title} query={query} />
         </span>
 
-        {unread && (
-          // 색 말고도 붙들 것이 있다(INV-U2) — 보조기술과 시험이 이 글자를 붙든다.
-          <span
-            role="status"
-            className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
-          >
-            안 읽음
-          </span>
-        )}
-
-        {/* T04 — 미착지 표식(캡틴 결정 Q4). 어느 사본에서 왔는지는 말하지 않는다. */}
-        {ticket.unlanded && <UnlandedBadge />}
-        {conflict && <ConflictBadge conflicts={[conflict]} />}
-
-        {ticket.docConvention === "tickets" ? (
-          // T04 — 신관례는 파일에 상태가 없다(SoT = 백로그). 조인됐을 때만 배지를 낸다 —
-          // 조인 실패(미매칭)는 "상태 미표시" 가 정답이다(추측 금지, T04 §구현 원칙).
-          ticket.backlogStatus && (
-            <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-              {BACKLOG_STATUS_LABEL[ticket.backlogStatus] ?? ticket.backlogStatus}
+        {/* 우측 고정 컬럼들 */}
+        <span className="flex items-center gap-2 shrink-0">
+          {unread && (
+            <span
+              role="status"
+              className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
+            >
+              안 읽음
             </span>
-          )
-        ) : ticket.statusKnown ? (
-          <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-            {ticket.sourceStatus}
-          </span>
-        ) : (
-          // 알 수 없는 상태 = 조용히 버리는 대신 눈에 띄게. 원문을 그대로 보여준다(INV-4 릴레이).
-          <span
-            role="status"
-            className="mono flex shrink-0 items-center gap-1 rounded bg-drop/15 px-1.5 py-0.5 text-sm text-drop"
-            title="정규 아홉 값이 아닙니다"
-          >
-            <IconAlertTriangle size={13} />
-            {ticket.sourceStatus === null
-              ? "상태 줄 없음"
-              : `알 수 없는 상태: ${ticket.sourceStatus}`}
-          </span>
-        )}
+          )}
+          {ticket.unlanded && <UnlandedBadge />}
+          {conflict && <ConflictBadge conflicts={[conflict]} />}
 
-        <StageCell stage={stage} />
+          {/* 상태 배지 — 고정 폭, 우측 정렬 */}
+          <span className="mono inline-block w-[16ch] shrink-0 text-sm text-right text-muted">
+            {(() => {
+              if (ticket.docConvention === "tickets") {
+                return ticket.backlogStatus
+                  ? BACKLOG_STATUS_LABEL[ticket.backlogStatus] ?? ticket.backlogStatus
+                  : "";
+              } else if (ticket.statusKnown) {
+                return ticket.sourceStatus ?? "";
+              } else {
+                return (
+                  <span
+                    role="status"
+                    className="mono flex items-center gap-1 rounded bg-drop/15 px-1.5 py-0.5 text-sm text-drop"
+                    title="정규 아홉 값이 아닙니다"
+                  >
+                    <IconAlertTriangle size={13} />
+                    {ticket.sourceStatus === null
+                      ? "상태 줄 없음"
+                      : `알 수 없는 상태: ${ticket.sourceStatus}`}
+                  </span>
+                );
+              }
+            })()}
+          </span>
 
-        {/* 완료일 칸은 값이 없어도 늘 그린다 — 값이 있을 때와 같은 자리표시 문자열을 같은 글꼴로
-            렌더링해 폭을 맞추고, invisible 로 보이지만 않게 한다.
-            `—` 같은 대체 문자는 넣지 않는다 — 이 목록에서 `—` 는 이미 번호 없는 티켓을 뜻한다.
-            🔴 시각까지 있는 완료일(`YYYY-MM-DD HH:MM`)과 날짜만 있는 완료일(`YYYY-MM-DD`)이 섞여도
-            칸이 어긋나지 않게, 폭을 **가장 긴 서식**(`w-[16ch]`)으로 고정한다(06) — 글자 수가
-            줄마다 달라도 이 칸의 왼쪽 시작점은 늘 같은 자리다. */}
-        <span
-          className={`mono inline-block w-[16ch] shrink-0 text-sm tabular-nums text-muted ${
-            ticket.completedAt ? "" : "invisible"
-          }`}
-        >
-          {ticket.completedAt ?? "0000-00-00 00:00"}
+          {/* 단계/완료일 — 고정 폭, 좌측 정렬, 상태 배지와 간격 확보 */}
+          {(() => {
+            const doneAt = ticket.completedAt;
+            const hasElapsed = ticket.elapsed && doneAt;
+            if (doneAt) {
+              return (
+                <span
+                  className="mono inline-block w-[18ch] shrink-0 ml-4 text-sm text-left text-muted"
+                  title={hasElapsed ? `소요: ${ticket.elapsed}` : undefined}
+                >
+                  {doneAt}
+                </span>
+              );
+            }
+            if (stage) {
+              return (
+                <span className="mono inline-block w-[18ch] shrink-0 ml-4 text-sm text-left text-muted">
+                  <span className={STAGE_CLASS[stage]}>{STAGE_LABEL[stage]}</span>
+                </span>
+              );
+            }
+            return (
+              <span className="mono inline-block w-[18ch] shrink-0 ml-4 text-sm text-left text-muted invisible">
+                0000-00-00 00:00
+              </span>
+            );
+          })()}
+
+          {stage === "in_progress" && (
+            <span
+              className="mono max-w-[12ch] truncate text-sm text-active"
+              title={`작업 가지: ${ticket.workedBy.join(", ")}`}
+            >
+              {ticket.workedBy.join(", ")}
+            </span>
+          )}
         </span>
-
-        {stage === "in_progress" && (
-          // 어느 가지가 붙들고 있는지 verbatim 으로 싣는다 — 감추지 않는다.
-          <span
-            className="mono max-w-full truncate text-sm text-active"
-            title={`작업 가지: ${ticket.workedBy.join(", ")}`}
-          >
-            {ticket.workedBy.join(", ")}
-          </span>
-        )}
-
-        {stage === "waiting" && (
-          // 번호로 해소되지 않은 선행(다른 기능을 가리키는 문구 등)도 그대로 보인다 — verbatim 릴레이(INV-4).
-          <span
-            className="mono max-w-full truncate text-sm text-muted"
-            title={ticket.waitingOn.join(", ")}
-          >
-            → {ticket.waitingOn.join(", ")}
-          </span>
-        )}
       </button>
     </li>
   );

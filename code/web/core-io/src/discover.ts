@@ -104,3 +104,29 @@ export function discoverProjects(roots: string[]): Project[] {
   }
   return [...bySlug.values()].map((v) => ({ slug: basename(v.path), path: v.path, copies: v.copies }));
 }
+
+/**
+ * slug 하나만 대상으로 한 cheap 해소 — 전체 트리 walk(discoverProjects) 없이
+ * root/slug, root/org/slug, root/org/repo/slug 후보만 판정한다. 트리가 커도(또는 볼륨이
+ * 느려도) 문서 열기 같은 단일 slug 경로가 전체 스캔 비용을 물려받지 않게(plan-board/13).
+ * 발견된 사본은 뿌리 순서대로 모두 모아 copies 에 담는다(T01 묶음 규칙과 동일).
+ */
+export function resolveSlugTargeted(roots: string[], slug: string): Project | null {
+  const copies: string[] = [];
+  for (const root of roots) {
+    if (!isDir(root)) continue;
+    const candidates: string[] = [join(root, slug)];
+    for (const l1 of children(root)) {
+      const d1 = join(root, l1);
+      if (!isDir(d1)) continue;
+      candidates.push(join(d1, slug));
+      for (const l2 of children(d1)) {
+        const d2 = join(d1, l2);
+        if (isDir(d2)) candidates.push(join(d2, slug));
+      }
+    }
+    for (const c of candidates) if (isFirstmateProject(c)) copies.push(c);
+  }
+  if (!copies.length) return null;
+  return { slug, path: copies[0]!, copies };
+}

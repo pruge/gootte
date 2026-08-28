@@ -73,22 +73,33 @@ export function computeDisplaySteps(
   steps: readonly StepRow[],
 ): DisplayStepMap {
   const { rows, checkedOf } = indexActiveSteps(features, placements, steps);
-  const byStep = groupByStep(rows);
 
   const result: DisplayStepMap = {};
   const assign = (feature: string, ticket: string, display: number): void => {
     (result[feature] ??= {})[ticket] = display;
   };
 
-  const numbered = [...byStep.keys()].filter((n) => n !== UNRANKED_STEP).sort((a, b) => a - b);
-  const occupied = numbered.filter((n) =>
-    (byStep.get(n) ?? []).some((row) => !checkedOf.get(`${row.feature}/${row.ticket}`)),
-  );
-  occupied.forEach((stored, idx) => {
-    for (const row of byStep.get(stored) ?? []) assign(row.feature, row.ticket, idx + 1);
-  });
-
-  for (const row of byStep.get(UNRANKED_STEP) ?? []) assign(row.feature, row.ticket, UNRANKED_STEP);
+  // 🔴 **기능별(level) 재번호** — 각 활성 기능의 남은(open) 티켓을 저장 단계 오름차순으로
+  // 1,2,3… 매긴다. 완료·폐기 티켓은 표시 단계를 받지 않아 steps 탭에서 사라진다(plan-board/07·12).
+  // 전역 단계 모델이 아니라 기능별 모델이라, 한 기능에 남은 티켓이 하나뿐이어도 그 기능 안에서는
+  // 1단계다 — 다른 기능이 1·2단계를 점유해도 밀리지 않는다(사용자 요구 "각 feature에서 level 앞당기기").
+  // 저장 숫자(`steps` 원본)는 그대로 살아 있어 `placeStep` 이 충돌 없이 쓴다.
+  const byFeature = new Map<string, StepRow[]>();
+  for (const row of rows) {
+    if (checkedOf.get(`${row.feature}/${row.ticket}`)) continue; // done/dropped: 화면에서 걷음
+    const list = byFeature.get(row.feature);
+    if (list) list.push(row);
+    else byFeature.set(row.feature, [row]);
+  }
+  for (const [feature, fRows] of byFeature) {
+    const numbered = fRows
+      .filter((r) => r.step !== UNRANKED_STEP)
+      .sort((a, b) => a.step - b.step);
+    numbered.forEach((r, idx) => assign(feature, r.ticket, idx + 1));
+    for (const r of fRows) {
+      if (r.step === UNRANKED_STEP) assign(feature, r.ticket, UNRANKED_STEP);
+    }
+  }
 
   return result;
 }
@@ -129,13 +140,17 @@ export function placeStep(
   placements: readonly Placement[],
   steps: readonly StepRow[],
   placement: StepPlacement,
+  feature: string,
 ): number {
   if (placement.kind === "unranked") return UNRANKED_STEP;
 
   const { rows, checkedOf } = indexActiveSteps(features, placements, steps);
-  const byStep = groupByStep(rows);
+  const featureRows = rows.filter((r) => r.feature === feature);
+  const byStep = groupByStep(featureRows);
 
-  const allNumbered = [...new Set(rows.map((r) => r.step))]
+  // 🔴 **기능별 모델** — 끄는 티켓이 속한 기능 안에서만 자리를 정한다. 저장 숫자 칸은
+  // (project, feature, ticket) 별이라 다른 기능 숫자와 부딪치지 않으므로 전역으로 볼 이유가 없다.
+  const allNumbered = [...new Set(featureRows.map((r) => r.step))]
     .filter((n) => n !== UNRANKED_STEP)
     .sort((a, b) => a - b);
   const occupied = allNumbered.filter((n) =>

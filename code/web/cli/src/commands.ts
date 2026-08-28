@@ -1,4 +1,4 @@
-import { allTickets, applyBacklogStatus, computeDisplaySteps, computeNext, splitIntoAreas, setTicketDoneResolver, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
+import { allTickets, applyBacklogStatus, computeDisplaySteps, computeNext, setTicketDoneResolver, setTicketDoneDetailResolver, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
 import { type Feature } from "@gootte/contract";
 import {
   clearStep,
@@ -12,8 +12,9 @@ import {
   readPlacementsWithAutoClose,
   readSettings,
   readSteps,
-  writeStep,
   resolveTicketDone,
+  resolveTicketDoneDetail,
+  writeStep,
 } from "@gootte/core-io";
 import { CliError, parseTicketRef } from "./args";
 
@@ -21,7 +22,17 @@ import { CliError, parseTicketRef } from "./args";
 
 // T03 — 신관례 완료(done) 출처 = git 리졸버(ticket-done-from-git T01). core 가 순환 의존 없이 쓰게
 // 주입한다. CLI 는 기본 dataDir(~/.gootte) 를 쓴다. 모듈 로드 시 1회 세팅(부수효과는 여기만).
-setTicketDoneResolver((repo, slug, num) => resolveTicketDone(repo, slug, num, defaultPlanDataDir()));
+// 🔴 `repo` 로는 slug 가 넘어오는데 리졸버는 git 리포 경로가 필요 — slug → 경로로 풀어준다.
+const cliSlugToPath = new Map<string, string>();
+const cliRepoPath = (slug: string): string =>
+  (cliSlugToPath.get(slug) ??
+    (() => {
+      const path = discoverProjects(effectiveProjectRoots()).find((p) => p.slug === slug)?.path ?? slug;
+      cliSlugToPath.set(slug, path);
+      return path;
+    })());
+setTicketDoneResolver((repo, slug, num) => resolveTicketDone(cliRepoPath(repo), slug, num, defaultPlanDataDir()));
+setTicketDoneDetailResolver((repo, slug, num) => resolveTicketDoneDetail(cliRepoPath(repo), slug, num, defaultPlanDataDir()));
 
 export function discoverText(roots: string[]): string {
   const found = discoverProjects(roots);
