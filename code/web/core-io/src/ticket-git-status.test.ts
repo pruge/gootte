@@ -64,52 +64,58 @@ afterEach(() => {
 });
 
 describe("ticket-git-status — T01 리졸버", () => {
-  it("origin/main 에 T05 커밋이 있으면 resolveTicketDone(repo, slug, '05') = true", () => {
+  it("feat(slug): T05 커밋이 있으면 그 slug 의 resolveTicketDone(repo, slug, '05') = true", () => {
     pushCommit(repo, "feat(auth): T05 세션 발급");
     expect(resolveTicketDone(repo, "auth", "05", dataDir)).toBe(true);
-    // 🔴 slug 는 git 신호에 안 들어간다(grill D3) — 다른 slug 로 물어도 같은 판정.
-    expect(resolveTicketDone(repo, "other-feature", "05", dataDir)).toBe(true);
+    // 🔴 T06 — slug 범위. 다른 slug 로 물으면 완료가 아니다(번호만 같다고 오탐하지 않는다).
+    expect(resolveTicketDone(repo, "other-feature", "05", dataDir)).toBe(false);
     expect(ticketGitCacheExists(dataDir)).toBe(true);
   });
 
   it("SHA 동일 → revalidate 가 git log 를 호출하지 않는다(캐시 히트)", () => {
-    pushCommit(repo, "feat: T05 done");
+    pushCommit(repo, "feat(f): T05 done");
     const sha = originMainSha(repo)!;
     // 🔴 실제 T05 대신 엉뚱한 done 집합을 미리 심는다 — SHA 가 같으면 스캔이 안 일어나야
     // 이 값이 그대로 살아남고, T05 는 절대 추가되지 않는다.
-    writeFileSync(join(dataDir, "ticket-git-status.json"), JSON.stringify({ shas: { [repo]: sha }, done: { [repo]: { "99": true } } }));
+    writeFileSync(
+      join(dataDir, "ticket-git-status.json"),
+      JSON.stringify({ version: 2, shas: { [repo]: sha }, done: { [repo]: { f: { "99": true } } } }),
+    );
     revalidateTicketGitStatus(repo, dataDir);
     expect(resolveTicketDone(repo, "f", "99", dataDir)).toBe(true); // 캐시 유지
     expect(resolveTicketDone(repo, "f", "05", dataDir)).toBe(false); // 스캔 안 됨 → 추가 안 됨
   });
 
   it("SHA 변경 → 마지막 SHA 이후 커밋만 증분 스캔해 done 갱신", () => {
-    pushCommit(repo, "feat: T05 first");
+    pushCommit(repo, "feat(f): T05 first");
     const shaA = originMainSha(repo)!; // T05 가 이 SHA 다
-    pushCommit(repo, "feat: T07 second", { "g.md": "y\n" }); // T05 이후 새 커밋(다른 파일)
+    pushCommit(repo, "feat(f): T07 second", { "g.md": "y\n" }); // T05 이후 새 커밋(다른 파일)
     // 캐시를 shaA 시점으로 미리 심는다 — range = shaA..origin/main = T07 커밋만.
-    writeFileSync(join(dataDir, "ticket-git-status.json"), JSON.stringify({ shas: { [repo]: shaA }, done: { [repo]: {} } }));
+    writeFileSync(
+      join(dataDir, "ticket-git-status.json"),
+      JSON.stringify({ version: 2, shas: { [repo]: shaA }, done: { [repo]: {} } }),
+    );
     revalidateTicketGitStatus(repo, dataDir);
     expect(resolveTicketDone(repo, "f", "07", dataDir)).toBe(true); // 새 커밋 반영
     expect(resolveTicketDone(repo, "f", "05", dataDir)).toBe(false); // range 밖(이미 지난 커밋)은 안 잡힘
   });
 
-  it("전체 본문(trailer)의 T<NN> 도 매칭 — 'Closes: T08' 만 있어도 done", () => {
-    pushCommit(repo, "merge feature\n\n본문 설명.\nCloses: T08", { "f.md": "x\n" });
+  it("trailer 의 slug + T<NN> 도 매칭 — 'Ticket: f' + 'Closes: T08' 이 같이 있으면 done", () => {
+    pushCommit(repo, "merge feature\n\n본문 설명.\nTicket: f\nCloses: T08", { "f.md": "x\n" });
     expect(resolveTicketDone(repo, "f", "08", dataDir)).toBe(true);
   });
 
   it("origin/main 을 못 읽으면 예외 대신 false, 캐시도 안 쓴다(대시보드 안전)", () => {
     const alone = mkdtempSync(join(tmpdir(), "gootte-tgs-alone-"));
     initRepo(alone); // remote 없음 → origin/main 해소 불가
-    commit(alone, { "f.md": "x\n" }, "feat: T05 no remote");
+    commit(alone, { "f.md": "x\n" }, "feat(f): T05 no remote");
     expect(resolveTicketDone(alone, "f", "05", dataDir)).toBe(false);
     expect(ticketGitCacheExists(dataDir)).toBe(false);
     rmSync(alone, { recursive: true, force: true });
   });
 
   it("commitMessagesInRange 는 '해시\\x1f본문' 레코드를 \\x1e 로 갈라 준다", () => {
-    pushCommit(repo, "feat: T05 x");
+    pushCommit(repo, "feat(f): T05 x");
     const lines = commitMessagesInRange(repo, "origin/main");
     const hit = lines.find((l) => l.includes("T05"));
     expect(hit).toBeDefined();
@@ -119,7 +125,7 @@ describe("ticket-git-status — T01 리졸버", () => {
   it("per-repo 격리 — A repo 의 T05 가 B repo 판정을 오염하지 않는다(교차 프로젝트 충돌 없음)", () => {
     // 두 번째 repo(별개 origin) — T05 커밋이 없다.
     const other = makeOrigin();
-    pushCommit(repo, "feat: T05 in A"); // T05 는 A 에만
+    pushCommit(repo, "feat(a): T05 in A"); // T05 는 A 에만
     revalidateTicketGitStatus(repo, dataDir);
     revalidateTicketGitStatus(other.repo, dataDir);
     expect(resolveTicketDone(repo, "a", "05", dataDir)).toBe(true); // A 는 완료
@@ -129,13 +135,50 @@ describe("ticket-git-status — T01 리졸버", () => {
 
   it("다중 repo 에서도 SHA 게이트가 repo 별로 동작 — B 만 push 해도 A 는 재스캔 안 함", () => {
     const other = makeOrigin();
-    pushCommit(repo, "feat: T05 in A");
+    pushCommit(repo, "feat(a): T05 in A");
     revalidateTicketGitStatus(repo, dataDir); // A 캐시 됨
     revalidateTicketGitStatus(other.repo, dataDir); // B 캐시 됨(빈)
     // A 는 그대로, B 만 push → B 만 true 반환, A 재호출은 false(게이트)
-    pushCommit(other.repo, "feat: T07 in B");
+    pushCommit(other.repo, "feat(b): T07 in B");
     expect(revalidateTicketGitStatus(other.repo, dataDir)).toBe(true); // B 는 SHA 바뀜 → 스캔
     expect(revalidateTicketGitStatus(repo, dataDir)).toBe(false); // A 는 SHA 동일 → 스캔 안 함
     rmSync(other.tmp, { recursive: true, force: true });
+  });
+
+  // --- T06: slug 범위 완료 판정(번호 충돌 버그 수정) ---------------------------------------
+
+  it("AC1 — 같은 repo, 다른 기능의 같은 번호: ticket-done-from-git T01 커밋이 ticket-time-stamp T01 을 완료시키지 않는다", () => {
+    pushCommit(repo, "feat(ticket-done-from-git): T01 git 기반 리졸버");
+    expect(resolveTicketDone(repo, "ticket-done-from-git", "01", dataDir)).toBe(true);
+    expect(resolveTicketDone(repo, "ticket-time-stamp", "01", dataDir)).toBe(false);
+  });
+
+  it("AC2 — 기획 문서 커밋('tickets T01-T03')은 어떤 기능의 티켓도 완료시키지 않는다", () => {
+    pushCommit(repo, "docs(features): ticket-time-stamp — plan (grill/spec/tickets T01-T03)");
+    expect(resolveTicketDone(repo, "ticket-time-stamp", "01", dataDir)).toBe(false);
+    expect(resolveTicketDone(repo, "ticket-time-stamp", "02", dataDir)).toBe(false);
+    expect(resolveTicketDone(repo, "ticket-time-stamp", "03", dataDir)).toBe(false);
+  });
+
+  it("AC3 — feat(ticket-done-from-git): T01 ... 커밋은 ticket-done-from-git T01 만 완료시킨다", () => {
+    pushCommit(repo, "feat(ticket-done-from-git): T01 세션 발급");
+    expect(resolveTicketDone(repo, "ticket-done-from-git", "01", dataDir)).toBe(true);
+    expect(resolveTicketDone(repo, "ticket-done-from-git", "02", dataDir)).toBe(false);
+    expect(resolveTicketDone(repo, "other-feature", "01", dataDir)).toBe(false);
+  });
+
+  it("AC4 — slug 없는 'T01' 단독 언급은 어떤 티켓도 완료시키지 않는다", () => {
+    pushCommit(repo, "fix: T01 관련 회귀 수정");
+    expect(resolveTicketDone(repo, "ticket-done-from-git", "01", dataDir)).toBe(false);
+    expect(resolveTicketDone(repo, "ticket-time-stamp", "01", dataDir)).toBe(false);
+  });
+
+  it("구형(v1) 캐시는 무효화된다 — version 없는 캐시를 읽으면 재스캔한다", () => {
+    pushCommit(repo, "feat(f): T05 x");
+    const sha = originMainSha(repo)!;
+    // v1 구조(slug 없이 done[repo][num])를 심는다.
+    writeFileSync(join(dataDir, "ticket-git-status.json"), JSON.stringify({ shas: { [repo]: sha }, done: { [repo]: { "05": true } } }));
+    // v1 은 버전 필드가 없어 무효 → 캐시 미스 취급, origin/main 전체를 다시 훑는다.
+    expect(resolveTicketDone(repo, "f", "05", dataDir)).toBe(true);
   });
 });
