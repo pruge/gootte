@@ -100,6 +100,18 @@ export function recordProjectScan(dataDir: string, proj: Project, features: Feat
 }
 
 /**
+ * 단일 프로젝트 스냅샷 갱신(T05) — slug 로 해당 프로젝트만 재계산해 메모리·디스크에 반영한다.
+ * 다른 프로젝트는 건드리지 않는다(증분 write-through).
+ */
+export function updateProjectSnapshot(dataDir: string, slug: string, roots: readonly string[]): void {
+  const projects = discoverProjects([...roots]);
+  const project = projects.find((p) => p.slug === slug);
+  if (!project) return;
+  const features = readFeatures([...project.copies]);
+  recordProjectScan(dataDir, project, features);
+}
+
+/**
  * 무효화(`clearDiscoverCache` 와 같은 신호) — 메모리와 디스크를 다 비운다. 파일만 남겨 두면
  * 다음 적재가 낡은 값을 다시 꺼내 오므로, 지우는 것이 곧 무효화이다. 다음 요청이 전체를 다시
  * 스캔해 다시 기록한다(증분 반영은 T05).

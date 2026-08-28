@@ -3,8 +3,10 @@ import { createNodeWebSocket } from "@hono/node-ws";
 import { createApp, mountFallback, defaultRoots, planDataDir } from "./app";
 import { createLiveHub } from "./live";
 import { clearDiscoverCache } from "./discover-cache";
+import { updateProjectSnapshot } from "./snapshot";
 import { createSnapshotRevalidator } from "./snapshot-revalidator";
 import { startWatchers, type Watchers } from "./watchers";
+import type { ChangeEvent } from "@gootte/contract";
 import { readSettings, deriveWatchRoots } from "@gootte/core-io";
 
 /** 로컬 dev/prod 엔트리. PORT env 가 포트를 정한다(기본값은 prod `start` 몫). */
@@ -35,6 +37,21 @@ const watcherRoots = (firstmateHome: string | null): string[] => {
 };
 
 const hub = createLiveHub();
+// T05: 프로젝트 단위 증분 갱신 — debounce to avoid infinite recalculation
+const pendingProjectUpdates = new Map<string, ReturnType<typeof setTimeout>>();
+const PROJECT_UPDATE_DEBOUNCE_MS = 150; // Same as watcher debounce
+
+const scheduleProjectUpdate = (slug: string): void => {
+  const pending = pendingProjectUpdates.get(slug);
+  if (pending) clearTimeout(pending);
+  pendingProjectUpdates.set(
+    slug,
+    setTimeout(() => {
+      pendingProjectUpdates.delete(slug);
+      updateProjectSnapshot(dataDir, slug, watcherRoots(readSettings(dataDir).firstmateHome));
+    }, PROJECT_UPDATE_DEBOUNCE_MS)
+  );
+};
 const snapshotRevalidator = createSnapshotRevalidator({
   dataDir,
   roots: () => watcherRoots(readSettings(dataDir).firstmateHome),
@@ -88,10 +105,14 @@ let watchers: Watchers;
     roots: watcherRoots(savedFirstmateHome),
     dataDir,
     firstmateHome: savedFirstmateHome,
-    onChange: (c) => {
+    onChange: (c: ChangeEvent) => {
       if (c.kind === "watch-fallback") {
         watchFallbackActive = c.active;
         snapshotRevalidator.setFallbackPolling(c.active);
+      }
+      // T05: 변경된 프로젝트만 갱신 — 전체 flush 대신 증분 반영
+      if (c.kind === "project") {
+        scheduleProjectUpdate(c.project);
       }
       hub.broadcast(c);
     },
