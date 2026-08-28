@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# bin/gootte — 독립 bash CLI. gootte TS 모노레포의 워크스페이스 패키지를 전혀 참조하지 않는다.
+#
+# gootte start <feature-slug> <ticket>   # 티켓 문서에 Time: started=<ISO> 삽입
+# gootte end   <feature-slug> <ticket>   # 같은 줄에 finished=<ISO> 추가
+#
+# md 파일만 cat/sed/grep/awk 로 직접 읽고 쓴다. 커밋은 하지 않는다(grill D3).
+#
+# 이 스크립트가 찾는 경로는 실행 위치(cwd) 기준이다 — <프로젝트> 인자는 받지 않는다.
+# git 루트가 있으면 그 루트, 없으면 cwd 를 기준으로
+# docs/features/<feature-slug>/tickets/T<NN>.md 를 찾는다.
+
+set -euo pipefail
+
+usage() {
+  echo "사용법: gootte start <feature-slug> <ticket>" >&2
+  echo "      gootte end   <feature-slug> <ticket>" >&2
+  exit 1
+}
+
+# 실행 위치 기준 프로젝트 루트를 찾는다: git 루트가 있으면 그것, 없으면 cwd.
+resolve_root() {
+  local git_root
+  if git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+    printf '%s\n' "$git_root"
+  else
+    pwd
+  fi
+}
+
+# "T01" 또는 "01" 을 "T01" 로 정규화한다.
+normalize_ticket() {
+  local raw="$1"
+  local num="${raw#T}"
+  num="${num#t}"
+  if ! [[ "$num" =~ ^[0-9]+$ ]]; then
+    echo "gootte: 티켓 번호가 잘못됐습니다: $raw" >&2
+    exit 1
+  fi
+  printf 'T%02d' "$num"
+}
+
+# 지금 시각을 ISO 8601(콜론 포함 오프셋)으로 낸다: 2026-08-29T10:30:00+09:00
+now_iso() {
+  local raw
+  raw="$(date +%Y-%m-%dT%H:%M:%S%z)"
+  # %z 는 +0900 형태 — 마지막 두 자리 앞에 콜론을 넣어 +09:00 으로 만든다.
+  printf '%s%s:%s\n' "${raw:0:19}" "${raw:19:3}" "${raw:22:2}"
+}
+
+resolve_ticket_file() {
+  local feature_slug="$1"
+  local ticket_norm="$2"
+  local root
+  root="$(resolve_root)"
+  local file="$root/docs/features/$feature_slug/tickets/$ticket_norm.md"
+  if [ ! -f "$file" ]; then
+    echo "gootte: 티켓 파일을 찾을 수 없습니다: $file" >&2
+    exit 1
+  fi
+  printf '%s\n' "$file"
+}
+
+# 파일에서 "Time:" 줄 번호를 찾는다(없으면 아무것도 출력하지 않는다).
+find_time_line_no() {
+  local file="$1"
+  grep -n '^Time:' "$file" | head -1 | cut -d: -f1 || true
+}
+
+# 제목 뒤, 본문 앞의 메타데이터 블록(연속된 Status:/Time: 줄) 마지막 줄 번호를 찾는다.
+# 그 블록이 없으면 제목 줄 번호를 돌려준다.
+find_header_block_end_line_no() {
+  local file="$1"
+  local title_line
+  title_line="$(grep -n '^# ' "$file" | head -1 | cut -d: -f1)"
+  if [ -z "$title_line" ]; then
+    echo "gootte: 티켓 파일에 제목(# ...) 줄이 없습니다: $file" >&2
+    exit 1
+  fi
+  local total_lines
+  total_lines="$(wc -l < "$file" | tr -d ' ')"
+  # 빈 줄은 건너뛰고, Status:/Time: 줄만 블록의 일부로 센다. 그 외 내용을 만나면 멈춘다.
+  # (실물 티켓은 보통 제목 뒤에 빈 줄 → Status: → 빈 줄 → 본문 순서다.)
+  local last="$title_line"
+  local i=$((title_line + 1))
+  while [ "$i" -le "$total_lines" ]; do
+    local content
+    content="$(sed -n "${i}p" "$file")"
+    case "$content" in
+      Status:*|Time:*)
+        last="$i"
+        i=$((i + 1))
+        ;;
+      '')
+        i=$((i + 1))
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+  printf '%s\n' "$last"
+}
+
+cmd_start() {
+  local feature_slug="$1"
+  local ticket_raw="$2"
+  local ticket_norm
+  ticket_norm="$(normalize_ticket "$ticket_raw")"
+  local file
+  file="$(resolve_ticket_file "$feature_slug" "$ticket_norm")"
+
+  local existing_line_no
+  existing_line_no="$(find_time_line_no "$file")"
+  if [ -n "$existing_line_no" ]; then
+    echo "gootte: 이미 시작된 티켓입니다(Time: 줄이 이미 있음): $file" >&2
+    exit 1
+  fi
+
+  local insert_after
+  insert_after="$(find_header_block_end_line_no "$file")"
+  local iso
+  iso="$(now_iso)"
+
+  local tmp
+  tmp="$(mktemp)"
+  awk -v n="$insert_after" -v line="Time: started=$iso" '
+    { print }
+    NR == n { print line }
+  ' "$file" > "$tmp"
+  mv "$tmp" "$file"
+
+  echo "gootte: $file 에 Time: started=$iso 기록됨"
+}
+
+cmd_end() {
+  local feature_slug="$1"
+  local ticket_raw="$2"
+  local ticket_norm
+  ticket_norm="$(normalize_ticket "$ticket_raw")"
+  local file
+  file="$(resolve_ticket_file "$feature_slug" "$ticket_norm")"
+
+  local existing_line_no
+  existing_line_no="$(find_time_line_no "$file")"
+  if [ -z "$existing_line_no" ]; then
+    echo "gootte: 시작되지 않은 티켓입니다(Time: 줄이 없음): $file" >&2
+    exit 1
+  fi
+
+  local existing_line
+  existing_line="$(sed -n "${existing_line_no}p" "$file")"
+  if printf '%s' "$existing_line" | grep -q 'finished='; then
+    echo "gootte: 이미 끝난 티켓입니다(finished= 가 이미 있음): $file" >&2
+    exit 1
+  fi
+
+  local iso
+  iso="$(now_iso)"
+  local new_line="$existing_line finished=$iso"
+
+  local tmp
+  tmp="$(mktemp)"
+  awk -v n="$existing_line_no" -v line="$new_line" '
+    NR == n { print line; next }
+    { print }
+  ' "$file" > "$tmp"
+  mv "$tmp" "$file"
+
+  echo "gootte: $file 에 finished=$iso 기록됨"
+}
+
+main() {
+  if [ "$#" -lt 1 ]; then
+    usage
+  fi
+  local subcmd="$1"
+  shift
+  case "$subcmd" in
+    start)
+      [ "$#" -eq 2 ] || usage
+      cmd_start "$1" "$2"
+      ;;
+    end)
+      [ "$#" -eq 2 ] || usage
+      cmd_end "$1" "$2"
+      ;;
+    *)
+      usage
+      ;;
+  esac
+}
+
+main "$@"

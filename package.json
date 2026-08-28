@@ -1,6 +1,9 @@
 {
   "name": "gootte",
   "private": true,
+  "bin": {
+    "gootte": "bin/gootte"
+  },
   "scripts": {
     "setup": "pnpm -C code/web install",
     "gootte": "bash scripts/gootte.sh",
@@ -8,7 +11,7 @@
     "db": "bash scripts/gootte.sh db",
     "verify": "pnpm run test:ports && pnpm -C code/web verify",
     "test": "pnpm -C code/web test",
-    "test:ports": "bash scripts/tests/ports.test.sh && bash scripts/tests/gootte-wrapper.test.sh",
+    "test:ports": "bash scripts/tests/ports.test.sh && bash scripts/tests/gootte-wrapper.test.sh && bash scripts/tests/gootte-time.test.sh",
     "dev:backend": "bash scripts/dev-backend.sh",
     "dev:frontend": "bash scripts/dev-frontend.sh",
     "dev": "bash scripts/dev.sh",
