@@ -83,6 +83,15 @@ export function originMainSha(repo: string): string | null {
 }
 
 /**
+ * `git fetch origin` — ticket-done-from-git 리졸버가 `origin/main` 기준 SHA 를 따라가게 한다(T02).
+ * 🔴 조용히 실패 — remote 없음/오프라인이면 **no-op**(기동을 막지 않는다, T02 §구현 메모).
+ * 비파괴: 로컬 브랜치/커밋은 안 건드린다(fetch 만 — `origin/main` 만 굴러간다, grill D4).
+ */
+export function fetchOrigin(repo: string): void {
+  gitSafe(repo, ["fetch", "origin"]);
+}
+
+/**
  * `<range>` 안 커밋의 `해시\x1f전체본문` 을 레코드 구분자(`\x1e`)로 하나씩 — 티켓 완료 리졸버가
  * 메시지(제목+본문)에서 `T<NN>` 토큰을 찾는다(ticket-done-from-git T01, grill D3).
  * 🔴 본문까지 읽는다 — `Closes: T05`/`Ticket: T05` 같은 trailer 도 매칭하기 위해서(T01 명세의

@@ -56,12 +56,15 @@ function writeCache(dataDir: string, cache: TicketGitCache): void {
  *
  * SHA 가 바뀌면 **증분** 스캔 — `git log <lastSha>..origin/main` 만 본다(비용 = push 당 새
  * 커밋 수). 캐시가 없으면 처음 한 번 전체(`origin/main`)를 훑는다.
+ *
+ * 🔴 반환값 — 이번 호출에 캐시를 **갱신했으면 `true`**(SHA 변경 → 재스캔), 아니면 `false`(캐시
+ * 히트 or origin/main 못 읽음). 재검증기(T02)가 "화면에 알릴까" 결정하는 데 쓴다.
  */
-export function revalidateTicketGitStatus(repo: string, dataDir: string = defaultPlanDataDir()): void {
+export function revalidateTicketGitStatus(repo: string, dataDir: string = defaultPlanDataDir()): boolean {
   const sha = originMainSha(repo);
-  if (sha === null) return; // origin/main 못 읽음 → 캐시 안 건드림
+  if (sha === null) return false; // origin/main 못 읽음 → 캐시 안 건드림
   const prev = readCache(dataDir);
-  if (prev && prev.originMainSha === sha) return; // 캐시 히트, git log 0회
+  if (prev && prev.originMainSha === sha) return false; // 캐시 히트, git log 0회
   const range = prev ? `${prev.originMainSha}..origin/main` : "origin/main";
   const done: Record<string, true> = prev ? { ...prev.done } : {};
   for (const line of commitMessagesInRange(repo, range)) {
@@ -71,6 +74,7 @@ export function revalidateTicketGitStatus(repo: string, dataDir: string = defaul
     }
   }
   writeCache(dataDir, { originMainSha: sha, done });
+  return true;
 }
 
 /**
