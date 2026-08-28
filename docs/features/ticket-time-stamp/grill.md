@@ -43,9 +43,28 @@
 - 이 규칙은 gootte 코드가 아니라 firstmate 쪽 작업이다 — 이 기능의 scope 밖이고
   별도로 main firstmate에 전달한다.
 
+### D5 — 독립 셸 스크립트, gootte TS 코드 무의존
+
+- 확정: `start`/`end`는 `@gootte/core`·`@gootte/core-io` 등 TS 모노레포 워크스페이스를
+  전혀 참조하지 않는 **독립 bash 스크립트**로 만든다. md 파일을 직접 읽고 `sed`/`grep`으로
+  `Time:` 줄만 쓴다.
+- 캡틴 원문: "gootte의 다른 코드를 참조하면 안되고, 단독 sh bin으로 만들어야지, md파일읽어서
+  status, time을 기록만하면되잖아?" / "gootte로 명칭하게해, gootte start, gootte end 로
+  하면되잖아. 명령어를 호출한 곳에서 docs를 찾아 수정하게하면 되니까."
+- 이유: TS 워크스페이스 의존(`workspace:*` 프로토콜)이 있으면 `npm i -g`로 모노레포 밖에서
+  전역 설치가 안 된다(번들링·bin 필드·의존성 해석 문제). 독립 스크립트면 이 문제가 통째로 없다.
+- 명령 이름은 그대로 `gootte start`/`gootte end` — 별도 이름을 안 쓴다.
+- 프로젝트 루트는 **명령을 호출한 위치(cwd)에서 찾는다** — `<프로젝트>` 인자를 받지 않는다
+  (D1이 이미 이렇게 정했었는데 최초 구현이 임의로 프로젝트 인자를 추가해 어겼다 — 이 결정으로
+  바로잡는다).
+- `package.json`에 `"bin": { "gootte-time": "./bin/gootte-time" }` 또는 루트 `bin` 필드를
+  추가해 `npm i -g .`로 전역 설치 가능하게 만든다(구현 상세는 티켓에서 확정).
+- 이전 구현(PR #92, TS CLI 통합)은 이 결정으로 폐기 — 캡틴이 명시적으로 폐기 승인("1번으로 가자").
+
 ## Out of scope
 
 - 크루 자동화 규칙 자체의 구현(firstmate 쪽, D4).
 - 되짚은 값과 실측한 값을 화면에서 구분하는 것.
 - 걸린 시간으로 정렬·집계·통계를 내는 것.
 - 구관례(`issues/`) 티켓의 시간 기록.
+- gootte의 다른 명령(board/step/next 등)을 전역 설치 가능하게 만드는 것 — 이 범위는 start/end만.
