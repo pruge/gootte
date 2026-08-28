@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import type { BacklogTaskDoc } from "../parse/backlog";
 import type { FeatureTicket } from "@gootte/contract";
-import { applyBacklogStatus, joinTicketBacklog } from "./backlog-join";
+import { applyBacklogStatus, joinTicketBacklog, setTicketDoneResolver } from "./backlog-join";
 import { allTickets, hasOpenWork } from "./features";
 import { feature } from "../plan/fixtures";
 
@@ -158,6 +158,9 @@ describe("joinTicketBacklog", () => {
 });
 
 describe("applyBacklogStatus", () => {
+  // T03 — 기본 리졸버는 "아무것도 완료 아님"(git 미연동). done 이 필요한 테스트는 아래서 true 로 세팅.
+  beforeEach(() => setTicketDoneResolver(() => false));
+
   it("newTickets 만 조인하고 tickets(issues 관례)는 그대로 둔다", () => {
     const base = feature("tauri-desktop-app", ["01"]);
     const withNew = {
@@ -244,7 +247,7 @@ describe("applyBacklogStatus", () => {
     ...overrides,
   });
 
-  it("🔴 조인으로 선행이 완료되면 신관례 티켓의 대기도 풀린다 — 낡은 뷰 금지(INV-3, T01)", () => {
+  it("🔴 리졸버로 선행이 완료되면 신관례 티켓의 대기도 풀린다 — 낡은 뷰 금지(INV-3, T03)", () => {
     const base = feature("tauri-desktop-app");
     const withNew = {
       ...base,
@@ -253,7 +256,9 @@ describe("applyBacklogStatus", () => {
         newTicket("02", { blockedBy: ["01"], waitingOn: ["01"], startable: false }),
       ],
     };
-    // T01 은 Done, T02 는 Queued — T02 의 대기가 풀려 착수 가능이어야 한다.
+    // 🔴 T03 — done 출처는 백로그가 아니라 git 리졸버다. T01 을 리졸버 done 으로 박고,
+    // T02 는 Queued(백로그). 리졸버가 T01 done 을 인정하므로 T02 의 대기가 풀려 착수 가능.
+    setTicketDoneResolver((r, s, n) => n === "01");
     const tasks = [PARENT, task({ id: "widget-tauri-t01", section: "done", checked: true }), task({ id: "widget-tauri-t02", section: "queued" })];
     const [joined] = applyBacklogStatus([withNew], tasks, "widget");
     expect(joined?.newTickets?.[0]?.status).toBe("done");
@@ -292,6 +297,8 @@ describe("applyBacklogStatus", () => {
 
   it("전부 done 으로 조인되면 배지는 완료다 — 남은 일 0 과 모순하지 않는다", () => {
     const f = newConventionFeature([newTicket("01"), newTicket("02")]);
+    // 🔴 T03 — done 출처는 리졸버다(백로그 done 은 무시). 두 티켓 모두 리졸버 done.
+    setTicketDoneResolver((r, s, n) => n === "01" || n === "02");
     const tasks = [
       PARENT,
       task({ id: "widget-tauri-t01", section: "done", checked: true }),
@@ -354,6 +361,8 @@ describe("applyBacklogStatus", () => {
 
     it("취소 + 완료 티켓 혼합 — 안 끝난 티켓은 dropped, done 은 done 으로 남는다(D4)", () => {
       const f = cancelledFeature([newTicket("01"), newTicket("02")]);
+      // 🔴 T03 — done 출처는 리졸버다. T01 을 리졸버 done 으로 박는다(백로그 done 은 무시).
+      setTicketDoneResolver((r, s, n) => n === "01");
       const tasks = [
         PARENT,
         task({ id: "widget-tauri-t01", section: "done", checked: true }),

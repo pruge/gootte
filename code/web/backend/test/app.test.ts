@@ -23,6 +23,7 @@ import {
   ApiError,
   type Project,
 } from "@gootte/contract";
+import { setTicketDoneResolver } from "@gootte/core";
 import {
   migratePlanDb,
   readPlacements,
@@ -367,13 +368,17 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         // 같은 프로젝트를 계속 찾게 하려면 그 아래로 옮겨 심어야 한다(실물 배치와 같은 모양).
         relocateUnderHomeProjects(projectRoot, home);
 
-        // 홈을 설정해 조인하면: 그 티켓은 백로그에서 done — 더 이상 남은 일이 아니다.
+        // 홈을 설정해 조인하면: 그 티켓은 done — 더 이상 남은 일이 아니다.
+        // 🔴 T03 — done 출처는 git 리졸버다(백로그는 완료를 말하지 않는다). 테스트 픽스처엔 git 이
+        // 없으니, 리졸버 stub 을 끼워 done 을 박는다(이 테스트는 조인 로직 회귀일 뿐, git 아님).
+        setTicketDoneResolver(() => true);
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ firstmateHome: home }),
         });
         expect(await count()).toBe(0);
+        setTicketDoneResolver(() => false);
       } finally {
         rmSync(home, { recursive: true, force: true });
       }

@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import type { Feature, FeatureTicket } from "@gootte/contract";
 import { parseNewTicket, parseTicket } from "../parse/feature";
 import type { BacklogTaskDoc } from "../parse/backlog";
-import { applyBacklogStatus } from "./backlog-join";
+import { applyBacklogStatus, setTicketDoneResolver } from "./backlog-join";
 import { buildFeature, buildFeatures, countOpenFeatures, sortFeatures } from "./features";
 
 /** 티켓 파일 한 장 합성 — 상단 두 줄이 서식의 전부다(triage-labels). */
@@ -441,7 +441,9 @@ describe("buildFeatures — 기능을 넘는 markdown 링크 선행(cross-featur
   });
 });
 
-describe("buildFeatures+applyBacklogStatus — 기능을 넘는 링크가 신관례 대상에서도 풀린다(T02)", () => {
+describe("buildFeatures+applyBacklogStatus — 기능을 넘는 링크가 신관례 대상에서도 풀린다(T03)", () => {
+  // T03 — 기본 리졸버는 "아무것도 완료 아님"(git 미연동). done 이 필요한 테스트는 아래서 true 로 세팅.
+  beforeEach(() => setTicketDoneResolver(() => false));
   const docs = (
     slug: string,
     newTickets: readonly { file: string; body: string }[],
@@ -485,6 +487,8 @@ describe("buildFeatures+applyBacklogStatus — 기능을 넘는 링크가 신관
     const waiterBefore = built.find((f) => f.slug === "waiter-feature")!.newTickets?.[0];
     expect(waiterBefore?.startable).toBe(false);
 
+    // 🔴 T03 — done 출처는 리졸버다(백로그 done 은 무시). blocker-feature T03 을 리졸버 done.
+    setTicketDoneResolver((r, s, n) => n === "03");
     const joined = applyBacklogStatus(
       built,
       [PARENT, task({ id: "proj-blocker-t03", section: "done", checked: true })],

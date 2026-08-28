@@ -4,8 +4,24 @@ import type { BacklogTaskDoc } from "../parse/backlog";
 import { elapsedPhrase } from "../parse/elapsed";
 
 /**
- * `tickets/T<NN>.md` 신관례 티켓 ↔ firstmate 홈 백로그 조인(T04). 상태의 단일 출처는 백로그다
- * (spec D4 사관장 확정 b안) — 파일에는 상태가 없다. 순수·결정적(INV-4).
+ * 신관례 완료(done) 리졸버. 단일 출처 = git(`resolveTicketDone`, T01/grill D1). core-io 가 갖고
+ * core 는 순환 의존 없이 쓰려고 주입받는다. 기본값은 "아무것도 완료 아님" — 호출처가 startup 에
+ * `setTicketDoneResolver` 로 진짜 리졸버를 꽂는다(backend/app.ts · cli/commands.ts · scripts).
+ */
+export type TicketDoneResolver = (repo: string, slug: string, num: string) => boolean;
+
+let ticketDoneResolver: TicketDoneResolver = () => false;
+
+export function setTicketDoneResolver(resolver: TicketDoneResolver): void {
+  ticketDoneResolver = resolver;
+}
+
+/**
+ * `tickets/T<NN>.md` 신관례 티켓 상태 원천(T03).
+ * 🔴 **완료(done) 출처 = git 리졸버**(`resolveTicketDone`, ticket-done-from-git T01, grill D1) —
+ * 백로그는 완료를 말하지 않는다. 백로그 조인(`joinTicketBacklog`)은 여전히 **처리중/대기**와
+ * url·elapsed 만을 주고, done 은 리졸버가 침범한다. 리졸버는 core-io 가 갖고 core 는 순환 의존
+ * 없이 쓰려고 `setTicketDoneResolver` 로 주입받는다(호출처가 startup 에 세팅). 순수·결정적(INV-4).
  */
 
 const SECTION_STATUS: Readonly<Record<BacklogTaskDoc["section"], TodoStatus>> = {
@@ -55,8 +71,10 @@ function findParentId(tasks: readonly BacklogTaskDoc[], repo: string, featureSlu
 }
 
 /**
- * 티켓 번호 하나 → 조인 결과. `<parent>-t<NN>` id 규약(grill.md D4)으로 자식 작업을 찾는다.
+ * 티켓 번호 하나 → 백로그 조인 결과. `<parent>-t<NN>` id 규약(grill.md D4)으로 자식 작업을 찾는다.
  * 부모를 못 찾거나 자식 id 가 없으면 null — 조인 실패는 "상태 미표시" 로만 드러난다(추측 금지).
+ * 반환하는 `status: "done"` 은 **백로그의 주장**일 뿐 — 신관례 done 의 단일 출처는 git 리졸버고,
+ * `joinTicket` 가 리졸버가 false 면 이 "done" 을 "pending" 으로 깎아버린다(T03/grill D1).
  */
 export function joinTicketBacklog(
   tasks: readonly BacklogTaskDoc[],
@@ -90,14 +108,20 @@ function joinTicket(
   featureSlug: string,
   now: string,
 ): FeatureTicket {
+  // 🔴 완료(done) 단일 출처 = git 리졸버(T01/grill D1). 리졸버가 true 면 백로그가 뭐라 해도 done.
+  if (ticketDoneResolver(repo, featureSlug, ticket.num)) {
+    return { ...ticket, status: "done", backlogStatus: "done", waitingOn: [] };
+  }
+  // 리졸버가 false 면 백로그를 따르되 — 백로그가 "done" 이어도 git 이 완료를 안 박았으니
+  // done 으로는 쓰지 않는다(백로그는 완료를 말할 권한이 없다). 처리중/대기/url/elapsed 는 백로그 것.
   const join = joinTicketBacklog(tasks, repo, featureSlug, ticket.num, now);
   if (!join) return ticket;
+  const joinedStatus = join.status === "done" ? "pending" : join.status;
   return {
     ...ticket,
-    status: join.status,
-    backlogStatus: join.status,
+    status: joinedStatus,
+    backlogStatus: joinedStatus,
     backlogUrl: join.url,
-    ...(join.completedAt ? { completedAt: join.completedAt } : {}),
     ...(join.elapsed ? { elapsed: join.elapsed } : {}),
   };
 }

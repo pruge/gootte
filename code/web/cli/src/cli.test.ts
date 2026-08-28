@@ -12,6 +12,7 @@ import {
   writeSettings,
 } from "@gootte/core-io";
 import { CliError } from "./args";
+import { setTicketDoneResolver } from "@gootte/core";
 import { boardText, discoverText, nextText, resolveProjectPath, stepClearText, stepText } from "./commands";
 
 function w(root: string, rel: string, content: string): void {
@@ -387,6 +388,9 @@ describe("cli — board·next 에 백로그 조인(T01)", () => {
     w(proj, "docs/features/g/tickets/T02.md", "# T02 — d\n\n## Depends on\n- nothing\n");
     activate(dataDir, slug(), "g");
     backlogWithT01Done(home, slug(), "g");
+    // 🔴 T03 — 기본 리졸버는 "아무것도 완료 아님"(git 미연동, 테스트 픽스처엔 git 없음).
+    // done 이 필요한 테스트는 아래서 true 로 세팅한다.
+    setTicketDoneResolver(() => false);
     writeSettings(dataDir, { firstmateHome: home });
   });
   afterEach(() => {
@@ -398,11 +402,15 @@ describe("cli — board·next 에 백로그 조인(T01)", () => {
   it("next — 🔴 백로그에서 이미 done 인 신관례 티켓을 내보내지 않는다", () => {
     stepText([slug(), "g/T01", "1"], dataDir, proj);
     stepText([slug(), "g/T02", "2"], dataDir, proj);
+    // 🔴 T03 — done 출처는 git 리졸버다(백로그는 완료를 말하지 않는다). T01 을 리졸버 done.
+    setTicketDoneResolver((r, s, n) => n === "01");
     // 조인 없었다면 1단계인 T01 이 나왔을 것이다 — done 로 조인됐으므로 T02 만 나온다.
     expect(nextText([slug()], dataDir, proj)).toBe("g/T02\td");
   });
 
   it("board — 🔴 전부 끝난 신관례 기능은 완료 칸으로 넘어간다(조인 → 자동 닫힘 같은 자리)", () => {
+    // 🔴 T03 — done 출처는 git 리졸버다(백로그는 완료를 말하지 않는다). T01·T02 를 리졸버 done.
+    setTicketDoneResolver((r, s, n) => n === "01" || n === "02");
     // T02 도 백로그에서 done 으로 — 기능 g 의 티켓이 전부 완료된다.
     writeFileSync(
       backlogFile(home),
