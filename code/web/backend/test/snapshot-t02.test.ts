@@ -79,8 +79,8 @@ describe("snapshot-revalidator — T02 배경 트리거 + origin fetch", () => {
     expect(resolveTicketDone(repo, "proj", "05", dataDir)).toBe(false);
     expect(ticketGitCacheExists(dataDir)).toBe(true); // 캐시는 최초 1회 생성됨
 
-    // 캡틴 push — origin 에 T05 커밋 착지
-    commit(repo, { "f.md": "x\n" }, "feat(auth): T05 세션 발급");
+    // 캡틴 push — origin 에 T05 커밋 착지(scope 는 이 테스트가 묻는 slug 와 같아야 한다, T06 slug 범위)
+    commit(repo, { "f.md": "x\n" }, "feat(proj): T05 세션 발급");
     git(repo, "push", "-q", "origin", "main");
     git(repo, "fetch", "-q", "origin");
 
