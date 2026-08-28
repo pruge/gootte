@@ -74,6 +74,31 @@ export function headCommit(repo: string): string | null {
 }
 
 /**
+ * `origin/main` 의 SHA — 없으면 null(remote 없음/미 fetch/브랜치 없음).
+ * 🔴 티켓 완료 리졸버(ticket-done-from-git)가 기준가지로 삼는다. `headCommit`(로컬 HEAD)가
+ * 아니라 **`origin/main`** — fetch 만으로는 로컬 main 이 안 굴러가므로(grill D4).
+ */
+export function originMainSha(repo: string): string | null {
+  return gitSafe(repo, ["rev-parse", "origin/main"]);
+}
+
+/**
+ * `<range>` 안 커밋의 `해시\x1f전체본문` 을 레코드 구분자(`\x1e`)로 하나씩 — 티켓 완료 리졸버가
+ * 메시지(제목+본문)에서 `T<NN>` 토큰을 찾는다(ticket-done-from-git T01, grill D3).
+ * 🔴 본문까지 읽는다 — `Closes: T05`/`Ticket: T05` 같은 trailer 도 매칭하기 위해서(T01 명세의
+ * `%s`(제목만) 는 grill D3 을 못 맞추므로 전체 본문 `%B` 로 바꾼다). 멀티라인 본문은 `\x1e`(RS)로
+ * 커밋을 갈라니 줄바꿈에 안 휘둘린다.
+ */
+export function commitMessagesInRange(repo: string, range: string): string[] {
+  const out = gitSafe(repo, ["-c", "core.quotepath=false", "log", "--format=%H%x1f%B%x1e", range]);
+  if (!out) return [];
+  return out
+    .split("\x1e")
+    .map((l) => l.replace(/\n+$/, ""))
+    .filter(Boolean);
+}
+
+/**
  * `path`(repo 루트 기준)에 커밋 안 된 변경이 있는가 — `git status --porcelain -- <path>`.
  * 빈 출력이면 커밋 상태(false), 비었으면 미커밋(true). 못 읽으면 null(판정 불가).
  * 파일 하나만 묻는다 — 사본 전체를 훑지 않는다(T02 §구현 메모).
