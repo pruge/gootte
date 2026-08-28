@@ -86,7 +86,7 @@ describe("snapshot-revalidator — T02 배경 트리거 + origin fetch", () => {
 
     rev.run(); // 다음 tick — fetch 가 origin/main 을 따라가고 리졸버가 갱신된다
     expect(resolveTicketDone(repo, "proj", "05", dataDir)).toBe(true);
-    expect(events.some((e) => e.kind === "projects")).toBe(true); // 화면에 알림
+    expect(events.some((e) => e.kind === "ticket")).toBe(true); // 화면에 알림(전용 kind, 검토 3)
   });
 
   test("origin/main 불변 → 리졸버 미호출(재스캔 없음), 완료 판정 그대로", () => {

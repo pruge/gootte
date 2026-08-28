@@ -258,6 +258,10 @@ export type FeatureDocResponse = z.infer<typeof FeatureDocResponse>;
  *   파일 워처는 어느 프로젝트인지 모르니(development-order/07) `plan` 쿼리 전부 invalidate.
  * `backlog` = firstmate 홈 백로그 파일이 바뀌었다(tauri-desktop-app T03) → 백로그 조인을 다시
  *   읽어라(T04). 어느 프로젝트인지 모르는 coarse 신호다 — 조인하는 뷰 전부가 다시 읽는다.
+ * `ticket` = git 히스토리에서 파생한 티켓 완료(done) 집합이 바뀌었다(ticket-done-from-git T02,
+ *   `origin/main` SHA 변경). `projects` 를 안 쓰는 이유는 done 변화가 프로젝트 목록 변경이 아니라
+ *   서로 다른 신호라 화면이 얹는 쿼리를 가려야 해서(ticket-done-from-git 검토 3). 수신자는
+ *   `ticketDone` 쿼리를 다시 읽는다(T03).
  * `watch-fallback` = FS 이벤트 감시를 쓸 수 없다(tauri-desktop-app T03) → `active:true` 면
  *   프론트가 주기 풀스캔(invalidate 전체)으로 대응하고, 감시가 회복하면 `active:false` 가 온다.
  *   이벤트 경로가 죽었다는 뜻이 아니라 **이벤트가 안 온다는** 뜻이다 — 폴백 폴러의 유일한 근거.
@@ -267,6 +271,7 @@ export const ChangeEvent = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("projects") }),
   z.object({ kind: z.literal("plan") }),
   z.object({ kind: z.literal("backlog") }),
+  z.object({ kind: z.literal("ticket") }),
   z.object({ kind: z.literal("watch-fallback"), active: z.boolean() }),
 ]);
 export type ChangeEvent = z.infer<typeof ChangeEvent>;

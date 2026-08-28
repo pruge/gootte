@@ -14,6 +14,8 @@ function liveUrl(): string {
  * - kind:"plan" → 계획(DB) 워처는 project 를 모른다(development-order/07) — `plan` 쿼리 전부 invalidate.
  * - kind:"backlog" (tauri-desktop-app T03) → firstmate 홈 백로그가 바뀌었다(T04 조인 원천).
  *   어느 프로젝트 줄에 섞일지 모르는 coarse 신호라 전부 invalidate — 결정적 리더가 다시 읽는다(INV-4).
+ * - kind:"ticket" (ticket-done-from-git T02) → git 히스토리에서 파생한 티켓 완료(done) 집합이
+ *   바뀌었다. `projects` 와 섞지 않기 위해 전용 kind — 수신자는 `ticketDone` 쿼리를 다시 읽는다(T03).
  * - kind:"watch-fallback" (T03) → 서버 FS 이벤트 감시 불과. `active:true` 면 폴백 폴러를
  *   돌려 주기 풀스캔으로 대응하고, `active:false` 가 오면 내린다. 이벤트가 안 온다는 뜻이지
  *   연결이 끊겼다는 뜻이 아니다 — WS 재연결 시의 전체 invalidate와는 별개다.
@@ -83,6 +85,10 @@ export function useLiveSync(qc: QueryClient): void {
           void qc.invalidateQueries();
         } else if (ev.kind === "watch-fallback") {
           setFallbackPolling(ev.active);
+        } else if (ev.kind === "ticket") {
+          // git 에서 파생한 티켓 done 집합이 바뀌었다 — T03 가 만드는 `ticketDone` 쿼리를 다시 읽는다.
+          // 쿼리가 아직 없으면 no-op(invalidate 는 키 매칭 쿼리만 건드린다).
+          void qc.invalidateQueries({ queryKey: ["ticketDone"] });
         } else {
           void qc.invalidateQueries({
             predicate: (q) => Array.isArray(q.queryKey) && q.queryKey.includes(ev.project),

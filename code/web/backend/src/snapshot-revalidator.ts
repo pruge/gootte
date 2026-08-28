@@ -41,8 +41,8 @@ export function createSnapshotRevalidator(opts: SnapshotRevalidatorOptions): Sna
         if (!result.projectsChanged) opts.onChange({ kind: "project", project: slug });
       }
       // `origin/main` 이 움직여 새 완료가 생기면 화면이 다음 tick 에 본다(T02 → T03 소비).
-      // 캡틴 push 를 대시보드가 늦게 못 따라가게 하는 반쪽.
-      if (ticketGitChanged) opts.onChange({ kind: "projects" });
+      // 🔴 `projects` 를 안 쓰고 전용 `ticket` kind — done 변화는 목록 변경과 다른 신호(ticket-done-from-git 검토 3).
+      if (ticketGitChanged) opts.onChange({ kind: "ticket" });
     } finally {
       running = false;
     }
