@@ -651,4 +651,30 @@ describe("parseNewTicket — `## Depends on` 을 읽는다(T01)", () => {
     expect(doc.slug).toBe("T03");
     expect(doc.title).toBe("제목");
   });
+
+  it("🔴 T04 — 문서에 `Status: resolved (날짜)` 가 있으면 statusKnown=true·done·completedAt 이 채워진다", () => {
+    const doc = parseNewTicket(
+      "T03.md",
+      "# T03 — 제목\n\nStatus: resolved (2026-08-28)\n\n## Depends on\n- none\n",
+    );
+    expect(doc.statusKnown).toBe(true);
+    expect(doc.status).toBe("done");
+    expect(doc.sourceStatus).toBe("resolved");
+    expect(doc.completedAt).toBe("2026-08-28");
+  });
+
+  it("🔴 T04 — 문서에 `Status: wontfix` 가 있으면 dropped 로 읽힌다(구관례 어휘 재사용)", () => {
+    const doc = parseNewTicket("T03.md", "# T03 — 제목\n\nStatus: wontfix\n\n## Depends on\n- none\n");
+    expect(doc.statusKnown).toBe(true);
+    expect(doc.status).toBe("dropped");
+    expect(doc.completedAt).toBe(null);
+  });
+
+  it("🔴 T04 — `Status:` 줄이 없으면 statusKnown=false·pending 기본(리졸버가 채움, 회귀 없음)", () => {
+    const doc = parseNewTicket("T03.md", "# T03 — 제목\n\n## Depends on\n- none\n");
+    expect(doc.statusKnown).toBe(false);
+    expect(doc.status).toBe("pending");
+    expect(doc.sourceStatus).toBe(null);
+    expect(doc.completedAt).toBe(null);
+  });
 });

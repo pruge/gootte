@@ -108,6 +108,11 @@ function joinTicket(
   featureSlug: string,
   now: string,
 ): FeatureTicket {
+  // 🔴 T04 — 문서에 명시 상태(`Status: resolved`/`wontfix`, T04)가 있으면 **그것이 출처**(문서가 SoT,
+  // grill D5). 리졸버·백로그보다 우선 — 검수 종착 티켓은 머지 커밋 없이도 문서 한 줄로 완료된다.
+  if (ticket.statusKnown) {
+    return { ...ticket, backlogStatus: ticket.status };
+  }
   // 🔴 완료(done) 단일 출처 = git 리졸버(T01/grill D1). 리졸버가 true 면 백로그가 뭐라 해도 done.
   if (ticketDoneResolver(repo, featureSlug, ticket.num)) {
     return { ...ticket, status: "done", backlogStatus: "done", waitingOn: [] };

@@ -426,12 +426,17 @@ function parseNewDependsOn(content: string): BlockedByParse {
   return { blockedBy, unreadable };
 }
 
-/** `tickets/T<NN>.md` 한 장에서 읽어낸 것 — 상태는 여기 없다(SoT 는 백로그, T04). */
+/** `tickets/T<NN>.md` 한 장에서 읽어낸 것. 상태는 **선택적** — `Status:` 줄이 있으면 문서가 SoT(T04). */
 export interface NewTicketDoc {
   num: string; // "04" — 파일명("T04.md")의 숫자
   slug: string; // 파일 basename(확장자 제거) — "T04"
   path: string; // 기능 폴더 기준 상대 경로("tickets/T04.md")
   title: string;
+  /** 선택적 `Status:` 줄 파싱 결과 — 줄이 없으면 `statusKnown: false`(리졸버·백로그가 채움, 회귀 없음). */
+  status: TodoStatus;
+  sourceStatus: string | null;
+  statusKnown: boolean;
+  completedAt: string | null;
   /** `## Depends on` 에서 읽은 선행 — 옛 관례 `blockedBy` 와 같은 칸이다(F2, T01). */
   blockedBy: string[];
   /** 번호도 없음 선언도 아닌 항목 — verbatim. 막히며 동시에 드러난다(development-order/17). */
@@ -439,18 +444,25 @@ export interface NewTicketDoc {
 }
 
 /**
- * `tickets/T<NN>.md` 한 장 → 신관례 티켓(T04). 파일 안에 상태가 없다 — 백로그 조인이 채운다
+ * `tickets/T<NN>.md` 한 장 → 신관례 티켓(T04). 상태 줄은 **선택적** — `Status: resolved`(검수 종착)가
+ * 있으면 문서가 완료의 SoT 가 되고, 없으면 git 리졸버(T01)·백로그 조인이 나중에 채운다
  * (`applyBacklogStatus`, `core/src/project/backlog-join.ts`). 번호는 파일명이 SoT(F3 과 같은 원리).
+ * 상태 어휘는 구관례와 동일(`parseStatusLine`/`mapFirstmateStatus` 재사용 — 새 어휘 없음).
  */
 export function parseNewTicket(fileName: string, content: string): NewTicketDoc {
   const slug = fileName.replace(/\.md$/i, "");
   const num = /^[Tt](\d+)/.exec(slug)?.[1] ?? "";
   const { blockedBy, unreadable } = parseNewDependsOn(content);
+  const { raw, value, completedAt } = parseStatusLine(content);
   return {
     num,
     slug,
     path: `tickets/${fileName}`,
     title: heading(content)?.replace(NEW_TITLE_NUM_PREFIX, "").trim() || slug,
+    status: mapFirstmateStatus(value),
+    sourceStatus: raw,
+    statusKnown: value !== null,
+    completedAt,
     blockedBy,
     unreadableBlockedBy: unreadable,
   };

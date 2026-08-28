@@ -397,4 +397,36 @@ describe("applyBacklogStatus", () => {
       expect(joined).toEqual(base); // 한 글자도 안 바뀐다
     });
   });
+
+  it("🔴 T04 — 문서에 Status: resolved 가 있으면 리졸버·백로그와 무관하게 done(문서가 SoT)", () => {
+    // beforeEach 가 resolver false 로 세팅 + 백로그도 없음 — 그래도 문서 상태가 완료를 확정한다.
+    const withNew = {
+      ...feature("tauri-desktop-app"),
+      newTickets: [newTicket("04", { status: "done", statusKnown: true, sourceStatus: "resolved", completedAt: "2026-08-28" })],
+    };
+    const [joined] = applyBacklogStatus([withNew], [], "widget");
+    expect(joined?.newTickets?.[0]?.status).toBe("done");
+    expect(joined?.newTickets?.[0]?.statusKnown).toBe(true);
+    expect(joined?.newTickets?.[0]?.backlogStatus).toBe("done"); // 배지 계산용 비null
+  });
+
+  it("🔴 T04 — 문서 resolved 는 백로그 in_flight 보다 우선(하이브리드 D5)", () => {
+    const withNew = {
+      ...feature("tauri-desktop-app"),
+      newTickets: [newTicket("04", { status: "done", statusKnown: true, sourceStatus: "resolved" })],
+    };
+    const tasks = [PARENT, task({ id: "widget-tauri-t04", section: "in_flight" })];
+    const [joined] = applyBacklogStatus([withNew], tasks, "widget");
+    expect(joined?.newTickets?.[0]?.status).toBe("done"); // 백로그 처리중을 무시
+  });
+
+  it("🔴 T04 — 문서 wontfix 는 dropped(리졸버가 true 여도 문서가 이긴다)", () => {
+    setTicketDoneResolver((r, s, n) => n === "04"); // 리졸버는 done 주장
+    const withNew = {
+      ...feature("tauri-desktop-app"),
+      newTickets: [newTicket("04", { status: "dropped", statusKnown: true, sourceStatus: "wontfix" })],
+    };
+    const [joined] = applyBacklogStatus([withNew], [], "widget");
+    expect(joined?.newTickets?.[0]?.status).toBe("dropped");
+  });
 });

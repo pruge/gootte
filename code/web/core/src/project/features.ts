@@ -52,9 +52,10 @@ function byNum(a: { num: string; slug: string }, b: { num: string; slug: string 
 }
 
 /**
- * `tickets/T<NN>.md` 신관례(T04) 한 장 → 계약 형태. 파일에는 상태가 없다 — `status: "pending"`,
- * `statusKnown: false` 는 "모른다" 를 뜻하지 "이슈 관례의 알 수 없는 상태" 를 뜻하지 않는다
- * (화면은 `docConvention` 으로 그 둘을 가른다). 백로그 조인은 `applyBacklogStatus` 가 나중에 얹는다.
+ * `tickets/T<NN>.md` 신관례(T04) 한 장 → 계약 형태. 상태는 **문서에 명시됐으면 문서가 SoT**다
+ * (`doc.statusKnown` — `Status: resolved`/등, T04). 명시가 없으면 `statusKnown: false`(리졸버·백로그가
+ * 나중에 채움) — "모른다" 를 뜻하지 "이슈 관례의 알 수 없는 상태" 를 뜻하지 않는다(화면은 `docConvention`
+ * 으로 그 둘을 가른다). 백로그 조인/`applyBacklogStatus` 가 최종 상태를 얹는다.
  */
 function toNewTicket(
   doc: NewTicketDoc,
@@ -63,7 +64,7 @@ function toNewTicket(
   tree: readonly FeatureDocNode[],
 ): FeatureTicket {
   // 옛 관례와 **같은 계산**을 거친다(T01) — `## Depends on` 은 같은 개념의 다른 표기일 뿐이다(F2).
-  // 임자는 여기 없다(상태의 SoT 가 백로그라 claimed 도 문서에 없다).
+  // 임자는 여기 없다(상태의 SoT 가 문서/리졸버/백로그라 claimed 도 문서에 없다).
   const waiting = waitingOn(doc.blockedBy, doneNums, crossIndex);
   const unlanded = unlandedAt(tree, doc.path);
   return {
@@ -71,9 +72,10 @@ function toNewTicket(
     slug: doc.slug,
     path: doc.path,
     title: doc.title,
-    status: "pending",
-    sourceStatus: null,
-    statusKnown: false,
+    status: doc.status,
+    sourceStatus: doc.sourceStatus,
+    statusKnown: doc.statusKnown,
+    completedAt: doc.completedAt ?? undefined,
     blockedBy: doc.blockedBy,
     unreadableBlockedBy: doc.unreadableBlockedBy,
     waitingOn: waiting,
