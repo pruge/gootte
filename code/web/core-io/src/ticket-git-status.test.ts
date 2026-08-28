@@ -77,7 +77,7 @@ describe("ticket-git-status — T01 리졸버", () => {
     const sha = originMainSha(repo)!;
     // 🔴 실제 T05 대신 엉뚱한 done 집합을 미리 심는다 — SHA 가 같으면 스캔이 안 일어나야
     // 이 값이 그대로 살아남고, T05 는 절대 추가되지 않는다.
-    writeFileSync(join(dataDir, "ticket-git-status.json"), JSON.stringify({ originMainSha: sha, done: { "99": true } }));
+    writeFileSync(join(dataDir, "ticket-git-status.json"), JSON.stringify({ shas: { [repo]: sha }, done: { [repo]: { "99": true } } }));
     revalidateTicketGitStatus(repo, dataDir);
     expect(resolveTicketDone(repo, "f", "99", dataDir)).toBe(true); // 캐시 유지
     expect(resolveTicketDone(repo, "f", "05", dataDir)).toBe(false); // 스캔 안 됨 → 추가 안 됨
@@ -88,7 +88,7 @@ describe("ticket-git-status — T01 리졸버", () => {
     const shaA = originMainSha(repo)!; // T05 가 이 SHA 다
     pushCommit(repo, "feat: T07 second", { "g.md": "y\n" }); // T05 이후 새 커밋(다른 파일)
     // 캐시를 shaA 시점으로 미리 심는다 — range = shaA..origin/main = T07 커밋만.
-    writeFileSync(join(dataDir, "ticket-git-status.json"), JSON.stringify({ originMainSha: shaA, done: {} }));
+    writeFileSync(join(dataDir, "ticket-git-status.json"), JSON.stringify({ shas: { [repo]: shaA }, done: { [repo]: {} } }));
     revalidateTicketGitStatus(repo, dataDir);
     expect(resolveTicketDone(repo, "f", "07", dataDir)).toBe(true); // 새 커밋 반영
     expect(resolveTicketDone(repo, "f", "05", dataDir)).toBe(false); // range 밖(이미 지난 커밋)은 안 잡힘
@@ -114,5 +114,28 @@ describe("ticket-git-status — T01 리졸버", () => {
     const hit = lines.find((l) => l.includes("T05"));
     expect(hit).toBeDefined();
     expect(hit!.includes("\x1f")).toBe(true); // 해시와 본문이 구분자로 갈라져 있다
+  });
+
+  it("per-repo 격리 — A repo 의 T05 가 B repo 판정을 오염하지 않는다(교차 프로젝트 충돌 없음)", () => {
+    // 두 번째 repo(별개 origin) — T05 커밋이 없다.
+    const other = makeOrigin();
+    pushCommit(repo, "feat: T05 in A"); // T05 는 A 에만
+    revalidateTicketGitStatus(repo, dataDir);
+    revalidateTicketGitStatus(other.repo, dataDir);
+    expect(resolveTicketDone(repo, "a", "05", dataDir)).toBe(true); // A 는 완료
+    expect(resolveTicketDone(other.repo, "b", "05", dataDir)).toBe(false); // B 는 미완료(오염 안 됨)
+    rmSync(other.tmp, { recursive: true, force: true });
+  });
+
+  it("다중 repo 에서도 SHA 게이트가 repo 별로 동작 — B 만 push 해도 A 는 재스캔 안 함", () => {
+    const other = makeOrigin();
+    pushCommit(repo, "feat: T05 in A");
+    revalidateTicketGitStatus(repo, dataDir); // A 캐시 됨
+    revalidateTicketGitStatus(other.repo, dataDir); // B 캐시 됨(빈)
+    // A 는 그대로, B 만 push → B 만 true 반환, A 재호출은 false(게이트)
+    pushCommit(other.repo, "feat: T07 in B");
+    expect(revalidateTicketGitStatus(other.repo, dataDir)).toBe(true); // B 는 SHA 바뀜 → 스캔
+    expect(revalidateTicketGitStatus(repo, dataDir)).toBe(false); // A 는 SHA 동일 → 스캔 안 함
+    rmSync(other.tmp, { recursive: true, force: true });
   });
 });

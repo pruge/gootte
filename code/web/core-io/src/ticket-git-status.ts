@@ -12,15 +12,20 @@ import { defaultPlanDataDir } from "./plan-store";
  *
  * 🔴 읽기 전용(INV-2) — 관리대상에 한 글자도 안 쓴다. done-집합은 gootte 자기 저장소
  * (`dataDir`, 영구 스냅샷과 같은 수명)에만 캐시한다. 판정은 결정적·LLM-free(INV-4).
+ *
+ * 🔴 캐시는 **per-repo**(clone 경로 기준) — git 히스토리는 repo 별이므로. 전역 1슬롯이었을 때
+ * (a) 다중 repo 에서 SHA 슬롯이 덮어씌워져 매 tick 전체 재스캔(게이트 파괴), (b) A repo 의
+ * `T05` 가 B repo 판정까지 오염(교차 프로젝트 충돌) 하는 결함이 있었다. repo 키로 격리하면 둘 다
+ * 사라진다. 같은 repo 를 여러 곳에 clone 해도 SHA·토큰이 같아 각 항목이 동일해질 뿐 오판은 없다.
  */
 
 const CACHE_FILE = "ticket-git-status.json";
 
 interface TicketGitCache {
-  /** 마지막으로 본 `origin/main` SHA — 바뀌면 증분 재검증한다(grill D2). */
-  originMainSha: string | null;
-  /** `T<NN>` 토큰이 착지한 티켓 번호 집합(`"05"` → true). 🔴 slug 는 git 신호에 없다(grill D3). */
-  done: Record<string, true>;
+  /** repo(Clone 경로)별로 본 마지막 `origin/main` SHA — 바뀌면 그 repo 만 증분 재검증(grill D2). */
+  shas: Record<string, string | null>;
+  /** repo별 `T<NN>` 토큰 집합(`done[repo]["05"]`). 🔴 slug 는 git 신호에 없다(grill D3) — num 기준. */
+  done: Record<string, Record<string, true>>;
 }
 
 // `T<NN>` 토큰 — 대소문자 구분 안 함. 제목·본문·trailer 모두에서 본다(grill D3).
@@ -33,9 +38,10 @@ function cachePath(dataDir: string): string {
 function readCache(dataDir: string): TicketGitCache | null {
   try {
     const parsed = JSON.parse(readFileSync(cachePath(dataDir), "utf8")) as Partial<TicketGitCache>;
-    if (parsed.originMainSha !== null && typeof parsed.originMainSha !== "string") return null;
+    // 🔴 구형(전역 `originMainSha`/`done`) 캐시는 무효 — per-repo 로 버린다.
+    if (typeof parsed.shas !== "object" || parsed.shas === null) return null;
     if (typeof parsed.done !== "object" || parsed.done === null) return null;
-    return { originMainSha: parsed.originMainSha ?? null, done: parsed.done as Record<string, true> };
+    return { shas: parsed.shas as Record<string, string | null>, done: parsed.done as Record<string, Record<string, true>> };
   } catch {
     return null;
   }
@@ -50,40 +56,43 @@ function writeCache(dataDir: string, cache: TicketGitCache): void {
 }
 
 /**
- * `origin/main` 이 움직였을 때만 done-집합을 갱신한다(grill D2 — 매 기동 전체 훑기 금지).
- * SHA 가 같으면 `git log` 를 호출하지 않는다(캐시 히트, T01 허용기준). `origin/main` 을 못
- * 읽으면 캐시를 건드리지 않고 나간다(대시보드가 깨지지 않게, grill D1 안전 절).
+ * `origin/main` 이 움직였을 때만 **그 repo** 의 done-집합을 갱신한다(grill D2 — 매 기동 전체 훑기
+ * 금지, 다중 repo 에서도 각자 게이트). SHA 가 같으면 `git log` 를 호출하지 않는다(캐시 히트,
+ * T01 허용기준). `origin/main` 을 못 읽으면 그 repo 항목을 건드리지 않고 false(대시보드 안전).
  *
- * SHA 가 바뀌면 **증분** 스캔 — `git log <lastSha>..origin/main` 만 본다(비용 = push 당 새
- * 커밋 수). 캐시가 없으면 처음 한 번 전체(`origin/main`)를 훑는다.
+ * SHA 가 바뀌면 **증분** 스캔 — `git log <lastSha>..origin/main` 만 본다(비용 = push 당 새 커밋 수).
+ * 캐시가 없으면 처음 한 번 전체(`origin/main`)를 훑는다.
  *
- * 🔴 반환값 — 이번 호출에 캐시를 **갱신했으면 `true`**(SHA 변경 → 재스캔), 아니면 `false`(캐시
- * 히트 or origin/main 못 읽음). 재검증기(T02)가 "화면에 알릴까" 결정하는 데 쓴다.
+ * 🔴 반환값 — 이번 호출에 이 repo 캐시를 갱신했으면 `true`(SHA 변경 → 재스캔), 아니면 `false`
+ * (캐시 히트 or origin/main 못 읽음). 재검증기(T02)가 "화면에 알릴까" 결정하는 데 쓴다.
  */
 export function revalidateTicketGitStatus(repo: string, dataDir: string = defaultPlanDataDir()): boolean {
   const sha = originMainSha(repo);
-  if (sha === null) return false; // origin/main 못 읽음 → 캐시 안 건드림
+  if (sha === null) return false; // origin/main 못 읽음 → 이 repo 항목 안 건드림
   const prev = readCache(dataDir);
-  if (prev && prev.originMainSha === sha) return false; // 캐시 히트, git log 0회
-  const range = prev ? `${prev.originMainSha}..origin/main` : "origin/main";
-  const done: Record<string, true> = prev ? { ...prev.done } : {};
+  const cachedSha = prev?.shas[repo] ?? null;
+  if (cachedSha === sha) return false; // 이 repo 캐시 히트, git log 0회
+  const range = cachedSha ? `${cachedSha}..origin/main` : "origin/main";
+  const repoDone: Record<string, true> = prev?.done[repo] ? { ...prev.done[repo] } : {};
   for (const line of commitMessagesInRange(repo, range)) {
     const message = line.includes("\x1f") ? line.slice(line.indexOf("\x1f") + 1) : line;
     for (const m of message.matchAll(TICKET_TOKEN)) {
-      done[m[1]!] = true;
+      repoDone[m[1]!] = true;
     }
   }
-  writeCache(dataDir, { originMainSha: sha, done });
+  const shas = { ...(prev?.shas ?? {}), [repo]: sha };
+  const done = { ...(prev?.done ?? {}), [repo]: repoDone };
+  writeCache(dataDir, { shas, done });
   return true;
 }
 
 /**
- * `(repo, slug, num)` 티켓이 `origin/main` 에 착지했는가 — 커밋 메시지에 `T<NN>` 토큰이
+ * `(repo, slug, num)` 티켓이 `origin/main` 에 착지했는가 — 그 repo 의 커밋 메시지에 `T<NN>` 토큰이
  * reachable 하면 true(ticket-done-from-git T01, grill D1/D3).
  *
- * 🔴 `slug` 는 git 신호에 들어가지 않는다(grill D3 이 `T<NN>` 만 본다) — num 기준 판정이다.
- * `origin/main` 을 못 읽으면 false(예외 대신, 대시보드 안전).
- * 매 호출이 `revalidateTicketGitStatus` 를 거쳐 SHA 게이트를 지키므로, SHA 불변 시 git 작업은
+ * 🔴 `slug` 는 git 신호에 들어가지 않는다(grill D3 이 `T<NN>` 만 본다) — num 기준 판정이고, repo
+ * 로 격리된다(다른 repo 의 토큰은 안 섞임). `origin/main` 을 못 읽으면 false(예외 대신, 대시보드
+ * 안전). 매 호출이 `revalidateTicketGitStatus` 를 거쳐 SHA 게이트를 지키므로, SHA 불변 시 git 작업은
  * `rev-parse` 한 번뿐이다.
  */
 export function resolveTicketDone(
@@ -94,7 +103,7 @@ export function resolveTicketDone(
 ): boolean {
   revalidateTicketGitStatus(repo, dataDir);
   const cache = readCache(dataDir);
-  return cache ? cache.done[num] === true : false;
+  return cache ? cache.done[repo]?.[num] === true : false;
 }
 
 /** 테스트/디버그용 — 캐시 파일이 실제로 쓰였는지 확인한다. */
