@@ -14,8 +14,11 @@ import {
   readSteps,
   writeStep,
   resolveTicketDone,
+  readFeatureDoc,
 } from "@gootte/core-io";
 import { CliError, parseTicketRef } from "./args";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 /** CLI 명령 로직(순수 배선). main.ts 가 argv 를 명령별로 넘기고, 여기가 wiring: IO → core → text. */
 
@@ -252,3 +255,137 @@ export function nextText(
     .map((t) => `${t.feature}/${t.ticket}\t${t.title}${t.needsCaptainEye ? " 👁" : ""}`)
     .join("\n");
 }
+
+// ── T01(a-ticket-tells-how-long-it-took) — 티켓 시각 기록 ────────────────────
+
+/**
+ * 티켓 파일 경로에서 사본 경로와 기능 slug, 티켓 파일명을 구한다.
+ * `readFeatureDoc` 이 요구하는 상대 경로(`tickets/T<NN>.md`) 형식으로 넘긴다.
+ */
+function resolveTicketDocPath(copies: string[], feature: string, ticket: string): { copy: string; relPath: string } | null {
+  // 신관례 티켓 파일명은 `T<NN>.md` 형식 — 파서가 파일명에서 번호를 읽는다(parseNewTicket).
+  // 티켓 인자가 숫자만 들어올 수도 있고(T01) T 접두가 있을 수도 있으므로 양쪽 다 시도.
+  const ticketFile = ticket.startsWith("T") || ticket.startsWith("t") ? `${ticket}.md` : `T${ticket}.md`;
+  const relPath = `tickets/${ticketFile}`;
+  for (const copy of copies) {
+    const read = readFeatureDoc([copy], feature, relPath);
+    if (read.ok) return { copy, relPath };
+  }
+  return null;
+}
+
+/** 현재 시각을 ISO 8601 형식(오프셋 포함, 밀리초 제외)으로 반환 — `2026-08-29T10:30:00+09:00` 꼴. */
+function nowIso(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const offsetMinutes = -d.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
+  const offsetMins = Math.abs(offsetMinutes) % 60;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(offsetHours)}:${pad(offsetMins)}`;
+}
+
+/**
+ * 티켓 본문에서 `Time:` 줄을 찾는다. 없으면 null.
+ * 형식: `Time: started=2026-08-29T10:30:00+09:00 finished=2026-08-29T11:15:00+09:00`
+ */
+function findTimeLine(content: string): { line: string; index: number } | null {
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i]!.startsWith("Time: ")) {
+      return { line: lines[i]!, index: i };
+    }
+  }
+  return null;
+}
+
+/**
+ * 제목(첫 번째 `# ` 헤딩) 바로 다음 줄 인덱스를 반환.
+ * `Time:` 줄은 제목 뒤, 본문 앞에 들어간다(Status: 줄과 같은 위치).
+ */
+function titleLineIndex(content: string): number {
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i]!.startsWith("# ")) return i + 1;
+  }
+  return 1; // 헤딩이 없으면 1줄째 뒤에 삽입(방어적)
+}
+
+/**
+ * `start <프로젝트> <기능> <티켓>` — 티켓 파일에 `Time: started=<ISO>` 줄 삽입.
+ * 🔴 이미 `Time:` 줄이 있으면 에러(중복 방지).
+ * 🔴 티켓 파일이 없으면 에러.
+ */
+export function startText(
+  argv: readonly string[],
+  dataDir = defaultPlanDataDir(),
+  cwd: string = process.cwd(),
+): string {
+  rejectFlags(argv);
+  const [project, feature, ticket] = argv;
+  if (!project || !feature || !ticket) {
+    throw new CliError("usage: gootte start <프로젝트> <기능> <티켓>");
+  }
+  const copies = requireProjectPath(project, cwd);
+  // 기능 존재 확인 — 티켓 경로 해소 전에 한다(에러 메시지가 '기능 없음'이 되게).
+  const features = readFeatures(copies);
+  if (!features.some((f) => f.slug === feature)) throw new CliError(`기능 없음: ${feature}`);
+  const resolved = resolveTicketDocPath(copies, feature, ticket);
+  if (!resolved) throw new CliError(`티켓 없음: ${feature}/${ticket}`);
+
+  const read = readFeatureDoc([resolved.copy], feature, resolved.relPath);
+  if (!read.ok) throw new CliError(`티켓 읽기 실패: ${feature}/${ticket}`);
+
+  const existing = findTimeLine(read.content);
+  if (existing) throw new CliError(`이미 시작됨: ${feature}/${ticket} (${existing.line})`);
+
+  const lines = read.content.split("\n");
+  const insertAt = titleLineIndex(read.content);
+  const timeLine = `Time: started=${nowIso()}`;
+  lines.splice(insertAt, 0, timeLine);
+
+  // 파일 쓰기 — readFeatureDoc 이 읽은 사본 경로에 쓴다.
+  const fullPath = join(resolved.copy, "docs", "features", feature, resolved.relPath);
+  writeFileSync(fullPath, lines.join("\n"), "utf8");
+
+  return `${feature}/${ticket} → 시작 시각 기록: ${timeLine}`;
+}
+
+/**
+ * `end <프로젝트> <기능> <티켓>` — 같은 `Time:` 줄에 `finished=<ISO>` 추가.
+ * 🔴 `Time:` 줄이 없으면 에러.
+ * 🔴 이미 `finished` 가 있으면 에러.
+ */
+export function endText(
+  argv: readonly string[],
+  dataDir = defaultPlanDataDir(),
+  cwd: string = process.cwd(),
+): string {
+  rejectFlags(argv);
+  const [project, feature, ticket] = argv;
+  if (!project || !feature || !ticket) {
+    throw new CliError("usage: gootte end <프로젝트> <기능> <티켓>");
+  }
+  const copies = requireProjectPath(project, cwd);
+  // 기능 존재 확인 — 티켓 경로 해소 전에 한다(에러 메시지가 '기능 없음'이 되게).
+  const features = readFeatures(copies);
+  if (!features.some((f) => f.slug === feature)) throw new CliError(`기능 없음: ${feature}`);
+  const resolved = resolveTicketDocPath(copies, feature, ticket);
+  if (!resolved) throw new CliError(`티켓 없음: ${feature}/${ticket}`);
+
+  const read = readFeatureDoc([resolved.copy], feature, resolved.relPath);
+  if (!read.ok) throw new CliError(`티켓 읽기 실패: ${feature}/${ticket}`);
+
+  const existing = findTimeLine(read.content);
+  if (!existing) throw new CliError(`시작되지 않음: ${feature}/${ticket} — start 먼저 실행`);
+  if (existing.line.includes("finished=")) throw new CliError(`이미 완료됨: ${feature}/${ticket} (${existing.line})`);
+
+  const lines = read.content.split("\n");
+  lines[existing.index] = `${existing.line} finished=${nowIso()}`;
+
+  const fullPath = join(resolved.copy, "docs", "features", feature, resolved.relPath);
+  writeFileSync(fullPath, lines.join("\n"), "utf8");
+
+  return `${feature}/${ticket} → 완료 시각 기록: ${lines[existing.index]}`;
+}
+

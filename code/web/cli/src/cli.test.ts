@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, it, expect } from "vitest";
@@ -13,7 +13,7 @@ import {
 } from "@gootte/core-io";
 import { CliError } from "./args";
 import { setTicketDoneResolver } from "@gootte/core";
-import { boardText, discoverText, nextText, resolveProjectPath, stepClearText, stepText } from "./commands";
+import { boardText, discoverText, endText, nextText, resolveProjectPath, startText, stepClearText, stepText } from "./commands";
 
 function w(root: string, rel: string, content: string): void {
   const full = join(root, rel);
@@ -512,5 +512,136 @@ describe("cli — resolveProjectPath 는 GOOTTE_ROOTS 도 본다(T02)", () => {
     withEnv(undefined, () => {
       expect(resolveProjectPath("ghost-proj-nowhere", "/nonexistent-cwd")).toBeNull();
     });
+  });
+});
+
+/**
+ * T01(a-ticket-tells-how-long-it-took) — `start`/`end` 명령으로 티켓에 시각 기록.
+ * 임시 디렉터리에 실물 티켓 모양의 파일을 만들고 `start`/`end` 후 내용을 단언한다.
+ */
+describe("cli — start · end (T01: 티켓 시각 기록)", () => {
+  let proj: string;
+  let dataDir: string;
+
+  beforeEach(() => {
+    proj = mkdtempSync(join(tmpdir(), "gootte-time-proj-"));
+    dataDir = mkdtempSync(join(tmpdir(), "gootte-time-db-"));
+    w(proj, "AGENTS.md", "# AGENTS\n");
+    // 신관례 티켓 파일: tickets/T01.md
+    w(
+      proj,
+      "docs/features/f/tickets/T01.md",
+      "# T01 — 첫 티켓\n\n## Goal\n\n무언가를 한다.\n\n## Depends on\n- nothing\n",
+    );
+    activate(dataDir, basename(proj), "f");
+  });
+  afterEach(() => {
+    rmSync(proj, { recursive: true, force: true });
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  const slug = () => basename(proj);
+  const ticketPath = () => join(proj, "docs", "features", "f", "tickets", "T01.md");
+
+  it("start — 프로젝트/기능/티켓 없이 거절한다", () => {
+    expect(() => startText([], dataDir, proj)).toThrow(CliError);
+    expect(() => startText([slug()], dataDir, proj)).toThrow(CliError);
+    expect(() => startText([slug(), "f"], dataDir, proj)).toThrow(CliError);
+  });
+
+  it("start — 없는 프로젝트는 거절한다", () => {
+    expect(() => startText(["ghost", "f", "T01"], dataDir, proj)).toThrow(/프로젝트 없음/);
+  });
+
+  it("start — 없는 기능은 거절한다", () => {
+    expect(() => startText([slug(), "ghost", "T01"], dataDir, proj)).toThrow(/기능 없음/);
+  });
+
+  it("start — 없는 티켓은 거절한다", () => {
+    expect(() => startText([slug(), "f", "T99"], dataDir, proj)).toThrow(/티켓 없음/);
+  });
+
+  it("start — 티켓 파일에 Time: started=<ISO> 줄을 삽입한다", () => {
+    const out = startText([slug(), "f", "T01"], dataDir, proj);
+    expect(out).toMatch(/f\/T01 → 시작 시각 기록: Time: started=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/);
+    const content = readFileSync(ticketPath(), "utf8");
+    // 제목(# T01 — ...) 바로 다음 줄에 Time: 줄이 들어간다
+    const lines = content.split("\n");
+    expect(lines[0]).toBe("# T01 — 첫 티켓");
+    expect(lines[1]).toMatch(/^Time: started=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+    expect(lines[2]).toBe(""); // 빈 줄
+    expect(lines[3]).toBe("## Goal");
+  });
+
+  it("start — 티켓 인자가 숫자만 들어와도(T01) 찾는다", () => {
+    const out = startText([slug(), "f", "01"], dataDir, proj);
+    expect(out).toMatch(/f\/01 → 시작 시각 기록: Time: started=/);
+    const content = readFileSync(ticketPath(), "utf8");
+    expect(content).toMatch(/^Time: started=/m);
+  });
+
+  it("start — 이미 Time: 줄이 있으면 에러(중복 방지)", () => {
+    startText([slug(), "f", "T01"], dataDir, proj);
+    expect(() => startText([slug(), "f", "T01"], dataDir, proj)).toThrow(/이미 시작됨/);
+    // 파일이 바뀌지 않았는지 확인
+    const content = readFileSync(ticketPath(), "utf8");
+    const timeLines = content.split("\n").filter((l) => l.startsWith("Time: "));
+    expect(timeLines.length).toBe(1);
+  });
+
+  it("end — 프로젝트/기능/티켓 없이 거절한다", () => {
+    expect(() => endText([], dataDir, proj)).toThrow(CliError);
+    expect(() => endText([slug()], dataDir, proj)).toThrow(CliError);
+    expect(() => endText([slug(), "f"], dataDir, proj)).toThrow(CliError);
+  });
+
+  it("end — 시작되지 않은 티켓( Time: 줄 없음)은 에러", () => {
+    expect(() => endText([slug(), "f", "T01"], dataDir, proj)).toThrow(/시작되지 않음/);
+  });
+
+  it("end — 같은 Time: 줄에 finished=<ISO> 를 추가한다", () => {
+    startText([slug(), "f", "T01"], dataDir, proj);
+    const out = endText([slug(), "f", "T01"], dataDir, proj);
+    expect(out).toMatch(/f\/T01 → 완료 시각 기록: Time: started=.* finished=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/);
+    const content = readFileSync(ticketPath(), "utf8");
+    const lines = content.split("\n");
+    expect(lines[0]).toBe("# T01 — 첫 티켓");
+    expect(lines[1]).toMatch(/^Time: started=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2} finished=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+  });
+
+  it("end — 티켓 인자가 숫자만 들어와도(T01) 찾는다", () => {
+    startText([slug(), "f", "T01"], dataDir, proj);
+    const out = endText([slug(), "f", "01"], dataDir, proj);
+    expect(out).toMatch(/f\/01 → 완료 시각 기록: Time: started=.* finished=/);
+  });
+
+  it("end — 이미 finished가 있으면 에러(중복 방지)", () => {
+    startText([slug(), "f", "T01"], dataDir, proj);
+    endText([slug(), "f", "T01"], dataDir, proj);
+    expect(() => endText([slug(), "f", "T01"], dataDir, proj)).toThrow(/이미 완료됨/);
+    // 파일이 바뀌지 않았는지 확인
+    const content = readFileSync(ticketPath(), "utf8");
+    const timeLines = content.split("\n").filter((l) => l.startsWith("Time: "));
+    expect(timeLines.length).toBe(1);
+    expect(timeLines[0]).toMatch(/finished=/);
+  });
+
+  it("start → end 순서로 실행하면 파일에 started와 finished가 모두 기록된다", () => {
+    startText([slug(), "f", "T01"], dataDir, proj);
+    endText([slug(), "f", "T01"], dataDir, proj);
+    const content = readFileSync(ticketPath(), "utf8");
+    expect(content).toMatch(/Time: started=.* finished=/);
+    // started가 finished보다 앞선다(같은 줄)
+    const timeLine = content.split("\n").find((l) => l.startsWith("Time: "))!;
+    const startedMatch = timeLine.match(/started=([^ ]+)/);
+    const finishedMatch = timeLine.match(/finished=([^ ]+)/);
+    expect(startedMatch).toBeTruthy();
+    expect(finishedMatch).toBeTruthy();
+    expect(new Date(startedMatch![1]!).getTime()).toBeLessThanOrEqual(new Date(finishedMatch![1]!).getTime());
+  });
+
+  it("start/end — 어떤 플래그도 받지 않는다", () => {
+    expect(() => startText([slug(), "f", "T01", "--why", "이유"], dataDir, proj)).toThrow(/받지 않는다/);
+    expect(() => endText([slug(), "f", "T01", "--why", "이유"], dataDir, proj)).toThrow(/받지 않는다/);
   });
 });
