@@ -155,7 +155,7 @@ function useExpandedFeatures() {
  * 접힘·펼침·설명 유무로 제각각인 실제 높이가 들어오는 순간 보던 자리가 밀린다.
  */
 export function FeaturesView({ project, view, onView, onGoToPlanFeature }: FeaturesViewProps) {
-  const { data, isLoading, isError, error } = useFeatures(project);
+  const { data, isError, error } = useFeatures(project);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const docView = decodeDocView(view);
   // 검색은 지금 이 순간의 일이지 저장할 상태가 아니다 — 주소에 싣지 않는다(티켓 01 §주소).
@@ -211,9 +211,11 @@ export function FeaturesView({ project, view, onView, onGoToPlanFeature }: Featu
     setPendingFocus(opened);
   };
 
-  if (isLoading) return <Loading label="기능 문서 읽는 중…" />;
-  if (isError) return <ErrorMsg error={error} />;
-  if (!data) return null;
+  // 🔴 이미 가지고 있는 내용(영속 캐시 또는 직전 fetch)은 바로 그린다 — 빈 화면/스피너 금지.
+  // 데이터가 있으면 갱신 중에도 그대로 보이고, 새 값이 오면 swap 된다(T07). 에러도 데이터가
+  // 있으면 화면을 지우지 않는다(낡은 화면이 거짓말일 뿐, 깨진 것보다 낫다).
+  if (isError && !data) return <ErrorMsg error={error} />;
+  if (!data) return <Loading label="기능 문서 읽는 중…" />;
   // 🔴 기능이 하나도 없어도 미해소 사본이 있으면 그것만은 보여준다 — 빈 화면이 거짓말하지 않게.
   const unresolved =
     data.inProgress.unknown.length +

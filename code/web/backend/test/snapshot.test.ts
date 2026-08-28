@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
 import { FeaturesResponse, ProjectsResponse, type Feature, type Project } from "@gootte/contract";
 import { readFeatures } from "@gootte/core-io";
+import type { CopyScan } from "@gootte/core";
 import { createApp } from "../src/app";
 import { clearDiscoverCache, clearDiscoverCacheMemory } from "../src/discover-cache";
-import { clearSnapshot, recordProjectScan, snapshotFeatures, snapshotPath } from "../src/snapshot";
+import { clearSnapshot, clearInProgressMemory, recordInProgress, recordProjectScan, snapshotFeatures, snapshotInProgress, snapshotNeedsRefresh, snapshotPath } from "../src/snapshot";
 
 // 🔴 이 저장소 자신의 docs/ 를 픽스처로 쓰지 않는다 — 임시 디렉토리에 합성한다(verify gate 규율).
 const FIXTURES = join(import.meta.dirname, "fixtures", "roots");
@@ -47,13 +48,20 @@ describe("snapshot 저장소 (fast-cold-start T03)", () => {
     expect(doc.projects[0].stamps).toEqual([{ repo: proj.copies[0], head: null }]); // fixture 는 repo 가 아니라 null
   });
 
-  test("사본 구성이 달라지면 미스다 — 새 사본이 붙으면 재계산한다", () => {
+  test("사본 구성이 달라져도 slug 가 있으면 저장값을 바로 준다(stale-while-validate, T07)", () => {
     const proj = alphaLike();
     recordProjectScan(dataDir, proj, readFeatures(proj.copies));
 
-    expect(snapshotFeatures(dataDir, "alpha", [...proj.copies, "/다른/사본"])).toBeNull();
+    // 사본이 더 붙어도 slug 가 같으면 저장값을 즉시 서빙 — 빈 화면을 막는다
+    const hit = snapshotFeatures(dataDir, "alpha", [...proj.copies, "/다른/사본"]);
+    expect(hit).not.toBeNull();
+    expect(hit).toEqual(readFeatures(proj.copies));
+    // slug 가 없거나 파일이 없으면 미스 = 스캔 필요
     expect(snapshotFeatures(dataDir, "다른-slug", proj.copies)).toBeNull();
     expect(snapshotFeatures("/완전히/다른/dataDir", "alpha", proj.copies)).toBeNull();
+    // 갱신 필요 여부는 별도 판정 — 사본 구성 차이면 true, 같으면 false
+    expect(snapshotNeedsRefresh(dataDir, "alpha", [...proj.copies, "/다른/사본"])).toBe(true);
+    expect(snapshotNeedsRefresh(dataDir, "alpha", proj.copies)).toBe(false);
   });
 
   test("같은 slug 재기록은 덮고 다른 slug 는 보존한다(upsert)", () => {
@@ -115,5 +123,24 @@ describe("라우트가 스냅샷에서 서빙한다 (재부팅 시나리오)", (
     const body = ProjectsResponse.parse(await (await app.request("/api/projects")).json());
     expect(body.projects.map((p) => p.slug)).toContain("alpha");
     expect(snapshotFeatures(dataDir, "alpha", [join(FIXTURES, "alpha")])).not.toBeNull(); // 곧장 영구 기록됐다
+  });
+});
+
+describe("처리중 관측 스냅샷(T07 — features/plan/steps 탭 재기동 유지)", () => {
+  test("기록하면 디스크에 남고, 메모리 캐시를 비워도(sim 재기동) 디스크에서 즉시 서빙된다", () => {
+    const scan = { copies: [], stampedAt: "2026-08-13T00:00:00.000Z" } as unknown as CopyScan;
+    recordInProgress(dataDir, "beta", scan);
+    expect(snapshotInProgress(dataDir, "beta")).toEqual(scan); // 디스크에 있다
+    clearInProgressMemory(); // 재기동: 메모리 비움
+    expect(snapshotInProgress(dataDir, "beta")).toEqual(scan); // 디스크에서 즉시 복원 — 빈 화면 금지
+    expect(snapshotInProgress(dataDir, "other")).toBeNull(); // 없는 slug 는 미스
+  });
+
+  test("upsert — 같은 slug 재기록은 덮고 다른 slug 는 보존한다", () => {
+    recordInProgress(dataDir, "beta", { a: 1 } as unknown as CopyScan);
+    recordInProgress(dataDir, "gamma", { b: 2 } as unknown as CopyScan);
+    recordInProgress(dataDir, "beta", { a: 9 } as unknown as CopyScan);
+    expect(snapshotInProgress(dataDir, "beta")).toEqual({ a: 9 });
+    expect(snapshotInProgress(dataDir, "gamma")).toEqual({ b: 2 });
   });
 });

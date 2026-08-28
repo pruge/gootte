@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { flushSync } from "react-dom";
-import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { QueryClient, useMutation, useQuery, useQueryClient, dehydrate, hydrate } from "@tanstack/react-query";
 import type { PlanBoardResponse, PlanMoveRequest, StepMoveRequest } from "@gootte/contract";
 import { applyMoveToBoard } from "../components/plan/areas";
 import {
@@ -14,12 +14,57 @@ import {
   saveSettings,
 } from "./api";
 
+const PERSIST_KEY = "gootte-query-cache-v1";
+// 영속 캐시가 앱 재시작(브라우저 리로드)에서 살아남는 보관 기한 — 이 안에서는 GC 되지 않는다.
+const PERSIST_GC = 1000 * 60 * 60 * 24; // 24h
+
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
 export function makeQueryClient(): QueryClient {
-  return new QueryClient({
+  const qc = new QueryClient({
     defaultOptions: {
-      queries: { staleTime: 5_000, retry: 1, refetchOnWindowFocus: true },
+      queries: { staleTime: 5_000, gcTime: PERSIST_GC, retry: 1, refetchOnWindowFocus: true },
     },
+  });
+  // 🔴 동기 hydrate — 첫 렌더 전에 영속본을 캐시에 앉혀 딱 한 프레임도 빈 화면이 안 뜬다(T07).
+  hydrateFromStorage(qc);
+  attachSaver(qc);
+  return qc;
+}
+
+/**
+ * 영속 캐시(T07) — 앱을 새로 시작해도 "이미 읽은" 내용을 바로 그린다. 변경분은 WS(`project`)
+ * 방송이 걸러 낸 invalidate 로 갱신되니, 여기선 **저장만** 한다. 🔴 featureDoc(문서 본문)은
+ * 큼직해 영속에서 뺀다 — 본문은 열 때마다 요청받으면 그만이다.
+ */
+function hydrateFromStorage(qc: QueryClient): void {
+  try {
+    const raw = localStorage.getItem(PERSIST_KEY);
+    if (!raw) return;
+    const dehydrated = JSON.parse(raw) as { queries?: Array<{ queryKey?: unknown[] }> };
+    const queries = (dehydrated.queries ?? []).filter((q) => q.queryKey?.[0] !== "featureDoc");
+    if (queries.length === 0) return;
+    hydrate(qc, { ...dehydrated, queries });
+  } catch {
+    // 깨진 영속본은 무시 — 다음 fetch 가 채운다(치명하지 않다)
+  }
+}
+
+function attachSaver(qc: QueryClient): void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  qc.getQueryCache().subscribe(() => {
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = null;
+      try {
+        const dehydrated = dehydrate(qc, {
+          shouldDehydrateQuery: (q) =>
+            q.queryKey[0] !== "featureDoc" && q.state.status === "success" && q.state.data !== undefined,
+        });
+        localStorage.setItem(PERSIST_KEY, JSON.stringify(dehydrated));
+      } catch {
+        // quota 초과 등 — 영속 실패는 치명하지 않다(다음 fetches 가 메운다)
+      }
+    }, 500);
   });
 }
 

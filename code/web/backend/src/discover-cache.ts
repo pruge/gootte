@@ -1,6 +1,6 @@
 import type { Project } from "@gootte/contract";
 import { discoverProjects, headCommit, readFeatures } from "@gootte/core-io";
-import { clearSnapshot, clearSnapshotMemory, readSnapshotStamps, recordProjectScan } from "./snapshot";
+import { clearSnapshotMemory, readSnapshotStamps, recordProjectScan } from "./snapshot";
  
  /**
   * discover 캐시 (W2) — 머신 scan 은 무거워 매 요청 재실행 금지. 프로세스 메모리에 TTL 캐시.
@@ -26,11 +26,17 @@ export function getProjects(roots: string[], now: number = Date.now()): Project[
   return projects;
 }
  
-/** 캐시 무효화 (테스트·수동 refresh). discover·페이로드·영구 스냅샷이 같은 신호로 비워진다. */
+/**
+ * 캐시 무효화 (테스트·수동 refresh·감시 신호). 🔴 **디스크 영구 스냅샷은 지우지 않는다**(T07) —
+ * 첫 화면을 항상 즉시 서빙하려면 파일이 남아야 한다. 메모리 적재본(`clearSnapshotMemory`)과
+ * 페이로드 TTL 캐시만 비워, 다음 요청이 디스크 스냅샷(또는 필요 시 새 스캔)에서 다시 읽게 한다.
+ * 스냩샷 갱신·교체는 부팅 재검증(`revalidateSnapshot`)과 감시 신호(`scheduleProjectUpdate`)가
+ * 백그라운드로 한다 — 여기서 파일을 지우면 재기동마다 빈 화면+재스캔이 된다.
+ */
 export function clearDiscoverCache(): void {
   cache = null;
   payloadCache = null;
-  clearSnapshot();
+  clearSnapshotMemory();
 }
 
 /** 메모리 캐시만 비운다 (재시작 시뮬레이션용). 디스크 스냅샷 파일은 건드리지 않는다. */

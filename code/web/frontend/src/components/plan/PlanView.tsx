@@ -181,7 +181,7 @@ interface PlanViewProps {
  * 체크상자·자동 완료·접힘은 04, 단계 매기기와 `next` 는 05 다.
  */
 export function PlanView({ project }: PlanViewProps) {
-  const { data, isLoading, isError, error } = usePlanBoard(project);
+  const { data, isError, error } = usePlanBoard(project);
   const move = usePlanMove(project);
   const [tab, setTab] = useState<BoardAreaId>("waiting");
   // 여러 장 고르기 — 한 칸 안에서만 묶인다. 다른 칸의 카드를 고르면 묶음이 그 칸으로 옮겨간다.
@@ -215,9 +215,9 @@ export function PlanView({ project }: PlanViewProps) {
   const board = data;
   const pickedSet = useMemo(() => new Set(picked.slugs), [picked]);
 
-  if (isLoading) return <Loading label="판을 그리는 중…" />;
-  if (isError) return <ErrorMsg error={error} />;
-  if (!board) return null;
+  // 🔴 이미 가진 판은 바로 그리고, 갱신분은 swap(T07). 데이터가 있으면 에러도 화면을 안 지운다.
+  if (isError && !data) return <ErrorMsg error={error} />;
+  if (!board) return <Loading label="판을 그리는 중…" />;
 
   const slugsOf = (area: BoardAreaId): string[] => board[area].map((c) => c.feature.slug);
   const cardOf = (slug: string): PlanCard | undefined =>

@@ -76,6 +76,8 @@ const app = createApp({
     void watchers.rebind(watcherRoots(firstmateHome));
     void watchers.rebindBacklog(firstmateHome);
   },
+  // T07: 처리중 관측 갱신이 끝나면 같은 `project` 이벤트로 프론트에 swap 을 알린다.
+  broadcast: hub.broadcast,
 });
 
 // WS `/api/live` — 실시간 push 채널(2b, ADR-0002). 🔴 캐치올(mountFallback) *전*에 등록해야 `*` 에 안 먹힘.

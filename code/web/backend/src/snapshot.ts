@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Feature, type Feature as FeatureT, type Project } from "@gootte/contract";
+import type { CopyScan } from "@gootte/core";
 import { z } from "zod";
 import { discoverProjects, headCommit, readFeatures } from "@gootte/core-io";
 
@@ -13,7 +14,7 @@ import { discoverProjects, headCommit, readFeatures } from "@gootte/core-io";
  * 쓰지 않는다(INV-2). 내용은 계산 결과의 verbatim 직렬화뿐 — 요약·추론은 없다(INV-4).
  *
  * 흐름: 스캔 미스 시 `recordProjectScan` 이 스탬프(headCommit@기록시점)와 함께 저장하고,
- * 다음 부팅부터 `snapshotFeatures` 가 같은 사본 구성의 프로젝트를 디스크에서 곧바로 내준다.
+ * 다음 부팅부터 `snapshotFeatures` 가 저장된 프로젝트를 디스크에서 곧바로 내준다(slug 만 있으면 —
  * HEAD 비교·부팅 직후 재검증은 T04, 감시 중 증분 반영은 T05 의 몫 — 이 모듈은 저장소일 뿐.
  */
 
@@ -66,13 +67,18 @@ function loadDoc(dataDir: string): SnapshotDocT | null {
   }
 }
 
-/** 같은 slug·같은 사본 구성이면 스냅샷에서 답한다. 사본이 달라지면 미스 — 재계산한다. */
-export function snapshotFeatures(dataDir: string, slug: string, copies: readonly string[]): FeatureT[] | null {
+/**
+ * 같은 slug 가 스냅샷에 있으면 저장된 기능을 **바로** 준다(stale-while-validate, T07) —
+ * 사본 구성이 달라져도 일단 이전 스캔을 즉시 서빙해 빈 화면을 막는다. 갱신은 부팅 재검증
+ * (`revalidateSnapshot`)과 감시 신호(T05 `scheduleProjectUpdate`)가 백그라운드로 해서 준비되면
+ * 교체한다(WS broadcast → 화면 swap). slug 자체가 없거나 파일이 깨지면 null = "스캔해야 한다".
+ * 🔴 `copies` 를 일치시킬 필요가 없다 — 정확한 사본 구성은 `snapshotNeedsRefresh` 가 따로 판정한다.
+ */
+export function snapshotFeatures(dataDir: string, slug: string, _copies?: readonly string[]): FeatureT[] | null {
   const doc = loadDoc(dataDir);
   if (!doc) return null;
   const p = doc.projects.find((x) => x.slug === slug);
   if (!p) return null;
-  if (p.copies.length !== copies.length || p.copies.some((c, i) => c !== copies[i])) return null;
   return p.features;
 }
 
@@ -143,6 +149,83 @@ export function readSnapshotStamps(dataDir: string): SnapshotStampInfo[] | null 
     copies: p.copies,
     stamps: p.stamps,
   }));
+}
+
+/**
+ * 저장된 스냵샷이 현재 사본 구성/HEAD 와 달라 **갱신이 필요한가**(T07). `featuresFor` 가 저장값을
+ * 바로 서빙한 뒤 이걸로 백그라운드 갱신 여부를 판정한다. slug 가 없으면 true(스캔 필요).
+ * 🔴 판정만 한다 — git 위치 스탬프(`headCommit`)를 읽으므로 핫 서빙 경로가 아니라 갱신 트리거
+ * 자리에서만 쓴다(매 요청 호출하면 git 하위프로세스 비용이 되살아난다).
+ */
+export function snapshotNeedsRefresh(dataDir: string, slug: string, copies: readonly string[]): boolean {
+  const p = loadDoc(dataDir)?.projects.find((x) => x.slug === slug);
+  if (!p) return true;
+  if (!sameCopies(p.copies, copies)) return true;
+  return !sameStamps(p.stamps, copies);
+}
+
+/**
+ * 처리중 관측 스냅샷(T07) — "지금 누가 무엇을 붙들고 있나"(`scanWorkingCopies`)의 **영구 기록**.
+ * 기능 목록·판·단계 탭이 재기동해도 빈 화면 없이 바로 뜨게 하려면 기능 내용뿐 아니라 이 관측도
+ * 남겨야 한다. 값은 파생물(INV-1) — git checkout 상태를 읽은 것이라 깨지면 버리고 다시 스캔하면 끝.
+ * 흐름: 핫 서빙은 `snapshotInProgress` 가 디스크에서 즉시 내주고, 갱신은 감시 신호(T05)가 트리거한
+ * 백그라운드 `recordInProgress` 가 한다(adr/0001 결정 1 과 같은 트랜잭션 교체).
+ */
+const INPROGRESS_FILE = "in-progress-snapshot.json";
+
+const InProgressDoc = z.object({
+  version: z.literal(1),
+  scannedAt: z.string(),
+  projects: z.array(z.object({ slug: z.string(), scan: z.any() })),
+});
+type InProgressDocT = z.infer<typeof InProgressDoc>;
+
+const inProgressMemo = new Map<string, InProgressDocT>();
+
+export function inProgressPath(dataDir: string): string {
+  return join(dataDir, INPROGRESS_FILE);
+}
+
+function loadInProgress(dataDir: string): InProgressDocT | null {
+  const hit = inProgressMemo.get(dataDir);
+  if (hit) return hit;
+  const file = inProgressPath(dataDir);
+  if (!existsSync(file)) return null;
+  try {
+    const doc = InProgressDoc.parse(JSON.parse(readFileSync(file, "utf8")));
+    inProgressMemo.set(dataDir, doc);
+    return doc;
+  } catch {
+    return null;
+  }
+}
+
+/** 마지막으로 기록된 처리중 관측 — 있으면 재기동에도 즉시 서빙, 없으면 null(스캔 필요). */
+export function snapshotInProgress(dataDir: string, slug: string): CopyScan | null {
+  const scan = loadInProgress(dataDir)?.projects.find((p) => p.slug === slug)?.scan;
+  return (scan as CopyScan | undefined) ?? null;
+}
+
+/** 처리중 관측을 원자적으로 기록(upsert). 다음 요청부터 이 값을 서빙한다. */
+export function recordInProgress(dataDir: string, slug: string, scan: CopyScan): void {
+  const prev = loadInProgress(dataDir);
+  const others = (prev?.projects ?? []).filter((p) => p.slug !== slug);
+  const doc: InProgressDocT = {
+    version: 1,
+    scannedAt: new Date().toISOString(),
+    projects: [...others, { slug, scan }].sort((a, b) => a.slug.localeCompare(b.slug)),
+  };
+  mkdirSync(dataDir, { recursive: true });
+  const file = inProgressPath(dataDir);
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, JSON.stringify(doc));
+  renameSync(tmp, file);
+  inProgressMemo.set(dataDir, doc);
+}
+
+/** 처리중 관측 메모리 캐시만 비운다(재시작 시뮬레이션용). 디스크 파일은 보존한다. */
+export function clearInProgressMemory(): void {
+  inProgressMemo.clear();
 }
 
 

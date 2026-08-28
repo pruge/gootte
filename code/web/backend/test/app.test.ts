@@ -37,6 +37,7 @@ import {
   pickBySlug,
   DISCOVER_TTL_MS,
 } from "../src/discover-cache";
+import { updateProjectSnapshot } from "../src/snapshot";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "roots");
 
@@ -528,9 +529,13 @@ describe("GET /api/features/:slug — 읽음 기록", () => {
           join(projectRoot, "alpha", "docs/features/auth-login/issues/09-new.md"),
           "# 09 — 새 티켓\n\nStatus: ready-for-agent\n",
         );
+        // "서버 재기동" 흉내 — 메모리 캐시 비움(디스크 스냅샷은 남는다, T07). 재기동 직후에는
+        // 저장된 스냅샷이 그대로 서빙되고(stale), 새 티켓은 감시 신호가 만드는 갱신(`updateProjectSnapshot`
+        // — 실제론 감시기가 하는 일) 뒤에야 보인다. 그래서 갱신을 직접 트리거해 swap 을 확인한다.
         clearDiscoverCache();
+        updateProjectSnapshot(dataDir, "alpha", [projectRoot]);
 
-        // "서버 재기동" 흉내 — 같은 dataDir 로 새 `createApp` · 새 요청.
+        // "서버 재기동 + 갱신" 흉내 — 같은 dataDir 로 새 `createApp` · 새 요청.
         const second = await requestFeatures();
         const auth = second.features.find((f) => f.slug === "auth-login")!;
         // 그 뒤에 생긴 09 만 안 읽음이고, 첫 깔기 때 있던 나머지는 그대로 읽음이다.
@@ -698,7 +703,9 @@ describe("GET /api/features/:slug/:feature/doc — 문서 본문(read-only, INV-
             join(projectRoot, "alpha/docs/features/new-conv/tickets/T02.md"),
             "# T02 — 나중에 생긴 티켓\n\n## Depends on\n- nothing\n",
           );
+          // 재기동 흉내(메모리 비움) + 감시 갱신 트리거(T07 — 디스크 스냅샷은 남고, swap 은 갱신 뒤).
           clearDiscoverCache();
+          updateProjectSnapshot(dataDir, "alpha", [projectRoot]);
           const second = FeaturesResponse.parse(
             await (await app.request("/api/features/alpha")).json(),
           );
@@ -1312,6 +1319,9 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
         join(ctx.projectRoot, "docs", "features", "shipped", "issues", "03-late.md"),
         ticket("03", "ready-for-agent"),
       );
+      // 🔴 문서를 직접 고쳤다 = T05 감시 신호가 날려 스냅샷을 갱신한다. 테스트는 감시기를 안 돌리니
+      // 그 갱신을 여기서 흉내낸다(T07 — plan 보드는 스냅샷에서 서빙하므로).
+      updateProjectSnapshot(ctx.dataDir, "beta", [ctx.projectRoot]);
       const body = await get(ctx, "2026-08-13 09:00");
       expect(body.done).toEqual([]);
       expect(body.waiting.map((c) => c.feature.slug)).toEqual(["shipped"]);
@@ -1331,6 +1341,9 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
         join(ctx.projectRoot, "docs", "features", "shipped", "issues", "03-late.md"),
         ticket("03", "ready-for-agent"),
       );
+      // 🔴 문서를 직접 고쳤다 = T05 감시 신호가 날려 스냅샷을 갱신한다. 테스트는 감시기를 안 돌리니
+      // 그 갱신을 여기서 흉내낸다(T07 — plan 보드는 스냅샷에서 서빙하므로).
+      updateProjectSnapshot(ctx.dataDir, "beta", [ctx.projectRoot]);
       const body = await get(ctx, "2026-08-13 09:00");
       expect(body.done).toEqual([]);
       expect(body.waiting.map((c) => c.feature.slug)).toEqual(["shipped"]);

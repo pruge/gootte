@@ -65,7 +65,7 @@ const A11Y = {
  * 🔴 **놓을 때 검사하지 않는다**(INV-B3) — 놓은 자리를 서버로 그대로 보낼 뿐이다.
  */
 export function ProcessView({ project }: ProcessViewProps) {
-  const { data, isLoading, isError, error } = usePlanBoard(project);
+  const { data, isError, error } = usePlanBoard(project);
   const stepMove = useStepMove(project);
   const [ticketDoc, setTicketDoc] = useState<{ feature: string; path: string } | null>(null);
   const [dragging, setDragging] = useState<ProcessRow | null>(null);
@@ -79,9 +79,9 @@ export function ProcessView({ project }: ProcessViewProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  if (isLoading) return <Loading label="순서를 읽는 중…" />;
-  if (isError) return <ErrorMsg error={error} />;
-  if (!data) return null;
+  // 🔴 이미 가진 단계 판은 바로 그리고, 갱신분은 swap(T07). 데이터가 있으면 에러도 안 지운다.
+  if (isError && !data) return <ErrorMsg error={error} />;
+  if (!data) return <Loading label="순서를 읽는 중…" />;
 
   const groups = groupProcessSteps(data.active);
   // 이름 둘째 줄에 쓸 설명문구는 기능 표제에서 온다(plan 탭 BoardCard 와 같은 자리) — `steps`

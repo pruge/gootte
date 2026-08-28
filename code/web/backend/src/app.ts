@@ -50,8 +50,9 @@ import {
   effectiveProjectRoots,
   deriveWatchRoots,
 } from "@gootte/core-io";
+import type { CopyScan } from "@gootte/core";
 import { getProjects, getProjectsPayload, resolveSlug } from "./discover-cache";
-import { recordProjectScan, snapshotFeatures } from "./snapshot";
+import { recordProjectScan, recordInProgress, snapshotFeatures, snapshotInProgress } from "./snapshot";
 
 /**
  * 읽음 기록 대상 문서인가 — **티켓뿐이다**(캡틴 결정 ②). 경로 모양만 본다(INV-4, 문서를 다시 안 읽는다).
@@ -108,6 +109,12 @@ export interface AppOptions {
    * (실제 host 경로) — 테스트는 실제 host 를 보지 않도록 임시 디렉토리를 주입한다.
    */
   firstmateHomeSuggestionCandidates?: string[];
+  /**
+   * 처리중 관측 갱신이 끝났을 때 알릴 방송(T07, swap). `inProgressFor` 가 디스크 스냅샷을 갱신하고
+   * 내용이 바뀌었을 때만 호출한다 — 프론트가 같은 `project` 이벤트로 다시 요청해 교체한다.
+   * 없으면 갱신만 하고 방송은 안 한다(테스트).
+   */
+  broadcast?: (event: { kind: "project"; project: string }) => void;
 }
 
 /**
@@ -132,6 +139,7 @@ export function createApp(options: AppOptions = {}): Hono {
   const treehouse = options.treehouse ?? treehouseRoot();
   const dataDir = options.dataDir ?? planDataDir();
   const now = options.now ?? (() => nowStamp());
+  const broadcast = options.broadcast;
   const app = new Hono();
 
   /**
@@ -162,10 +170,13 @@ export function createApp(options: AppOptions = {}): Hono {
   });
 
   /**
-   * `readFeatures` 의 스냅샷 우선 버전(fast-cold-start T03). 스냅샷에 같은 slug·같은 사본
-   * 구성의 기록이 있으면 git 하위프로세스 없이 그대로 답하고, 없으면 스캔해 그 자리에서
-   * 스탬프와 함께 영구 기록한다. 무효화는 `clearDiscoverCache` 와 같은 신호(감시 변경)가
-   * 스냅샷까지 지운다 — 재부팅 직후의 stale 폭은 T04 의 재검증이 닫는다(adr/0001).
+   * `readFeatures` 의 스냅샷 우선 버전(fast-cold-start T03/T07). 스냅샷에 **같은 slug** 기록이
+   * 있으면 git 하위프로세스 없이 그대로 답한다(stale-while-validate — 빈 화면을 막는다). 없으면
+   * 스캔해 그 자리에서 스탬프와 함께 영구 기록한다. 사본 구성/HEAD 가 바뀐 갱신은 이 자리에서
+   * 하지 않고 부팅 재검증(`revalidateSnapshot`)과 감시 신호(`scheduleProjectUpdate`)가
+   * 백그라운드로 해서 준비되면 교체한다(WS broadcast → 화면 swap, adr/0001).
+   * 🔴 `clearDiscoverCache` 는 더 이상 디스크 스냅샷을 지우지 않으므로 재기동 시에도 항상
+   * 이 저장값이 즉시 서빙된다.
    */
   const featuresFor = (slug: string, copies: readonly string[], path: string): Feature[] => {
     const hit = snapshotFeatures(dataDir, slug, copies);
@@ -173,6 +184,55 @@ export function createApp(options: AppOptions = {}): Hono {
     const features = readFeatures([...copies]);
     recordProjectScan(dataDir, { slug, path, copies: [...copies] }, features);
     return features;
+  };
+
+  /**
+   * 처리중 관측 서빙(T07) — 재기동에도 마지막 기록을 **즉시** 내주고(빈 화면 금지), 갱신은 백그라운드로
+   * 한다. 메모리(TTL) → 디스크 스냅샷 → 없으면 `scanWorkingCopies`(git 하위프로세스) 순으로 본다.
+   * 갱신은 디바운스로 걸어, 내용이 바뀐 때만 `broadcast`(`project`) 해 프론트가 swap 하게 한다.
+   * 🔴 `scanWorkingCopies` 는 매 요청 동기 호출하면 탭마다 spin 이 되살아나므로 여기서만 한다.
+   */
+  const IN_PROGRESS_TTL_MS = 5_000;
+  const inProgressMem = new Map<string, { at: number; scan: CopyScan }>();
+  const inProgressTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const saveInProgress = (project: string, scan: CopyScan): void => {
+    recordInProgress(dataDir, project, scan);
+    inProgressMem.set(project, { at: Date.now(), scan });
+  };
+  const refreshInProgress = (project: string): void => {
+    try {
+      const scan = scanWorkingCopies(treehouse, project);
+      const prev = inProgressMem.get(project)?.scan;
+      saveInProgress(project, scan);
+      if (JSON.stringify(prev) !== JSON.stringify(scan)) broadcast?.({ kind: "project", project });
+    } catch {
+      // 관측 실패는 조용히 — 옛 값을 그대로 유지한다(INV-U1 과 같은 원칙).
+    }
+  };
+  const scheduleInProgressRefresh = (project: string): void => {
+    const pending = inProgressTimers.get(project);
+    if (pending) clearTimeout(pending);
+    inProgressTimers.set(
+      project,
+      setTimeout(() => {
+        inProgressTimers.delete(project);
+        refreshInProgress(project);
+      }, 200),
+    );
+  };
+  const inProgressFor = (project: string): CopyScan => {
+    const mem = inProgressMem.get(project);
+    if (mem && Date.now() - mem.at < IN_PROGRESS_TTL_MS) return mem.scan;
+    const disk = snapshotInProgress(dataDir, project);
+    if (disk) {
+      inProgressMem.set(project, { at: Date.now(), scan: disk });
+      scheduleInProgressRefresh(project);
+      return disk;
+    }
+    const scan = scanWorkingCopies(treehouse, project);
+    saveInProgress(project, scan);
+    scheduleInProgressRefresh(project);
+    return scan;
   };
 
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
@@ -199,7 +259,7 @@ export function createApp(options: AppOptions = {}): Hono {
    * 결과) — `withReadState` 와 달리 예외를 삼킬 이유가 없다.
    */
   const withInProgress = (project: string, features: Feature[]): Feature[] =>
-    applyInProgress(features, scanWorkingCopies(treehouse, project)).features;
+    applyInProgress(features, inProgressFor(project)).features;
 
   /**
    * 백로그 상태 조인을 얹은 기능 목록 — `features` 탭과 **같은 판정 자리**(`applyBacklogStatus`)를
@@ -361,7 +421,10 @@ export function createApp(options: AppOptions = {}): Hono {
     try {
       const areas = readBoard(
         project,
-        withBacklogStatus(project, withInProgress(project, withReadState(project, readFeatures(proj.copies)))),
+        withBacklogStatus(
+          project,
+          withInProgress(project, withReadState(project, featuresFor(proj.slug, proj.copies, proj.path))),
+        ),
       );
       return c.json(PlanBoardResponse.parse({ project, ...areas }));
     } catch (err) {
