@@ -1,20 +1,14 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 /** IO 층 — git CLI 위임. 전부 읽기 전용(INV-2). */
-
-// 🔴 `execFileSync` 기본 maxBuffer 는 1MB — 히스토리가 큰 repo(origin/main 본문 전체 스캔)는
-// 이걸 넘겨버려 예외→null→티켓 스캔 0건→전부 미완료로 보인다(실측: jinwooauto 1.85MB 초과).
-// 넉넉히 64MB 로 올린다.
-const GIT_MAX_BUFFER = 64 * 1024 * 1024;
 
 function git(repo: string, args: string[]): string {
   // stderr 를 물려받지 않고 잡는다 — 못 읽는 사본의 `fatal:` 이 우리 출력에 섞이지 않게.
   return execFileSync("git", ["-C", repo, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    maxBuffer: GIT_MAX_BUFFER,
   }).trim();
 }
 function gitSafe(repo: string, args: string[]): string | null {
@@ -35,7 +29,6 @@ function gitSafeRaw(repo: string, args: string[]): string | null {
     return execFileSync("git", ["-C", repo, ...args], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
-      maxBuffer: GIT_MAX_BUFFER,
     }).replace(/\n+$/, "");
   } catch {
     return null;
@@ -99,26 +92,14 @@ export function fetchOrigin(repo: string): void {
 }
 
 /**
- * 비차단 fetch — 기동 시 전체 사본을 동기로 fetch 하면 이벤트 루프가 막혀 첫 요청이 수십 초
- * 밀린다(fast-cold-start, plan-board/13). 이 비동기 버전은 `Promise` 로 돌려 호출자가
- * `await Promise.allSettled` 로 묶어 기동을 가리지 않게 한다. 실패는 조용히 무시(no-op, T02).
- */
-export function fetchOriginAsync(repo: string): Promise<void> {
-  return new Promise((resolve) => {
-    execFile("git", ["-C", repo, "fetch", "origin"], { maxBuffer: GIT_MAX_BUFFER }, (err) => resolve());
-  });
-}
-
-/**
- * `<range>` 안 커밋의 `해시\x1f커밋날짜(ISO)\x1f전체본문` 을 레코드 구분자(`\x1e`)로 하나씩 — 티켓 완료 리졸버가
+ * `<range>` 안 커밋의 `해시\x1f전체본문` 을 레코드 구분자(`\x1e`)로 하나씩 — 티켓 완료 리졸버가
  * 메시지(제목+본문)에서 `T<NN>` 토큰을 찾는다(ticket-done-from-git T01, grill D3).
  * 🔴 본문까지 읽는다 — `Closes: T05`/`Ticket: T05` 같은 trailer 도 매칭하기 위해서(T01 명세의
  * `%s`(제목만) 는 grill D3 을 못 맞추므로 전체 본문 `%B` 로 바꾼다). 멀티라인 본문은 `\x1e`(RS)로
  * 커밋을 갈라니 줄바꿈에 안 휘둘린다.
- * 🔴 커밋 날짜(`%cI`, ISO 8601 strict) 추가 — 완료 시점/소요시간 계산용(a-ticket-tells-how-long-it-took).
  */
 export function commitMessagesInRange(repo: string, range: string): string[] {
-  const out = gitSafe(repo, ["-c", "core.quotepath=false", "log", "--format=%H%x1f%cI%x1f%B%x1e", range]);
+  const out = gitSafe(repo, ["-c", "core.quotepath=false", "log", "--format=%H%x1f%B%x1e", range]);
   if (!out) return [];
   return out
     .split("\x1e")
@@ -151,7 +132,6 @@ export function checkIgnored(repo: string, paths: readonly string[]): Set<string
       input: `${paths.join("\n")}\n`,
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
-      maxBuffer: GIT_MAX_BUFFER,
     });
     return new Set(out.split("\n").map((l) => l.trim()).filter(Boolean));
   } catch (e: unknown) {
@@ -194,7 +174,6 @@ export function isAncestor(repo: string, ancestor: string, descendant: string): 
     execFileSync("git", ["-C", repo, "merge-base", "--is-ancestor", ancestor, descendant], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
-      maxBuffer: GIT_MAX_BUFFER,
     });
     return true;
   } catch (e: unknown) {

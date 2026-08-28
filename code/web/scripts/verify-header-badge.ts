@@ -5,8 +5,8 @@
  *
  *   npx tsx scripts/verify-header-badge.ts <관리대상 프로젝트 뿌리> [firstmate 홈]
  */
-import { readFeatures, readBacklogTasks, resolveTicketDone, resolveTicketDoneDetail, defaultPlanDataDir } from "../core-io/src/index";
-import { allTickets, applyBacklogStatus, setTicketDoneResolver, setTicketDoneDetailResolver } from "../core/src/index";
+import { readFeatures, readBacklogTasks, resolveTicketDone, defaultPlanDataDir } from "../core-io/src/index";
+import { allTickets, applyBacklogStatus, setTicketDoneResolver } from "../core/src/index";
 
 const root = process.argv[2];
 const home = process.argv[3] ?? null;
@@ -18,9 +18,7 @@ if (!root) {
 const project = root.split("/").filter(Boolean).pop() ?? root;
 // T03 — 신관례 완료(done) 출처 = git 리졸버(ticket-done-from-git T01). 같은 read 경로를 지난다.
 setTicketDoneResolver((repo, slug, num) => resolveTicketDone(repo, slug, num, defaultPlanDataDir()));
-setTicketDoneDetailResolver((repo, slug, num) => resolveTicketDoneDetail(repo, slug, num, defaultPlanDataDir()));
-// 🔴 `project`(slug) 가 아니라 `root`(실제 리포 경로)를 repo 로 넘긴다 — 리졸버는 `git -C <path>` 가 필요.
-const features = applyBacklogStatus(readFeatures([root]), readBacklogTasks(home), root);
+const features = applyBacklogStatus(readFeatures([root]), readBacklogTasks(home), project);
 
 for (const f of features) {
   const tickets = allTickets(f);

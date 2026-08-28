@@ -395,7 +395,7 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
     const b = feature("b", [["02", "나"]]);
     const board: PlanBoardResponse = {
       ...EMPTY_BOARD,
-      active: [card(a, { "01-x": 1 }), card(b, { "02-x": 1 })],
+      active: [card(a, { "01-x": 1 }), card(b, { "02-x": 2 })],
     };
     renderProcess(board);
 

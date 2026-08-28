@@ -1,5 +1,4 @@
 import { basename } from "node:path";
-import { Worker } from "node:worker_threads";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -27,7 +26,6 @@ import {
   planMove,
   splitIntoAreas,
   setTicketDoneResolver,
-  setTicketDoneDetailResolver,
   type BoardAreas,
 } from "@gootte/core";
 import {
@@ -42,12 +40,10 @@ import {
   writeStep,
   ensureReadSeed,
   resolveTicketDone,
-  resolveTicketDoneDetail,
   markDocRead,
   scanWorkingCopies,
   defaultPlanDataDir,
   defaultTreehouseRoot,
-  discoverProjects,
   readSettings,
   writeSettings,
   normalizeDirPath,
@@ -57,8 +53,8 @@ import {
   deriveWatchRoots,
 } from "@gootte/core-io";
 import type { CopyScan } from "@gootte/core";
-import { getProjects, getProjectsPayload, resolveSlug, resolveSlugTargetedProjects } from "./discover-cache";
-import { recordProjectScan, recordInProgress, snapshotFeatures, snapshotInProgress, snapshotProject } from "./snapshot";
+import { getProjects, getProjectsPayload, resolveSlug } from "./discover-cache";
+import { recordProjectScan, recordInProgress, snapshotFeatures, snapshotInProgress } from "./snapshot";
 
 /**
  * 읽음 기록 대상 문서인가 — **티켓뿐이다**(캡틴 결정 ②). 경로 모양만 본다(INV-4, 문서를 다시 안 읽는다).
@@ -146,18 +142,7 @@ export function createApp(options: AppOptions = {}): Hono {
   const dataDir = options.dataDir ?? planDataDir();
   // T03 — 신관례 완료(done) 출처 = git 리졸버(ticket-done-from-git T01). core 가 순환 의존 없이
   // 쓰게 resolver 를 주입한다. 같은 dataDir 를 쓰므로 T02 스냅샷 재검증 캐시와 공유된다.
-  // 🔴 `repo` 로는 slug("gootte") 가 넘어오는데, 리졸버는 git 리포 경로가 필요하다(`git -C <path>`).
-  // slug → 실제 리포 경로로 풀어준다. 슬러그 캐시로 요청당 스캔을 한 번으로 묶는다.
-  const slugToPath = new Map<string, string>();
-  const repoPath = (slug: string): string =>
-    (slugToPath.get(slug) ??
-      (() => {
-        const path = resolveSlug(effectiveRoots(), slug)?.path ?? slug;
-        slugToPath.set(slug, path);
-        return path;
-      })());
-  setTicketDoneResolver((repo, s, num) => resolveTicketDone(repoPath(repo), s, num, dataDir));
-  setTicketDoneDetailResolver((repo, s, num) => resolveTicketDoneDetail(repoPath(repo), s, num, dataDir));
+  setTicketDoneResolver((repo, slug, num) => resolveTicketDone(repo, slug, num, dataDir));
   const now = options.now ?? (() => nowStamp());
   const broadcast = options.broadcast;
   const app = new Hono();
@@ -219,25 +204,24 @@ export function createApp(options: AppOptions = {}): Hono {
     recordInProgress(dataDir, project, scan);
     inProgressMem.set(project, { at: Date.now(), scan });
   };
+  const refreshInProgress = (project: string): void => {
+    try {
+      const scan = scanWorkingCopies(treehouse, project);
+      const prev = inProgressMem.get(project)?.scan;
+      saveInProgress(project, scan);
+      if (JSON.stringify(prev) !== JSON.stringify(scan)) broadcast?.({ kind: "project", project });
+    } catch {
+      // 관측 실패는 조용히 — 옛 값을 그대로 유지한다(INV-U1 과 같은 원칙).
+    }
+  };
   const scheduleInProgressRefresh = (project: string): void => {
     const pending = inProgressTimers.get(project);
     if (pending) clearTimeout(pending);
-    // 🔴 200ms 디바운스 뒤 워커에서 갱신 — 메인 이벤트 루프를 안 막는다(fast-cold-start,
-    // plan-board/13). `scanWorkingCopies`(sync git) 가 2s 를 잡아 메인에서 돌리면 첫 화면 이후
-    // 요청이 밀리므로 워커로 돌린다. 워커는 디스크에만 기록한다.
     inProgressTimers.set(
       project,
       setTimeout(() => {
         inProgressTimers.delete(project);
-        try {
-          const worker = new Worker(new URL("./in-progress-worker.ts", import.meta.url), {
-            workerData: { treehouse, project, dataDir },
-          });
-          worker.on("error", () => {});
-          worker.on("exit", () => {});
-        } catch {
-          // 워커 띄우기 실패는 복구 불가 — 다음 요청이 다시 시도한다
-        }
+        refreshInProgress(project);
       }, 200),
     );
   };
@@ -378,7 +362,7 @@ export function createApp(options: AppOptions = {}): Hono {
     // 백로그 조인·카운트는 요청마다 다시 한다(INV-1 — 스냅샷에 담지 않는 파생물).
     const projects = getProjectsPayload(effectiveRoots(), () => {
       const backlog = readBacklogTasks(readSettings(dataDir).firstmateHome);
-      return getProjects(effectiveRoots(), { dataDir }).map((p) => ({
+      return getProjects(effectiveRoots()).map((p) => ({
         ...p,
         openFeatures: countOpenFeatures(applyBacklogStatus(featuresFor(p.slug, p.copies, p.path), backlog, p.slug)),
       }));
@@ -410,10 +394,10 @@ export function createApp(options: AppOptions = {}): Hono {
     } catch {
       readMarks = null;
     }
-    // 🔴 `inProgressFor` 는 디스크 스냅샷을 먼저 서빙하고 갱신은 디바운스 백그라운드로 돈다 —
-    // 매 요청 `scanWorkingCopies`(사본마다 git 하위프로세스)를 도는 옛 코드는 첫 화면을 2s 씩
-    // 물렸다(fast-cold-start, plan-board/13). 관측은 값을 항상 내므로 디스크 miss 시에만 스캔한다.
-    const observed = applyInProgress(applyReadState(features, readMarks), inProgressFor(project));
+    const observed = applyInProgress(
+      applyReadState(features, readMarks),
+      scanWorkingCopies(treehouse, project),
+    );
     // T04 — `tickets/T<NN>.md` 신관례의 상태는 문서가 아니라 firstmate 홈 백로그가 SoT(D4).
     // 홈 미설정·백로그 없음은 readBacklogTasks 가 빈 목록으로 흡수 — 조인 실패는 상태 미표시로만 드러난다.
     const withBacklog = {
@@ -541,7 +525,7 @@ export function createApp(options: AppOptions = {}): Hono {
             400,
           );
         }
-        const step = placeStep(features, placements, readSteps(dataDir, project), target, feature);
+        const step = placeStep(features, placements, readSteps(dataDir, project), target);
         writeStep(dataDir, project, feature, ticket, step);
         // 옮긴 뒤의 판은 **다시 읽어** 만든다 — /move 와 같은 규율이다(INV-1·INV-3).
         const areas = readBoard(
@@ -565,17 +549,9 @@ export function createApp(options: AppOptions = {}): Hono {
     (c) => {
       const { slug, feature } = c.req.valid("param");
       const { path } = c.req.valid("query");
-      // 🔴 디스크 스냅샷(copies 영속)에서 즉시 해소 — 콜드 전체 discover(`discoverProjects`, 사본마다
-      // git 하위프로세스) 비용을 문서 열기 경로가 물려받지 않게(plan-board/13). 스냅샷에 없으면 기존처럼
-      // 전체 discover 로 되돌아간다. 스냅샷은 감시 신호로 항상 최신 유지.
-      const proj = snapshotProject(dataDir, slug) ?? resolveSlugTargetedProjects(effectiveRoots(), slug);
+      const proj = resolveSlug(effectiveRoots(), slug);
       if (!proj) return c.json(notFound(slug), 404);
-      // 스냅샷 copies 가 낡아 못 찾았으면(사본 방금 삭제 등) 전체 discover 로 한 번 더 본다(안전망).
-      let result = readFeatureDoc(proj.copies, feature, path);
-      if (!result.ok && result.reason === "not-found") {
-        const fresh = discoverProjects(effectiveRoots()).find((p) => p.slug === slug) ?? null;
-        if (fresh) result = readFeatureDoc(fresh.copies, feature, path);
-      }
+      const result = readFeatureDoc(proj.copies, feature, path);
       if (!result.ok) {
         const error: ApiError =
           result.reason === "outside"

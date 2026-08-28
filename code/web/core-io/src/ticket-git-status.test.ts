@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
-import { TICKET_GIT_CACHE_VERSION } from "../src/ticket-git-status";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -78,7 +77,7 @@ describe("ticket-git-status — T01 리졸버", () => {
     const sha = originMainSha(repo)!;
     // 🔴 실제 T05 대신 엉뚱한 done 집합을 미리 심는다 — SHA 가 같으면 스캔이 안 일어나야
     // 이 값이 그대로 살아남고, T05 는 절대 추가되지 않는다.
-    writeFileSync(join(dataDir, "ticket-git-status.json"), JSON.stringify({ version: TICKET_GIT_CACHE_VERSION, shas: { [repo]: sha }, done: { [repo]: { "99": true } } }));
+    writeFileSync(join(dataDir, "ticket-git-status.json"), JSON.stringify({ shas: { [repo]: sha }, done: { [repo]: { "99": true } } }));
     revalidateTicketGitStatus(repo, dataDir);
     expect(resolveTicketDone(repo, "f", "99", dataDir)).toBe(true); // 캐시 유지
     expect(resolveTicketDone(repo, "f", "05", dataDir)).toBe(false); // 스캔 안 됨 → 추가 안 됨
@@ -89,7 +88,7 @@ describe("ticket-git-status — T01 리졸버", () => {
     const shaA = originMainSha(repo)!; // T05 가 이 SHA 다
     pushCommit(repo, "feat: T07 second", { "g.md": "y\n" }); // T05 이후 새 커밋(다른 파일)
     // 캐시를 shaA 시점으로 미리 심는다 — range = shaA..origin/main = T07 커밋만.
-    writeFileSync(join(dataDir, "ticket-git-status.json"), JSON.stringify({ version: TICKET_GIT_CACHE_VERSION, shas: { [repo]: shaA }, done: { [repo]: {} } }));
+    writeFileSync(join(dataDir, "ticket-git-status.json"), JSON.stringify({ shas: { [repo]: shaA }, done: { [repo]: {} } }));
     revalidateTicketGitStatus(repo, dataDir);
     expect(resolveTicketDone(repo, "f", "07", dataDir)).toBe(true); // 새 커밋 반영
     expect(resolveTicketDone(repo, "f", "05", dataDir)).toBe(false); // range 밖(이미 지난 커밋)은 안 잡힘

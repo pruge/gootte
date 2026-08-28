@@ -36,9 +36,6 @@ const SnapshotProject = z.object({
 const SnapshotDoc = z.object({
   version: z.literal(1),
   scannedAt: z.string(), // 마지막 기록 시각 ISO
-  // 🔴 스냅샷을 쓰는 루트 지문 — `getProjects` 가 다른 루트 설정(테스트·홈 변경)에서 stale 스냅샷을
-  // 그대로 서빙하지 않게 가드한다(plan-board/13). 루트는 프로세스 내 불변(운영 시 env)이라 안전.
-  roots: z.array(z.string()),
   projects: z.array(SnapshotProject),
 });
 
@@ -90,7 +87,7 @@ export function snapshotFeatures(dataDir: string, slug: string, _copies?: readon
  * 계산했나" 가 한 덩어리다(adr/0001 결정 1). 통째로 다시 쓰지만 보존 규칙은 upsert 하나:
  * 같은 slug 는 덮고, 다른 slug 의 행은 그대로 남는다.
  */
-export function recordProjectScan(dataDir: string, proj: Project, features: FeatureT[], roots?: readonly string[]): void {
+export function recordProjectScan(dataDir: string, proj: Project, features: FeatureT[]): void {
   const prev = loadDoc(dataDir);
   const stamps = proj.copies.map((repo) => ({ repo, head: headCommit(repo) }));
   const row = { slug: proj.slug, path: proj.path, copies: proj.copies, stamps, features };
@@ -98,7 +95,6 @@ export function recordProjectScan(dataDir: string, proj: Project, features: Feat
   const doc: SnapshotDocT = {
     version: 1,
     scannedAt: new Date().toISOString(),
-    roots: [...(roots ?? prev?.roots ?? [])],
     projects: [...others, row].sort((a, b) => a.slug.localeCompare(b.slug)),
   };
   mkdirSync(dataDir, { recursive: true });
@@ -210,36 +206,6 @@ export function snapshotInProgress(dataDir: string, slug: string): CopyScan | nu
   return (scan as CopyScan | undefined) ?? null;
 }
 
-/**
- * 디스크 스냅샷의 전체 프로젝트 목록(copies 포함) 을 즉시 해소한다(fast-cold-start, plan-board/13).
- * `getProjects` 가 전체 프로젝트 디스크 스캔(`discoverProjects` — 사본마다 git 하위프로세스)을 하지
- * 않고도 문서 열기 같은 즉시 서빙 경로를 갖게 한다. 스냅샷이 없으면 null = 스캔해야 함.
- */
-export function snapshotProjects(dataDir: string): Project[] | null {
-  const doc = loadDoc(dataDir);
-  if (!doc) return null;
-  return doc.projects.map((p) => ({ slug: p.slug, path: p.path, copies: p.copies }));
-}
-
-/** 스냅샷을 쓴 루트 지문 — `getProjects` 가 다른 루트 설정에서 stale 스냅샷을 서빙하지 않게 가드. 없으면 null. */
-export function snapshotRoots(dataDir: string): string[] | null {
-  const doc = loadDoc(dataDir);
-  if (!doc) return null;
-  return doc.roots;
-}
-
-/**
- * 디스크 스냅샷에서 slug → Project(copies 포함) 를 즉시 해소한다. 없으면 null.
- * `resolveSlug` 가 콜드 전체 스캔 대신 이 값을 쓰도록 하는 안전망 엔트리포인트다.
- */
-export function snapshotProject(dataDir: string, slug: string): Project | null {
-  const doc = loadDoc(dataDir);
-  if (!doc) return null;
-  const p = doc.projects.find((x) => x.slug === slug);
-  if (!p) return null;
-  return { slug: p.slug, path: p.path, copies: p.copies };
-}
-
 /** 처리중 관측을 원자적으로 기록(upsert). 다음 요청부터 이 값을 서빙한다. */
 export function recordInProgress(dataDir: string, slug: string, scan: CopyScan): void {
   const prev = loadInProgress(dataDir);
@@ -303,19 +269,17 @@ export function revalidateSnapshot(
   dataDir: string,
   roots: readonly string[],
 ): SnapshotRevalidationResult {
-  const saved = loadDoc(dataDir);
-  const savedProjects = saved?.projects ?? [];
-  // 🔴 `discoverProjects` 는 5ms 내외의 readdir/stat 트리 워크라 부팅 블록의 주범이 아니다 — 실측.
-  // (16s 부팅 지연은 `fetchOrigin` sync git fetch 가 주범이었고, `fetchOriginAsync` 로 비동기화됨,
-  // fast-cold-start plan-board/13.) 트리 워크는 항상 해서 새 프로젝트 발견을 보장한다.
+  if (!loadDoc(dataDir)) return { changedProjects: [], projectsChanged: false };
+
   const currentProjects = discoverProjects([...roots]);
-  const savedBySlug = new Map(savedProjects.map((project) => [project.slug, project]));
+  const saved = readSnapshotStamps(dataDir) ?? [];
   const currentBySlug = new Map(currentProjects.map((project) => [project.slug, project]));
+  const savedBySlug = new Map(saved.map((project) => [project.slug, project]));
 
   let projectsChanged = false;
   const changedProjects: string[] = [];
 
-  for (const savedProject of savedProjects) {
+  for (const savedProject of saved) {
     if (!currentBySlug.has(savedProject.slug)) {
       removeProjectScan(dataDir, savedProject.slug);
       projectsChanged = true;
@@ -326,20 +290,11 @@ export function revalidateSnapshot(
     const previous = savedBySlug.get(project.slug);
     if (!previous || !sameCopies(previous.copies, project.copies) || !sameStamps(previous.stamps, project.copies)) {
       const features = readFeatures([...project.copies]);
-      // 🔴 roots 지문을 같이 기록 — `getProjects` 가 다른 루트 설정에서 stale 스냅샷을 서빙하지 않게(plan-board/13).
-      recordProjectScan(dataDir, project, features, roots);
+      recordProjectScan(dataDir, project, features);
       changedProjects.push(project.slug);
       if (!previous) projectsChanged = true;
     }
   }
 
   return { changedProjects, projectsChanged };
-}
-
-/** 루트 지문 비교 — 순서 무관, 집합 동등. */
-export function sameRootsSet(a: readonly string[], b: readonly string[]): boolean {
-  if (a.length !== b.length) return false;
-  const sa = new Set(a);
-  for (const x of b) if (!sa.has(x)) return false;
-  return true;
 }

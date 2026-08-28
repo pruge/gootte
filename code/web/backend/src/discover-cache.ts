@@ -1,54 +1,30 @@
 import type { Project } from "@gootte/contract";
-import { discoverProjects, headCommit, readFeatures, resolveSlugTargeted } from "@gootte/core-io";
-import { snapshotProjects, snapshotRoots, sameRootsSet, clearSnapshotMemory, recordProjectScan } from "./snapshot";
-  
-  /**
-   * discover 캐시 (W2) — 머신 scan 은 무거워 매 요청 재실행 금지. 프로세스 메모리에 TTL 캐시.
-   * 프로젝트 목록은 자주 안 변하니 안전. 기능·티켓 문서 내용은 이 캐시에 담기지 않음(INV-3) —
-   * `/api/features/:slug` 는 매 요청 다시 읽는다… 가 T03 이전의 이야기다. 문서 내용의 영구
-   * 스냅샷은 `snapshot.ts` 가 따로 갖고, 이 캐시는 discover 목록의 짧은 메모만 남는다.
-   */
-  export const DISCOVER_TTL_MS = 5_000;
-  
-  interface CacheEntry {
-    at: number;
-    key: string;
-    projects: Project[];
-  }
-  let cache: CacheEntry | null = null;
-
-  /**
-   * roots 의 firstmate 프로젝트 (TTL 내 재사용). 🔴 콜드 시작에서 전체 트리 walk(`discoverProjects`,
-   * 사본마다 git 하위프로세스) 비용을 사이드바가 물려받지 않게 디스크 스냅샷(copies 영속)을 먼저 쓰고,
-   * 없을 때만 전체 discover 로 되돌아간다(plan-board/13). 스냅샷은 부팅 재검증·감시 신호로 항상 최신 유지.
-   */
-  export function getProjects(
-    roots: string[],
-    opts: { dataDir?: string; now?: number; force?: boolean } = {},
-  ): Project[] {
-    const now = opts.now ?? Date.now();
-    const key = roots.join("\x00");
-    if (!opts.force && cache && cache.key === key && now - cache.at < DISCOVER_TTL_MS) return cache.projects;
-    let projects: Project[];
-    if (opts.dataDir) {
-      // 🔴 디스크 스냅샷(copies 영속)을 먼저 쓴다 — 사이드바가 전체 discover 비용을 물려받지 않는다
-      // (fast-cold-start, plan-board/13). 단, 스냅샷은 **기록 당시의 roots 가 그대로일 때만** 유효하다
-      // — 다른 roots(테스트·설정 변경)에서는 새 discover 로 떨어지지 빈 화면을 내지 않는다.
-      // 같은 roots 라는 판정은 `sameRootsSet`(순서 무시) — `loadDoc` 가 메모이즈돼 게이트 자체는
-      // 한 번 캐시 워밍 후엔 0 비용이다.
-      const savedRoots = snapshotRoots(opts.dataDir);
-      if (savedRoots && sameRootsSet(savedRoots, roots)) {
-        const snap = snapshotProjects(opts.dataDir);
-        projects = snap ?? discoverProjects(roots);
-      } else {
-        projects = discoverProjects(roots);
-      }
-    } else {
-      projects = discoverProjects(roots);
-    }
-    cache = { at: now, key, projects };
-    return projects;
-  }
+import { discoverProjects, headCommit, readFeatures } from "@gootte/core-io";
+import { clearSnapshotMemory, readSnapshotStamps, recordProjectScan } from "./snapshot";
+ 
+ /**
+  * discover 캐시 (W2) — 머신 scan 은 무거워 매 요청 재실행 금지. 프로세스 메모리에 TTL 캐시.
+  * 프로젝트 목록은 자주 안 변하니 안전. 기능·티켓 문서 내용은 이 캐시에 담기지 않음(INV-3) —
+  * `/api/features/:slug` 는 매 요청 다시 읽는다… 가 T03 이전의 이야기다. 문서 내용의 영구
+  * 스냅샷은 `snapshot.ts` 가 따로 갖고, 이 캐시는 discover 목록의 짧은 메모만 남는다.
+  */
+export const DISCOVER_TTL_MS = 5_000;
+ 
+interface CacheEntry {
+  at: number;
+  key: string;
+  projects: Project[];
+}
+let cache: CacheEntry | null = null;
+ 
+/** roots 의 firstmate 프로젝트 (TTL 내 재사용). `now` 주입 = 테스트용. */
+export function getProjects(roots: string[], now: number = Date.now()): Project[] {
+  const key = roots.join("\x00");
+  if (cache && cache.key === key && now - cache.at < DISCOVER_TTL_MS) return cache.projects;
+  const projects = discoverProjects(roots);
+  cache = { at: now, key, projects };
+  return projects;
+}
  
 /**
  * 캐시 무효화 (테스트·수동 refresh·감시 신호). 🔴 **디스크 영구 스냅샷은 지우지 않는다**(T07) —
@@ -111,16 +87,7 @@ export function pickBySlug(projects: Project[], slug: string): Project | null {
   return projects.find((p) => p.slug === slug) ?? null;
 }
 
-/**
- * roots 에서 slug 해소 — 미해소=null. 🔴 전체 트리 walk(`discoverProjects`) 대신 targeted 로
- * 즉시 해소한다(plan-board/13) — features/plan/doc 모든 엔드포인트가 이걸 쓰니 cold 시작 시
- * 수십 초 스캔을 물려받지 않는다. 전체 목록이 필요한 `/api/projects` 는 `getProjects` 를 직접 쓴다.
- */
-export function resolveSlug(roots: string[], slug: string, _now: number = Date.now()): Project | null {
-  return resolveSlugTargeted(roots, slug);
-}
-
-/** slug 하나만 cheap 하게 해소(전체 트리 walk 없음, plan-board/13). 문서 열기 경로용. */
-export function resolveSlugTargetedProjects(roots: string[], slug: string): Project | null {
-  return resolveSlugTargeted(roots, slug);
+/** roots 에서 slug 해소 — 미해소=null. 묶인 결과 위에서 단일 매치가 정답이다. */
+export function resolveSlug(roots: string[], slug: string, now: number = Date.now()): Project | null {
+  return pickBySlug(getProjects(roots, now), slug);
 }
