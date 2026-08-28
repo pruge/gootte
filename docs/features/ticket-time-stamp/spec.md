@@ -73,25 +73,31 @@ Time: started=2026-08-28T13:08:10+09:00 finished=2026-08-28T13:32:18+09:00
 
 진행 중이면 `약 N분 진행 중`.
 
-### CLI 명령
+### CLI 명령 (grill D5 — 독립 셸 스크립트)
 
 ```
 gootte start <feature-slug> <ticket>    # Time: started=<ISO> 삽입
 gootte end   <feature-slug> <ticket>    # finished=<ISO> 추가
 ```
 
-- 프로젝트 경로는 cwd + `GOOTTE_ROOTS` 에서 자동 해결(`resolveProjectPath` 재사용).
-- 티켓 파일이 없으면 에러.
+- 🔴 **`@gootte/core`·`@gootte/core-io` 등 TS 모노레포 워크스페이스를 참조하지 않는다.**
+  순수 bash 스크립트가 md 파일을 직접 찾아 `sed`/`grep`으로 `Time:` 줄만 쓴다.
+- 프로젝트 루트는 **명령을 호출한 위치(cwd)에서 찾는다** — git 루트를 위로 탐색하거나
+  `docs/features/<feature-slug>/` 존재를 기준으로 판정. `<프로젝트>` 인자를 받지 않는다.
+- 티켓 파일(`docs/features/<feature-slug>/tickets/T<NN>.md`)이 없으면 에러.
 - `start` — 이미 `Time:` 줄이 있으면 에러(중복 시작 방지).
 - `end` — `Time:` 줄이 없거나 이미 `finished`가 있으면 에러.
 - 커밋하지 않는다(grill D3).
+- `package.json`(gootte 루트)의 `bin` 필드로 `npm i -g .` 전역 설치 가능해야 한다.
 
 ### 구현 노트
 
-- `Time:` 줄 파싱은 기존 `parseStatusLine`과 같은 원리 — 펜스 밖에서만 읽는다.
-- `BacklogTaskDoc`에서 `startedAt`/`finishedAt` 칸과 `TIME_LINE` 파싱 제거.
-- `joinTicketBacklog`에서 `elapsed` 계산 제거.
-- `joinTicket`에서 elapsed를 티켓 자체의 `startedAt`/`finishedAt`으로 계산.
+- `Time:` 줄 삽입 위치는 `# ` 제목 줄 바로 다음(`Status:` 줄과 같은 자리) — awk/sed로 판정.
+- 이 티켓(T01)은 **쓰기만** 한다. gootte TS 파서가 `Time:` 줄을 **읽는** 것은 T02(같은 기능,
+  TS 코드 쪽 — 그쪽은 기존처럼 `@gootte/core` 안에서 구현).
+- `BacklogTaskDoc`에서 `startedAt`/`finishedAt` 칸과 `TIME_LINE` 파싱 제거(T02).
+- `joinTicketBacklog`에서 `elapsed` 계산 제거(T02).
+- `joinTicket`에서 elapsed를 티켓 자체의 `startedAt`/`finishedAt`으로 계산(T02).
 - `elapsedPhrase` 함수 자체는 변경 없음.
 - `FeatureTicket.elapsed` 계약 칸도 변경 없음 — 입력 원천만 바뀜.
 
