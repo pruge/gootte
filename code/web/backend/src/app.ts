@@ -25,7 +25,6 @@ import {
   placeStep,
   planMove,
   splitIntoAreas,
-  setTicketDoneResolver,
   type BoardAreas,
 } from "@gootte/core";
 import {
@@ -39,7 +38,6 @@ import {
   writePlanMove,
   writeStep,
   ensureReadSeed,
-  resolveTicketDone,
   markDocRead,
   scanWorkingCopies,
   defaultPlanDataDir,
@@ -140,9 +138,6 @@ export function createApp(options: AppOptions = {}): Hono {
   const fallbackRoots = options.roots ?? defaultRoots();
   const treehouse = options.treehouse ?? treehouseRoot();
   const dataDir = options.dataDir ?? planDataDir();
-  // T03 — 신관례 완료(done) 출처 = git 리졸버(ticket-done-from-git T01). core 가 순환 의존 없이
-  // 쓰게 resolver 를 주입한다. 같은 dataDir 를 쓰므로 T02 스냅샷 재검증 캐시와 공유된다.
-  setTicketDoneResolver((repo, slug, num) => resolveTicketDone(repo, slug, num, dataDir));
   const now = options.now ?? (() => nowStamp());
   const broadcast = options.broadcast;
   const app = new Hono();

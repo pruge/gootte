@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import type { Feature, FeatureTicket } from "@gootte/contract";
 import { parseNewTicket, parseTicket } from "../parse/feature";
 import type { BacklogTaskDoc } from "../parse/backlog";
-import { applyBacklogStatus, setTicketDoneResolver } from "./backlog-join";
+import { applyBacklogStatus } from "./backlog-join";
 import { buildFeature, buildFeatures, countOpenFeatures, sortFeatures } from "./features";
 
 /** 티켓 파일 한 장 합성 — 상단 두 줄이 서식의 전부다(triage-labels). */
@@ -442,8 +442,6 @@ describe("buildFeatures — 기능을 넘는 markdown 링크 선행(cross-featur
 });
 
 describe("buildFeatures+applyBacklogStatus — 기능을 넘는 링크가 신관례 대상에서도 풀린다(T03)", () => {
-  // T03 — 기본 리졸버는 "아무것도 완료 아님"(git 미연동). done 이 필요한 테스트는 아래서 true 로 세팅.
-  beforeEach(() => setTicketDoneResolver(() => false));
   const docs = (
     slug: string,
     newTickets: readonly { file: string; body: string }[],
@@ -487,10 +485,18 @@ describe("buildFeatures+applyBacklogStatus — 기능을 넘는 링크가 신관
     const waiterBefore = built.find((f) => f.slug === "waiter-feature")!.newTickets?.[0];
     expect(waiterBefore?.startable).toBe(false);
 
-    // 🔴 T03 — done 출처는 리졸버다(백로그 done 은 무시). blocker-feature T03 을 리졸버 done.
-    setTicketDoneResolver((r, s, n) => n === "03");
+    // 🔴 T04 — done 출처는 티켓 문서의 finishedAt 이다. blocker-feature T03 에 finishedAt 을 넣어 done 으로 만든다.
+    const builtWithDone = buildFeatures([
+      docs("blocker-feature", [{ file: "T03.md", body: "# T03 — 선행\n\n**Time:** started=2026-08-27T12:00:00+09:00 finished=2026-08-27T13:00:00+09:00" }]),
+      docs("waiter-feature", [
+        {
+          file: "T01.md",
+          body: "# T01 — 기다리는 쪽\n\n## Depends on\n- [T03](../../blocker-feature/tickets/T03.md)",
+        },
+      ]),
+    ]);
     const joined = applyBacklogStatus(
-      built,
+      builtWithDone,
       [PARENT, task({ id: "proj-blocker-t03", section: "done", checked: true })],
       "proj",
     );

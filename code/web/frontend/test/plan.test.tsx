@@ -171,8 +171,7 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
       workedBy: [],
       needsCaptainEye: false,
       docConvention: "tickets",
-      backlogStatus: null,
-      backlogUrl: null,
+      joinFailed: false,
     };
     const f: Feature = { ...feature("new-convention"), tickets: [], newTickets: [newTicket] };
     renderBoard({ ...EMPTY_BOARD, waiting: [card(f)] });
@@ -186,12 +185,11 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
 
   /**
    * 🔴 회귀 — `CardDialog` 의 상태 배지가 `features` 탭 `TicketRow` 와 다른 판정을 썼다. tickets/
-   * 신관례는 파일에 상태가 없어(SoT = 백로그) `t.statusKnown` 이 항상 false 인데, `CardDialog` 는
-   * 그 값만 보고 "정규 아홉 값이 아닙니다" 경고 배지("상태 줄 없음")를 띄웠다 — 백로그 조인이
-   * 실제로 성공해 `backlogStatus` 가 실려 있어도 무시됐다(캡틴 보고, 2026-08-25). `TicketRow` 와
-   * 같이 `docConvention` 을 먼저 보게 고쳤다 — 공유 표는 `lib/backlogStatusLabel.ts`.
+   * 신관례는 파일에 상태가 없어(SoT = Time: 줄) `t.statusKnown` 이 항상 false 인데, `CardDialog` 는
+   * 그 값만 보고 "정규 아홉 값이 아닙니다" 경고 배지("상태 줄 없음")를 띄웠다 — Time: 줄에
+   * finishedAt 이 있어도 무시됐다(T04). `TicketRow` 와 같이 `docConvention` 을 먼저 보게 고쳤다.
    */
-  it("tickets/ 신관례가 백로그에 조인되면 대화상자도 배지를 보여준다 — 경고 배지가 아니다", () => {
+  it("tickets/ 신관례가 Time: 줄로 완료면 대화상자도 배지를 보여준다 — 경고 배지가 아니다", () => {
     const joined: FeatureTicket = {
       num: "02",
       slug: "T02",
@@ -208,13 +206,13 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
       workedBy: [],
       needsCaptainEye: false,
       docConvention: "tickets",
-      backlogStatus: "done",
-      backlogUrl: "https://github.com/pruge/gootte/pull/54",
+      joinFailed: false,
+      finishedAt: "2026-08-25T10:00:00+09:00",
     };
     const f: Feature = { ...feature("joined-convention"), tickets: [], newTickets: [joined] };
     renderBoard({ ...EMPTY_BOARD, waiting: [card(f)] });
     const opened = openCard("joined-convention 제목");
-    expect(within(opened).getByText("done")).toBeInTheDocument();
+    expect(within(opened).getByText("완료")).toBeInTheDocument();
     expect(within(opened).queryByText("상태 줄 없음")).toBeNull();
   });
 
@@ -234,8 +232,7 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
       workedBy: [],
       needsCaptainEye: false,
       docConvention: "tickets",
-      backlogStatus: null,
-      backlogUrl: null,
+      joinFailed: true,
     };
     const f: Feature = { ...feature("unjoined-convention"), tickets: [], newTickets: [unjoined] };
     renderBoard({ ...EMPTY_BOARD, waiting: [card(f)] });
@@ -879,8 +876,7 @@ describe("PlanView — 카드 대화상자에서 티켓 원문을 연다", () =>
       workedBy: [],
       needsCaptainEye: false,
       docConvention: "tickets",
-      backlogStatus: null,
-      backlogUrl: null,
+      joinFailed: false,
     };
     const f: Feature = { ...feature("new-convention"), tickets: [], newTickets: [newTicket] };
     const { qc } = renderBoard({ ...EMPTY_BOARD, waiting: [card(f)] });
