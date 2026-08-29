@@ -463,8 +463,8 @@ describe("buildFeatures+applyBacklogStatus — 기능을 넘는 링크가 신관
     url: null,
     since: null,
     note: "",
-    startedAt: null,
-    finishedAt: null,
+    
+    
     ...overrides,
   });
   const PARENT = task({

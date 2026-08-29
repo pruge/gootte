@@ -34,9 +34,6 @@ export interface BacklogJoin {
   status: TodoStatus;
   url: string | null;
   completedAt: string | null; // done 일 때만 채운다 — 백로그의 `(merged|done: ...)` verbatim
-  // T01(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구(`elapsedPhrase`). 모르면 없음
-  // (undefined) — `time:` 줄이 없거나 파싱 실패면 지어내지 않는다(INV-4).
-  elapsed?: string;
 }
 
 /**
@@ -81,9 +78,6 @@ export function joinTicketBacklog(
   repo: string,
   featureSlug: string,
   ticketNum: string,
-  // T01 — 진행 중 어림에 쓰는 현재 시각(ISO 8601). 호출자가 준다(테스트가 시계에 흔들리지
-  // 않게, spec §구현 노트) — 기본값은 기존 호출자(다수 테스트·app.ts)를 안 깨기 위함이다.
-  now: string = new Date().toISOString(),
 ): BacklogJoin | null {
   if (!ticketNum) return null;
   const parentId = findParentId(tasks, repo, featureSlug);
@@ -92,12 +86,10 @@ export function joinTicketBacklog(
   const task = tasks.find((t) => t.id === childId);
   if (!task) return null;
   const status = SECTION_STATUS[task.section];
-  const elapsed = elapsedPhrase(task.startedAt, task.finishedAt, now) ?? undefined;
   return {
     status,
     url: task.url,
     completedAt: status === "done" ? task.since : null,
-    ...(elapsed ? { elapsed } : {}),
   };
 }
 
@@ -111,23 +103,29 @@ function joinTicket(
   // 🔴 T04 — 문서에 명시 상태(`Status: resolved`/`wontfix`, T04)가 있으면 **그것이 출처**(문서가 SoT,
   // grill D5). 리졸버·백로그보다 우선 — 검수 종착 티켓은 머지 커밋 없이도 문서 한 줄로 완료된다.
   if (ticket.statusKnown) {
-    return { ...ticket, backlogStatus: ticket.status };
+    // T02 — 문서의 시각에서 elapsed 계산
+    const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now) : undefined;
+    return { ...ticket, backlogStatus: ticket.status, ...(elapsed ? { elapsed } : {}) };
   }
   // 🔴 완료(done) 단일 출처 = git 리졸버(T01/grill D1). 리졸버가 true 면 백로그가 뭐라 해도 done.
   if (ticketDoneResolver(repo, featureSlug, ticket.num)) {
-    return { ...ticket, status: "done", backlogStatus: "done", waitingOn: [] };
+    // T02 — 리졸버 done 도 티켓 문서의 시각을 쓴다
+    const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now) : undefined;
+    return { ...ticket, status: "done", backlogStatus: "done", waitingOn: [], ...(elapsed ? { elapsed } : {}) };
   }
   // 리졸버가 false 면 백로그를 따르되 — 백로그가 "done" 이어도 git 이 완료를 안 박았으니
-  // done 으로는 쓰지 않는다(백로그는 완료를 말할 권한이 없다). 처리중/대기/url/elapsed 는 백로그 것.
-  const join = joinTicketBacklog(tasks, repo, featureSlug, ticket.num, now);
+  // done 으로는 쓰지 않는다(백로그는 완료를 말할 권한이 없다). 처리중/대기/url 은 백로그 것.
+  // T02 — elapsed 는 티켓 문서의 시각에서 계산(백로그 time: 줄은 더 이상 읽지 않음).
+  const join = joinTicketBacklog(tasks, repo, featureSlug, ticket.num);
   if (!join) return ticket;
   const joinedStatus = join.status === "done" ? "pending" : join.status;
+  const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now) : undefined;
   return {
     ...ticket,
     status: joinedStatus,
     backlogStatus: joinedStatus,
     backlogUrl: join.url,
-    ...(join.elapsed ? { elapsed: join.elapsed } : {}),
+    ...(elapsed ? { elapsed } : {}),
   };
 }
 

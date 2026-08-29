@@ -11,6 +11,7 @@ import {
   parseNewTicket,
   parseStatusLine,
   parseTicket,
+  parseTimeLine,
 } from "./feature";
 
 /** 티켓 파일 한 장 합성 — 상단 두 줄이 서식의 전부다(triage-labels). */

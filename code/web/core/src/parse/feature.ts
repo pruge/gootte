@@ -330,6 +330,41 @@ export function parseFeatureSpec(slug: string, content: string): FeatureSpecDoc 
 // 다만 신관례는 숫자 앞에 "T" 가 붙는다.
 const NEW_TITLE_NUM_PREFIX = /^T?\d+\s*[—–.-]\s*/i;
 
+// ── 신관례 `Time:` 줄 파싱(T02) ───────────────────────────────────────────
+
+// `**Time:** started=<iso> finished=<iso>` 와 `Time: started=<iso> finished=<iso>` 둘 다 —
+// `Status:` 줄과 같은 관대함. 펜스 밖에서만 읽는다(같은 원리).
+const TIME_LINE = /^[ \t]*(?:\*\*)?Time:(?:\*\*)?[ \t]*(.*)$/m;
+// ISO 8601 — `finished=` 는 optional. `Status:` 완료일과 달리 시각이 없으면 null(지어내지 않는다).
+const TIME_STARTED = /started=(\S+)/;
+const TIME_FINISHED = /finished=(\S+)/;
+
+/** `Time:` 줄에서 읽어낸 것. 줄이 없으면 raw=null, 값이 없으면 startedAt=null. */
+export interface TimeLine {
+  /** 원문 verbatim(값 토큰만). `Time:` 줄이 아예 없으면 null. */
+  raw: string | null;
+  /** 착수 시각(ISO 8601). 줄이 있되 `started=` 가 없으면 null. */
+  startedAt: string | null;
+  /** 완료 시각(ISO 8601). 줄이 있되 `finished=` 가 없으면 null(진행 중). */
+  finishedAt: string | null;
+}
+
+/**
+ * `**Time:** started=... finished=...` 줄 파싱 — **값만** 뽑고 뒤따르는 자유 문구에는 넘어가지 않는다.
+ * `Status:` 줄과 같은 원리로 값 토큰만 읽는다.
+ */
+export function parseTimeLine(content: string): TimeLine {
+  // 🔴 구조(표시 줄)는 펜스 밖에서만 읽는다 — 예시로 인용한 `**Time:** ...` 가 진짜 시각이
+  // 되면 안 된다(parseStatusLine·parseBlockedByLine 와 같은 규율).
+  const rest = TIME_LINE.exec(withoutFencedCode(content))?.[1]?.trim();
+  if (!rest) return { raw: null, startedAt: null, finishedAt: null };
+  // 값 토큰 = 공백 앞까지. 알 수 없는 문자열도 그대로 잡아 원문에 싣는다.
+  const raw = /^\S+/.exec(rest)?.[0] ?? rest;
+  const startedAt = TIME_STARTED.exec(rest)?.[1] ?? null;
+  const finishedAt = TIME_FINISHED.exec(rest)?.[1] ?? null;
+  return { raw, startedAt, finishedAt };
+}
+
 // ── 신관례 `## Depends on` 절(T01) ────────────────────────────────────────────
 
 // 옛 관례는 한 줄(`**Blocked by:** 01, 02`)이지만 신관례는 **여러 줄 목록**이다 —
@@ -441,6 +476,9 @@ export interface NewTicketDoc {
   blockedBy: string[];
   /** 번호도 없음 선언도 아닌 항목 — verbatim. 막히며 동시에 드러난다(development-order/17). */
   unreadableBlockedBy: string[];
+  /** T02 — `Time:` 줄에서 읽은 착수·완료 시각(ISO 8601). 줄이 없거나 파싱 실패면 null. */
+  startedAt: string | null;
+  finishedAt: string | null;
 }
 
 /**
@@ -454,6 +492,7 @@ export function parseNewTicket(fileName: string, content: string): NewTicketDoc 
   const num = /^[Tt](\d+)/.exec(slug)?.[1] ?? "";
   const { blockedBy, unreadable } = parseNewDependsOn(content);
   const { raw, value, completedAt } = parseStatusLine(content);
+  const { startedAt, finishedAt } = parseTimeLine(content);
   return {
     num,
     slug,
@@ -465,5 +504,7 @@ export function parseNewTicket(fileName: string, content: string): NewTicketDoc 
     completedAt,
     blockedBy,
     unreadableBlockedBy: unreadable,
+    startedAt,
+    finishedAt,
   };
 }
