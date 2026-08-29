@@ -249,6 +249,44 @@ export interface SnapshotRevalidationResult {
   projectsChanged: boolean;
 }
 
+/** T05 — 프로젝트 단위 증분 갱신 스케줄러. 문서 변경 신호(`kind:"project"`)를 받아 debounce 로
+ * 뭉친 뒤 해당 프로젝트만 `updateProjectSnapshot`(재계산 → 영구 기록)하고, **계산이 끝난 뒤** 같은
+ * `project` 이벤트를 다시 밀어 프론트가 새 값을 받게 한다.
+ *
+ * 변경 직후 즉시 밀린 첫 방송은 아직 낡은 스냅샷을 본 틈을 이 두 번째 방송이 메운다(실시간 갱신
+ * 공백 제거, 캡틴 실측 2026-08-29). 한 프로젝트의 연속 변경은 debounce 로 하나의 재계산으로 뭉친다.
+ * 🔴 갱신 신호일 뿐 — 완료/시작 여부 판정은 이 스케줄러가 아니라 문서의 `Time:` 줄이 정한다(T04/ADR-0001).
+ * 변경 감지용 git HEAD 스탬프 게이팅은 그대로 재사용한다(`sameStamps`/`recordProjectScan`) — 새 캐시를
+ * 발명하지 않는다(성능 잠금). */
+export function createProjectUpdateScheduler(opts: {
+  dataDir: string;
+  roots: () => string[];
+  broadcast: (ev: { kind: "project"; project: string }) => void;
+  debounceMs?: number;
+}): { schedule: (slug: string) => void; clear: (slug: string) => void } {
+  const pending = new Map<string, ReturnType<typeof setTimeout>>();
+  const debounceMs = opts.debounceMs ?? 150;
+  return {
+    schedule(slug: string) {
+      const existing = pending.get(slug);
+      if (existing) clearTimeout(existing);
+      pending.set(
+        slug,
+        setTimeout(() => {
+          pending.delete(slug);
+          updateProjectSnapshot(opts.dataDir, slug, opts.roots());
+          opts.broadcast({ kind: "project", project: slug });
+        }, debounceMs),
+      );
+    },
+    clear(slug: string) {
+      const t = pending.get(slug);
+      if (t) clearTimeout(t);
+      pending.delete(slug);
+    },
+  };
+}
+
 const sameCopies = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((copy, i) => copy === b[i]);
 
