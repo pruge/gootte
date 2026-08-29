@@ -14,8 +14,6 @@ function task(overrides: Partial<BacklogTaskDoc>): BacklogTaskDoc {
     url: null,
     since: null,
     note: "",
-    startedAt: null,
-    finishedAt: null,
     ...overrides,
   };
 }
@@ -183,6 +181,8 @@ describe("applyBacklogStatus", () => {
           docConvention: "tickets" as const,
           backlogStatus: null,
           backlogUrl: null,
+          startedAt: undefined,
+          finishedAt: undefined,
         },
       ],
     };
@@ -216,6 +216,8 @@ describe("applyBacklogStatus", () => {
           docConvention: "tickets" as const,
           backlogStatus: null,
           backlogUrl: null,
+          startedAt: undefined,
+          finishedAt: undefined,
         },
       ],
     };
@@ -244,6 +246,8 @@ describe("applyBacklogStatus", () => {
     docConvention: "tickets",
     backlogStatus: null,
     backlogUrl: null,
+    startedAt: undefined,
+    finishedAt: undefined,
     ...overrides,
   });
 
@@ -428,5 +432,121 @@ describe("applyBacklogStatus", () => {
     };
     const [joined] = applyBacklogStatus([withNew], [], "widget");
     expect(joined?.newTickets?.[0]?.status).toBe("dropped");
+  });
+});
+
+// ── T02 — elapsed 경로가 티켓 문서의 Time: 줄로 전환 ──────────────────────
+
+describe("T02 — elapsed 는 티켓 문서의 Time: 줄에서 계산", () => {
+  const NOW = "2026-08-27T13:30:00+09:00";
+
+  /** 신관례 티켓 한 장 — blockedBy 를 줄 수 있다(T01). */
+  const newTicket = (
+    num: string,
+    overrides: Partial<FeatureTicket> = {},
+  ): FeatureTicket => ({
+    num,
+    slug: `T${num}`,
+    path: `tickets/T${num}.md`,
+    title: `티켓 T${num}`,
+    status: "pending",
+    sourceStatus: null,
+    statusKnown: false,
+    blockedBy: [],
+    unreadableBlockedBy: [],
+    waitingOn: [],
+    startable: true,
+    workedBy: [],
+    needsCaptainEye: false,
+    docConvention: "tickets",
+    backlogStatus: null,
+    backlogUrl: null,
+    startedAt: undefined,
+    finishedAt: undefined,
+    ...overrides,
+  });
+
+  it("티켓에 Time: 줄이 있으면 elapsed 가 계산된다(완료)", () => {
+    const withNew = {
+      ...feature("tauri-desktop-app"),
+      newTickets: [
+        newTicket("04", {
+          status: "done",
+          statusKnown: true,
+          sourceStatus: "resolved",
+          startedAt: "2026-08-27T12:48:43+09:00",
+          finishedAt: "2026-08-27T13:02:43+09:00",
+        }),
+      ],
+    };
+    const [joined] = applyBacklogStatus([withNew], [], "widget", NOW);
+    expect(joined?.newTickets?.[0]?.elapsed).toBe("약 14분");
+  });
+
+  it("티켓에 Time: 줄이 있으면 elapsed 가 계산된다(진행 중)", () => {
+    const withNew = {
+      ...feature("tauri-desktop-app"),
+      newTickets: [
+        newTicket("04", {
+          status: "pending",
+          statusKnown: false,
+          sourceStatus: null,
+          startedAt: "2026-08-27T12:00:00+09:00",
+          finishedAt: undefined, // 진행 중
+        }),
+      ],
+    };
+    const [joined] = applyBacklogStatus([withNew], [PARENT, task({ id: "widget-tauri-t04", section: "in_flight" })], "widget", NOW);
+    // 12:00 ~ 13:30 = 90분 → roughPhrase 는 60분 이상이면 시간 단위로 (Math.round)
+    expect(joined?.newTickets?.[0]?.elapsed).toBe("약 1시간 30분 진행 중");
+  });
+
+  it("티켓에 Time: 줄이 없으면 elapsed 가 없다", () => {
+    const withNew = {
+      ...feature("tauri-desktop-app"),
+      newTickets: [newTicket("04", { startedAt: undefined, finishedAt: undefined })],
+    };
+    const [joined] = applyBacklogStatus([withNew], [], "widget", NOW);
+    expect(joined?.newTickets?.[0]?.elapsed).toBeUndefined();
+  });
+
+  it("백로그에 time: 줄이 있어도 티켓 문서의 Time: 가 우선된다(완전 교체)", () => {
+    const withNew = {
+      ...feature("tauri-desktop-app"),
+      newTickets: [
+        newTicket("04", {
+          status: "pending",
+          statusKnown: false,
+          sourceStatus: null,
+          startedAt: "2026-08-27T10:00:00+09:00",
+          finishedAt: "2026-08-27T11:00:00+09:00",
+        }),
+      ],
+    };
+    // 백로그엔 다른 시간(무시되어야 함)
+    const tasks = [PARENT, task({ id: "widget-tauri-t04", section: "in_flight" })];
+    const [joined] = applyBacklogStatus([withNew], tasks, "widget", NOW);
+    // 티켓 문서의 1시간이 쓰여야 함 (백로그의 시간 아님) — roughPhrase 는 60분을 "약 1시간" 으로
+    expect(joined?.newTickets?.[0]?.elapsed).toBe("약 1시간");
+  });
+
+  it("리졸버 done 도 티켓 문서의 시각을 쓴다", () => {
+    setTicketDoneResolver(() => true);
+    const withNew = {
+      ...feature("tauri-desktop-app"),
+      newTickets: [
+        newTicket("04", {
+          status: "pending",
+          statusKnown: false,
+          sourceStatus: null,
+          startedAt: "2026-08-27T12:00:00+09:00",
+          finishedAt: "2026-08-27T13:00:00+09:00",
+        }),
+      ],
+    };
+    const [joined] = applyBacklogStatus([withNew], [], "widget", NOW);
+    expect(joined?.newTickets?.[0]?.status).toBe("done");
+    // 12:00 ~ 13:00 = 60분 → "약 1시간"
+    expect(joined?.newTickets?.[0]?.elapsed).toBe("약 1시간");
   });
 });

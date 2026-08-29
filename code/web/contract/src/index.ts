@@ -99,6 +99,10 @@ export const FeatureTicket = z.object({
   // 백로그 메모의 `time:` 줄이 없거나 파싱 실패면 없음(undefined) — 지어내지 않는다(INV-4).
   // 분은 여기 저장하지 않는다(INV-1) — 매 응답마다 시각에서 다시 잰다.
   elapsed: z.string().optional(),
+  // T02 — 티켓 문서의 `Time:` 줄에서 읽은 착수·완료 시각(ISO 8601). 줄이 없으면 없음.
+  // 백로그 `time:` 줄은 더 이상 읽지 않는다(grill D2 — 완전 교체).
+  startedAt: z.string().optional(),
+  finishedAt: z.string().optional(),
   // T04 — 이 티켓 파일이 아직 착지하지 않았는가(추적 안 됨 또는 커밋 안 된 변경) — `docs.tree`
   // 안의 같은 경로 노드에서 그대로 옮겨 싣는다(판정 자리는 `FeatureDocNode.unlanded` 하나뿐).
   // git 이 못 답한 사본은 이 값이 아예 없다(표식 없이 그대로 보여준다).
