@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { commitMessagesInRange, originMainSha } from "./git";
 import { defaultPlanDataDir } from "./plan-store";
 
@@ -49,8 +49,20 @@ const TRAILER_SLUG = /^(?:Ticket|Feature|Scope):\s*([\w-]+)/gim;
 /** 커밋 메시지에서 feature slug 후보를 뽑는다 — 없으면 빈 Set(안전 쪽 오류로 이어진다). */
 function extractSlugs(message: string): Set<string> {
   const slugs = new Set<string>();
+  // 기존 conventional scope · trailer 매칭 유지(더 정확한 신호이므로 우선/보강).
   for (const m of message.matchAll(SCOPE_SLUG)) slugs.add(m[1]!);
   for (const m of message.matchAll(TRAILER_SLUG)) slugs.add(m[1]!);
+  // 🔴 T07 — slug 문자열이 메시지 어디든(제목+본문) 대소문자 무관하게 등장하면 인식.
+  // 단, 기획 문서 커밋(`docs(...)`)은 기존 AC2 보호를 위해 넓힌 매칭에서 제외.
+  const firstLine = message.split("\n")[0] ?? message;
+  if (!firstLine.includes("docs(") && !firstLine.startsWith("docs(")) {
+    const msgLower = message.toLowerCase();
+    for (const slug of getFeatureSlugs()) {
+      if (msgLower.includes(slug.toLowerCase())) {
+        slugs.add(slug);
+      }
+    }
+  }
   return slugs;
 }
 
@@ -145,4 +157,41 @@ export function resolveTicketDone(
 /** 테스트/디버그용 — 캐시 파일이 실제로 쓰였는지 확인한다. */
 export function ticketGitCacheExists(dataDir: string): boolean {
   return existsSync(cachePath(dataDir));
+}
+
+// Feature slug 후보 목록 — docs/features/ 디렉터리에서 한 번만 읽고 캐시한다(성능: 매 revalidate마다 디렉터리 스캔 금지).
+let featureSlugCache: string[] | null = null;
+
+function loadFeatureSlugs(): string[] {
+  try {
+    // docs/features/ 를 cwd 기준으로 찾지 못하면 위로 올라가며 검색(테스트는 code/web/ 하위에서 실행).
+    let dir: string | null = process.cwd();
+    const maxUp = 5;
+    for (let i = 0; i < maxUp && dir !== null; i++) {
+      const base = join(dir, "docs", "features");
+      if (existsSync(base)) {
+        return readdirSync(base)
+          .filter((name) => {
+            try {
+              return statSync(join(base, name)).isDirectory() && !name.startsWith(".");
+            } catch {
+              return false;
+            }
+          })
+          .sort((a, b) => a.localeCompare(b));
+      }
+      const parent = dirname(dir);
+      dir = parent !== dir ? parent : null;
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function getFeatureSlugs(): string[] {
+  if (featureSlugCache === null) {
+    featureSlugCache = loadFeatureSlugs();
+  }
+  return featureSlugCache;
 }
