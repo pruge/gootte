@@ -166,6 +166,14 @@ export function applyBacklogStatus(
 ): Feature[] {
   const joined = features.map((f) => ({
     ...f,
+    // 🔴 구관례(`issues/`) 티켓도 gootte 가 기록한 `Time:` 줄이 있으면 elapsed 를 얹는다 —
+    // 상태 SoT 는 여전히 문서 `Status:` 줄이라 판정은 건드리지 않고 표시용 시각만 계산(INV-3,
+    // 매 read 재계산). 신관례와 같은 `elapsedPhrase` 를 쓴다.
+    tickets: (f.tickets ?? []).map((t) => {
+      if (!t.startedAt) return t;
+      const elapsed = elapsedPhrase(t.startedAt, t.finishedAt, now);
+      return elapsed ? { ...t, elapsed } : t;
+    }),
     newTickets: (f.newTickets ?? []).map((t) => joinTicket(t, tasks, repo, f.slug, now)),
   }));
   // 🔴 조인으로 상태가 바뀌었으니 신관례 티켓의 대기·착수 가능도 **다시** 계산한다(INV-3 —

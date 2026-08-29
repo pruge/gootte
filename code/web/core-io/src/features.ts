@@ -357,7 +357,14 @@ function mergeSlug(parts: CopySlug[], slug: string, copies: string[], resolver: 
   // (단일 사본에서 지금과 바이트로 동일해야 한다, T02 AC7).
   const tickets = [...allPaths]
     .filter((p) => /^issues\/[^/]+\.md$/i.test(p))
-    .map((p) => parseTicket(basename(p), contentByPath.get(p)!));
+    .map((p) => {
+      const parsed = parseTicket(basename(p), contentByPath.get(p)!);
+      // 🔴 T05 — 구관례(`issues/`) 티켓도 `Time:` 줄을 사본 전체에서 정방향 병합한다. `resolveFile` 이
+      // `Time:` 없는 사본(예: treehouse 격리 복사본)을 "나중 판" 으로 골라도, 값이 있는 사본(firstmate
+      // 메인) 쪽이 이겨야 한다(신관례 `tickets/` 와 같은 규칙). 어느 사본이든 값이 있으면 그 값이 사라지지 않는다.
+      const times = (participantsByPath.get(p) ?? []).map((x) => parseTimeLine(x.content));
+      return { ...parsed, ...mergeTicketTimes(times) };
+    });
   const newTickets = [...allPaths]
     .filter((p) => /^tickets\/t\d+\.md$/i.test(p))
     .map((p) => {

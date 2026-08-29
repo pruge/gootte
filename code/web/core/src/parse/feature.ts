@@ -275,6 +275,10 @@ export interface TicketDoc {
   unreadableBlockedBy: string[];
   /** `## 캡틴 확인` 절이 있는가(development-order/15 ②). */
   needsCaptainEye: boolean;
+  /** `Time:` 줄에서 읽은 착수 시각(신관례 T04 와 같은 줄, 구관례에서도 gootte 가 기록). 없으면 null. */
+  startedAt: string | null;
+  /** `Time:` 줄에서 읽은 완료 시각. 줄이 있되 `finished=` 가 없으면 null(진행 중). */
+  finishedAt: string | null;
 }
 
 /** 기능 사양 한 장 — 표제와 상태. */
@@ -300,6 +304,7 @@ export function parseTicket(fileName: string, content: string): TicketDoc {
   const num = /^(\d+)/.exec(slug)?.[1] ?? "";
   const { raw, value, completedAt } = parseStatusLine(content);
   const { blockedBy, unreadable } = parseBlockedByLine(content);
+  const { startedAt, finishedAt } = parseTimeLine(content);
   return {
     num,
     slug,
@@ -312,6 +317,8 @@ export function parseTicket(fileName: string, content: string): TicketDoc {
     blockedBy,
     unreadableBlockedBy: unreadable,
     needsCaptainEye: parseNeedsCaptainEye(content),
+    startedAt,
+    finishedAt,
   };
 }
 

@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
 # bin/gootte — 독립 bash CLI. gootte TS 모노레포의 워크스페이스 패키지를 전혀 참조하지 않는다.
 #
-# gootte start <feature-slug> <ticket>   # 티켓 문서에 Time: started=<ISO> 삽입
-# gootte end   <feature-slug> <ticket>   # 같은 줄에 finished=<ISO> 추가
+# gootte start [--at <TIME>] <feature-slug> <ticket>   # 티켓 문서에 Time: started=<ISO> 삽입
+# gootte end   [--at <TIME>] <feature-slug> <ticket>   # 같은 줄에 finished=<ISO> 추가
+#
+#   TIME: 비우면 지금. ISO8601(예 2026-08-29T15:00:00+09:00) 또는 상대 시간
+#         (예 1h30m, 90m, 2h, 1d, 1h30m ago) — "지금으로부터 뒤" 로 푼다.
 #
 # md 파일만 cat/sed/grep/awk 로 직접 읽고 쓴다. 커밋은 하지 않는다(grill D3).
 #
 # 이 스크립트가 찾는 경로는 실행 위치(cwd) 기준이다 — <프로젝트> 인자는 받지 않는다.
-# git 루트가 있으면 그 루트, 없으면 cwd 를 기준으로
-# docs/features/<feature-slug>/tickets/T<NN>.md 를 찾는다.
+# git 루트가 있으면 그 루트, 없으면 cwd 를 기준으로 티켓을 찾는다. 두 관례를 본다:
+#   - 신관례: docs/features/<feature-slug>/tickets/T<NN>.md  (Time: 줄 기록)
+#   - 구관례: docs/features/<feature-slug>/issues/<NN>-*.md  (**Time:** 줄 기록)
 
 set -euo pipefail
 
 usage() {
-  echo "사용법: gootte start <feature-slug> <ticket>" >&2
-  echo "      gootte end   <feature-slug> <ticket>" >&2
+  echo "사용법: gootte start [--at <TIME>] <feature-slug> <ticket>" >&2
+  echo "      gootte end   [--at <TIME>] <feature-slug> <ticket>" >&2
+  echo "  TIME: 비우면 지금 / ISO8601 / 상대시간(예 1h30m, 90m, 2h, 1d)" >&2
   exit 1
 }
 
@@ -40,12 +45,60 @@ normalize_ticket() {
   printf 'T%02d' "$num"
 }
 
-# 지금 시각을 ISO 8601(콜론 포함 오프셋)으로 낸다: 2026-08-29T10:30:00+09:00
-now_iso() {
+# epoch 초를 ISO 8601(콜론 포함 오프셋)으로 낸다: 2026-08-29T10:30:00+09:00
+fmt_epoch() {
   local raw
-  raw="$(date +%Y-%m-%dT%H:%M:%S%z)"
+  raw="$(date -r "$1" +%Y-%m-%dT%H:%M:%S%z)"
   # %z 는 +0900 형태 — 마지막 두 자리 앞에 콜론을 넣어 +09:00 으로 만든다.
   printf '%s%s:%s\n' "${raw:0:19}" "${raw:19:3}" "${raw:22:2}"
+}
+
+# "1h30m" / "90m" / "2h" / "3d" / "45m" / "30s" 형태의 상대 시간을 지금으로부터 뺀 epoch 초로 푼다.
+# 선택: 뒤에 " ago" 가 붙거나 앞에 "-" 가 붙어도 같게 본다. 소수는 지원하지 않는다(정수 단위만).
+parse_relative() {
+  local spec="$1"
+  spec="${spec,,}"          # 소문자
+  spec="${spec% ago}"       # 뒤 " ago" 제거
+  spec="${spec#-}"          # 앞 "-" 제거
+  local total=0 rest="$spec" num unit
+  if [ -z "$rest" ]; then
+    echo "gootte: 시간 표현이 비어있습니다: $1" >&2
+    return 1
+  fi
+  while [[ "$rest" =~ ^([0-9]+)([smhd])(.*)$ ]]; do
+    num="${BASH_REMATCH[1]}"; unit="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[3]}"
+    case "$unit" in
+      s) total=$((total + num)) ;;
+      m) total=$((total + num * 60)) ;;
+      h) total=$((total + num * 3600)) ;;
+      d) total=$((total + num * 86400)) ;;
+    esac
+  done
+  if [ -n "$rest" ]; then
+    echo "gootte: 이해 못한 시간 표현: $1 (예: 1h30m, 90m, 2h, 1d)" >&2
+    return 1
+  fi
+  local now_ep
+  now_ep="$(date +%s)"
+  echo $((now_ep - total))
+}
+
+# TIME 인자를 시각으로 풀는다 — 비면 지금, 'T' 가 들어가면 ISO8601 그대로, 그 외엔 상대 시간.
+resolve_time() {
+  local arg="${1:-}"
+  if [ -z "$arg" ]; then
+    fmt_epoch "$(date +%s)"
+    return
+  fi
+  if [[ "$arg" == *T* ]]; then
+    printf '%s\n' "$arg"
+    return
+  fi
+  local ep
+  if ! ep="$(parse_relative "$arg")"; then
+    return 1
+  fi
+  fmt_epoch "$ep"
 }
 
 resolve_ticket_file() {
@@ -53,18 +106,30 @@ resolve_ticket_file() {
   local ticket_norm="$2"
   local root
   root="$(resolve_root)"
-  local file="$root/docs/features/$feature_slug/tickets/$ticket_norm.md"
-  if [ ! -f "$file" ]; then
-    echo "gootte: 티켓 파일을 찾을 수 없습니다: $file" >&2
-    exit 1
+  # 신관례: tickets/T<NN>.md
+  local tickets_file="$root/docs/features/$feature_slug/tickets/$ticket_norm.md"
+  if [ -f "$tickets_file" ]; then
+    printf '%s\n' "$tickets_file"
+    return
   fi
-  printf '%s\n' "$file"
+  # 구관례: issues/<NN>-*.md (번호만 쓴다 — 파일명은 T 접두가 없다)
+  local num="${ticket_norm#T}"
+  local issues_file
+  issues_file="$(ls "$root"/docs/features/"$feature_slug"/issues/"$num"-*.md 2>/dev/null | head -1)"
+  if [ -n "$issues_file" ] && [ -f "$issues_file" ]; then
+    printf '%s\n' "$issues_file"
+    return
+  fi
+  echo "gootte: 티켓 파일을 찾을 수 없습니다:" >&2
+  echo "  신관례: $tickets_file" >&2
+  echo "  구관례: $root/docs/features/$feature_slug/issues/${num}-*.md" >&2
+  exit 1
 }
 
-# 파일에서 "Time:" 줄 번호를 찾는다(없으면 아무것도 출력하지 않는다).
+# 파일에서 "Time:" / "**Time:**" 줄 번호를 찾는다(없으면 아무것도 출력하지 않는다).
 find_time_line_no() {
   local file="$1"
-  grep -n '^Time:' "$file" | head -1 | cut -d: -f1 || true
+  grep -niE '^\*{0,2}time:' "$file" | head -1 | cut -d: -f1 || true
 }
 
 # 제목 뒤, 본문 앞의 메타데이터 블록(연속된 Status:/Time: 줄) 마지막 줄 번호를 찾는다.
@@ -87,7 +152,9 @@ find_header_block_end_line_no() {
     local content
     content="$(sed -n "${i}p" "$file")"
     case "$content" in
-      Status:*|Time:*)
+      # 메타데이터 키 줄만 블록 연장 — 임의의 `**` 굵은 줄은 안 됨(`**What to build:**` 처럼
+      # 산문 문단이 `**` 로 줄을 이을 수 있어서). 빈 줄은 건너뛰되 last 는 갱신하지 않는다.
+      Status:*|Time:*|Blocked\ by:*|\*\*Status:*|**Time:*|**Blocked\ by:*|\*\*Needs\ Captain\ Eye:*)
         last="$i"
         i=$((i + 1))
         ;;
@@ -103,8 +170,9 @@ find_header_block_end_line_no() {
 }
 
 cmd_start() {
-  local feature_slug="$1"
-  local ticket_raw="$2"
+  local at="$1"
+  local feature_slug="$2"
+  local ticket_raw="$3"
   local ticket_norm
   ticket_norm="$(normalize_ticket "$ticket_raw")"
   local file
@@ -120,22 +188,27 @@ cmd_start() {
   local insert_after
   insert_after="$(find_header_block_end_line_no "$file")"
   local iso
-  iso="$(now_iso)"
+  iso="$(resolve_time "$at")" || exit 1
+
+  # 구관례(issues/)는 굵은 **Time:** 표기를 쓴다 — 신관례(tickets/)는 Time:.
+  local time_label="Time:"
+  [[ "$file" == */issues/* ]] && time_label="**Time:**"
 
   local tmp
   tmp="$(mktemp)"
-  awk -v n="$insert_after" -v line="Time: started=$iso" '
+  awk -v n="$insert_after" -v line="$time_label started=$iso" '
     { print }
     NR == n { print line }
   ' "$file" > "$tmp"
   mv "$tmp" "$file"
 
-  echo "gootte: $file 에 Time: started=$iso 기록됨"
+  echo "gootte: $file 에 $time_label started=$iso 기록됨"
 }
 
 cmd_end() {
-  local feature_slug="$1"
-  local ticket_raw="$2"
+  local at="$1"
+  local feature_slug="$2"
+  local ticket_raw="$3"
   local ticket_norm
   ticket_norm="$(normalize_ticket "$ticket_raw")"
   local file
@@ -156,7 +229,7 @@ cmd_end() {
   fi
 
   local iso
-  iso="$(now_iso)"
+  iso="$(resolve_time "$at")" || exit 1
   local new_line="$existing_line finished=$iso"
 
   local tmp
@@ -174,20 +247,24 @@ main() {
   if [ "$#" -lt 1 ]; then
     usage
   fi
-  local subcmd="$1"
-  shift
+  local at=""
+  local -a pos=()
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --at)
+        [ "$#" -ge 2 ] || { echo "gootte: --at 에 시간이 필요합니다" >&2; exit 1; }
+        at="$2"; shift 2 ;;
+      --at=*) at="${1#--at=}"; shift ;;
+      --help|-h) usage ;;
+      *) pos+=("$1"); shift ;;
+    esac
+  done
+  [ "${#pos[@]}" -ge 3 ] || usage
+  local subcmd="${pos[0]}" feature="${pos[1]}" ticket="${pos[2]}"
   case "$subcmd" in
-    start)
-      [ "$#" -eq 2 ] || usage
-      cmd_start "$1" "$2"
-      ;;
-    end)
-      [ "$#" -eq 2 ] || usage
-      cmd_end "$1" "$2"
-      ;;
-    *)
-      usage
-      ;;
+    start) cmd_start "$at" "$feature" "$ticket" ;;
+    end)   cmd_end "$at" "$feature" "$ticket" ;;
+    *) usage ;;
   esac
 }
 

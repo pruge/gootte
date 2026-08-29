@@ -202,6 +202,10 @@ function toTicket(
     workedBy: [],
     needsCaptainEye: doc.needsCaptainEye,
     ...(unlanded !== undefined ? { unlanded } : {}),
+    // T04 — 구관례(`issues/`) 티켓도 gootte 가 기록한 `Time:` 줄에서 착수·완료 시각을 얹는다.
+    // 완료(done) 출처는 여전히 문서 `Status:` 줄(D2) — 이 시각은 표시(elapsed)만 한다.
+    startedAt: doc.startedAt ?? undefined,
+    finishedAt: doc.finishedAt ?? undefined,
   };
 }
 

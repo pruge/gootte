@@ -121,7 +121,7 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 | `pnpm gootte step --clear <프로젝트> <기능>/<티켓>` | 단계를 뗀다 | firstmate |
 | `pnpm gootte board <프로젝트>` | 다섯 칸 현황을 읽는다 — 읽기 전용, 자리·순서를 바꾸는 CLI 는 없다 | 누구나 |
 | `pnpm gootte next <프로젝트>` | 작업 대상에 있는 기능의, 표시 기준 1단계 티켓만 말한다(plan-board/05) | firstmate |
-| `gootte start <기능> <티켓>` / `gootte end <기능> <티켓>` | 티켓 문서(`tickets/T<NN>.md`)에 `Time: started=<ISO>`/`finished=<ISO>` 를 기록한다. `bin/gootte` — TS 모노레포(`@gootte/*`)를 전혀 참조하지 않는 독립 bash 스크립트, `npm i -g .`/`npm link` 로 어느 프로젝트에서든 전역 설치 가능. cwd 기준(git 루트 우선)으로 `docs/features/<기능>/tickets/T<NN>.md` 를 찾는다 — `<프로젝트>` 인자 없음. 커밋 안 함(파일만 편집) | 누구나 |
+| `gootte start [--at <TIME>] <기능> <티켓>` / `gootte end [--at <TIME>] <기능> <티켓>` | 티켓 문서에 `Time: started=<ISO>`/`finished=<ISO>` 를 기록한다. 두 관례를 본다 — 신관례 `docs/features/<기능>/tickets/T<NN>.md`(`Time:` 줄)·구관례 `docs/features/<기능>/issues/<NN>-*.md`(`**Time:**` 줄). `--at <TIME>` 로 시각 지정(비면 지금, ISO8601 또는 상대시간 `1h30m`/`90m`/`2h`/`1d`). `bin/gootte` — TS 모노레포(`@gootte/*`)를 전혀 참조하지 않는 독립 bash 스크립트, `npm i -g .`/`npm link` 로 어느 프로젝트에서든 전역 설치 가능. cwd 기준(git 루트 우선) — `<프로젝트>` 인자 없음. 커밋 안 함(파일만 편집) | 누구나 |
 | `pnpm dev:backend` | Hono API dev 서버 (`scripts/dev-backend.sh` → `tsx watch`) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
 | `pnpm dev:frontend` | Vite dev 서버 (`scripts/dev-frontend.sh`, `/api` → backend 프록시) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |
 | `pnpm dev` | backend + frontend 동시 (`scripts/dev.sh`) | 캡틴 사본 = **캡틴만**. 격리 사본 = **작업자가 스스로** |

@@ -679,3 +679,31 @@ describe("parseNewTicket — `## Depends on` 을 읽는다(T01)", () => {
     expect(doc.completedAt).toBe(null);
   });
 });
+
+describe("parseTicket — 구관례(issues/) 티켓의 Time: 줄도 읽는다(T04·구관례 시간 기록)", () => {
+  const issueWithTime = [
+    "# 01 — 구관례 티켓",
+    "",
+    "**What to build:** something.",
+    "",
+    "**Blocked by:** 없음.",
+    "",
+    "**Status:** resolved (2026-08-13 14:03)",
+    "",
+    "**Time:** started=2026-08-13T10:00:00+09:00 finished=2026-08-13T11:30:00+09:00",
+    "",
+    "## 캡틴 지시 (원문)",
+  ].join("\n");
+
+  it("굵은 **Time:** 줄의 startedAt/finishedAt 을 읽는다", () => {
+    const doc = parseTicket("01-x.md", issueWithTime);
+    expect(doc.startedAt).toBe("2026-08-13T10:00:00+09:00");
+    expect(doc.finishedAt).toBe("2026-08-13T11:30:00+09:00");
+  });
+
+  it("Time: 줄이 없으면 startedAt/finishedAt 는 null", () => {
+    const doc = parseTicket("01-x.md", ticket("ready-for-agent"));
+    expect(doc.startedAt).toBeNull();
+    expect(doc.finishedAt).toBeNull();
+  });
+});

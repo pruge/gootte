@@ -510,3 +510,61 @@ describe("T02 — elapsed 는 티켓 문서의 Time: 줄에서 계산", () => {
     expect(joined?.newTickets?.[0]?.elapsed).toBe("약 1시간");
   });
 });
+
+describe("applyBacklogStatus — 구관례(issues/) 티켓의 Time: 줄도 elapsed 로 표시(INV-3)", () => {
+  const newTicket = (num: string, overrides: Partial<FeatureTicket> = {}): FeatureTicket => ({
+    num,
+    slug: `${num}-x`,
+    path: `issues/${num}-x.md`,
+    title: `티켓 ${num}`,
+    status: "pending",
+    sourceStatus: null,
+    statusKnown: false,
+    blockedBy: [],
+    unreadableBlockedBy: [],
+    waitingOn: [],
+    startable: true,
+    workedBy: [],
+    needsCaptainEye: false,
+    joinFailed: false,
+    startedAt: undefined,
+    finishedAt: undefined,
+    ...overrides,
+  });
+
+  it("issues 티켓에 Time: 줄이 있으면 상태는 그대로 두고 elapsed 만 계산한다", () => {
+    const base = feature("tauri-desktop-app");
+    const issueTicket: FeatureTicket = {
+      ...newTicket("01", {}),
+      path: "issues/01-x.md",
+      status: "done",
+      sourceStatus: "resolved",
+      statusKnown: true,
+      startedAt: "2026-08-13T10:00:00+09:00",
+      finishedAt: "2026-08-13T11:30:00+09:00",
+    };
+    const withIssues = { ...base, tickets: [issueTicket], newTickets: [] };
+    const [joined] = applyBacklogStatus([withIssues], [], "widget");
+    const t = joined!.tickets[0]!;
+    // 상태 SoT 는 문서 Status: 줄 — 판정이 바뀌지 않는다.
+    expect(t.status).toBe("done");
+    expect(t.startedAt).toBe("2026-08-13T10:00:00+09:00");
+    // 표시용 elapsed 는 새로 계산된다.
+    expect(t.elapsed).toBeDefined();
+    expect(t.elapsed).toContain("분");
+  });
+
+  it("Time: 줄이 없는 issues 티켓은 elapsed 가 없다(지어내지 않음, INV-4)", () => {
+    const base = feature("tauri-desktop-app");
+    const issueTicket: FeatureTicket = {
+      ...newTicket("01", {}),
+      path: "issues/01-x.md",
+      status: "done",
+      sourceStatus: "resolved",
+      statusKnown: true,
+    };
+    const withIssues = { ...base, tickets: [issueTicket], newTickets: [] };
+    const [joined] = applyBacklogStatus([withIssues], [], "widget");
+    expect(joined!.tickets[0]!.elapsed).toBeUndefined();
+  });
+});
