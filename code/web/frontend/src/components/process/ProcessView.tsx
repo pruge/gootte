@@ -18,6 +18,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { groupProcessSteps, UNRANKED_STEP, type ProcessRow, type ProcessStepGroup } from "@gootte/core/plan";
+import { useHoverTip } from "../HoverTip";
 import { usePlanBoard, useStepMove } from "../../lib/query";
 import { featureDescription } from "../plan/cardTitle";
 import { DocDrawer } from "../features/DocDrawer";
@@ -413,14 +414,18 @@ function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => voi
   // T02(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구를 기존 title 에 이어 붙인다.
   // 기존 문구가 먼저다(수용 기준 5) — 값이 없으면 아무것도 안 붙인다(INV-4). `plan` 탭
   // `CardDialog` 와 같은 값(`row.elapsed`)을 같은 모양으로 붙여야 두 탭이 갈라지지 않는다.
-  const glyphTitle =
-    (row.box === "done" ? "문서가 완료라고 말한다" : row.box === "dropped" ? "문서가 폐기라고 말한다" : "아직 완료가 아니다") +
-    (row.elapsed ? `\n${row.elapsed}` : "");
+  // T02(a-ticket-tells-how-long-it-took) — 툴팁엔 **걸린 시간만** 뜬다(상태 문구는 뺐다, 캡틴 지시).
+  // 시간이 없으면 툴팁 자체를 띄우지 않는다(INV-4 — 값이 없으면 아무것도 안 보여준다).
+  const tipLabel = row.elapsed ?? null;
+  // 🔴 네이티브 `title` 은 글리프만 26×20px 라서 안 보였다 — 행 전체 hover 로 즉시 뜨는
+  // 보이는 툴팁(HoverTip)으로 바꾼다(네이티브 title 은 제거, T02 후속 지시).
+  const { triggerProps, tip } = useHoverTip(tipLabel);
   return (
     <li className={isDragging ? "opacity-30" : ""}>
       <button
         ref={setNodeRef}
         type="button"
+        {...triggerProps}
         onClick={onOpen}
         {...attributes}
         {...listeners}
@@ -428,10 +433,7 @@ function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => voi
           row,
         )} ${closed ? "" : "cursor-grab active:cursor-grabbing"}`}
       >
-        <span
-          className={`col-start-1 mono shrink-0 text-sm ${closed ? "text-accent" : "text-muted"}`}
-          title={glyphTitle}
-        >
+        <span className={`col-start-1 mono shrink-0 text-sm ${closed ? "text-accent" : "text-muted"}`}>
           {glyph}
         </span>
         <span className="col-start-2 mono shrink-0 text-sm tabular-nums text-muted">
@@ -457,6 +459,7 @@ function ProcessTicketLine({ row, onOpen }: { row: ProcessRow; onOpen: () => voi
           </span>
         )}
       </button>
+      {tip}
     </li>
   );
 }

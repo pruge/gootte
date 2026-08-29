@@ -266,8 +266,12 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     renderBoard({ ...EMPTY_BOARD, waiting: [card(withElapsed)] });
     const opened = openCard("a 제목");
     const row = within(opened).getByText("끝난 것").closest("button") as HTMLElement;
-    const glyph = within(row).getByText("[x]");
-    expect(glyph.getAttribute("title")).toBe("문서가 완료라고 말한다\n약 14분");
+    // 🔴 네이티브 title 은 제거됐다 — 보이는 툴팁(HoverTip)에 줄바꿈으로 이어 붙는다.
+    fireEvent.mouseEnter(row);
+    const tip = screen.getByRole("tooltip");
+    expect(tip).toHaveTextContent("약 14분");
+    expect(tip).not.toHaveTextContent("문서가 완료라고 말한다");
+    fireEvent.mouseLeave(row);
   });
 
   it("걸린 시간 기록이 없으면 hover 문구에 아무것도 덧붙지 않는다(INV-4)", () => {
@@ -275,8 +279,10 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     renderBoard({ ...EMPTY_BOARD, waiting: [card(f)] });
     const opened = openCard("a 제목");
     const row = within(opened).getByText("끝난 것").closest("button") as HTMLElement;
-    const glyph = within(row).getByText("[x]");
-    expect(glyph.getAttribute("title")).toBe("문서가 완료라고 말한다");
+    fireEvent.mouseEnter(row);
+    // 시간이 없으면 툴팁 자체가 안 뜬다.
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.mouseLeave(row);
   });
 
   it("진행 중인 티켓의 걸린 시간 문구는 '진행 중' 이 그대로 실려 온다", () => {
@@ -285,8 +291,26 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     renderBoard({ ...EMPTY_BOARD, waiting: [card(withElapsed)] });
     const opened = openCard("a 제목");
     const row = within(opened).getByText("붙들린 것").closest("button") as HTMLElement;
-    const glyph = within(row).getByText("[ ]");
-    expect(glyph.getAttribute("title")).toBe("아직 완료가 아니다\n약 5분 진행 중");
+    fireEvent.mouseEnter(row);
+    const tip = screen.getByRole("tooltip");
+    expect(tip).toHaveTextContent("약 5분 진행 중");
+    expect(tip).not.toHaveTextContent("아직 완료가 아니다");
+    fireEvent.mouseLeave(row);
+  });
+
+  it("🔴 행 hover 시 보이는 툴팁에 걸린 시간이 뜬다 — 네이티브 title 외 스타일 툴팁(HoverTip)", () => {
+    const f = feature("a", [["01", "끝난 것", "done", "2026-08-01"]]);
+    const withElapsed: Feature = { ...f, tickets: f.tickets.map((t) => ({ ...t, elapsed: "약 14분" })) };
+    renderBoard({ ...EMPTY_BOARD, waiting: [card(withElapsed)] });
+    const opened = openCard("a 제목");
+    const row = within(opened).getByText("끝난 것").closest("button") as HTMLElement;
+    // hover 전에는 툴팁이 없다
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.mouseEnter(row);
+    const tip = screen.getByRole("tooltip");
+    expect(tip).toHaveTextContent("약 14분");
+    fireEvent.mouseLeave(row);
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("확인을 누르면 창이 닫힌다 — 열림은 화면의 상태일 뿐 저장되지 않는다(캡틴 결정)", () => {

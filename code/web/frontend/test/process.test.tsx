@@ -174,10 +174,17 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
         ),
       ],
     });
-    const boxes = screen
-      .getAllByTitle(/문서가 완료라고 말한다|아직 완료가 아니다/)
-      .map((el) => el.textContent);
-    expect(boxes).toEqual(["[x]", "[ ]"]);
+    // 🔴 툴팁엔 걸린 시간만 뜬다 — 시간이 없으면 툴팁 자체를 안 띄운다.
+    const doneRow = screen.getByRole("button", { name: /끝난 것/ });
+    const openRow = screen.getByRole("button", { name: /남은 것/ });
+    expect(within(doneRow).getByText("[x]")).toBeInTheDocument();
+    expect(within(openRow).getByText("[ ]")).toBeInTheDocument();
+    fireEvent.mouseEnter(doneRow);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.mouseLeave(doneRow);
+    fireEvent.mouseEnter(openRow);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.mouseLeave(openRow);
   });
 
   it("🔴 안 읽은 티켓 줄에 표시가 뜬다 — features 탭과 같은 표시(unread-tickets-show-themselves/02)", () => {
@@ -296,7 +303,11 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
     });
     const row = screen.getByRole("button", { name: /폐기된 것/ });
     expect(row).toHaveAttribute("aria-disabled", "true");
-    expect(within(row).getByTitle("문서가 폐기라고 말한다")).toHaveTextContent("[-]");
+    expect(within(row).getByText("[-]")).toBeInTheDocument();
+    fireEvent.mouseEnter(row);
+    // 시간이 없으면 툴팁을 안 띄운다.
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.mouseLeave(row);
   });
 
   it("🔴 놓을 수 있는 자리가 집기 전에도 DOM 에 있다 — 카드마다 위·아래가 늘 있다(캡틴 지적: 있다가 없다가 헷갈린다)", () => {
@@ -328,17 +339,21 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
   });
 
   /**
-   * T02(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구가 기존 hover 문구 뒤에 이어
-   * 붙는다. `plan` 탭 `CardDialog` 와 **같은 문구**여야 한다(plan.test.tsx 의 같은 이름 시험과
-   * 짝) — 한쪽만 재면 갈라진 것을 못 잡는다.
+   * T02(a-ticket-tells-how-long-it-took) — 툴팁엔 **걸린 시간만** 뜬다(상태 문구는 뺐다, 캡틴 지시).
+   * 값은 core `elapsedPhrase` 가 만들고 여기는 옮겨 싣기만 한다(INV-1) — `plan` 탭
+   * `CardDialog` 와 **같은 문구**여야 한다(plan.test.tsx 의 같은 이름 시험과 짝).
    */
   it("🔴 걸린 시간 문구가 기존 hover 문구 뒤에 이어 붙는다 — 기존 문구는 살아 있다", () => {
     const f = feature("a", [["01", "끝난 것", "done", "2026-08-01"]]);
     const withElapsed: Feature = { ...f, tickets: f.tickets.map((t) => ({ ...t, elapsed: "약 14분" })) };
     renderProcess({ ...EMPTY_BOARD, active: [card(withElapsed, { "01-x": 1 })] });
     const row = screen.getByText("끝난 것").closest("button") as HTMLElement;
-    // getByTitle 은 기본 normalizer 가 공백을 접는다 — 실제 title 은 줄바꿈으로 이어 붙는다(속성값 자체는 위 CardDialog·ProcessView 코드가 만든다).
-    expect(within(row).getByTitle("문서가 완료라고 말한다 약 14분")).toBeInTheDocument();
+    // 🔴 네이티브 title 은 제거됐다 — 보이는 툴팁(HoverTip)에 줄바꿈으로 이어 붙는다.
+    fireEvent.mouseEnter(row);
+    const tip = screen.getByRole("tooltip");
+    expect(tip).toHaveTextContent("약 14분");
+    expect(tip).not.toHaveTextContent("문서가 완료라고 말한다");
+    fireEvent.mouseLeave(row);
   });
 
   it("걸린 시간 기록이 없으면 hover 문구에 아무것도 덧붙지 않는다(INV-4)", () => {
@@ -347,7 +362,9 @@ describe("ProcessView — 작업 대상을 단계 순서로 줄 세운다(plan-b
       active: [card(feature("a", [["01", "끝난 것", "done", "2026-08-01"]]), { "01-x": 1 })],
     });
     const row = screen.getByText("끝난 것").closest("button") as HTMLElement;
-    expect(within(row).getByTitle("문서가 완료라고 말한다")).toBeInTheDocument();
+    fireEvent.mouseEnter(row);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.mouseLeave(row);
   });
 
   it("작업 대상이 비면 안내 한 줄이 보인다", () => {

@@ -5,6 +5,7 @@ import { allTickets } from "@gootte/core";
 import { closedDisplayAt, ticketBoxState, UNRANKED_STEP } from "@gootte/core/plan";
 import { ConflictBadge } from "../features/ConflictBadge";
 import { UnlandedBadge } from "../features/FeatureTree";
+import { useHoverTip } from "../HoverTip";
 import { featureDescription } from "./cardTitle";
 
 /**
@@ -39,6 +40,105 @@ interface CardDialogProps {
  * 짓지 않고 이미 있는 `DocDrawer`(`features` 탭)를 그대로 재사용한다 — 여는 자리만 `PlanView`가
  * 하나 더 갖는다.
  */
+function CardTicketRow({
+  t,
+  step,
+  conflict,
+  onOpenTicket,
+}: {
+  t: FeatureTicket;
+  step: number | undefined;
+  conflict: FeatureConflict | undefined;
+  onOpenTicket: (path: string) => void;
+}) {
+  const box = ticketBoxState(t);
+  const closedTicket = box !== "open";
+  const glyph = box === "done" ? "[x]" : box === "dropped" ? "[-]" : "[ ]";
+  const unread = t.unread === true;
+  const inProgress = t.status === "in_progress";
+  // T02(a-ticket-tells-how-long-it-took) — 툴팁엔 **걸린 시간만** 뜬다(상태 문구는 뺐다, 캡틴 지시).
+  // 시간이 없으면 툴팁 자체를 띄우지 않는다(INV-4 — 값이 없으면 아무것도 안 보여준다).
+  const tipLabel = t.elapsed ?? null;
+  // 🔴 네이티브 `title` 은 글리프만 26×20px 라서 안 보였다 — 행 전체 hover 로 즉시 뜨는
+  // 보이는 툴팁(HoverTip)으로 바꾼다(네이티브 title 은 제거, T02 후속 지시).
+  const { triggerProps, tip } = useHoverTip(tipLabel);
+  return (
+    <li>
+      {/* 🔴 줄 전체가 단추다 — 원문을 여는 것 하나뿐이라 부분 클릭을 나눌 이유가 없다.
+          상자는 여전히 문서에서 읽을 뿐 여기서 바뀌지 않는다(INV-5). */}
+      <button
+        type="button"
+        {...triggerProps}
+        onClick={() => onOpenTicket(t.path)}
+        className={`flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 px-5 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+          unread
+            ? "bg-unread hover:bg-unread-strong"
+            : inProgress
+              ? "bg-inprogress hover:bg-inprogress-strong"
+              : "hover:bg-surface-2"
+        } ${closedTicket ? "text-muted" : ""}`}
+      >
+        <span className={`mono shrink-0 text-sm ${closedTicket ? "text-accent" : "text-muted"}`}>{glyph}</span>
+        {/* firstmate 가 매긴 단계(05) — 작업 대상 밖 카드나 값이 없는 티켓은 칸이 비어도
+            자리는 지킨다(같은 폭 유지, 값 있는 줄과 나란히 서게). */}
+        <span
+          className={`mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted ${
+            step === undefined ? "invisible" : ""
+          }`}
+        >
+          {step === UNRANKED_STEP ? "—단계" : `${step ?? 0}단계`}
+        </span>
+        <span className="mono shrink-0 text-sm tabular-nums text-muted">{t.num || "—"}</span>
+        <span className="min-w-0 flex-1 break-words text-sm">{t.title}</span>
+        {unread && (
+          // 색 말고도 붙들 것이 있다(INV-U2) — `features` 탭 `TicketRow` 와 같은 표시.
+          <span
+            role="status"
+            className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
+          >
+            안 읽음
+          </span>
+        )}
+        {conflict && <ConflictBadge conflicts={[conflict]} />}
+        {inProgress && (
+          // 색 말고도 붙들 것이 있다(INV-C2) — 처리중은 배경과 이 글자로만 말한다,
+          // 테두리는 얹지 않는다(캡틴 지시 2026-08-13: "처리중 보더를 제거해봐").
+          <span role="status" className="mono shrink-0 text-sm font-medium text-active">
+            처리중
+          </span>
+        )}
+        {/* T04 — 미착지 표식(캡틴 결정 Q4). 어느 사본에서 왔는지는 말하지 않는다. */}
+        {t.unlanded && <UnlandedBadge />}
+        {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게.
+            `features` 탭 `TicketRow` 와 같은 판정 — tickets/ 신관례는 파일에 상태가
+            없다(SoT = Time: 줄), 조인 실패(joinFailed)면 "상태 미표시" 가 정답이다
+            (T04 §구현 원칙, 추측 금지). */}
+        {t.docConvention === "tickets" ? (
+          !t.joinFailed && t.status !== "pending" && (
+            <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
+              {t.status === "done" ? "완료" : t.status === "in_progress" ? "처리중" : "대기"}
+            </span>
+          )
+        ) : t.statusKnown ? (
+          <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
+            {t.sourceStatus}
+          </span>
+        ) : (
+          <span
+            role="status"
+            className="mono flex shrink-0 items-center gap-1 rounded bg-drop/15 px-1.5 py-0.5 text-sm text-drop"
+            title="정규 아홉 값이 아닙니다"
+          >
+            <IconAlertTriangle size={13} />
+            {t.sourceStatus === null ? "상태 줄 없음" : `알 수 없는 상태: ${t.sourceStatus}`}
+          </span>
+        )}
+      </button>
+      {tip}
+    </li>
+  );
+}
+
 export function CardDialog({ card, closed = false, onClose, onOpenTicket }: CardDialogProps) {
   const okRef = useRef<HTMLButtonElement>(null);
   const { feature } = card;
@@ -113,104 +213,15 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
             <p className="px-5 py-4 text-sm text-muted">티켓이 없습니다.</p>
           ) : (
             <ul className="divide-y divide-border/50">
-              {orderedTickets.map((t) => {
-                const box = ticketBoxState(t);
-                const closedTicket = box !== "open";
-                const glyph = box === "done" ? "[x]" : box === "dropped" ? "[-]" : "[ ]";
-                const step = steps[t.slug];
-                const unread = t.unread === true;
-                const inProgress = t.status === "in_progress";
-                return (
-                  <li key={t.slug}>
-                    {/* 🔴 줄 전체가 단추다 — 원문을 여는 것 하나뿐이라 부분 클릭을 나눌 이유가 없다.
-                        상자는 여전히 문서에서 읽을 뿐 여기서 바뀌지 않는다(INV-5). */}
-                    <button
-                      type="button"
-                      onClick={() => onOpenTicket(t.path)}
-                      className={`flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 px-5 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
-                        unread
-                          ? "bg-unread hover:bg-unread-strong"
-                          : inProgress
-                            ? "bg-inprogress hover:bg-inprogress-strong"
-                            : "hover:bg-surface-2"
-                      } ${closedTicket ? "text-muted" : ""}`}
-                    >
-                      <span
-                        className={`mono shrink-0 text-sm ${closedTicket ? "text-accent" : "text-muted"}`}
-                        // T02(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구를 기존 title 에
-                        // 이어 붙인다. 기존 문구가 먼저다(수용 기준 5) — 값이 없으면 아무것도 안 붙인다(INV-4).
-                        title={
-                          (box === "done"
-                            ? "문서가 완료라고 말한다"
-                            : box === "dropped"
-                              ? "문서가 폐기라고 말한다"
-                              : "아직 완료가 아니다") + (t.elapsed ? `\n${t.elapsed}` : "")
-                        }
-                      >
-                        {glyph}
-                      </span>
-                      {/* firstmate 가 매긴 단계(05) — 작업 대상 밖 카드나 값이 없는 티켓은 칸이 비어도
-                          자리는 지킨다(같은 폭 유지, 값 있는 줄과 나란히 서게). */}
-                      <span
-                        className={`mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted ${
-                          step === undefined ? "invisible" : ""
-                        }`}
-                      >
-                        {step === UNRANKED_STEP ? "—단계" : `${step ?? 0}단계`}
-                      </span>
-                      <span className="mono shrink-0 text-sm tabular-nums text-muted">
-                        {t.num || "—"}
-                      </span>
-                      <span className="min-w-0 flex-1 break-words text-sm">{t.title}</span>
-                      {unread && (
-                        // 색 말고도 붙들 것이 있다(INV-U2) — `features` 탭 `TicketRow` 와 같은 표시.
-                        <span
-                          role="status"
-                          className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
-                        >
-                          안 읽음
-                        </span>
-                      )}
-                      {conflictByPath.has(t.path) && (
-                        <ConflictBadge conflicts={[conflictByPath.get(t.path)!]} />
-                      )}
-                      {inProgress && (
-                        // 색 말고도 붙들 것이 있다(INV-C2) — 처리중은 배경과 이 글자로만 말한다,
-                        // 테두리는 얹지 않는다(캡틴 지시 2026-08-13: "처리중 보더를 제거해봐").
-                        <span role="status" className="mono shrink-0 text-sm font-medium text-active">
-                          처리중
-                        </span>
-                      )}
-                      {/* T04 — 미착지 표식(캡틴 결정 Q4). 어느 사본에서 왔는지는 말하지 않는다. */}
-                      {t.unlanded && <UnlandedBadge />}
-                      {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게.
-                          `features` 탭 `TicketRow` 와 같은 판정 — tickets/ 신관례는 파일에 상태가
-                          없다(SoT = Time: 줄), 조인 실패(joinFailed)면 "상태 미표시" 가 정답이다
-                          (T04 §구현 원칙, 추측 금지). */}
-                      {t.docConvention === "tickets" ? (
-                        !t.joinFailed && t.status !== "pending" && (
-                          <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-                            {t.status === "done" ? "완료" : t.status === "in_progress" ? "처리중" : "대기"}
-                          </span>
-                        )
-                      ) : t.statusKnown ? (
-                        <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-                          {t.sourceStatus}
-                        </span>
-                      ) : (
-                        <span
-                          role="status"
-                          className="mono flex shrink-0 items-center gap-1 rounded bg-drop/15 px-1.5 py-0.5 text-sm text-drop"
-                          title="정규 아홉 값이 아닙니다"
-                        >
-                          <IconAlertTriangle size={13} />
-                          {t.sourceStatus === null ? "상태 줄 없음" : `알 수 없는 상태: ${t.sourceStatus}`}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
+              {orderedTickets.map((t) => (
+                <CardTicketRow
+                  key={t.slug}
+                  t={t}
+                  step={steps[t.slug]}
+                  conflict={conflictByPath.get(t.path)}
+                  onOpenTicket={onOpenTicket}
+                />
+              ))}
             </ul>
           )}
         </div>
