@@ -181,4 +181,39 @@ describe("ticket-git-status — T01 리졸버", () => {
     // v1 은 버전 필드가 없어 무효 → 캐시 미스 취급, origin/main 전체를 다시 훑는다.
     expect(resolveTicketDone(repo, "f", "05", dataDir)).toBe(true);
   });
+
+  // --- T07: 광범위 미탐 회귀 방지 — 실제 커밋 스타일을 픽스처로 고정 ------------------------
+
+  it("T07 — slug가 괄호 없이 맨 앞: 'one-setting-finds-every-copy T05' → slug 인식", () => {
+    pushCommit(repo, "one-setting-finds-every-copy T05: 설정은 firstmate 홈 한 칸, 나머지 뿌리는 파생한다");
+    expect(resolveTicketDone(repo, "one-setting-finds-every-copy", "05", dataDir)).toBe(true);
+  });
+
+  it("T07 — scope는 패키지 이름이지만 slug는 괄호 안 자유 위치: 'core-io: ... (one-setting-finds-every-copy T02)' → slug 인식", () => {
+    pushCommit(repo, "core-io: 명부를 실물에 적힌 그대로 읽는다 (one-setting-finds-every-copy T02) (#81)");
+    expect(resolveTicketDone(repo, "one-setting-finds-every-copy", "02", dataDir)).toBe(true);
+  });
+
+  it("T07 — scope는 'docs(features)'(기획 문서): slug 문자열이 있어도 넓힌 매칭 제외(AC2 보호 유지)", () => {
+    pushCommit(repo, "docs(features): ticket-time-stamp — plan (grill/spec/tickets T01-T03) (#90)");
+    // `docs(` 로 시작하므로 넓힌 매칭이 적용되지 않아 기존 AC2 보호가 유지된다.
+    expect(resolveTicketDone(repo, "ticket-time-stamp", "01", dataDir)).toBe(false);
+    expect(resolveTicketDone(repo, "ticket-time-stamp", "02", dataDir)).toBe(false);
+    expect(resolveTicketDone(repo, "ticket-time-stamp", "03", dataDir)).toBe(false);
+  });
+
+  it("T07 — scope 없는 'T01: projects 페이로드 캐시 ...'는 slug 문자열이 없으므로 여전히 미인식(안전 쪽 오류 유지)", () => {
+    pushCommit(repo, "T01: projects 페이로드 캐시 (fix/spinner-spin) — readFeatures 재실행 13초 → 5초 TTL");
+    // 이 메시지에는 실제 feature slug 문자열이 없으므로 어떤 slug 의 T01 도 완료로 기록되지 않는다.
+    // 안전 쪽 오류: 없으면 기록 안 함.
+    expect(resolveTicketDone(repo, "ticket-done-from-git", "01", dataDir)).toBe(false);
+    expect(resolveTicketDone(repo, "fast-cold-start", "01", dataDir)).toBe(false);
+  });
+
+  it("T07 — docs/features/ slug 목록 기반 매칭이 작동함(실물 커밋 스타일 픽스처)", () => {
+    // docs/features/ 디렉터리가 존재하면 slug 목록이 로드되어야 한다.
+    // 위 테스트들이 통과하면 slug 매칭이 작동함을 증명한다.
+    pushCommit(repo, "feat(ticket-done-from-git): T05 세션 발급 + slug 문자열 확인");
+    expect(resolveTicketDone(repo, "ticket-done-from-git", "05", dataDir)).toBe(true);
+  });
 });
