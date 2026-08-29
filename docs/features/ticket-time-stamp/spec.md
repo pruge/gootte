@@ -29,6 +29,9 @@ CLI 명령 `gootte start <feature> <ticket>` / `gootte end <feature> <ticket>`�
 - 백로그 파서에서 `time:` 줄 파싱 제거.
 - `backlog-join.ts`의 elapsed 경로를 티켓 문서 시각으로 전환.
 - 기존 `elapsedPhrase` 순수 함수 그대로 재사용.
+- **T04(ADR-0001) — 완료(done) 판정 자체를 `Time:` 줄로 전환**: git 리졸버(`ticket-done-from-git`)와
+  백로그 조인 완료 판정을 완전히 제거하고, `finishedAt` 있음=done · `startedAt`만 있음=in_progress ·
+  둘 다 없음=pending(queue)으로 판정한다. 아래 "완료 판정 전환(ADR-0001)" 절 참조.
 
 ## Out of scope
 
@@ -100,6 +103,63 @@ gootte end   <feature-slug> <ticket>    # finished=<ISO> 추가
 - `joinTicket`에서 elapsed를 티켓 자체의 `startedAt`/`finishedAt`으로 계산(T02).
 - `elapsedPhrase` 함수 자체는 변경 없음.
 - `FeatureTicket.elapsed` 계약 칸도 변경 없음 — 입력 원천만 바뀜.
+
+## 완료 판정 전환(ADR-0001, T04)
+
+[`adr/0001-time-line-replaces-git-backlog-completion.md`](adr/0001-time-line-replaces-git-backlog-completion.md)가
+`ticket-done-from-git` grill.md D1을 뒤집는다 — 자세한 이유는 그 문서를 본다. 여기는 구현 계약만 적는다.
+
+### 새 판정 규칙
+
+```
+finishedAt 있음         → done
+startedAt 만 있음        → in_progress
+둘 다 없음(Time: 줄 없음) → pending(queue)
+```
+
+`joinTicket`이 이 규칙만으로 신관례 티켓 상태를 정한다 — git 리졸버 호출도, 백로그 조인 호출도 없다.
+
+### 제거 대상(legacy 완료 처리)
+
+- `code/web/core-io/src/ticket-git-status.ts` — 파일 전체 삭제(리졸버·캐시·`resolveTicketDone`·
+  `revalidateTicketGitStatus`).
+- `code/web/core-io/src/git.ts`의 `fetchOrigin`·`commitMessagesInRange`·`originMainSha` — 이 리졸버
+  전용이라 같이 삭제(다른 소비처 없음, 확인됨).
+- `code/web/core/src/project/backlog-join.ts`의 `TicketDoneResolver`/`ticketDoneResolver`/
+  `setTicketDoneResolver`, `joinTicket`의 git 체크 블록, `joinTicketBacklog`/`findParentId`/
+  `hasChildRow`/`CHILD_ID`/`SECTION_STATUS`(전부 백로그 done 판정 전용) — 전부 삭제.
+- `code/web/core/src/parse/feature.ts`의 `parseNewTicket`에서 `Status:` 줄 파싱(`parseStatusLine`
+  호출) 제거 — `Time:` 줄 파싱(`parseTimeLine`)만 남긴다. `NewTicketDoc`에서 `status`/`sourceStatus`/
+  `statusKnown`/`completedAt` 필드 제거하고 `Time:` 파생 상태로 교체(아래 계약 변경 참조).
+  **구관례(`parseTicket`, `issues/`)의 `Status:` 파싱은 건드리지 않는다** — `parseStatusLine` 함수
+  자체는 남긴다, 신관례 호출부만 뗀다.
+- 리졸버 주입 3곳 — 전부 제거: `code/web/backend/src/app.ts:145`, `code/web/cli/src/commands.ts:24`
+  (+ `cliRepoPath`/`cliSlugToPath` slug→경로 헬퍼도 이 용도 전용이라 같이 제거),
+  `code/web/scripts/verify-header-badge.ts`(git 리졸버 주입 줄 제거, 스크립트 자체는 남김).
+- `code/web/backend/src/snapshot-revalidator.ts` — `fetchOrigin`/`revalidateTicketGitStatus` 호출과
+  `ticketGitChanged`/`{ kind: "ticket" }` 발신 제거. `revalidateSnapshot` 기반 프로젝트 변경 감지는 유지.
+- `code/web/contract/src/index.ts` — `ChangeEvent`의 `z.object({ kind: z.literal("ticket") })` 변형 제거.
+- `code/web/frontend/src/lib/live.ts` — `ev.kind === "ticket"` 분기 제거(`ticketDone` 쿼리 무효화 —
+  그 쿼리 자체를 정의하는 곳이 없어 이미 죽은 배선, 같이 정리).
+- `FeatureTicket.backlogStatus`/`backlogUrl` — 실제 렌더 소비처 없음(테스트에만 존재), 계약에서 제거.
+
+### 유지 대상(범위 밖으로 남김)
+
+- `FeatureTicket.completedAt` — **구관례(`issues/`) 티켓의 `Status: resolved (날짜)` 완료일** 표시용.
+  `TicketRow.tsx`가 실제로 렌더한다(200~203행). 구관례는 이 ADR 범위 밖 — `parseTicket`/`toTicket`
+  경로는 그대로 둔다. 신관례(`toNewTicket`)만 `completedAt`을 안 채우게 됨(자연히 `undefined`).
+- `code/web/backend/src/watchers.ts`의 `kind: "backlog"`/`kind: "project"` 발신 — 이건 백로그 조인의
+  나머지 용도(대기 재계산 등 완료 판정 아닌 부분)와 프로젝트 파일 변경 감시용, 건드리지 않는다.
+  단, 신관례 티켓의 상태가 이제 `Time:` 줄(문서 자체) 파생이므로, 문서 변경은 기존 `project` 감시
+  경로로 이미 잡힌다(별도 배선 불필요, 확인됨).
+- `elapsedPhrase`, `FeatureTicket.elapsed` — 변경 없음(기존 계획대로).
+
+### 검수 전용 티켓(구현 코드 없는 티켓)
+
+`ticket-time-stamp-t03`류(캡틴이 화면을 보고 판단하는 종착 티켓)는 개발 코드가 없어 `gootte start`/
+`end`를 자연스럽게 호출할 지점이 없다. 이런 티켓은 캡틴이 검수를 마치면 형식적으로
+`gootte start <slug> <num>` 후 `gootte end <slug> <num>`을 호출해 완료로 표시한다(ADR-0001의 대가,
+문서에 명시됨). 이 티켓(T04)은 그 워크플로 자체를 만들지 않는다 — 규칙만 문서화한다.
 
 ## Existing seams / integration points
 
