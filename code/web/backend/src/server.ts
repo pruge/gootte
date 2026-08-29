@@ -103,8 +103,12 @@ let watchers: Watchers;
     onChange: (c: ChangeEvent) => {
       if (c.kind === "watch-fallback") {
         watchFallbackActive = c.active;
-        snapshotRevalidator.setFallbackPolling(c.active);
       }
+      // 🔴 커밋(HEAD 변화)만으로도 미착지가 live 갱신되게 15초 재검증기(HEAD 스템프 폴링)를 항상 켠다.
+      // 예전엔 파일 감시기가 살아있을 땐 폴백 폴링을 껐는데, 그러면 커밋은 작업트리 파일을 안 바꾸니
+      // 감시 이벤트가 안 떨어져 미착지 표식이 stale 로 남았다(INV-3 위반). 재검증기는 `sameStamps`(HEAD)로
+      // 싼값 비교 후 변화 있을 때만 비싼 재스캔을 하므로 항상 켜둬도 비용은 HEAD 읽기 수준이다(snapshot.ts).
+      snapshotRevalidator.setFallbackPolling(true);
       // T05: 변경된 프로젝트만 갱신 — 전체 flush 대신 증분 반영
       if (c.kind === "project") {
         scheduleProjectUpdate(c.project);
@@ -115,6 +119,8 @@ let watchers: Watchers;
   });
   watchers = w;
 }
+// 부팅부터 15초 HEAD 재검증기를 켠다 — 커밋만으로도 미착지가 live 갱신되게(snapshot-revalidator).
+snapshotRevalidator.setFallbackPolling(true);
 
 const server = serve({ fetch: app.fetch, port }, (info) => {
   process.stdout.write(`gootte backend → http://localhost:${info.port}\n`);
