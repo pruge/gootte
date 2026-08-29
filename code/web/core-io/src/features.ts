@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import type { Feature, FeatureConflict, FeatureDocNode } from "@gootte/contract";
-import { buildFeatures, parseFeatureSpec, parseNewTicket, parseTicket, type FeatureDocs } from "@gootte/core";
+import { buildFeatures, parseFeatureSpec, parseNewTicket, parseTicket, parseTimeLine, type FeatureDocs, type TimeLine } from "@gootte/core";
 import {
   checkIgnored,
   hasUncommittedChange,
@@ -291,12 +291,53 @@ function representative(parts: { copy: string; content: string }[], copies: stri
   return (fromRep ?? parts[0]!).content;
 }
 
+/**
+ * 🔴 T05 — 사본별 `Time:` 줄 **정방향** 병합. 문서 전체의 "나중 판"(`resolveFile`)과는 별개로,
+ * `startedAt`/`finishedAt` 만 이 규칙을 따른다:
+ * - 어느 사본이든 값이 있으면 그 값을 쓴다(없는 사본이 있는 사본의 값을 지우지 못한다).
+ * - 여러 사본이 서로 다른 값을 둘 다 갖고 있으면 가장 완전한 관측 쪽으로 기운다 —
+ *   가장 먼저 시작한 시각을 `startedAt`, 가장 나중에 끝난 시각을 `finishedAt` 으로(안전쪽).
+ * 판정은 순수·결정적(INV-4). 완료/시작 여부 자체는 `joinTicket`(T04)가 정하므로 여기선 값만 모은다.
+ */
+function mergeTicketTimes(times: TimeLine[]): { startedAt: string | null; finishedAt: string | null } {
+  const started: string[] = [];
+  const finished: string[] = [];
+  for (const t of times) {
+    if (t.startedAt) started.push(t.startedAt);
+    if (t.finishedAt) finished.push(t.finishedAt);
+  }
+  // 값이 하나도 없으면 둘 다 null — "없음" 은 값이 있는 쪽에 밀린다(역방향 갱신은 금지).
+  return {
+    startedAt: started.length > 0 ? earliest(started) : null,
+    finishedAt: finished.length > 0 ? latest(finished) : null,
+  };
+}
+
+/** ISO 8601 시각 중 가장 빠른 것. `Date.parse` 가 되지 않으면 원문 사전순으로 fallback(지어내지 않음). */
+function earliest(xs: string[]): string {
+  return xs.reduce((best, x) => (cmpTime(x, best) < 0 ? x : best));
+}
+/** ISO 8601 시각 중 가장 늦은 것. */
+function latest(xs: string[]): string {
+  return xs.reduce((best, x) => (cmpTime(x, best) > 0 ? x : best));
+}
+function cmpTime(a: string, b: string): number {
+  const pa = Date.parse(a);
+  const pb = Date.parse(b);
+  if (!Number.isNaN(pa) && !Number.isNaN(pb)) return pa - pb;
+  // `gootte` 가 기록하는 `+09:00` 식 오프셋을 `Date.parse` 가 못 읽을 극단 상황 대비 — 사전순은 결정적.
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /** 한 slug 의 여러 사본을 하나의 `FeatureDocs` 로 합친다. */
 function mergeSlug(parts: CopySlug[], slug: string, copies: string[], resolver: CopyResolver): FeatureDocs {
   const allPaths = new Set<string>();
   for (const p of parts) for (const k of p.files.keys()) allPaths.add(k);
 
   const contentByPath = new Map<string, string>();
+  // 🔴 T05 — `Time:` 줄 정방향 병합을 위해 경로별로 **모든 사본**의 내용을 보관한다(`resolveFile`이
+  // 고르는 대표 내용과는 별개로, 각 사본의 `startedAt`/`finishedAt` 을 나중에 따로 모은다).
+  const participantsByPath = new Map<string, { copy: string; index: number; content: string }[]>();
   const conflicts: FeatureConflict[] = [];
   for (const path of allPaths) {
     const participants = parts
@@ -305,6 +346,7 @@ function mergeSlug(parts: CopySlug[], slug: string, copies: string[], resolver: 
     const gitRelPath = join("docs", "features", slug, path);
     const res = resolveFile(participants, gitRelPath, copies, resolver);
     contentByPath.set(path, res.content);
+    participantsByPath.set(path, participants);
     if (res.conflict) conflicts.push({ path, copies: res.conflictCopies });
   }
 
@@ -318,7 +360,14 @@ function mergeSlug(parts: CopySlug[], slug: string, copies: string[], resolver: 
     .map((p) => parseTicket(basename(p), contentByPath.get(p)!));
   const newTickets = [...allPaths]
     .filter((p) => /^tickets\/t\d+\.md$/i.test(p))
-    .map((p) => parseNewTicket(basename(p), contentByPath.get(p)!));
+    .map((p) => {
+      const merged = parseNewTicket(basename(p), contentByPath.get(p)!);
+      // 🔴 T05 — `Time:` 줄은 사본 전체의 "나중 판" 결정(`resolveFile`)과 **별개**로 정방향 병합한다.
+      // 어떤 사본이든 값을 기록하면 그 값은 다른 사본에 없다는 이유로 사라지지 않는다(
+      // "있다가 없어지는" 갱신 금지, 정방향 전용). 사본별로 각각 읽어 값이 있는 쪽이 이긴다.
+      const times = (participantsByPath.get(p) ?? []).map((x) => parseTimeLine(x.content));
+      return { ...merged, ...mergeTicketTimes(times) };
+    });
   const tree = mergeDocTrees(parts.map((p) => p.tree));
   return { slug, spec, tickets, tree, newTickets, conflict: conflicts };
 }

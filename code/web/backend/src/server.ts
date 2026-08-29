@@ -3,7 +3,7 @@ import { createNodeWebSocket } from "@hono/node-ws";
 import { createApp, mountFallback, defaultRoots, planDataDir } from "./app";
 import { createLiveHub } from "./live";
 import { clearDiscoverCache } from "./discover-cache";
-import { updateProjectSnapshot } from "./snapshot";
+import { createProjectUpdateScheduler } from "./snapshot";
 import { createSnapshotRevalidator } from "./snapshot-revalidator";
 import { startWatchers, type Watchers } from "./watchers";
 import type { ChangeEvent } from "@gootte/contract";
@@ -37,21 +37,14 @@ const watcherRoots = (firstmateHome: string | null): string[] => {
 };
 
 const hub = createLiveHub();
-// T05: 프로젝트 단위 증분 갱신 — debounce to avoid infinite recalculation
-const pendingProjectUpdates = new Map<string, ReturnType<typeof setTimeout>>();
-const PROJECT_UPDATE_DEBOUNCE_MS = 150; // Same as watcher debounce
-
-const scheduleProjectUpdate = (slug: string): void => {
-  const pending = pendingProjectUpdates.get(slug);
-  if (pending) clearTimeout(pending);
-  pendingProjectUpdates.set(
-    slug,
-    setTimeout(() => {
-      pendingProjectUpdates.delete(slug);
-      updateProjectSnapshot(dataDir, slug, watcherRoots(readSettings(dataDir).firstmateHome));
-    }, PROJECT_UPDATE_DEBOUNCE_MS)
-  );
-};
+// T05: 프로젝트 단위 증분 갱신 — 변경 신호를 debounce 로 뭉쳐 재계산하고, **계산이 끝난 뒤** 같은
+// `project` 이벤트를 다시 밀어 실시간 갱신 공백(변경 직후 즉시 방송된 refetch 가 낡은 스냅샷을 본 틈)을
+// 메운다. 완료/시작 여부 판정은 이 신호가 아니라 문서의 `Time:` 줄이 정한다(T04/ADR-0001).
+const scheduleProjectUpdate = createProjectUpdateScheduler({
+  dataDir,
+  roots: () => watcherRoots(readSettings(dataDir).firstmateHome),
+  broadcast: hub.broadcast,
+}).schedule;
 const snapshotRevalidator = createSnapshotRevalidator({
   dataDir,
   roots: () => watcherRoots(readSettings(dataDir).firstmateHome),

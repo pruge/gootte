@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { applyBacklogStatus } from "@gootte/core";
 import { readFeatures, readFeatureDoc } from "./features";
 
 let repo: string;
@@ -499,3 +500,76 @@ function spec2(root: string, slug: string, body: string): void {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "spec.md"), body);
 }
+
+// ── T05 — 여러 사본의 `Time:` 줄을 정방향으로 합친다 ──
+/** 사본 하나를 plain 디렉토리에 합성(git 미사용 — git 병합 로직과 독립적으로 Time 병합만 본다). */
+function copyDir(root: string, copy: string, slug: string, ticketBody?: string): string {
+  const dir = join(root, copy, "docs", "features", slug);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "spec.md"), `# ${slug}\n`);
+  if (ticketBody !== undefined) {
+    mkdirSync(join(dir, "tickets"), { recursive: true });
+    writeFileSync(join(dir, "tickets", "T04.md"), ticketBody);
+  }
+  return join(root, copy);
+}
+const TICKET_NO_TIME = "# T04 — 티켓\n";
+const ticketWithTime = (started: string, finished?: string): string =>
+  `# T04 — 티켓\n\nTime: started=${started}${finished ? ` finished=${finished}` : ""}\n`;
+/** 상태까지 굴려 본다(T04 3단 규칙이 Time 에서 읽는지 확인) — 백로그 없이. */
+const joined = (features: ReturnType<typeof readFeatures>) =>
+  applyBacklogStatus(features, [], "", "2026-08-30T00:00:00Z")[0]?.newTickets?.[0];
+
+describe("readFeatures — 여러 사본 Time: 정방향 병합 (T05)", () => {
+  let tmp: string;
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "gootte-time-merge-"));
+  });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  it("AC1 — main 에 Time: 없고 2nd 에 finished 있으면 화면은 완료(버그 수정)", () => {
+    const a = copyDir(tmp, "main", "f", TICKET_NO_TIME);
+    const b = copyDir(tmp, "secondmate", "f", ticketWithTime("2026-08-29T10:00:00+09:00", "2026-08-29T11:00:00+09:00"));
+    const t = readFeatures([a, b])[0]?.newTickets?.[0];
+    expect(t?.startedAt).toBe("2026-08-29T10:00:00+09:00");
+    expect(t?.finishedAt).toBe("2026-08-29T11:00:00+09:00");
+    expect(joined(readFeatures([a, b]))?.status).toBe("done");
+  });
+
+  it("AC2 — 그 반대(main 에 있고 2nd 에 없음)도 화면은 완료", () => {
+    const a = copyDir(tmp, "main", "f", ticketWithTime("2026-08-29T10:00:00+09:00", "2026-08-29T11:00:00+09:00"));
+    const b = copyDir(tmp, "secondmate", "f", TICKET_NO_TIME);
+    const t = readFeatures([a, b])[0]?.newTickets?.[0];
+    expect(t?.finishedAt).toBe("2026-08-29T11:00:00+09:00");
+    expect(joined(readFeatures([a, b]))?.status).toBe("done");
+  });
+
+  it("AC3 — 두 사본 다 없으면 pending, 한쪽만 startedAt 이면 in_progress", () => {
+    const a = copyDir(tmp, "main", "f", TICKET_NO_TIME);
+    const b = copyDir(tmp, "secondmate", "f", TICKET_NO_TIME);
+    const neither = joined(readFeatures([a, b]));
+    expect(neither?.status).toBe("pending");
+    expect(neither?.joinFailed).toBe(true); // 백로그 없음 → 조인 실패(정상), done/in_progress 로 안 둔갑
+
+    const c = copyDir(tmp, "only-started", "f", ticketWithTime("2026-08-29T10:00:00+09:00"));
+    expect(joined(readFeatures([a, c]))?.status).toBe("in_progress");
+  });
+
+  it("정방향 전용 — 2nd 가 시작하고 main 이 끝냈어도 둘 다 반영(없음으로 안 사라진다)", () => {
+    const a = copyDir(tmp, "main", "f", ticketWithTime("2026-08-29T08:00:00+09:00", "2026-08-29T12:00:00+09:00"));
+    const b = copyDir(tmp, "secondmate", "f", ticketWithTime("2026-08-29T09:00:00+09:00"));
+    const t = readFeatures([a, b])[0]?.newTickets?.[0];
+    expect(t?.startedAt).toBe("2026-08-29T08:00:00+09:00"); // main 의 시작이 더 빠르다
+    expect(t?.finishedAt).toBe("2026-08-29T12:00:00+09:00"); // main 의 끝이 더 늦다
+    expect(joined(readFeatures([a, b]))?.status).toBe("done");
+  });
+
+  it("여러 사본이 서로 다른 시각을 둘 다 갖으면 가장 빠른 start · 가장 늦은 finish", () => {
+    const a = copyDir(tmp, "main", "f", ticketWithTime("2026-08-29T10:00:00+09:00", "2026-08-29T11:00:00+09:00"));
+    const b = copyDir(tmp, "secondmate", "f", ticketWithTime("2026-08-29T09:30:00+09:00", "2026-08-29T13:00:00+09:00"));
+    const t = readFeatures([a, b])[0]?.newTickets?.[0];
+    expect(t?.startedAt).toBe("2026-08-29T09:30:00+09:00"); // 둘 중 더 빠른 start
+    expect(t?.finishedAt).toBe("2026-08-29T13:00:00+09:00"); // 둘 중 더 늦은 finish
+    expect(joined(readFeatures([a, b]))?.status).toBe("done");
+  });
+});
