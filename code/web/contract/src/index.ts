@@ -91,10 +91,7 @@ export const FeatureTicket = z.object({
   unread: z.boolean().optional(),
   // T04 — 어느 관례의 티켓인가. 없으면(예전 응답·픽스처) "issues" 로 본다(소비처 호환, optional).
   docConvention: z.enum(["issues", "tickets"]).optional(),
-  // T04 — firstmate 홈 백로그(tasks-axi) 조인 결과. `tickets/` 신관례만 채워진다 — 상태의 단일
-  // 출처가 백로그이기 때문(D4). 조인 실패(미매칭)면 null/undefined — 추측하지 않는다(INV-4).
-  backlogStatus: TodoStatus.nullable().optional(),
-  backlogUrl: z.string().nullable().optional(), // 백로그 줄의 PR/머지 링크(있으면) verbatim.
+
   // T01(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구(`약 14분` 꼴, core `elapsedPhrase`).
   // 백로그 메모의 `time:` 줄이 없거나 파싱 실패면 없음(undefined) — 지어내지 않는다(INV-4).
   // 분은 여기 저장하지 않는다(INV-1) — 매 응답마다 시각에서 다시 잰다.
@@ -107,6 +104,9 @@ export const FeatureTicket = z.object({
   // 안의 같은 경로 노드에서 그대로 옮겨 싣는다(판정 자리는 `FeatureDocNode.unlanded` 하나뿐).
   // git 이 못 답한 사본은 이 값이 아예 없다(표식 없이 그대로 보여준다).
   unlanded: z.boolean().optional(),
+  // T04 — 백로그 조인 실패 여부. 신관례(`tickets/`) 티켓만 해당 — 조인 실패 시 배지 파생에서 null 을 내기 위해 쓴다.
+  // 구관례(`issues/`) 티켓은 백로그 조인을 쓰지 않으므로 항상 false/undefined.
+  joinFailed: z.boolean().optional(),
 });
 export type FeatureTicket = z.infer<typeof FeatureTicket>;
 
@@ -275,7 +275,6 @@ export const ChangeEvent = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("projects") }),
   z.object({ kind: z.literal("plan") }),
   z.object({ kind: z.literal("backlog") }),
-  z.object({ kind: z.literal("ticket") }),
   z.object({ kind: z.literal("watch-fallback"), active: z.boolean() }),
 ]);
 export type ChangeEvent = z.infer<typeof ChangeEvent>;

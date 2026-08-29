@@ -59,7 +59,7 @@ export function feature(slug: string, tickets: readonly (string | TicketSpec)[] 
       startable: waitingOn.length === 0,
       workedBy: [],
       needsCaptainEye: spec.needsCaptainEye ?? false,
-      ...(spec.newConvention ? ({ docConvention: "tickets", backlogStatus: null } as const) : {}),
+      ...(spec.newConvention ? ({ docConvention: "tickets", joinFailed: true, startedAt: undefined, finishedAt: undefined } as const) : {}),
       ...(spec.elapsed ? { elapsed: spec.elapsed } : {}),
     };
   };

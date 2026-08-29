@@ -7,7 +7,6 @@ import {
   IconProgress,
 } from "@tabler/icons-react";
 import type { FeatureConflict, FeatureTicket } from "@gootte/contract";
-import { BACKLOG_STATUS_LABEL } from "../../lib/backlogStatusLabel";
 import { ConflictBadge } from "./ConflictBadge";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
 import { triggerKey } from "./docTrigger";
@@ -24,7 +23,7 @@ const STATE_ICON_SIZE = 15;
  * (T04 §구현 원칙, 추측 금지).
  */
 function isUnjoinedNewTicket(ticket: FeatureTicket): boolean {
-  return ticket.docConvention === "tickets" && !ticket.backlogStatus;
+  return ticket.docConvention === "tickets" && ticket.joinFailed === true;
 }
 
 /**
@@ -162,11 +161,11 @@ export function TicketRow({
         {conflict && <ConflictBadge conflicts={[conflict]} />}
 
         {ticket.docConvention === "tickets" ? (
-          // T04 — 신관례는 파일에 상태가 없다(SoT = 백로그). 조인됐을 때만 배지를 낸다 —
-          // 조인 실패(미매칭)는 "상태 미표시" 가 정답이다(추측 금지, T04 §구현 원칙).
-          ticket.backlogStatus && (
+          // T04 — 신관례는 파일에 상태가 없다(SoT = Time: 줄). 조인 실패(joinFailed)면
+          // "상태 미표시" 가 정답이다(추측 금지, T04 §구현 원칙).
+          !ticket.joinFailed && ticket.status !== "pending" && (
             <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-              {BACKLOG_STATUS_LABEL[ticket.backlogStatus] ?? ticket.backlogStatus}
+              {ticket.status === "done" ? "완료" : ticket.status === "in_progress" ? "처리중" : "대기"}
             </span>
           )
         ) : ticket.statusKnown ? (

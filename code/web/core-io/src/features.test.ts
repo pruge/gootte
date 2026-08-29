@@ -216,10 +216,9 @@ describe("readFeatures — 신관례(T04): tickets/·grill.md/design/·wayfinder
     newTicket("tauri-desktop-app", "T04.md", "# T04 — 신관례 문서 표시 + 백로그 상태 조인\n\n## Goal\n본문\n");
 
     const [f] = readFeatures([repo]);
-    expect(f?.newTickets?.map((t) => [t.num, t.slug, t.path, t.title, t.status, t.docConvention])).toEqual([
-      ["04", "T04", "tickets/T04.md", "신관례 문서 표시 + 백로그 상태 조인", "pending", "tickets"],
+    expect(f?.newTickets?.map((t) => [t.num, t.slug, t.path, t.title, t.status, t.docConvention, t.joinFailed])).toEqual([
+      ["04", "T04", "tickets/T04.md", "신관례 문서 표시 + 백로그 상태 조인", "pending", "tickets", false],
     ]);
-    expect(f?.newTickets?.[0]?.backlogStatus).toBeNull();
   });
 
   it("tickets/ 가 없으면 newTickets 가 빈 배열이다(INV-4: 실재하는 것만)", () => {

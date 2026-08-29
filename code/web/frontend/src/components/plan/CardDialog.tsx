@@ -3,7 +3,6 @@ import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 import type { FeatureConflict, FeatureTicket, PlanCard } from "@gootte/contract";
 import { allTickets } from "@gootte/core";
 import { closedDisplayAt, ticketBoxState, UNRANKED_STEP } from "@gootte/core/plan";
-import { BACKLOG_STATUS_LABEL } from "../../lib/backlogStatusLabel";
 import { ConflictBadge } from "../features/ConflictBadge";
 import { UnlandedBadge } from "../features/FeatureTree";
 import { featureDescription } from "./cardTitle";
@@ -116,7 +115,7 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
             <ul className="divide-y divide-border/50">
               {orderedTickets.map((t) => {
                 const box = ticketBoxState(t);
-                const closed = box !== "open";
+                const closedTicket = box !== "open";
                 const glyph = box === "done" ? "[x]" : box === "dropped" ? "[-]" : "[ ]";
                 const step = steps[t.slug];
                 const unread = t.unread === true;
@@ -134,10 +133,10 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                           : inProgress
                             ? "bg-inprogress hover:bg-inprogress-strong"
                             : "hover:bg-surface-2"
-                      } ${closed ? "text-muted" : ""}`}
+                      } ${closedTicket ? "text-muted" : ""}`}
                     >
                       <span
-                        className={`mono shrink-0 text-sm ${closed ? "text-accent" : "text-muted"}`}
+                        className={`mono shrink-0 text-sm ${closedTicket ? "text-accent" : "text-muted"}`}
                         // T02(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구를 기존 title 에
                         // 이어 붙인다. 기존 문구가 먼저다(수용 기준 5) — 값이 없으면 아무것도 안 붙인다(INV-4).
                         title={
@@ -186,11 +185,12 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                       {t.unlanded && <UnlandedBadge />}
                       {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게.
                           `features` 탭 `TicketRow` 와 같은 판정 — tickets/ 신관례는 파일에 상태가
-                          없다(SoT = 백로그), 조인됐을 때만 배지를 낸다(T04 §구현 원칙, 추측 금지). */}
+                          없다(SoT = Time: 줄), 조인 실패(joinFailed)면 "상태 미표시" 가 정답이다
+                          (T04 §구현 원칙, 추측 금지). */}
                       {t.docConvention === "tickets" ? (
-                        t.backlogStatus && (
+                        !t.joinFailed && t.status !== "pending" && (
                           <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-                            {BACKLOG_STATUS_LABEL[t.backlogStatus] ?? t.backlogStatus}
+                            {t.status === "done" ? "완료" : t.status === "in_progress" ? "처리중" : "대기"}
                           </span>
                         )
                       ) : t.statusKnown ? (

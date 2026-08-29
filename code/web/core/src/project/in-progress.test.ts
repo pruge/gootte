@@ -292,7 +292,7 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
       workedBy: [],
       needsCaptainEye: false,
       docConvention: "tickets",
-      backlogStatus: null,
+      joinFailed: false,
     });
 
     it("작업 가지의 커밋이 건드린 신관례 티켓이 처리중이 되고 workedBy 를 실는다", () => {

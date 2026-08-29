@@ -551,8 +551,7 @@ function newTicket(overrides: Partial<FeatureTicket> = {}): FeatureTicket {
     workedBy: [],
     needsCaptainEye: false,
     docConvention: "tickets",
-    backlogStatus: null,
-    backlogUrl: null,
+    joinFailed: false,
     ...overrides,
   };
 }
@@ -600,12 +599,12 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
       ...BASE,
       docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
       newTickets: [
-        newTicket({ status: "in_progress", backlogStatus: "in_progress" }),
+        newTicket({ status: "in_progress", joinFailed: false, startedAt: "2026-08-25T10:00:00+09:00" }),
       ],
     };
     renderCard(feature);
     open();
-    expect(screen.getByText("in flight")).toBeInTheDocument();
+    expect(screen.getByText("처리중")).toBeInTheDocument();
   });
 
   it("줄을 누르면 tickets/T<NN>.md 경로로 드로어가 열린다", () => {
@@ -628,7 +627,7 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     const feature: Feature = {
       ...BASE,
       docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
-      newTickets: [newTicket()],
+      newTickets: [newTicket({ joinFailed: true })],
     };
     renderCard(feature);
     open();
@@ -646,7 +645,8 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
         newTicket({
           waitingOn: ["02"],
           startable: false,
-          backlogStatus: "pending",
+          status: "pending",
+          joinFailed: false,
         }),
       ],
     };
@@ -682,14 +682,15 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
       tickets: [],
       docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
       newTickets: [
-        newTicket({ num: "01", slug: "T01", backlogStatus: "pending" }), // 착수 가능
+        newTicket({ num: "01", slug: "T01", status: "pending", joinFailed: false }), // 착수 가능
         newTicket({
           num: "02",
           slug: "T02",
           blockedBy: ["01"],
           waitingOn: ["01"],
           startable: false,
-          backlogStatus: "pending",
+          status: "pending",
+          joinFailed: false,
         }),
       ],
     };

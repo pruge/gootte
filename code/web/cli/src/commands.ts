@@ -1,4 +1,4 @@
-import { allTickets, applyBacklogStatus, computeDisplaySteps, computeNext, splitIntoAreas, setTicketDoneResolver, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
+import { allTickets, applyBacklogStatus, computeDisplaySteps, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
 import { type Feature } from "@gootte/contract";
 import {
   clearStep,
@@ -13,15 +13,10 @@ import {
   readSettings,
   readSteps,
   writeStep,
-  resolveTicketDone,
 } from "@gootte/core-io";
 import { CliError, parseTicketRef } from "./args";
 
 /** CLI 명령 로직(순수 배선). main.ts 가 argv 를 명령별로 넘기고, 여기가 wiring: IO → core → text. */
-
-// T03 — 신관례 완료(done) 출처 = git 리졸버(ticket-done-from-git T01). core 가 순환 의존 없이 쓰게
-// 주입한다. CLI 는 기본 dataDir(~/.gootte) 를 쓴다. 모듈 로드 시 1회 세팅(부수효과는 여기만).
-setTicketDoneResolver((repo, slug, num) => resolveTicketDone(repo, slug, num, defaultPlanDataDir()));
 
 export function discoverText(roots: string[]): string {
   const found = discoverProjects(roots);

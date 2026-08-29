@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import { beforeEach, describe, expect, test } from "vitest";
+import { clearSnapshot } from "../src/snapshot";
 import {
   ProjectsResponse,
   FeaturesResponse,
@@ -23,7 +24,7 @@ import {
   ApiError,
   type Project,
 } from "@gootte/contract";
-import { setTicketDoneResolver } from "@gootte/core";
+
 import {
   migratePlanDb,
   readPlacements,
@@ -369,16 +370,19 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         relocateUnderHomeProjects(projectRoot, home);
 
         // 홈을 설정해 조인하면: 그 티켓은 done — 더 이상 남은 일이 아니다.
-        // 🔴 T03 — done 출처는 git 리졸버다(백로그는 완료를 말하지 않는다). 테스트 픽스처엔 git 이
-        // 없으니, 리졸버 stub 을 끼워 done 을 박는다(이 테스트는 조인 로직 회귀일 뿐, git 아님).
-        setTicketDoneResolver(() => true);
+        // 🔴 T04 — done 출처는 티켓 문서의 finishedAt 이다. 티켓 문서에 Time: 줄을 넣어 done 으로 만든다.
+        // 🔴 relocateUnderHomeProjects 가 프로젝트를 home/projects/widget 로 옮겼으므로 그곳에 쓴다.
+        writeFileSync(
+          join(home, "projects", "widget", "docs", "features", "tauri-desktop-app", "tickets", "T04.md"),
+          "# T04 — 신관례 문서 표시\n\n**Time:** started=2026-08-25T12:00:00+09:00 finished=2026-08-25T13:00:00+09:00\n",
+        );
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ firstmateHome: home }),
         });
+        clearSnapshot();
         expect(await count()).toBe(0);
-        setTicketDoneResolver(() => false);
       } finally {
         rmSync(home, { recursive: true, force: true });
       }
@@ -402,7 +406,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
           num: "04",
           docConvention: "tickets",
           status: "in_progress",
-          backlogStatus: "in_progress",
+          joinFailed: false,
         });
       } finally {
         rmSync(home, { recursive: true, force: true });
@@ -445,7 +449,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         expect(res.status).toBe(200);
         const body = FeaturesResponse.parse(await res.json());
         const f = body.features.find((x) => x.slug === "tauri-desktop-app");
-        expect(f?.newTickets?.[0]?.backlogStatus).toBeNull();
+        expect(f?.newTickets?.[0]?.joinFailed).toBe(true);
         expect(f?.newTickets?.[0]?.status).toBe("pending");
       } finally {
         rmSync(home, { recursive: true, force: true });
@@ -460,7 +464,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         const body = FeaturesResponse.parse(await (await app.request("/api/features/widget")).json());
         const f = body.features.find((x) => x.slug === "tauri-desktop-app");
         expect(f?.newTickets?.[0]?.num).toBe("04");
-        expect(f?.newTickets?.[0]?.backlogStatus).toBeNull();
+        expect(f?.newTickets?.[0]?.joinFailed).toBe(true);
       } finally {
         rmSync(projectRoot, { recursive: true, force: true });
       }
@@ -486,7 +490,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
           num: "04",
           docConvention: "tickets",
           status: "in_progress",
-          backlogStatus: "in_progress",
+          joinFailed: false,
         });
       } finally {
         rmSync(home, { recursive: true, force: true });

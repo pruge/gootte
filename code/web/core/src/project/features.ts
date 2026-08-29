@@ -83,8 +83,11 @@ function toNewTicket(
     workedBy: [],
     needsCaptainEye: false,
     docConvention: "tickets",
-    backlogStatus: null,
-    backlogUrl: null,
+    joinFailed: false,
+    // T04 — `Time:` 줄에서 읽은 착수·완료 시각을 그대로 얹는다. 완료(done) 단일 출처는 이
+    // `finishedAt` 이며, `applyBacklogStatus`/`joinTicket` 가 이것을 우선해 판정한다.
+    startedAt: doc.startedAt ?? undefined,
+    finishedAt: doc.finishedAt ?? undefined,
     ...(unlanded !== undefined ? { unlanded } : {}),
   };
 }

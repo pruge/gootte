@@ -4,24 +4,12 @@ import type { BacklogTaskDoc } from "../parse/backlog";
 import { elapsedPhrase } from "../parse/elapsed";
 
 /**
- * 신관례 완료(done) 리졸버. 단일 출처 = git(`resolveTicketDone`, T01/grill D1). core-io 가 갖고
- * core 는 순환 의존 없이 쓰려고 주입받는다. 기본값은 "아무것도 완료 아님" — 호출처가 startup 에
- * `setTicketDoneResolver` 로 진짜 리졸버를 꽂는다(backend/app.ts · cli/commands.ts · scripts).
- */
-export type TicketDoneResolver = (repo: string, slug: string, num: string) => boolean;
-
-let ticketDoneResolver: TicketDoneResolver = () => false;
-
-export function setTicketDoneResolver(resolver: TicketDoneResolver): void {
-  ticketDoneResolver = resolver;
-}
-
-/**
- * `tickets/T<NN>.md` 신관례 티켓 상태 원천(T03).
- * 🔴 **완료(done) 출처 = git 리졸버**(`resolveTicketDone`, ticket-done-from-git T01, grill D1) —
- * 백로그는 완료를 말하지 않는다. 백로그 조인(`joinTicketBacklog`)은 여전히 **처리중/대기**와
- * url·elapsed 만을 주고, done 은 리졸버가 침범한다. 리졸버는 core-io 가 갖고 core 는 순환 의존
- * 없이 쓰려고 `setTicketDoneResolver` 로 주입받는다(호출처가 startup 에 세팅). 순수·결정적(INV-4).
+ * 신관례(`tickets/T<NN>.md`) 티켓 상태 원천(T04).
+ * 🔴 **완료(done) 출처 = 티켓 문서의 `Time:` 줄**(`finishedAt` 유무) — git 리졸버도 백로그 조인도 완료를 말하지 않는다.
+ * 백로그 조인은 여전히 **처리중/대기**와 url·elapsed 만을 주고, done 은 `Time:` 줄이 침범한다.
+ * `parseNewTicket` 에서 `startedAt`/`finishedAt` 을 읽어 `FeatureTicket` 에 싣고,
+ * `joinTicket` 이 `finishedAt` 있으면 done, `startedAt` 만 있으면 in_progress, 없으면 pending 으로 판정한다.
+ * 순수·결정적(INV-4).
  */
 
 const SECTION_STATUS: Readonly<Record<BacklogTaskDoc["section"], TodoStatus>> = {
@@ -29,12 +17,6 @@ const SECTION_STATUS: Readonly<Record<BacklogTaskDoc["section"], TodoStatus>> = 
   queued: "pending",
   done: "done",
 };
-
-export interface BacklogJoin {
-  status: TodoStatus;
-  url: string | null;
-  completedAt: string | null; // done 일 때만 채운다 — 백로그의 `(merged|done: ...)` verbatim
-}
 
 /**
  * 자식 id 모양 — D4 규약의 `<parent>-t<NN>`. 자식 메모도 자기 티켓 경로를 인용하므로 needle 이
@@ -70,15 +52,15 @@ function findParentId(tasks: readonly BacklogTaskDoc[], repo: string, featureSlu
 /**
  * 티켓 번호 하나 → 백로그 조인 결과. `<parent>-t<NN>` id 규약(grill.md D4)으로 자식 작업을 찾는다.
  * 부모를 못 찾거나 자식 id 가 없으면 null — 조인 실패는 "상태 미표시" 로만 드러난다(추측 금지).
- * 반환하는 `status: "done"` 은 **백로그의 주장**일 뿐 — 신관례 done 의 단일 출처는 git 리졸버고,
- * `joinTicket` 가 리졸버가 false 면 이 "done" 을 "pending" 으로 깎아버린다(T03/grill D1).
+ * 반환하는 `status: "done"` 은 **백로그의 주장**일 뿐 — 신관례 done 의 단일 출처는 `Time:` 줄이고,
+ * `joinTicket` 가 `finishedAt` 이 없는데 백로그가 "done" 이면 이 "done" 을 "pending" 으로 깎아버린다.
  */
 export function joinTicketBacklog(
   tasks: readonly BacklogTaskDoc[],
   repo: string,
   featureSlug: string,
   ticketNum: string,
-): BacklogJoin | null {
+): { status: TodoStatus; url: string | null; completedAt: string | null } | null {
   if (!ticketNum) return null;
   const parentId = findParentId(tasks, repo, featureSlug);
   if (!parentId) return null;
@@ -105,26 +87,30 @@ function joinTicket(
   if (ticket.statusKnown) {
     // T02 — 문서의 시각에서 elapsed 계산
     const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now) : undefined;
-    return { ...ticket, backlogStatus: ticket.status, ...(elapsed ? { elapsed } : {}) };
+    return { ...ticket, joinFailed: false, ...(elapsed ? { elapsed } : {}) };
   }
-  // 🔴 완료(done) 단일 출처 = git 리졸버(T01/grill D1). 리졸버가 true 면 백로그가 뭐라 해도 done.
-  if (ticketDoneResolver(repo, featureSlug, ticket.num)) {
+  // 🔴 완료(done) 단일 출처 = 티켓 문서의 `Time:` 줄 `finishedAt`(T04). `finishedAt` 이 있으면 done.
+  if (ticket.finishedAt) {
     // T02 — 리졸버 done 도 티켓 문서의 시각을 쓴다
     const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now) : undefined;
-    return { ...ticket, status: "done", backlogStatus: "done", waitingOn: [], ...(elapsed ? { elapsed } : {}) };
+    return { ...ticket, status: "done", joinFailed: false, waitingOn: [], ...(elapsed ? { elapsed } : {}) };
   }
-  // 리졸버가 false 면 백로그를 따르되 — 백로그가 "done" 이어도 git 이 완료를 안 박았으니
+  // `finishedAt` 이 없고 `startedAt` 만 있으면 in_progress
+  if (ticket.startedAt) {
+    const elapsed = elapsedPhrase(ticket.startedAt, ticket.finishedAt, now);
+    return { ...ticket, status: "in_progress", joinFailed: false, ...(elapsed ? { elapsed } : {}) };
+  }
+  // `Time:` 줄이 없으면 백로그를 따르되 — 백로그가 "done" 이어도 `Time:` 줄에 완료가 없으니
   // done 으로는 쓰지 않는다(백로그는 완료를 말할 권한이 없다). 처리중/대기/url 은 백로그 것.
   // T02 — elapsed 는 티켓 문서의 시각에서 계산(백로그 time: 줄은 더 이상 읽지 않음).
   const join = joinTicketBacklog(tasks, repo, featureSlug, ticket.num);
-  if (!join) return ticket;
+  if (!join) return { ...ticket, joinFailed: true };
   const joinedStatus = join.status === "done" ? "pending" : join.status;
   const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now) : undefined;
   return {
     ...ticket,
     status: joinedStatus,
-    backlogStatus: joinedStatus,
-    backlogUrl: join.url,
+    joinFailed: false,
     ...(elapsed ? { elapsed } : {}),
   };
 }
@@ -154,7 +140,8 @@ export interface FeatureHeaderBadge {
 export function deriveHeaderBadge(tickets: readonly FeatureTicket[]): FeatureHeaderBadge | null {
   if (tickets.length === 0) return null; // 구관례 — 문서가 SoT, 지금 그대로(D2)
   // 하나라도 "모른다" 면 전체를 모른다 — 일부만 보고 완료·착수 가능을 말하는 것이 추측이다.
-  if (tickets.some((t) => t.backlogStatus == null)) return null;
+  // 조인 실패한 티켓이 있으면(joinFailed true) 배지를 안 띄운다.
+  if (tickets.some((t) => t.joinFailed)) return null;
   if (tickets.some((t) => t.status === "in_progress"))
     return { status: "in_progress", sourceStatus: "처리중", statusKnown: true };
   if (!hasOpenWork(tickets)) return { status: "done", sourceStatus: "완료", statusKnown: true };
@@ -209,16 +196,20 @@ export function applyBacklogStatus(
     if (newTickets.length === 0) return rejudged; // 구관례·티켓 없음 — 지금 그대로(D2)
     // 🔴 취소가 티켓까지 내려간다(T02, D4) — 아직 안 끝난 신관례 티켓은 dropped 로 취급하고,
     // 이미 done 인 티켓은 done 으로 남는다(착지한 일을 없던 일로 만들지 않는다). 조인 여부를
-    // 가리지 않는다 — 기능 전체가 취소다. 백로그에 취소 상태를 만지 않는다(backlogStatus 는
-    // 조인 사실 그대로), 문서에도 아무것도 쓰지 않는다 — 매 read 다시 판정한다(INV-1).
+    // 가리지 않는다 — 기능 전체가 취소다. 백로그에 취소 상태를 만지 않는다, 문서에도 아무것도 쓰지 않는다 — 매 read 다시 판정한다(INV-1).
     if (cancelled)
       return {
         ...rejudged,
         status: "dropped",
         sourceStatus: "취소",
         statusKnown: true,
+        // 🔴 취소는 상태를 **아는** 상태다 — 조인 실패(알 수 없음)로 취급하지 않는다. 조인에
+        // 실패한 티켓도 취소 결정이 있으므로 joinFailed 를 false 로 정정한다(D5 예외). 그래야
+        // 화면(`isUnjoinedNewTicket`)이 취소 기능의 티켓을 "모른다" 로 숨기지 않는다.
         newTickets: newTickets.map((t) =>
-          t.status === "done" ? t : { ...t, status: "dropped", startable: false },
+          t.status === "done"
+            ? { ...t, joinFailed: false }
+            : { ...t, status: "dropped", startable: false, joinFailed: false },
         ),
       };
     const badge = deriveHeaderBadge(newTickets);

@@ -1,7 +1,7 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { BacklogTaskDoc } from "../parse/backlog";
 import type { FeatureTicket } from "@gootte/contract";
-import { applyBacklogStatus, joinTicketBacklog, setTicketDoneResolver } from "./backlog-join";
+import { applyBacklogStatus, joinTicketBacklog } from "./backlog-join";
 import { allTickets, hasOpenWork } from "./features";
 import { feature } from "../plan/fixtures";
 
@@ -155,76 +155,7 @@ describe("joinTicketBacklog", () => {
   });
 });
 
-describe("applyBacklogStatus", () => {
-  // T03 — 기본 리졸버는 "아무것도 완료 아님"(git 미연동). done 이 필요한 테스트는 아래서 true 로 세팅.
-  beforeEach(() => setTicketDoneResolver(() => false));
-
-  it("newTickets 만 조인하고 tickets(issues 관례)는 그대로 둔다", () => {
-    const base = feature("tauri-desktop-app", ["01"]);
-    const withNew = {
-      ...base,
-      newTickets: [
-        {
-          num: "04",
-          slug: "T04",
-          path: "tickets/T04.md",
-          title: "신관례 문서 표시",
-          status: "pending" as const,
-          sourceStatus: null,
-          statusKnown: false,
-          blockedBy: [],
-          unreadableBlockedBy: [],
-          waitingOn: [],
-          startable: true,
-          workedBy: [],
-          needsCaptainEye: false,
-          docConvention: "tickets" as const,
-          backlogStatus: null,
-          backlogUrl: null,
-          startedAt: undefined,
-          finishedAt: undefined,
-        },
-      ],
-    };
-    const child = task({ id: "widget-tauri-t04", section: "in_flight" });
-    const [joined] = applyBacklogStatus([withNew], [PARENT, child], "widget");
-
-    expect(joined?.newTickets?.[0]?.status).toBe("in_progress");
-    expect(joined?.newTickets?.[0]?.backlogStatus).toBe("in_progress");
-    expect(joined?.tickets[0]?.sourceStatus).toBe("draft"); // issues 관례는 안 건드린다
-  });
-
-  it("미조인이면 손대지 않는다", () => {
-    const base = feature("tauri-desktop-app");
-    const withNew = {
-      ...base,
-      newTickets: [
-        {
-          num: "09",
-          slug: "T09",
-          path: "tickets/T09.md",
-          title: "아직 백로그에 없는 티켓",
-          status: "pending" as const,
-          sourceStatus: null,
-          statusKnown: false,
-          blockedBy: [],
-          unreadableBlockedBy: [],
-          waitingOn: [],
-          startable: true,
-          workedBy: [],
-          needsCaptainEye: false,
-          docConvention: "tickets" as const,
-          backlogStatus: null,
-          backlogUrl: null,
-          startedAt: undefined,
-          finishedAt: undefined,
-        },
-      ],
-    };
-    const [joined] = applyBacklogStatus([withNew], [PARENT], "widget");
-    expect(joined?.newTickets?.[0]?.backlogStatus).toBeNull();
-  });
-
+describe("applyBacklogStatus — T04: Time: 줄 3단 규칙(finishedAt/startedAt/없음)", () => {
   /** 신관례 티켓 한 장 — blockedBy 를 줄 수 있다(T01). */
   const newTicket = (
     num: string,
@@ -244,52 +175,120 @@ describe("applyBacklogStatus", () => {
     workedBy: [],
     needsCaptainEye: false,
     docConvention: "tickets",
-    backlogStatus: null,
-    backlogUrl: null,
+    joinFailed: false,
     startedAt: undefined,
     finishedAt: undefined,
     ...overrides,
   });
 
-  it("🔴 리졸버로 선행이 완료되면 신관례 티켓의 대기도 풀린다 — 낡은 뷰 금지(INV-3, T03)", () => {
+  it("finishedAt 있는 티켓 → done (git 커밋 없어도, 백로그 상태와 무관)", () => {
     const base = feature("tauri-desktop-app");
     const withNew = {
       ...base,
       newTickets: [
-        newTicket("01"),
-        newTicket("02", { blockedBy: ["01"], waitingOn: ["01"], startable: false }),
+        newTicket("04", {
+          finishedAt: "2026-08-27T13:02:43+09:00",
+          startedAt: "2026-08-27T12:48:43+09:00",
+        }),
       ],
     };
-    // 🔴 T03 — done 출처는 백로그가 아니라 git 리졸버다. T01 을 리졸버 done 으로 박고,
-    // T02 는 Queued(백로그). 리졸버가 T01 done 을 인정하므로 T02 의 대기가 풀려 착수 가능.
-    setTicketDoneResolver((r, s, n) => n === "01");
-    const tasks = [PARENT, task({ id: "widget-tauri-t01", section: "done", checked: true }), task({ id: "widget-tauri-t02", section: "queued" })];
+    const [joined] = applyBacklogStatus([withNew], [], "widget");
+    expect(joined?.newTickets?.[0]?.status).toBe("done");
+    expect(joined?.newTickets?.[0]?.joinFailed).toBe(false);
+  });
+
+  it("startedAt만 있는 티켓 → in_progress (백로그 in_flight와 일치해도 Time: 줄이 기준)", () => {
+    const base = feature("tauri-desktop-app");
+    const withNew = {
+      ...base,
+      newTickets: [
+        newTicket("04", {
+          startedAt: "2026-08-27T12:00:00+09:00",
+          finishedAt: undefined,
+        }),
+      ],
+    };
+    const [joined] = applyBacklogStatus([withNew], [PARENT, task({ id: "widget-tauri-t04", section: "in_flight" })], "widget");
+    expect(joined?.newTickets?.[0]?.status).toBe("in_progress");
+    expect(joined?.newTickets?.[0]?.joinFailed).toBe(false);
+  });
+
+  it("Time: 줄이 없는 티켓 → pending (백로그 done이라도 done으로는 안 씀)", () => {
+    const base = feature("tauri-desktop-app");
+    const withNew = {
+      ...base,
+      newTickets: [
+        newTicket("04", {
+          startedAt: undefined,
+          finishedAt: undefined,
+        }),
+      ],
+    };
+    const [joined] = applyBacklogStatus([withNew], [PARENT, task({ id: "widget-tauri-t04", section: "done", checked: true, since: "2026-08-25" })], "widget");
+    expect(joined?.newTickets?.[0]?.status).toBe("pending");
+    expect(joined?.newTickets?.[0]?.joinFailed).toBe(false);
+  });
+
+  it("문서에 Status: resolved 있으면 Time: 줄과 무관하게 done (문서가 SoT)", () => {
+    const base = feature("tauri-desktop-app");
+    const withNew = {
+      ...base,
+      newTickets: [
+        newTicket("04", {
+          status: "done",
+          statusKnown: true,
+          sourceStatus: "resolved",
+          completedAt: "2026-08-28",
+          startedAt: undefined,
+          finishedAt: undefined,
+        }),
+      ],
+    };
+    const [joined] = applyBacklogStatus([withNew], [], "widget");
+    expect(joined?.newTickets?.[0]?.status).toBe("done");
+    expect(joined?.newTickets?.[0]?.statusKnown).toBe(true);
+    expect(joined?.newTickets?.[0]?.joinFailed).toBe(false);
+  });
+
+  it("문서 resolved는 백로그 in_flight보다 우선 (하이브리드 D5)", () => {
+    const base = feature("tauri-desktop-app");
+    const withNew = {
+      ...base,
+      newTickets: [
+        newTicket("04", {
+          status: "done",
+          statusKnown: true,
+          sourceStatus: "resolved",
+          startedAt: undefined,
+          finishedAt: undefined,
+        }),
+      ],
+    };
+    const tasks = [PARENT, task({ id: "widget-tauri-t04", section: "in_flight" })];
     const [joined] = applyBacklogStatus([withNew], tasks, "widget");
     expect(joined?.newTickets?.[0]?.status).toBe("done");
-    const t2 = joined?.newTickets?.[1];
-    expect(t2?.waitingOn).toEqual([]);
-    expect(t2?.startable).toBe(true);
   });
 
-  it("조인 후에도 선행이 미완이면 대기로 남는다(T01)", () => {
+  it("문서 wontfix는 dropped (Time: 줄이 있어도 문서가 이김)", () => {
     const base = feature("tauri-desktop-app");
     const withNew = {
       ...base,
       newTickets: [
-        newTicket("01"),
-        newTicket("02", { blockedBy: ["01"], waitingOn: ["01"], startable: false }),
+        newTicket("04", {
+          status: "dropped",
+          statusKnown: true,
+          sourceStatus: "wontfix",
+          startedAt: "2026-08-27T12:00:00+09:00",
+          finishedAt: "2026-08-27T13:00:00+09:00",
+        }),
       ],
     };
-    const tasks = [PARENT, task({ id: "widget-tauri-t01", section: "in_flight" }), task({ id: "widget-tauri-t02", section: "queued" })];
-    const [joined] = applyBacklogStatus([withNew], tasks, "widget");
-    const t2 = joined?.newTickets?.[1];
-    expect(t2?.waitingOn).toEqual(["01"]);
-    expect(t2?.startable).toBe(false);
+    const [joined] = applyBacklogStatus([withNew], [], "widget");
+    expect(joined?.newTickets?.[0]?.status).toBe("dropped");
   });
 
-  // ── 머리글 배지 파생(the-header-agrees-with-its-tickets/T01) ───────────────────
+  // ── 머리글 배지 파생 ───────────────────
 
-  describe("머리글 배지 파생(T01)", () => {
   /** 신관례 기능 — spec 의 낡은 `Status:` 글자를 이미 달고 있는 모양(문제 1의 실물). */
   const newConventionFeature = (tickets: FeatureTicket[]) => ({
     ...feature("tauri-desktop-app", []),
@@ -299,139 +298,106 @@ describe("applyBacklogStatus", () => {
     newTickets: tickets,
   });
 
-  it("전부 done 으로 조인되면 배지는 완료다 — 남은 일 0 과 모순하지 않는다", () => {
-    const f = newConventionFeature([newTicket("01"), newTicket("02")]);
-    // 🔴 T03 — done 출처는 리졸버다(백로그 done 은 무시). 두 티켓 모두 리졸버 done.
-    setTicketDoneResolver((r, s, n) => n === "01" || n === "02");
-    const tasks = [
-      PARENT,
-      task({ id: "widget-tauri-t01", section: "done", checked: true }),
-      task({ id: "widget-tauri-t02", section: "done", checked: true }),
-    ];
-    const [joined] = applyBacklogStatus([f], tasks, "widget");
+  it("전부 done(finishedAt 있음)으로 조인되면 배지는 완료다", () => {
+    const f = newConventionFeature([
+      newTicket("01", { finishedAt: "2026-08-27T13:00:00+09:00", startedAt: "2026-08-27T12:00:00+09:00" }),
+      newTicket("02", { finishedAt: "2026-08-27T14:00:00+09:00", startedAt: "2026-08-27T13:00:00+09:00" }),
+    ]);
+    const [joined] = applyBacklogStatus([f], [], "widget");
     expect(joined?.sourceStatus).toBe("완료");
     expect(joined?.status).toBe("done");
     expect(joined?.statusKnown).toBe(true);
   });
 
-  it("in_flight 티켓이 하나라도 있으면 배지는 처리중이다", () => {
-    const f = newConventionFeature([newTicket("01"), newTicket("02")]);
-    const tasks = [
-      PARENT,
-      task({ id: "widget-tauri-t01", section: "done", checked: true }),
-      task({ id: "widget-tauri-t02", section: "in_flight" }),
-    ];
-    const [joined] = applyBacklogStatus([f], tasks, "widget");
+  it("in_progress(startedAt만 있음) 티켓이 하나라도 있으면 배지는 처리중이다", () => {
+    const f = newConventionFeature([
+      newTicket("01", { finishedAt: "2026-08-27T13:00:00+09:00", startedAt: "2026-08-27T12:00:00+09:00" }),
+      newTicket("02", { startedAt: "2026-08-27T14:00:00+09:00", finishedAt: undefined }),
+    ]);
+    const [joined] = applyBacklogStatus([f], [], "widget");
     expect(joined?.sourceStatus).toBe("처리중");
     expect(joined?.status).toBe("in_progress");
   });
 
   it("대기·착수 가능이 섞였으면 배지는 남음이다", () => {
-    const f = newConventionFeature([newTicket("01")]);
-    const tasks = [PARENT, task({ id: "widget-tauri-t01", section: "queued" })];
-    const [joined] = applyBacklogStatus([f], tasks, "widget");
+    // 🔴 T04 — 빈 백로그면 조인 실패(joinFailed)로 배지가 null 이 된다(D5). 그래서 "남음" 배지를
+    // 내려면 백로그에 queued 로 **조인 성공**한 pending 티켓이 필요하다.
+    const f = newConventionFeature([newTicket("01", { startedAt: undefined, finishedAt: undefined })]);
+    const parent = task({ id: "widget-tauri", note: "Artifacts: docs/features/tauri-desktop-app/." });
+    const child = task({ id: "widget-tauri-t01", section: "queued" });
+    const [joined] = applyBacklogStatus([f], [parent, child], "widget");
+    expect(joined?.newTickets?.[0]?.joinFailed).toBe(false);
     expect(joined?.sourceStatus).toBe("남음");
     expect(joined?.status).toBe("pending");
   });
 
-  it("🔴 조인되지 않은 티켓이 하나라도 있으면 배지를 안 띄운다 — 추측 금지(D5)", () => {
-    // T01 은 조인됨(done), T02 는 백로그에 아직 없음 — 완료나 착수 가능으로 읽으면 INV-4 위반.
-    const f = newConventionFeature([newTicket("01"), newTicket("02")]);
-    const tasks = [PARENT, task({ id: "widget-tauri-t01", section: "done", checked: true })];
-    const [joined] = applyBacklogStatus([f], tasks, "widget");
+  it("조인되지 않은 티켓(joinFailed true)이 하나라도 있으면 배지를 안 띄운다 — 추측 금지(D5)", () => {
+    const f = newConventionFeature([
+      newTicket("01", { finishedAt: "2026-08-27T13:00:00+09:00", startedAt: "2026-08-27T12:00:00+09:00" }),
+      newTicket("02", { startedAt: undefined, finishedAt: undefined, joinFailed: true }), // joinFailed true
+    ]);
+    const [joined] = applyBacklogStatus([f], [], "widget");
     expect(joined?.sourceStatus).toBeNull();
     expect(joined?.statusKnown).toBe(false);
   });
 
   it("구관례(newTickets 없음) 기능은 배지도 나머지도 한 글자도 안 바뀐다", () => {
     const base = feature("tauri-desktop-app", [{ num: "01", status: "pending" }]);
-    expect(base.sourceStatus).toBe("draft"); // 픽스처가 spec 줄 verbatim 을 드는 모양
+    expect(base.sourceStatus).toBe("draft");
     const [joined] = applyBacklogStatus([base], [], "widget");
     expect(joined).toEqual(base);
   });
+
+  // ── 취소 선언이 계산을 이긴다 ────────────
+
+  /** spec 에 `Status: wontfix` 를 선언한 신관례 기능 — buildFeature 직후의 모양. */
+  const cancelledFeature = (tickets: FeatureTicket[]) => ({
+    ...feature("tauri-desktop-app", []),
+    status: "dropped" as const,
+    sourceStatus: "wontfix",
+    statusKnown: true,
+    newTickets: tickets,
   });
 
-  // ── 취소 선언이 계산을 이긴다(the-header-agrees-with-its-tickets/T02) ────────────
+  it("취소 + 완료 티켓 혼합 — 안 끝난 티켓은 dropped, done 은 done 으로 남는다", () => {
+    const f = cancelledFeature([
+      newTicket("01", { finishedAt: "2026-08-27T13:00:00+09:00", startedAt: "2026-08-27T12:00:00+09:00" }),
+      newTicket("02", { startedAt: undefined, finishedAt: undefined }),
+    ]);
+    const [joined] = applyBacklogStatus([f], [], "widget");
+    expect(joined?.newTickets?.[0]?.status).toBe("done");
+    expect(joined?.newTickets?.[1]?.status).toBe("dropped");
+    expect(joined?.newTickets?.[1]?.startable).toBe(false);
+    expect(hasOpenWork(allTickets(joined as NonNullable<typeof joined>))).toBe(false);
+    expect(joined?.newTickets?.[1]?.joinFailed).toBe(false);
+  });
 
-  describe("취소(wontfix)가 계산을 이긴다(T02)", () => {
-    /** spec 에 `Status: wontfix` 를 선언한 신관례 기능 — buildFeature 직후의 모양. */
-    const cancelledFeature = (tickets: FeatureTicket[]) => ({
-      ...feature("tauri-desktop-app", []),
+  it("취소 배지는 조인 실패(빈 백로그)에도 배지를 '취소'로 낸다 — null(숨김) 이 아니다(D5 예외)", () => {
+    const f = cancelledFeature([
+      newTicket("01", { finishedAt: "2026-08-27T13:00:00+09:00", startedAt: "2026-08-27T12:00:00+09:00" }),
+      newTicket("02", { startedAt: undefined, finishedAt: undefined }),
+    ]);
+    // 빈 백로그 → 개별 티켓은 조인 실패(joinFailed)지만 취소 결정이 있으므로 배지는 '취소' 다.
+    const [joined] = applyBacklogStatus([f], [], "widget");
+    expect(joined?.sourceStatus).toBe("취소");
+    expect(joined?.status).toBe("dropped");
+    expect(joined?.statusKnown).toBe(true);
+    // 🔴 D4 — finishedAt 티켓(T01)은 done 으로 남고, 미완 티켓(T02)은 dropped 로 내려간다.
+    expect(joined?.newTickets?.[0]?.status).toBe("done");
+    expect(joined?.newTickets?.[1]?.status).toBe("dropped");
+    // 🔴 취소는 조인 실패를 이긴다 — 모든 티켓의 joinFailed 가 false 로 정정된다.
+    expect(joined?.newTickets?.every((t) => t.joinFailed === false)).toBe(true);
+  });
+
+  it("구관례의 취소는 지금 그대로 — spec wontfix 배지 verbatim, 티켓 사상은 mapFirstmateStatus 몫", () => {
+    const base = {
+      ...feature("tauri-desktop-app", [{ num: "01", status: "dropped" as const }]),
       status: "dropped" as const,
       sourceStatus: "wontfix",
       statusKnown: true,
-      newTickets: tickets,
-    });
-
-    it("취소 + 완료 티켓 혼합 — 안 끝난 티켓은 dropped, done 은 done 으로 남는다(D4)", () => {
-      const f = cancelledFeature([newTicket("01"), newTicket("02")]);
-      // 🔴 T03 — done 출처는 리졸버다. T01 을 리졸버 done 으로 박는다(백로그 done 은 무시).
-      setTicketDoneResolver((r, s, n) => n === "01");
-      const tasks = [
-        PARENT,
-        task({ id: "widget-tauri-t01", section: "done", checked: true }),
-        task({ id: "widget-tauri-t02", section: "queued" }),
-      ];
-      const [joined] = applyBacklogStatus([f], tasks, "widget");
-      expect(joined?.newTickets?.[0]?.status).toBe("done"); // 착지한 일은 없던 일로 만들지 않는다
-      expect(joined?.newTickets?.[1]?.status).toBe("dropped");
-      expect(joined?.newTickets?.[1]?.startable).toBe(false);
-      expect(hasOpenWork(allTickets(joined as NonNullable<typeof joined>))).toBe(false);
-      expect(joined?.newTickets?.[1]?.backlogStatus).toBe("pending"); // 조인 사실은 지키고, 취급만 dropped
-    });
-
-    it("🔴 취소 배지는 T01 파생과 조인 실패를 모두 이긴다(D3·D5)", () => {
-      // 백로그에 아예 없어 전부 미조인 — D5 로는 배지를 안 띄지만, 기능 전체가 취소면 취소로 보인다.
-      const f = cancelledFeature([newTicket("01"), newTicket("02")]);
-      const [joined] = applyBacklogStatus([f], [], "widget");
-      expect(joined?.sourceStatus).toBe("취소");
-      expect(joined?.status).toBe("dropped");
-      expect(joined?.statusKnown).toBe(true);
-      expect(joined?.newTickets?.every((t) => t.status === "dropped")).toBe(true);
-    });
-
-    it("구관례의 취소는 지금 그대로 — spec wontfix 배지 verbatim, 티켓 사상은 mapFirstmateStatus 몫", () => {
-      const base = {
-        ...feature("tauri-desktop-app", [{ num: "01", status: "dropped" as const }]),
-        status: "dropped" as const,
-        sourceStatus: "wontfix",
-        statusKnown: true,
-      };
-      const [joined] = applyBacklogStatus([base], [], "widget");
-      expect(joined).toEqual(base); // 한 글자도 안 바뀐다
-    });
-  });
-
-  it("🔴 T04 — 문서에 Status: resolved 가 있으면 리졸버·백로그와 무관하게 done(문서가 SoT)", () => {
-    // beforeEach 가 resolver false 로 세팅 + 백로그도 없음 — 그래도 문서 상태가 완료를 확정한다.
-    const withNew = {
-      ...feature("tauri-desktop-app"),
-      newTickets: [newTicket("04", { status: "done", statusKnown: true, sourceStatus: "resolved", completedAt: "2026-08-28" })],
     };
-    const [joined] = applyBacklogStatus([withNew], [], "widget");
-    expect(joined?.newTickets?.[0]?.status).toBe("done");
-    expect(joined?.newTickets?.[0]?.statusKnown).toBe(true);
-    expect(joined?.newTickets?.[0]?.backlogStatus).toBe("done"); // 배지 계산용 비null
-  });
-
-  it("🔴 T04 — 문서 resolved 는 백로그 in_flight 보다 우선(하이브리드 D5)", () => {
-    const withNew = {
-      ...feature("tauri-desktop-app"),
-      newTickets: [newTicket("04", { status: "done", statusKnown: true, sourceStatus: "resolved" })],
-    };
-    const tasks = [PARENT, task({ id: "widget-tauri-t04", section: "in_flight" })];
-    const [joined] = applyBacklogStatus([withNew], tasks, "widget");
-    expect(joined?.newTickets?.[0]?.status).toBe("done"); // 백로그 처리중을 무시
-  });
-
-  it("🔴 T04 — 문서 wontfix 는 dropped(리졸버가 true 여도 문서가 이긴다)", () => {
-    setTicketDoneResolver((r, s, n) => n === "04"); // 리졸버는 done 주장
-    const withNew = {
-      ...feature("tauri-desktop-app"),
-      newTickets: [newTicket("04", { status: "dropped", statusKnown: true, sourceStatus: "wontfix" })],
-    };
-    const [joined] = applyBacklogStatus([withNew], [], "widget");
-    expect(joined?.newTickets?.[0]?.status).toBe("dropped");
+    const [joined] = applyBacklogStatus([base], [], "widget");
+    expect(joined).toEqual(base);
   });
 });
 
@@ -459,8 +425,7 @@ describe("T02 — elapsed 는 티켓 문서의 Time: 줄에서 계산", () => {
     workedBy: [],
     needsCaptainEye: false,
     docConvention: "tickets",
-    backlogStatus: null,
-    backlogUrl: null,
+    joinFailed: false,
     startedAt: undefined,
     finishedAt: undefined,
     ...overrides,
@@ -497,7 +462,6 @@ describe("T02 — elapsed 는 티켓 문서의 Time: 줄에서 계산", () => {
       ],
     };
     const [joined] = applyBacklogStatus([withNew], [PARENT, task({ id: "widget-tauri-t04", section: "in_flight" })], "widget", NOW);
-    // 12:00 ~ 13:30 = 90분 → roughPhrase 는 60분 이상이면 시간 단위로 (Math.round)
     expect(joined?.newTickets?.[0]?.elapsed).toBe("약 1시간 30분 진행 중");
   });
 
@@ -523,15 +487,12 @@ describe("T02 — elapsed 는 티켓 문서의 Time: 줄에서 계산", () => {
         }),
       ],
     };
-    // 백로그엔 다른 시간(무시되어야 함)
     const tasks = [PARENT, task({ id: "widget-tauri-t04", section: "in_flight" })];
     const [joined] = applyBacklogStatus([withNew], tasks, "widget", NOW);
-    // 티켓 문서의 1시간이 쓰여야 함 (백로그의 시간 아님) — roughPhrase 는 60분을 "약 1시간" 으로
     expect(joined?.newTickets?.[0]?.elapsed).toBe("약 1시간");
   });
 
-  it("리졸버 done 도 티켓 문서의 시각을 쓴다", () => {
-    setTicketDoneResolver(() => true);
+  it("done 도 티켓 문서의 시각을 쓴다 (resolver 없음 — finishedAt으로 판정)", () => {
     const withNew = {
       ...feature("tauri-desktop-app"),
       newTickets: [
@@ -546,7 +507,6 @@ describe("T02 — elapsed 는 티켓 문서의 Time: 줄에서 계산", () => {
     };
     const [joined] = applyBacklogStatus([withNew], [], "widget", NOW);
     expect(joined?.newTickets?.[0]?.status).toBe("done");
-    // 12:00 ~ 13:00 = 60분 → "약 1시간"
     expect(joined?.newTickets?.[0]?.elapsed).toBe("약 1시간");
   });
 });
