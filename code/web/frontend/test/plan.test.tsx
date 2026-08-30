@@ -80,11 +80,9 @@ function renderBoard(board: PlanBoardResponse) {
 /** 아래 칸의 탭 하나를 눌러 그 칸을 연다. */
 const openTab = (label: string) => fireEvent.click(screen.getByRole("tab", { name: new RegExp(label) }));
 
-/** 카드 머리 단추 — 아이콘 둘과 형제라 이름으로 가른다(머리에만 티켓 수/완료 시각이 붙어 있다). */
+/** 카드 머리 단추 — 아이콘 둘과 형제라 이름으로 가른다(머리에만 티켓 수가 붙어 있다). */
 const cardHeader = (title: string): HTMLElement =>
-  within(screen.getByRole("article", { name: title })).getByRole("button", {
-    name: /(티켓 \d|완료)/,
-  });
+  within(screen.getByRole("article", { name: title })).getByRole("button", { name: /티켓 \d/ });
 
 /**
  * 판에는 카드 머리만 보인다(캡틴 결정) — 티켓 목록은 머리글을 눌러 **대화상자로** 연다.
@@ -371,10 +369,10 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     expect(screen.queryByRole("heading", { name: "later 제목" })).toBeNull();
 
     openTab("완료");
-    const done = screen.getByRole("article", { name: "shipped" });
-    // 닫힌 시각은 문서에 없는 값이라 계획 DB 가 갖는다(INV-5) — 접힌 머리에서도 보인다.
-    // 무엇의 시각인지 이름표를 달고 선다(04) — 문서의 완료 날짜와 나란히 서기 때문이다.
-    expect(within(done).getByText("완료 2026-08-12T09:30:00+09:00")).toBeInTheDocument();
+    const done = screen.getByRole("article", { name: "shipped 제목" });
+    // 완료 시각은 문서에 없는 값이라 계획 DB 가 갖는다(INV-5) — 접힌 머리에서도 보인다.
+    // 무엇의 시각인지 이름표를 달고 선다(04) — 표시는 날짜만(yyyy-mm-dd, 캡틴 지시).
+    expect(within(done).getByText("완료 2026-08-12")).toBeInTheDocument();
   });
 
   it("각 탭이 자기 칸의 카드 수를 달고 있다 — 화면이 세지 않고 목록 길이를 읽는다", () => {
@@ -476,15 +474,13 @@ describe("PlanView — 카드 머리가 어디에 서 있든 안 읽음을 말�
     );
   });
 
-  it("🔴 완료 칸의 카드는 헤더를 간소화한다 — 슬러그 + '완료 [시각]' 만 남고 안 읽음 표시도 숨는다", () => {
+  it("🔴 완료 칸의 카드에도 그대로 뜬다 — 캡틴이 손으로 닫은 카드에서도(캡틴이 이름 대신 경우)", () => {
     const f = feature("shipped", [["01", "끝난 것", "done", "2026-08-01"]]);
     const doneWithUnread: Feature = { ...f, hasUnreadTicket: true };
     renderBoard({ ...EMPTY_BOARD, done: [card(doneWithUnread, 0, "2026-08-12 09:00")] });
     openTab("완료");
-    const cardEl = screen.getByRole("article", { name: "shipped" });
-    // 완료 카드 헤더는 "완료 [시각]" 하나만 남는다 — 안 읽음·설명·티켓 수는 숨는다(캡틴 지시).
-    expect(within(cardEl).getByText("완료 2026-08-12 09:00")).toBeInTheDocument();
-    expect(within(cardEl).queryByText("안 읽음")).toBeNull();
+    const cardEl = screen.getByRole("article", { name: "shipped 제목" });
+    expect(within(cardEl).getByText("안 읽음")).toBeInTheDocument();
   });
 
   it("안 읽은 티켓이 없으면 카드 머리에 표시가 없다", () => {
@@ -723,9 +719,9 @@ describe("PlanView — 티켓 상자와 닫힌 카드(plan-board/04)", () => {
       done: [card(feature("shut", [["01", "끝난 것", "done", "2026-08-02"]]), 0, "2026-08-12 17:40")],
     });
     openTab("완료");
-    expect(within(screen.getByRole("article", { name: "shut" })).queryByText("끝난 것")).toBeNull();
+    expect(within(screen.getByRole("article", { name: "shut 제목" })).queryByText("끝난 것")).toBeNull();
 
-    const opened = openCard("shut");
+    const opened = openCard("shut 제목");
     expect(within(opened).getByText("끝난 것")).toBeInTheDocument();
 
     confirmDialog();
@@ -748,7 +744,7 @@ describe("PlanView — 티켓 상자와 닫힌 카드(plan-board/04)", () => {
       ],
     });
     openTab("완료");
-    const c = openCard("covered");
+    const c = openCard("covered 제목");
     expect(boxesIn(c)).toEqual(["[x]", "[ ]"]);
     expect(within(c).getByText("남은 것")).toBeInTheDocument();
   });
@@ -768,8 +764,8 @@ describe("PlanView — 티켓 상자와 닫힌 카드(plan-board/04)", () => {
       ],
     });
     openTab("완료");
-    const c = screen.getByRole("article", { name: "auto-closed" });
-    expect(within(c).getByText("완료 2026-08-09 14:30")).toBeInTheDocument();
+    const c = screen.getByRole("article", { name: "auto-closed 제목" });
+    expect(within(c).getByText("완료 2026-08-09")).toBeInTheDocument();
   });
 
   it("🔴 06 — 캡틴이 손으로 닫은 카드는 저장된 닫힘 시각을 그대로 보여준다, 문서 날짜를 참고하지 않는다", () => {
@@ -780,18 +776,18 @@ describe("PlanView — 티켓 상자와 닫힌 카드(plan-board/04)", () => {
       ],
     });
     openTab("완료");
-    const c = screen.getByRole("article", { name: "manual-close" });
-    expect(within(c).getByText("완료 2026-08-12 17:40")).toBeInTheDocument();
+    const c = screen.getByRole("article", { name: "manual-close 제목" });
+    expect(within(c).getByText("완료 2026-08-12")).toBeInTheDocument();
     expect(within(c).queryByText(/2026-08-02/)).toBeNull();
   });
 
-  it("🔴 06 — 저절로 닫혔는데 문서에 완료 시각이 없으면 닫힘 줄을 보이지 않는다, 지어내지 않는다", () => {
+  it("🔴 06 — 저절로 닫혔는데 문서에 완료 시각이 없으면 완료 줄을 보이지 않는다, 지어내지 않는다", () => {
     renderBoard({
       ...EMPTY_BOARD,
       done: [card(feature("bare", [["01", "하나", "done"]]), 0, null)],
     });
     openTab("완료");
-    const c = screen.getByRole("article", { name: "bare" });
+    const c = screen.getByRole("article", { name: "bare 제목" });
     expect(within(c).queryByText(/완료/)).toBeNull();
   });
 

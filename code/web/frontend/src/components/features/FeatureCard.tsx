@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Feature } from "@gootte/contract";
 import { featureDescription } from "../plan/cardTitle";
+import { dateOnly } from "../../lib/dateOnly";
 import { ConflictBadge } from "./ConflictBadge";
 import { FeatureTree, type OpenDocFn } from "./FeatureTree";
 import { HighlightedText } from "./HighlightedText";
@@ -105,9 +106,9 @@ export function FeatureCard({
           {/* T03 — 갈라진 사본이 있으면 조용히 하나를 고르지 않고 화면이 말한다(ADR-0001). */}
           <ConflictBadge conflicts={feature.conflict ?? []} />
           {isDone ? (
-            // 완료 카드 — 네 수 대신 "완료 [시각]" 하나만(캡틴 지시: 완료후 헤더는 이것만 남긴다).
+            // 완료 카드 — 네 수 대신 "완료 [날짜]" 하나만(캡틴 지시: 완료후 헤더는 이것만 남긴다).
             <span className="mono ml-auto text-sm tabular-nums text-muted">
-              완료 {completed}
+              완료 {dateOnly(completed)}
             </span>
           ) : (
             /* 네 수는 항상 뜬다 — 0 이어도 칸이 사라지지 않는다(티켓 01 §설계 5 🔴). */

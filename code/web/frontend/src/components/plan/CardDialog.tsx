@@ -3,6 +3,7 @@ import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 import type { FeatureConflict, FeatureTicket, PlanCard } from "@gootte/contract";
 import { allTickets } from "@gootte/core";
 import { closedDisplayAt, ticketBoxState, UNRANKED_STEP } from "@gootte/core/plan";
+import { dateOnly } from "../../lib/dateOnly";
 import { ConflictBadge } from "../features/ConflictBadge";
 import { useHoverTip } from "../HoverTip";
 import { featureDescription } from "./cardTitle";
@@ -201,7 +202,7 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
             {/* 카드 머리가 이고 있던 곁다리를 그대로 옮겨 온다 — 창을 열었다고 사실이 사라지지 않게. */}
             <p className="mono mt-1.5 flex flex-wrap items-baseline gap-x-2.5 text-sm tabular-nums text-muted">
               <span>티켓 {tickets.length}</span>
-              {closedDisplay && <span>닫힘 {closedDisplay}</span>}
+              {closedDisplay && <span>완료 {dateOnly(closedDisplay)}</span>}
               {/* T03 — 이 기능이 갈라졌으면 대화상자도 조용히 넘기지 않는다(ADR-0001). */}
               <ConflictBadge conflicts={feature.conflict ?? []} />
             </p>
