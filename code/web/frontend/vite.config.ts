@@ -13,7 +13,20 @@ export default defineConfig({
   server: {
     port: 5304,
     proxy: {
-      "/api": { target: BACKEND, changeOrigin: true, ws: true }, // ws:true = WS /api/live 업그레이드 프록시(2b)
+      "/api": {
+        target: BACKEND,
+        changeOrigin: true,
+        ws: true, // ws:true = WS /api/live 업그레이드 프록시(2b)
+        // 백엔드 종료·재시작 순간의 write EPIPE(닫힌 소켓에 쓰기)는 프록시 소켓이 끊기며
+        // 오는 무해한 신호다 — 웹뷰 WS 는 자동 재접속하므로 로그에서만 조용히 삼킨다.
+        // 다른 진짜 오류는 그대로 남겨야 보인다.
+        configure: (proxy) => {
+          proxy.on("error", (err) => {
+            if ((err as NodeJS.ErrnoException).code === "EPIPE") return;
+            console.error("[vite] ws proxy error:", err);
+          });
+        },
+      },
     },
   },
   test: {
