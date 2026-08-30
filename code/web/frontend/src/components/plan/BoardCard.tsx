@@ -130,9 +130,29 @@ export function BoardCard({
         onClick={onHeaderClick}
         onKeyDown={onHeaderKeyDown}
         className={`grid w-full cursor-[inherit] grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 px-3 py-2 text-left ${
-          hasUnread ? "bg-unread" : "bg-surface-2/50"
+          hasUnread && !closed ? "bg-unread" : "bg-surface-2/50"
         }`}
       >
+        {/* 🔴 완료 칸 카드 — 헤더를 간소화한다(캡틴 지시): 기능 이름(슬러그)+"완료 [시각]" 만
+            남기고, 설명·티켓 수·안 읽음·이동/문서 아이콘은 감춘다. 완료한 일은 더 볼 것도
+            옮길 것도 없다 — 이름과 언제 끝났는지가 전부다. */}
+        {closed ? (
+          <>
+            <h3 id={headingId} className="contents">
+              <span className="mono col-start-1 row-start-1 min-w-0 truncate font-medium tracking-tight">
+                {feature.slug}
+              </span>
+            </h3>
+            <span className="col-start-2 row-start-1 flex shrink-0 items-baseline justify-end gap-x-2.5 pr-1.5">
+              {closedDisplay && (
+                <span className="mono text-sm tabular-nums text-muted">
+                  완료 {closedDisplay}
+                </span>
+              )}
+            </span>
+          </>
+        ) : (
+          <>
         {/* 두 줄 — 첫 줄 기능 이름, 둘째 줄 설명문구(캡틴 결정). 설명이 없는 기능(표제가 곧
             폴더명인 경우)은 이름 한 줄만 그린다 — 빈 줄로 자리를 채우지 않는다.
             🔴 곁다리(닫힌 시각·티켓 수)는 **첫 줄 옆**에만 선다. 두 줄 묶음 전체의 옆에 두면
@@ -217,15 +237,7 @@ export function BoardCard({
             </button>
           </div>
         )}
-
-        {/* 닫힌 시각 하나 — 저절로 닫혔으면 문서가 말하는 완료 시각, 손으로 닫았으면 저장값
-            그대로다(06). 판정은 `closedDisplayAt`(core) 하나뿐, 화면은 받아 쓰기만 한다.
-            닫힌 카드에만 뜨고, 첫 줄 옆이 아니라 제 줄을 갖는다 — 짧은 이름 줄의 여백을
-            설명 줄에서 빼앗지 않기 위해서다(위 격자 설명과 같은 이유). */}
-        {closedDisplay && (
-          <span className="mono col-span-2 col-start-1 row-start-3 text-sm tabular-nums text-muted">
-            닫힘 {closedDisplay}
-          </span>
+          </>
         )}
       </div>
     </article>

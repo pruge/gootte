@@ -39,6 +39,8 @@ interface FeatureCardProps {
    */
   expanded?: boolean;
   onToggleExpanded?: () => void;
+  /** 완료 칸일 때의 완료 시각 표시("YYYY-MM-DD HH:MM") — 있으면 헤더를 간소화한다. */
+  completed?: string | null;
 }
 
 /**
@@ -59,6 +61,7 @@ export function FeatureCard({
   query = "",
   expanded: controlledExpanded,
   onToggleExpanded,
+  completed = null,
 }: FeatureCardProps) {
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = controlledExpanded ?? localExpanded;
@@ -70,12 +73,14 @@ export function FeatureCard({
   // 부분만 뗀다(INV-4, `plan` 탭 카드와 같은 규칙·같은 함수). 뗄 것이 없으면 표제 그대로다.
   const title = featureDescription(feature.title, feature.slug) || feature.title;
   const hasUnread = feature.hasUnreadTicket === true;
+  // 완료 칸 카드 — 헤더를 간소화한다: 이름·슬러그만 남기고 "완료 [시각]" 하나만 붙는다.
+  const isDone = completed !== null;
 
   return (
     <section className="shrink-0 overflow-hidden rounded-lg border border-border bg-surface">
       <div
         className={`flex w-full items-stretch border-b border-border ${
-          hasUnread ? "bg-unread" : "bg-surface-2/40"
+          hasUnread && !isDone ? "bg-unread" : "bg-surface-2/40"
         }`}
       >
         <button
@@ -88,7 +93,7 @@ export function FeatureCard({
             <HighlightedText text={title} query={query} />
           </h2>
           <span className="mono text-sm text-muted">{feature.slug}</span>
-          {hasUnread && (
+          {hasUnread && !isDone && (
             // 안 읽은 티켓이 있는 동안만 뜬다 — 다 읽으면 풀린다(색 말고도 붙들 것: INV-U2).
             <span
               role="status"
@@ -99,14 +104,21 @@ export function FeatureCard({
           )}
           {/* T03 — 갈라진 사본이 있으면 조용히 하나를 고르지 않고 화면이 말한다(ADR-0001). */}
           <ConflictBadge conflicts={feature.conflict ?? []} />
-          {/* 네 수는 항상 뜬다 — 0 이어도 칸이 사라지지 않는다(티켓 01 §설계 5 🔴). */}
-          <span className="mono ml-auto text-sm tabular-nums text-muted">
-            남은 일 {open} · 완료 {done}
-            {" · "}
-            <span className={startable > 0 ? "font-medium text-accent" : undefined}>착수 가능 {startable}</span>
-            {" · "}
-            <span className={working > 0 ? "font-medium text-active" : undefined}>처리중 {working}</span>
-          </span>
+          {isDone ? (
+            // 완료 카드 — 네 수 대신 "완료 [시각]" 하나만(캡틴 지시: 완료후 헤더는 이것만 남긴다).
+            <span className="mono ml-auto text-sm tabular-nums text-muted">
+              완료 {completed}
+            </span>
+          ) : (
+            /* 네 수는 항상 뜬다 — 0 이어도 칸이 사라지지 않는다(티켓 01 §설계 5 🔴). */
+            <span className="mono ml-auto text-sm tabular-nums text-muted">
+              남은 일 {open} · 완료 {done}
+              {" · "}
+              <span className={startable > 0 ? "font-medium text-accent" : undefined}>착수 가능 {startable}</span>
+              {" · "}
+              <span className={working > 0 ? "font-medium text-active" : undefined}>처리중 {working}</span>
+            </span>
+          )}
         </button>
       </div>
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { IconAlertTriangle, IconEyeOff, IconProgressAlert } from "@tabler/icons-react";
 import type { InProgressSummary } from "@gootte/contract";
-import { byClosedDisplayAt } from "@gootte/core/plan";
+import { byClosedDisplayAt, closedDisplayAt } from "@gootte/core/plan";
 import { useBlockedCopies, useFeatures, usePlanBoard, useSettings } from "../../lib/query";
 import { ALL_AREAS, AREA_LABEL, type BoardAreaId } from "../plan/areas";
 import { Loading, ErrorMsg, Empty } from "../common/states";
@@ -218,6 +218,18 @@ export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
     return m;
   }, [board]);
 
+  // 완료 영역 카드의 완료 시각 표시 — 완료 칸일 때만 의미 있다(plan 탭과 같은 판정 자리:
+  // `closedDisplayAt`, INV-4). 완료 칸에 없는 기능은 null(FeatureCard 가 원래 헤더를 그린다).
+  const completedAtBySlug = useMemo(() => {
+    if (!board) return null;
+    const m = new Map<string, string>();
+    for (const c of board.done) {
+      const display = closedDisplayAt(c.closedAt, c.feature);
+      if (display) m.set(c.feature.slug, display);
+    }
+    return m;
+  }, [board]);
+
   // 문서를 연 자리의 신원(요소가 아니라 "무엇을 열었는지") — 드로어를 닫을 때 그 자리로
   // 스크롤한 뒤 포커스를 돌려준다(②). 카드가 스크롤을 벗어났다 돌아오면 버튼은 새 DOM
   // 노드로 다시 태어나므로, 옛 요소를 붙드는 것으로는 갈 곳을 못 찾는다.
@@ -375,6 +387,7 @@ export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
                       query={query}
                       expanded={expanded.has(feature.slug)}
                       onToggleExpanded={() => toggleExpanded(feature.slug)}
+                      completed={completedAtBySlug?.get(feature.slug) ?? null}
                     />
                   </div>
                 );
