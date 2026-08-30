@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { IconAlertTriangle, IconEyeOff, IconProgressAlert } from "@tabler/icons-react";
 import type { InProgressSummary } from "@gootte/contract";
+import { byClosedDisplayAt } from "@gootte/core/plan";
 import { useBlockedCopies, useFeatures, usePlanBoard, useSettings } from "../../lib/query";
 import { ALL_AREAS, AREA_LABEL, type BoardAreaId } from "../plan/areas";
 import { Loading, ErrorMsg, Empty } from "../common/states";
@@ -228,11 +229,21 @@ export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
     [data, query],
   );
   const tabMatches = useMemo(
-    () =>
-      baseMatches.filter(
+    () => {
+      const matches = baseMatches.filter(
         (m) => (areaBySlug.get(m.feature.slug) ?? "waiting") === tab,
-      ),
-    [baseMatches, areaBySlug, tab],
+      );
+      // 🔴 완료 영역은 plan 탭과 같은 정렬(최근 완료가 위) — `byClosedDisplayAt` 재사용(INV-4).
+      if (tab !== "done" || !board) return matches;
+      const closedAtBySlug = new Map(board.done.map((c) => [c.feature.slug, c.closedAt]));
+      return [...matches].sort((a, b) =>
+        byClosedDisplayAt(
+          { closedAt: closedAtBySlug.get(a.feature.slug) ?? null, feature: a.feature },
+          { closedAt: closedAtBySlug.get(b.feature.slug) ?? null, feature: b.feature },
+        ),
+      );
+    },
+    [baseMatches, areaBySlug, tab, board],
   );
   const searching = query.trim() !== "";
 

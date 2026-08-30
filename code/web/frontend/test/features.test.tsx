@@ -2,7 +2,7 @@ import { useState } from "react";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi } from "vitest";
-import type { FeaturesResponse, FeatureTicket } from "@gootte/contract";
+import type { FeaturesResponse, FeatureTicket, PlanBoardResponse, PlanCard } from "@gootte/contract";
 
 // 구관례 `issues/` 폴더 — issues 칸은 이 폴더가 실재할 때만 그려진다(FeatureTree 의 `{issues && ...}`, INV-4).
 const ISSUES_DIR = { kind: "dir" as const, name: "issues", path: "issues", children: [] };
@@ -555,5 +555,76 @@ describe("FeaturesView — 검색 상자가 기능과 티켓을 찾아 준다(a-
     renderView(SEARCH_DATA);
     openCard("결제");
     expect(screen.getByText("정기 결제")).toBeInTheDocument();
+  });
+});
+
+describe("FeaturesView — 완료 영역은 최근 완료가 위(plan 탭과 같은 정렬, INV-4)", () => {
+  /** 완료 탭 정렬용 — board(자리 행)와 features(문서) 둘 다 시드한다. */
+  function renderDoneBoard(features: FeaturesResponse["features"], done: PlanCard[]) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const board: PlanBoardResponse = {
+      project: "alpha",
+      waiting: [],
+      active: [],
+      reserved: [],
+      discarded: [],
+      done,
+    };
+    qc.setQueryData(qk.features("alpha"), { project: "alpha", features, inProgress: NO_WORK });
+    qc.setQueryData(qk.plan("alpha"), board);
+    return render(
+      <QueryClientProvider client={qc}>
+        <FeaturesView project="alpha" view={null} onView={() => {}} />
+      </QueryClientProvider>,
+    );
+  }
+
+  function doneFeature(slug: string, completedAt: string): FeatureTicket {
+    return {
+      num: "01",
+      slug: "01-x",
+      path: "issues/01-x.md",
+      title: "완료 티켓",
+      status: "done",
+      sourceStatus: `resolved (${completedAt})`,
+      statusKnown: true,
+      completedAt,
+      blockedBy: [],
+      unreadableBlockedBy: [],
+      waitingOn: [],
+      startable: true,
+      workedBy: [],
+      needsCaptainEye: false,
+    };
+  }
+
+  it("완료 영역 카드가 최근 완료순(closedAt 내림차순)으로 보인다", () => {
+    const mkFeature = (slug: string, completedAt: string) => ({
+      slug,
+      title: `${slug} — 제목`,
+      status: "pending" as const,
+      sourceStatus: "draft",
+      statusKnown: true,
+      docs: [ISSUES_DIR],
+      tickets: [doneFeature(slug, completedAt)],
+    });
+    const old = mkFeature("done-old", "2026-08-01");
+    const recent = mkFeature("done-recent", "2026-09-15");
+    const middle = mkFeature("done-middle", "2026-09-01");
+    const doneCards: PlanCard[] = [
+      { feature: old, seq: 0, closedAt: "2026-08-01 09:00" },
+      { feature: recent, seq: 1, closedAt: "2026-09-15 09:00" },
+      { feature: middle, seq: 2, closedAt: "2026-09-01 09:00" },
+    ];
+    renderDoneBoard([old, recent, middle], doneCards);
+
+    // 완료 탭 선택
+    fireEvent.click(screen.getByRole("tab", { name: /완료/ }));
+
+    // 카드의 slug 줄(제목과 별개 span)을 DOM 순서로 모은다 — 최근 완료(recent)가 맨 위
+    const slugs = [...document.querySelectorAll("span.mono")]
+      .map((s) => s.textContent)
+      .filter((t): t is string => !!t && /^done-/.test(t));
+    expect(slugs).toEqual(["done-recent", "done-middle", "done-old"]);
   });
 });

@@ -36,8 +36,12 @@ function bySeqThenSlug(a: PlanCard, b: PlanCard): number {
  *
  * 🔴 **완료 칸만** 이 규칙을 쓴다 — 캡틴이 순서를 정하는 다른 칸(작업 대상 등)은 `seq` 오름차순.
  * 완료 칸의 순서는 저장된 `seq` 가 아니라 **완료 시각**이 소유한다(캡틴 지시: 가장 최근 완료가 위).
+ * 판과 features 탭이 **같은 정렬 규칙**을 쓰도록 export 한다(INV-4 — 판정 자리는 하나뿐).
  */
-function byClosedDisplayAt(a: PlanCard, b: PlanCard): number {
+export function byClosedDisplayAt(
+  a: { closedAt: string | null; feature: Feature },
+  b: { closedAt: string | null; feature: Feature },
+): number {
   const [x, y] = [
     closedDisplayAt(a.closedAt, a.feature),
     closedDisplayAt(b.closedAt, b.feature),
