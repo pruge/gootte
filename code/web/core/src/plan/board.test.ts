@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { Feature } from "@gootte/contract";
 import { splitIntoAreas } from "./board";
-import { feature, row } from "./fixtures";
+import { feature, resolved, row } from "./fixtures";
 
 const slugs = (cards: { feature: Feature }[]): string[] => cards.map((c) => c.feature.slug);
 
@@ -84,5 +84,56 @@ describe("splitIntoAreas — 자리 판정(spec §판정 자리는 하나뿐)", 
       discarded: [],
       done: [],
     });
+  });
+
+  test("🔴 완료 칸은 최근 완료가 위 — seq 가 아니라 완료 시각(closedAt) 내림차순", () => {
+    const areas = splitIntoAreas(
+      [feature("old"), feature("new"), feature("middle")],
+      [
+        row("old", "done", 0, "2026-08-01 09:00"),
+        row("new", "done", 1, "2026-09-01 09:00"),
+        row("middle", "done", 2, "2026-08-15 09:00"),
+      ],
+    );
+    // seq 는 0,1,2(오래된 완료가 위) 였지만, 화면은 완료 시각 최근순으로 보여준다.
+    expect(slugs(areas.done)).toEqual(["new", "middle", "old"]);
+  });
+
+  test("완료 시각이 같으면 폴더명이 가른다 — 순서가 널뛰지 않는다", () => {
+    const areas = splitIntoAreas(
+      [feature("b"), feature("a")],
+      [
+        row("a", "done", 0, "2026-09-01 09:00"),
+        row("b", "done", 1, "2026-09-01 09:00"),
+      ],
+    );
+    expect(slugs(areas.done)).toEqual(["a", "b"]);
+  });
+
+  test("closedAt 이 없는 카드는 문서의 완료일(documentCompletedOn)로 정렬한다", () => {
+    // 저절로 닫힌 카드는 closedAt 이 없다 — 완료일은 문서의 resolved 가 소유한다.
+    const areas = splitIntoAreas(
+      [
+        feature("shipped-late", [resolved("01", "2026-09-01")]),
+        feature("shipped-early", [resolved("01", "2026-07-01")]),
+      ],
+      [
+        row("shipped-late", "done", 0),
+        row("shipped-early", "done", 1),
+      ],
+    );
+    expect(slugs(areas.done)).toEqual(["shipped-late", "shipped-early"]);
+  });
+
+  test("완료 시각이 없는 카드는 맨 아래 — 폴더명순(순서가 널뛰지 않게)", () => {
+    const areas = splitIntoAreas(
+      [feature("zzz"), feature("aaa")],
+      [
+        row("zzz", "done", 0),
+        row("aaa", "done", 1),
+      ],
+    );
+    // 둘 다 완료 시각이 없음 — 모두 아래로 가되 폴더명순
+    expect(slugs(areas.done)).toEqual(["aaa", "zzz"]);
   });
 });

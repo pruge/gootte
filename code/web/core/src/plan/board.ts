@@ -1,4 +1,5 @@
 import type { Feature, PlanBoardResponse, PlanCard, Placement } from "@gootte/contract";
+import { closedDisplayAt } from "./close";
 
 /**
  * 다섯 칸 — `PlanBoardResponse` 에서 `project` 만 뺀 것. 응답 모양과 **같은 한 벌**이라
@@ -26,6 +27,27 @@ export function compareBySeq(
 
 function bySeqThenSlug(a: PlanCard, b: PlanCard): number {
   return compareBySeq({ seq: a.seq, slug: a.feature.slug }, { seq: b.seq, slug: b.feature.slug });
+}
+
+/**
+ * 완료 칸의 카드 순서 — **최근 완료가 위**(내림차순). 완료 시각은 `closedAt`(캡틴이 손으로
+ * 완료 칸에 넣은 시각) 또는 문서의 `resolved` 완료일(`documentCompletedOn`)로 판단한다.
+ * 시각이 없으면 맨 아래로 밀되 그들끼리는 폴더명순이다.
+ *
+ * 🔴 **완료 칸만** 이 규칙을 쓴다 — 캡틴이 순서를 정하는 다른 칸(작업 대상 등)은 `seq` 오름차순.
+ * 완료 칸의 순서는 저장된 `seq` 가 아니라 **완료 시각**이 소유한다(캡틴 지시: 가장 최근 완료가 위).
+ */
+function byClosedDisplayAt(a: PlanCard, b: PlanCard): number {
+  const [x, y] = [
+    closedDisplayAt(a.closedAt, a.feature),
+    closedDisplayAt(b.closedAt, b.feature),
+  ];
+  // 시각이 없으면 가장 오래된 것으로 친다 — 아래로 밀되 폴더명순(순서가 널뛰지 않게).
+  if (x === null && y === null) return a.feature.slug.localeCompare(b.feature.slug);
+  if (x === null) return 1;
+  if (y === null) return -1;
+  // ISO 날짜(+시각)라 문자열 비교가 곧 시간 비교다. 최근(큰 문자열)이 위 = 내림차순.
+  return x === y ? a.feature.slug.localeCompare(b.feature.slug) : y.localeCompare(x);
 }
 
 /**
@@ -57,5 +79,7 @@ export function splitIntoAreas(
 
   areas.waiting.sort(bySeqThenSlug);
   for (const key of STORED_AREAS) areas[key].sort(bySeqThenSlug);
+  // 🔴 완료 칸은 `seq` 가 아니라 완료 시각(최근이 위)으로 — 캡틴 지시.
+  areas.done.sort(byClosedDisplayAt);
   return areas;
 }
