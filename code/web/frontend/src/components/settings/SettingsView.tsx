@@ -265,7 +265,7 @@ export function SettingsView() {
             title={`감시 폴더 목록 (${watchRoots.length})`}
             hint="목록에서 빼면 그 폴더(와 그 사본)는 더 이상 감시되지 않습니다. 비워 두면 아무것도 감시하지 않습니다."
           >
-            <ul className="flex flex-col gap-1.5">
+            <ul className="flex flex-col gap-2">
               {watchRoots.map((root) => (
                 <li key={root} className="flex items-center gap-2">
                   <span className="mono min-w-0 flex-1 truncate rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm">
