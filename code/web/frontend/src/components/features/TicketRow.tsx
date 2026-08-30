@@ -189,11 +189,13 @@ export function TicketRow({
         {conflict && <ConflictBadge conflicts={[conflict]} />}
 
         {ticket.docConvention === "tickets" ? (
-          // T04 — 신관례는 파일에 상태가 없다(SoT = Time: 줄). 조인 실패(joinFailed)면
+          // T04 — 신관례는 파일에 상태가 없다(SoT = Time: 줄). `in_progress` 는 아래 단계칸이
+          // "진행중" 으로 이미 말하므로 여기선 겹치지 않게 빼고, `done`·`dropped` 만 표시한다
+          // (dropped 가 "대기" 로 잘못 릴레이되던 것도 같이 바로잡음). 조인 실패(joinFailed)면
           // "상태 미표시" 가 정답이다(추측 금지, T04 §구현 원칙).
-          !ticket.joinFailed && ticket.status !== "pending" && (
+          !ticket.joinFailed && (ticket.status === "done" || ticket.status === "dropped") && (
             <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-              {ticket.status === "done" ? "완료" : ticket.status === "in_progress" ? "처리중" : "대기"}
+              {ticket.status === "done" ? "완료" : "폐기"}
             </span>
           )
         ) : ticket.statusKnown ? (

@@ -3,8 +3,10 @@
 #
 # gootte start [--at <TIME>] <feature-slug> <ticket>   # 티켓 문서에 Time: started=<ISO> 삽입
 # gootte end   [--at <TIME>] <feature-slug> <ticket>   # 같은 줄에 finished=<ISO> 추가
+# gootte drop  [--at <TIME>] <feature-slug> [<ticket>] # Status: 줄을 wontfix (<날짜>) 로 갱신(폐기)
+#                                                   티켓 생략 시 그 기능의 티켓 전부를 폐기
 #
-#   TIME: 비우면 지금. ISO8601(예 2026-08-29T15:00:00+09:00) 또는 상대 시간
+#   TIME: 비우면 지금. ISO8601(예 2026-08-29T15:00:00+09:00) 또는 상대시간
 #         (예 1h30m, 90m, 2h, 1d, 1h30m ago) — "지금으로부터 뒤" 로 푼다.
 #
 # md 파일만 cat/sed/grep/awk 로 직접 읽고 쓴다. 커밋은 하지 않는다(grill D3).
@@ -13,12 +15,14 @@
 # git 루트가 있으면 그 루트, 없으면 cwd 를 기준으로 티켓을 찾는다. 두 관례를 본다:
 #   - 신관례: docs/features/<feature-slug>/tickets/T<NN>.md  (Time: 줄 기록)
 #   - 구관례: docs/features/<feature-slug>/issues/<NN>-*.md  (**Time:** 줄 기록)
+# drop 은 두 관례 모두에서 Status: 줄을 갱신한다(구관례는 **Status:**).
 
 set -euo pipefail
 
 usage() {
   echo "사용법: gootte start [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte end   [--at <TIME>] <feature-slug> <ticket>" >&2
+  echo "      gootte drop  [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "  TIME: 비우면 지금 / ISO8601 / 상대시간(예 1h30m, 90m, 2h, 1d)" >&2
   exit 1
 }
@@ -99,6 +103,23 @@ resolve_time() {
     return 1
   fi
   fmt_epoch "$ep"
+}
+
+# drop 이 기록할 폐기일 — `YYYY-MM-DD HH:MM`(triage-labels 의 resolved 와 평행한 현지 시각).
+# 비면 지금, ISO8601 은 오프셋 콜론을 벗겨 epoch 로, 그 외엔 상대시간으로 푼다.
+resolve_drop_date() {
+  local arg="${1:-}"
+  local ep
+  if [ -z "$arg" ]; then
+    ep="$(date +%s)"
+  elif [[ "$arg" == *T* ]]; then
+    local iso="${arg/%:00/00}"   # +09:00 → +0900 (BSD date 가 원함)
+    ep="$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$iso" "+%s" 2>/dev/null)" \
+      || ep="$(date +%s)"
+  else
+    ep="$(parse_relative "$arg")" || ep="$(date +%s)"
+  fi
+  date -r "$ep" +"%Y-%m-%d %H:%M"
 }
 
 resolve_ticket_file() {
@@ -243,6 +264,86 @@ cmd_end() {
   echo "gootte: $file 에 finished=$iso 기록됨"
 }
 
+# 한 티켓 파일 하나를 폐기 — Status: 줄을 `wontfix (<날짜>)` 로 갱신(문서가 SoT, gootte 는 dropped 로 읽음).
+# 반환: 0 = 갱신함, 1 = 이미 wontfix 라 건너뜀.
+drop_file() {
+  local file="$1" drop_date="$2"
+  local existing_line_no
+  existing_line_no="$(grep -niE '^\*{0,2}status:' "$file" | head -1 | cut -d: -f1 || true)"
+  if [ -n "$existing_line_no" ]; then
+    local existing_line
+    existing_line="$(sed -n "${existing_line_no}p" "$file")"
+    if printf '%s' "$existing_line" | grep -qiE 'wontfix'; then
+      echo "gootte: 이미 폐기됨(건너뜀): $file" >&2
+      return 1
+    fi
+  fi
+  # 구관례(issues/)는 굵은 **Status:**, 신관례(tickets/)는 Status: — 단 기존 줄이 있으면 그 bold 를 따른다.
+  local status_label="Status:"
+  [[ "$file" == */issues/* ]] && status_label="**Status:**"
+  local new_line="$status_label wontfix ($drop_date)"
+  if [ -n "$existing_line_no" ] && printf '%s' "$existing_line" | grep -qiE '^\*\*status:'; then
+    new_line="**Status:** wontfix ($drop_date)"
+  fi
+  local tmp
+  tmp="$(mktemp)"
+  if [ -n "$existing_line_no" ]; then
+    awk -v n="$existing_line_no" -v line="$new_line" 'NR == n { print line; next } { print }' "$file" > "$tmp"
+  else
+    local insert_after
+    insert_after="$(find_header_block_end_line_no "$file")"
+    awk -v n="$insert_after" -v line="$new_line" '{ print } NR == n { print line }' "$file" > "$tmp"
+  fi
+  mv "$tmp" "$file"
+  echo "gootte: $file 에 $new_line 기록됨"
+  return 0
+}
+
+# 한 기능 폴더의 모든 티켓 파일 경로(구관례 issues/<NN>-*.md + 신관례 tickets/T<NN>.md)를 줄별로 출력.
+list_feature_tickets() {
+  local root="$1" feature_slug="$2"
+  local dir="$root/docs/features/$feature_slug"
+  [ -d "$dir" ] || return 0
+  local f
+  shopt -s nullglob
+  for f in "$dir"/issues/[0-9]*-*.md; do [ -f "$f" ] && printf '%s\n' "$f"; done
+  for f in "$dir"/tickets/T[0-9]*.md; do [ -f "$f" ] && printf '%s\n' "$f"; done
+  shopt -u nullglob
+}
+
+# 티켓 하나 또는 기능 전체를 폐기한다.
+#   gootte drop <기능> <티켓>  → 한 티켓
+#   gootte drop <기능>         → 그 기능의 티켓 전부(issues/ + tickets/)
+cmd_drop() {
+  local at="$1"
+  local feature_slug="$2"
+  local ticket_raw="${3:-}"
+  local ticket_norm=""
+  [ -n "$ticket_raw" ] && ticket_norm="$(normalize_ticket "$ticket_raw")"
+  local drop_date
+  drop_date="$(resolve_drop_date "$at")" || exit 1
+
+  if [ -n "$ticket_raw" ]; then
+    local file
+    file="$(resolve_ticket_file "$feature_slug" "$ticket_norm")"
+    drop_file "$file" "$drop_date"   # 이미 폐기됐으면 exit 1(단일 모드에선 에러)
+  else
+    local root
+    root="$(resolve_root)"
+    local dir="$root/docs/features/$feature_slug"
+    if [ ! -d "$dir" ]; then
+      echo "gootte: 기능을 찾을 수 없습니다: $dir" >&2
+      exit 1
+    fi
+    local count=0 f
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      if drop_file "$f" "$drop_date"; then count=$((count + 1)); fi
+    done < <(list_feature_tickets "$root" "$feature_slug")
+    echo "gootte: $feature_slug 기능의 티켓 $count 개를 폐기 처리함"
+  fi
+}
+
 main() {
   if [ "$#" -lt 1 ]; then
     usage
@@ -259,11 +360,16 @@ main() {
       *) pos+=("$1"); shift ;;
     esac
   done
-  [ "${#pos[@]}" -ge 3 ] || usage
-  local subcmd="${pos[0]}" feature="${pos[1]}" ticket="${pos[2]}"
+  [ "${#pos[@]}" -ge 2 ] || usage
+  local subcmd="${pos[0]}"
   case "$subcmd" in
-    start) cmd_start "$at" "$feature" "$ticket" ;;
-    end)   cmd_end "$at" "$feature" "$ticket" ;;
+    start|end)
+      [ "${#pos[@]}" -eq 3 ] || usage
+      if [ "$subcmd" = "start" ]; then cmd_start "$at" "${pos[1]}" "${pos[2]}"
+      else cmd_end "$at" "${pos[1]}" "${pos[2]}"; fi ;;
+    drop)
+      [ "${#pos[@]}" -le 3 ] || usage
+      cmd_drop "$at" "${pos[1]}" "${pos[2]:-}" ;;
     *) usage ;;
   esac
 }

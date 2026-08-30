@@ -114,9 +114,12 @@ function CardTicketRow({
             없다(SoT = Time: 줄), 조인 실패(joinFailed)면 "상태 미표시" 가 정답이다
             (T04 §구현 원칙, 추측 금지). */}
         {t.docConvention === "tickets" ? (
-          !t.joinFailed && t.status !== "pending" && (
+          // T04 — 신관례는 파일에 상태가 없다(SoT = Time: 줄). `in_progress` 는 위 `inProgress`
+          // 라벨이 이미 "처리중" 으로 말하므로 여기선 겹치지 않게 빼고, `done`·`dropped` 만 표시한다
+          // (dropped 가 "대기" 로 잘못 릴레이되던 것도 같이 바로잡음).
+          !t.joinFailed && (t.status === "done" || t.status === "dropped") && (
             <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-              {t.status === "done" ? "완료" : t.status === "in_progress" ? "처리중" : "대기"}
+              {t.status === "done" ? "완료" : "폐기"}
             </span>
           )
         ) : t.statusKnown ? (
