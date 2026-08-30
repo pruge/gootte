@@ -78,8 +78,11 @@ function makeProject(): void {
 }
 
 /** 화면이 받는 것과 같은 계산 — 문서 read + 사본 관측 + 순수 계산. */
-function observe(scanRoot = root) {
-  return applyInProgress(readFeatures([project]), scanWorkingCopies(scanRoot, PROJECT));
+function observe(scanRoot = root, projectPaths: string[] = []) {
+  return applyInProgress(
+    readFeatures([project]),
+    scanWorkingCopies(scanRoot, PROJECT, projectPaths),
+  );
 }
 const ticketOf = (features: ReturnType<typeof observe>["features"], slug: string) =>
   features.find((f) => f.slug === "auth")?.tickets.find((t) => t.slug === slug);
@@ -313,6 +316,58 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
       "ready-for-agent",
       "ready-for-agent",
     ]);
+  });
+
+  it("🔴 Claude Code worktree(.claude/worktrees)도 treehouse 와 같은 규칙으로 관측된다", () => {
+    // 관리대상 프로젝트 안에 Claude Code 가 만든 git worktree 를 합성한다 — `.git` 이 파일이다.
+    const mainRepo = join(tmp, "projects", PROJECT);
+    initRepo(mainRepo);
+    git(mainRepo, "checkout", "-q", "-b", "main");
+    commit(mainRepo, { "README.md": "base\n" }, "base");
+    const wtName = "fm-auth-screen";
+    const wt = join(mainRepo, ".claude", "worktrees", wtName);
+    execFileSync(
+      "git",
+      ["-C", mainRepo, "worktree", "add", "-q", "-b", `worktree-${wtName}`, wt],
+      { stdio: "ignore" },
+    );
+    // 그 worktree 가지에서 티켓 파일을 건드린 커밋을 만든다 — treehouse 사본과 같은 입력이다.
+    commit(wt, { "docs/features/auth/issues/02-screen.md": ticketFile("02", "로그인 화면 v2") }, "work");
+    // worktree 를 만들면 기본 main 가지도 생기므로(기준 가지 존재), 이슈 커밋이 "이 가지의 일" 로 이어진다.
+    git(wt, "checkout", "-q", "-b", `worktree-${wtName}-2`);
+    commit(wt, { "docs/features/auth/issues/01-session.md": ticketFile("01", "세션 발급 v2") }, "work2");
+
+    const { features, inProgress } = observe(root, [mainRepo]);
+    expect(ticketOf(features, "01-session")?.status).toBe("in_progress");
+    expect(ticketOf(features, "02-screen")?.status).toBe("in_progress");
+    // treehouse 는 비어 있으므로 rootExists 는 거짓, 그런데도 worktree 사본은 드러난다(INV-4).
+    expect(inProgress.rootExists).toBe(false);
+    expect(inProgress.copies).toBe(1);
+    expect(inProgress.working).toBe(1);
+    expect(inProgress.unknown).toEqual([]);
+    expect(inProgress.unreadable).toEqual([]);
+    expect(inProgress.unclaimed).toEqual([]);
+  });
+
+  it("🔴 Claude Code worktree 의 슬러그는 treehouse 와 겹치지 않는다(<프로젝트>/claude/<이름>)", () => {
+    const mainRepo = join(tmp, "projects", PROJECT);
+    initRepo(mainRepo);
+    git(mainRepo, "checkout", "-q", "-b", "main");
+    commit(mainRepo, { "README.md": "base\n" }, "base");
+    const wt = join(mainRepo, ".claude", "worktrees", "fm-x");
+    execFileSync("git", ["-C", mainRepo, "worktree", "add", "-q", "-b", "worktree-fm-x", wt], {
+      stdio: "ignore",
+    });
+    commit(wt, { "docs/features/auth/issues/02-screen.md": ticketFile("02", "로그인 화면 v2") }, "work");
+
+    // raw 관측에서 슬러그가 `<프로젝트>/claude/<이름>` 인지 직접 본다 — treehouse(`<풀>/<슬롯>`)와
+    // 겹치지 않는 식별자여야 차단 목록(blockedCopies)에서 헷갈리지 않는다(INV-5).
+    const scan = scanWorkingCopies(root, PROJECT, [mainRepo]);
+    expect(scan.copies.map((c) => c.slug)).toEqual([`${PROJECT}/claude/fm-x`]);
+    expect(scan.copies[0]?.state).toBe("working");
+    // 그 worktree 의 작업이 티켓에 이어진다 — 처리중으로 표시된다(관측은 같은 규칙을 쓴다).
+    const { features } = observe(root, [mainRepo]);
+    expect(ticketOf(features, "02-screen")?.status).toBe("in_progress");
   });
 });
 

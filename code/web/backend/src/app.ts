@@ -201,13 +201,17 @@ export function createApp(options: AppOptions = {}): Hono {
   const IN_PROGRESS_TTL_MS = 5_000;
   const inProgressMem = new Map<string, { at: number; scan: CopyScan }>();
   const inProgressTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** 프로젝트 사본 절대 경로들 — treehouse 외 Claude Code worktree(`.claude/worktrees`) 관측 입력.
+   *  캐시된 discover 위에서 해소하므로 매 호출 가벼운 편(5s TTL, discover-cache). */
+  const projectCopiesFor = (project: string): string[] =>
+    resolveSlug(effectiveRoots(), project)?.copies ?? [];
   const saveInProgress = (project: string, scan: CopyScan): void => {
     recordInProgress(dataDir, project, scan);
     inProgressMem.set(project, { at: Date.now(), scan });
   };
   const refreshInProgress = (project: string): void => {
     try {
-      const scan = scanWorkingCopies(treehouse, project);
+      const scan = scanWorkingCopies(treehouse, project, projectCopiesFor(project));
       const prev = inProgressMem.get(project)?.scan;
       saveInProgress(project, scan);
       if (JSON.stringify(prev) !== JSON.stringify(scan)) broadcast?.({ kind: "project", project });
@@ -251,7 +255,7 @@ export function createApp(options: AppOptions = {}): Hono {
         scheduleInProgressRefresh(project);
         scan = disk;
       } else {
-        scan = scanWorkingCopies(treehouse, project);
+        scan = scanWorkingCopies(treehouse, project, projectCopiesFor(project));
         saveInProgress(project, scan);
         scheduleInProgressRefresh(project);
       }
@@ -440,7 +444,7 @@ export function createApp(options: AppOptions = {}): Hono {
     }
     const observed = applyInProgress(
       applyReadState(features, readMarks),
-      filterBlockedCopies(scanWorkingCopies(treehouse, project)),
+      filterBlockedCopies(scanWorkingCopies(treehouse, project, proj.copies)),
     );
     // T04 — `tickets/T<NN>.md` 신관례의 상태는 문서가 아니라 firstmate 홈 백로그가 SoT(D4).
     // 홈 미설정·백로그 없음은 readBacklogTasks 가 빈 목록으로 흡수 — 조인 실패는 상태 미표시로만 드러난다.

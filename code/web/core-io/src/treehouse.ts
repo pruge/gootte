@@ -73,32 +73,74 @@ function touchedOnBranch(repo: string): string[] {
 /**
  * 한 프로젝트의 격리 사본 전부를 관측한다.
  * 뿌리가 없으면 **빈 결과**를 돌려준다 — 예외로 죽지 않는다(사본을 안 쓰는 기계도 있다).
+ *
+ * 🔴 treehouse 뿌리 외에, **프로젝트 안의 Claude Code worktree**(`<프로젝트>/.claude/worktrees/*`,
+ * 캡틴 지시 2026-08-30)도 사본으로 관측한다 — `projectPaths` 로 각 프로젝트 사본 경로를 받아
+ * 그 아래 `.claude/worktrees/` 를 훑는다. Claude Code 가 만드는 worktree 는 git worktree 라
+ * `.git` 이 파일이고, branch·커밋 이력이 있어 treehouse 사본과 똑같이 관측할 수 있다.
+ * 그 슬러그는 `<프로젝트>/claude/<워크트리명>` — treehouse(`<풀>/<슬롯>`)와 겹치지 않게.
  */
-export function scanWorkingCopies(root: string, project: string): CopyScan {
-  if (!isDir(root)) return { root, rootExists: false, copies: [] };
-
-  const pool = poolPattern(project);
+export function scanWorkingCopies(
+  root: string,
+  project: string,
+  projectPaths: readonly string[] = [],
+): CopyScan {
   const copies: ObservedCopy[] = [];
-  for (const poolName of children(root)) {
-    if (!pool.test(poolName) || !isDir(join(root, poolName))) continue;
-    for (const slotName of children(join(root, poolName))) {
-      const slot = join(root, poolName, slotName);
-      if (!isDir(slot)) continue;
-      const slug = `${poolName}/${slotName}`;
+  if (!isDir(root)) {
+    // treehouse 가 없어도 프로젝트 안 Claude Code worktree 는 관측할 수 있다(그래도 빈 결과가
+    // 아니다 — rootExists 만 거짓). 이 작업 사본이 실제로 돌고 있으면 사라지면 안 된다(INV-4).
+  } else {
+    const pool = poolPattern(project);
+    for (const poolName of children(root)) {
+      if (!pool.test(poolName) || !isDir(join(root, poolName))) continue;
+      for (const slotName of children(join(root, poolName))) {
+        const slot = join(root, poolName, slotName);
+        if (!isDir(slot)) continue;
+        const slug = `${poolName}/${slotName}`;
 
-      // 🔴 아래 두 갈래는 **빠뜨리지 않고 못 읽었다고 센다.** 슬롯을 건너뛰면 사본 수에서도
-      //    사라져, 진짜로 돌고 있는 작업이 아무 데도 안 남는다(유휴로 접는 것보다 더 조용하다).
-      const repo = repoIn(slot);
+        // 🔴 아래 두 갈래는 **빠뜨리지 않고 못 읽었다고 센다.** 슬롯을 건너뛰면 사본 수에서도
+        //    사라져, 진짜로 돌고 있는 작업이 아무 데도 안 남는다(유휴로 접는 것보다 더 조용하다).
+        const repo = repoIn(slot);
+        if (!repo) {
+          copies.push({ slug, path: slot, state: "no-repo", branch: "", touched: [] });
+          continue;
+        }
+        const branch = currentBranch(repo); // null = git 이 답하지 않음, "" = detached
+        if (branch === null) {
+          copies.push({ slug, path: repo, state: "git-failed", branch: "", touched: [] });
+          continue;
+        }
+
+        copies.push({
+          slug,
+          path: repo,
+          state: branch ? "working" : "idle",
+          branch,
+          touched: branch ? touchedOnBranch(repo) : [],
+        });
+      }
+    }
+  }
+
+  // Claude Code worktree(`.claude/worktrees/<name>`) — 프로젝트 사본 경로마다 훑는다.
+  // `.git` 은 worktree 에선 파일이므로 repoIn 이 그 자리를 그대로 준다(treehouse 와 같은 판정).
+  for (const projectPath of projectPaths) {
+    const wtRoot = join(projectPath, ".claude", "worktrees");
+    if (!isDir(wtRoot)) continue;
+    for (const name of children(wtRoot)) {
+      const wt = join(wtRoot, name);
+      if (!isDir(wt)) continue;
+      const slug = `${project}/claude/${name}`;
+      const repo = repoIn(wt);
       if (!repo) {
-        copies.push({ slug, path: slot, state: "no-repo", branch: "", touched: [] });
+        copies.push({ slug, path: wt, state: "no-repo", branch: "", touched: [] });
         continue;
       }
-      const branch = currentBranch(repo); // null = git 이 답하지 않음, "" = detached
+      const branch = currentBranch(repo);
       if (branch === null) {
         copies.push({ slug, path: repo, state: "git-failed", branch: "", touched: [] });
         continue;
       }
-
       copies.push({
         slug,
         path: repo,
@@ -108,5 +150,6 @@ export function scanWorkingCopies(root: string, project: string): CopyScan {
       });
     }
   }
-  return { root, rootExists: true, copies };
+
+  return { root, rootExists: isDir(root), copies };
 }
