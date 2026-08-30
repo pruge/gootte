@@ -369,6 +369,29 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     const { features } = observe(root, [mainRepo]);
     expect(ticketOf(features, "02-screen")?.status).toBe("in_progress");
   });
+
+  it("🔴 커밋 안 된 Time 기록(gootte start)도 처리중으로 잡힌다 — 커밋 없이 파일만 편집해도", () => {
+    const mainRepo = join(tmp, "projects", PROJECT);
+    initRepo(mainRepo);
+    git(mainRepo, "checkout", "-q", "-b", "main");
+    commit(mainRepo, { "README.md": "base\n" }, "base");
+    const wt = join(mainRepo, ".claude", "worktrees", "fm-x");
+    execFileSync("git", ["-C", mainRepo, "worktree", "add", "-q", "-b", "worktree-fm-x", wt], {
+      stdio: "ignore",
+    });
+    // 🔴 gootte start/end 는 커밋하지 않는다 — working tree 만 편집한다. Time 줄이 커밋 이전에
+    // 작업의 신호가 되어야 그 작업이 화면에서 사라지지 않는다(INV-4).
+    writeFileSync(
+      join(wt, "docs", "features", "auth", "issues", "02-screen.md"),
+      ticketFile("02", "로그인 화면 v3"),
+    );
+
+    const { features, inProgress } = observe(root, [mainRepo]);
+    expect(ticketOf(features, "02-screen")?.status).toBe("in_progress");
+    expect(inProgress.tickets).toBe(1);
+    expect(inProgress.working).toBe(1);
+    expect(inProgress.unknown).toEqual([]);
+  });
 });
 
 describe("정렬 — 처리중인 기능이 무리 안에서 위로 온다(티켓 03)", () => {

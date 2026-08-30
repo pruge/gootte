@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -62,12 +63,37 @@ function repoIn(slot: string): string | null {
 const BASE_REFS = ["origin/main", "origin/master", "main", "master"];
 
 /**
- * 이 가지의 커밋이 건드린 경로. 기준 가지를 못 찾으면 **빈 목록**이다 —
- * 전체 이력을 훑어 아무 티켓에나 갖다 붙이지 않는다. 못 잇는 것은 미상으로 남긴다(INV-4).
+ * 이 가지의 커밋이 건드린 경로 + **커밋 안 된 working tree 변경**(`gootte start`/`end` 는
+ * 커밋하지 않으므로, Time 기록 직후부터 그 작업이 "누가 무엇을 붙들고 있나"에 잡혀야 한다).
+ * 기준 가지를 못 찾으면 **빈 목록**이다 — 전체 이력을 훑어 아무 티켓에나 갖다 붙이지 않는다.
+ * 못 잇는 것은 미상으로 남긴다(INV-4).
  */
 function touchedOnBranch(repo: string): string[] {
   const base = BASE_REFS.find((ref) => revExists(repo, ref));
-  return base ? commitTouchedFiles(repo, `${base}..HEAD`) : [];
+  const committed: string[] = base ? commitTouchedFiles(repo, `${base}..HEAD`) : [];
+  // 🔴 커밋 안 된(working tree) 변경도 포함한다 — `gootte start`(커밋 없음, 파일만 편집)로
+  // Time 을 기록한 직후부터 그 티켓을 처리중으로 잡아야 한다. 기준 가지가 없어 committed 가
+  // 빈 목록이더라도 uncommitted 변경은 그대로 실린다.
+  let uncommitted: string[] = [];
+  try {
+    // 🔴 전체를 trim 하지 않는다 — porcelain 첫 줄(" M path")의 선두 공백이 상태 코드 칸이라
+    // trim 이 그 칸을 먹으면 경로 파싱이 한 칸 밀린다(실측 결함, git.ts `gitSafeRaw` 와 같은 이유).
+    const out = execFileSync("git", ["-C", repo, "status", "--porcelain", "--untracked-files=all"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).replace(/\n+$/, "");
+    if (out) {
+      uncommitted = out.split("\n")
+        .map((l) => {
+          const p = l.includes(" -> ") ? l.split(" -> ").pop()!.trim() : l.slice(3).trim();
+          return p;
+        })
+        .filter(Boolean);
+    }
+  } catch {
+    // git 이 답하지 않으면 uncommitted 변경 없음으로 간주한다
+  }
+  return [...new Set([...committed, ...uncommitted])];
 }
 
 /**
