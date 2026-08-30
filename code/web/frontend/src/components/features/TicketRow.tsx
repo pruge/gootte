@@ -10,7 +10,6 @@ import type { FeatureConflict, FeatureTicket } from "@gootte/contract";
 import { ConflictBadge } from "./ConflictBadge";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
 import { triggerKey } from "./docTrigger";
-import { UnlandedBadge } from "./FeatureTree";
 import type { OpenDocFn } from "./FeatureTree";
 import { HighlightedText } from "./HighlightedText";
 import { useHoverTip } from "../HoverTip";
@@ -184,8 +183,6 @@ export function TicketRow({
           </span>
         )}
 
-        {/* T04 — 미착지 표식(캡틴 결정 Q4). 어느 사본에서 왔는지는 말하지 않는다. */}
-        {ticket.unlanded && <UnlandedBadge />}
         {conflict && <ConflictBadge conflicts={[conflict]} />}
 
         {ticket.docConvention === "tickets" ? (

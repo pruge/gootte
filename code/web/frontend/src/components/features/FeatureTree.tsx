@@ -261,7 +261,6 @@ function DocTreeNode({
       >
         <IconFile size={15} className="shrink-0 text-muted" />
         {node.name}
-        {node.unlanded && <UnlandedBadge />}
         {conflict && <ConflictBadge conflicts={[conflict]} />}
       </button>
     </li>
