@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Feature, type Feature as FeatureT, type Project } from "@gootte/contract";
 import type { CopyScan } from "@gootte/core";
 import { z } from "zod";
-import { discoverProjects, headCommit, readFeatures } from "@gootte/core-io";
+import { discoverProjects, headCommit, readFeatures, claudeWorktreeRoots } from "@gootte/core-io";
 
 /**
  * discover + readFeatures 스캔 결과의 **영구 스냅샷** (fast-cold-start T03, adr/0001).
@@ -327,8 +327,10 @@ export function revalidateSnapshot(
   for (const project of currentProjects) {
     const previous = savedBySlug.get(project.slug);
     if (!previous || !sameCopies(previous.copies, project.copies) || !sameStamps(previous.stamps, project.copies)) {
-      const features = readFeatures([...project.copies]);
-      recordProjectScan(dataDir, project, features);
+      const copies = [...project.copies, ...claudeWorktreeRoots(project.copies)];
+      const features = readFeatures(copies);
+      const projectWithWorktrees = { ...project, copies };
+      recordProjectScan(dataDir, projectWithWorktrees, features);
       changedProjects.push(project.slug);
       if (!previous) projectsChanged = true;
     }

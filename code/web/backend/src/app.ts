@@ -40,6 +40,7 @@ import {
   ensureReadSeed,
   markDocRead,
   scanWorkingCopies,
+  claudeWorktreeRoots,
   defaultPlanDataDir,
   defaultTreehouseRoot,
   readSettings,
@@ -182,13 +183,17 @@ export function createApp(options: AppOptions = {}): Hono {
    * 하지 않고 부팅 재검증(`revalidateSnapshot`)과 감시 신호(`scheduleProjectUpdate`)가
    * 백그라운드로 해서 준비되면 교체한다(WS broadcast → 화면 swap, adr/0001).
    * 🔴 `clearDiscoverCache` 는 더 이상 디스크 스냅샷을 지우지 않으므로 재기동 시에도 항상
-   * 이 저장값이 즉시 서빙된다.
-   */
+* 이 저장값이 즉시 서빙된다.
+    */
+  const withWorktrees = (copies: readonly string[]): string[] =>
+    [...copies, ...claudeWorktreeRoots(copies)];
+
   const featuresFor = (slug: string, copies: readonly string[], path: string): Feature[] => {
-    const hit = snapshotFeatures(dataDir, slug, copies);
+    const all = withWorktrees(copies);
+    const hit = snapshotFeatures(dataDir, slug, all);
     if (hit) return hit;
-    const features = readFeatures([...copies]);
-    recordProjectScan(dataDir, { slug, path, copies: [...copies] }, features);
+    const features = readFeatures([...all]);
+    recordProjectScan(dataDir, { slug, path, copies: [...all] }, features);
     return features;
   };
 
@@ -201,10 +206,12 @@ export function createApp(options: AppOptions = {}): Hono {
   const IN_PROGRESS_TTL_MS = 5_000;
   const inProgressMem = new Map<string, { at: number; scan: CopyScan }>();
   const inProgressTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  /** 프로젝트 사본 절대 경로들 — treehouse 외 Claude Code worktree(`.claude/worktrees`) 관측 입력.
+  /** 프로젝트 사본 절대 경로들 — discover copies + Claude Code worktree(`.claude/worktrees/*`).
+   *  worktree 는 git worktree 라 `.git` 이 파일이고 저장소로 관측·문서로 읽을 수 있다. readFeatures
+   *  가 이 목록으로 문서를 읽으므로, worktree 의 `Time: finished=` 가 티켓 상태에 반영된다(캡틴 지시).
    *  캐시된 discover 위에서 해소하므로 매 호출 가벼운 편(5s TTL, discover-cache). */
   const projectCopiesFor = (project: string): string[] =>
-    resolveSlug(effectiveRoots(), project)?.copies ?? [];
+    withWorktrees(resolveSlug(effectiveRoots(), project)?.copies ?? []);
   const saveInProgress = (project: string, scan: CopyScan): void => {
     recordInProgress(dataDir, project, scan);
     inProgressMem.set(project, { at: Date.now(), scan });
@@ -510,7 +517,7 @@ export function createApp(options: AppOptions = {}): Hono {
       if (!proj) return c.json(notFound(slug), 404);
       const project = basename(proj.path);
       try {
-        const features = readFeatures(proj.copies);
+        const features = readFeatures(withWorktrees(proj.copies));
         const known = new Set(features.map((f) => f.slug));
         const missing = move.features.filter((f) => !known.has(f));
         if (missing.length > 0) {

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { CopyScan, ObservedCopy } from "@gootte/core";
 import { commitTouchedFiles, currentBranch, revExists } from "./git";
 
@@ -28,6 +28,24 @@ function children(dir: string): string[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * 프로젝트 사본 경로들의 Claude Code worktree(`<프로젝트>/.claude/worktrees/<이름>`) 전부.
+ * worktree 는 git worktree 라 `.git` 이 파일이고 저장소로 관측·문서로 읽을 수 있다.
+ * 존재하지 않는 루트는 건너뛴다 — worktree 가 없으면 빈 목록.
+ */
+export function claudeWorktreeRoots(projectPaths: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const projectPath of projectPaths) {
+    const wtRoot = join(projectPath, ".claude", "worktrees");
+    if (!isDir(wtRoot)) continue;
+    for (const name of children(wtRoot)) {
+      const wt = join(wtRoot, name);
+      if (isDir(wt)) out.push(wt);
+    }
+  }
+  return out;
 }
 
 /**
@@ -150,31 +168,26 @@ export function scanWorkingCopies(
 
   // Claude Code worktree(`.claude/worktrees/<name>`) — 프로젝트 사본 경로마다 훑는다.
   // `.git` 은 worktree 에선 파일이므로 repoIn 이 그 자리를 그대로 준다(treehouse 와 같은 판정).
-  for (const projectPath of projectPaths) {
-    const wtRoot = join(projectPath, ".claude", "worktrees");
-    if (!isDir(wtRoot)) continue;
-    for (const name of children(wtRoot)) {
-      const wt = join(wtRoot, name);
-      if (!isDir(wt)) continue;
-      const slug = `${project}/claude/${name}`;
-      const repo = repoIn(wt);
-      if (!repo) {
-        copies.push({ slug, path: wt, state: "no-repo", branch: "", touched: [] });
-        continue;
-      }
-      const branch = currentBranch(repo);
-      if (branch === null) {
-        copies.push({ slug, path: repo, state: "git-failed", branch: "", touched: [] });
-        continue;
-      }
-      copies.push({
-        slug,
-        path: repo,
-        state: branch ? "working" : "idle",
-        branch,
-        touched: branch ? touchedOnBranch(repo) : [],
-      });
+  for (const wt of claudeWorktreeRoots(projectPaths)) {
+    const name = basename(wt);
+    const slug = `${project}/claude/${name}`;
+    const repo = repoIn(wt);
+    if (!repo) {
+      copies.push({ slug, path: wt, state: "no-repo", branch: "", touched: [] });
+      continue;
     }
+    const branch = currentBranch(repo);
+    if (branch === null) {
+      copies.push({ slug, path: repo, state: "git-failed", branch: "", touched: [] });
+      continue;
+    }
+    copies.push({
+      slug,
+      path: repo,
+      state: branch ? "working" : "idle",
+      branch,
+      touched: branch ? touchedOnBranch(repo) : [],
+    });
   }
 
   return { root, rootExists: isDir(root), copies };
