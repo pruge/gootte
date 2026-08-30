@@ -261,6 +261,28 @@ cmd_end() {
   ' "$file" > "$tmp"
   mv "$tmp" "$file"
 
+  # 🔴 구관례(issues/) 티켓만 — `end` = 완료이므로 `**Status:**` 줄을 `resolved (완료일)` 로 갱신한다
+  # (ready-for-agent 등으로 남아 있던 것이 그대로 방치되는 것을 막는다). 이미 resolved 면 건너뛴다.
+  # 신관례(tickets/) 는 done 을 Time: 줄에서 파생하므로 여기서 Status: 를 쓰지 않는다(drop 만 쓴다).
+  if [[ "$file" == */issues/* ]]; then
+    local status_line_no
+    status_line_no="$(grep -niE '^\*{0,2}status:' "$file" | head -1 | cut -d: -f1 || true)"
+    if [ -n "$status_line_no" ]; then
+      local cur_status
+      cur_status="$(sed -n "${status_line_no}p" "$file")"
+      if ! printf '%s' "$cur_status" | grep -qi 'resolved'; then
+        local done_date
+        done_date="$(resolve_drop_date "$at")" || done_date="$(date +%Y-%m-%d\ %H:%M)"
+        local tmp2
+        tmp2="$(mktemp)"
+        awk -v n="$status_line_no" -v d="$done_date" \
+          'NR == n { print "**Status:** resolved (" d ")"; next } { print }' "$file" > "$tmp2"
+        mv "$tmp2" "$file"
+        echo "gootte: $file 의 **Status:** 를 resolved ($done_date) 로 갱신함"
+      fi
+    fi
+  fi
+
   echo "gootte: $file 에 finished=$iso 기록됨"
 }
 
