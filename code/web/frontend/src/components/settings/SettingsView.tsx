@@ -47,7 +47,7 @@ const CATEGORY_LABEL: Record<CategoryId, string> = {
  * `settings.json`(INV-5), 관리대상 문서엔 한 글자도 쓰지 않는다(INV-2). 존재 여부·유효 뿌리는
  * 서버가 응답 때 다시 본 값(`*Exists`·`effectiveWatchRoots`, INV-3)을 그대로 릴레이한다.
  *
- * 입력 칸 동기는 두 순간뿐이다(기존 `SettingsDialog` 와 같은 F4 규율): **마운트 시**
+ * 입력 칸 동기는 두 순간뿐이다(F4 규율): **마운트 시** (본문 배치라 마운트 = 열림)과 **저장 성공**
  * (본문 배치라 마운트 = 열림)과 **저장 성공**(정규화된 결과 반영). 마운트 후 다른 캐시
  * 무효화(WS 재접 등)가 `useSettings` 를 다시 불러와도 사용자가 타고 있는 미저장 입력을
  * 덮어쓰지 않는다.
