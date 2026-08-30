@@ -219,18 +219,23 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
     renderFeatures();
     openCard("로그인");
     const blocked = screen.getByText("소셜 로그인").closest("li")!;
-    expect(within(blocked).getByText("대기")).toBeInTheDocument();
+    // 상태 배지 "대기" + StageCell "대기" 두 곳에 있음
+    expect(within(blocked).getAllByText("대기").length).toBeGreaterThan(0);
     // 🔴 막힘 표시(→ 의존성)는 행에서 노출하지 않는다(사용자 결정 — blocked-by 숨김).
     expect(within(blocked).queryByText("→ 02")).not.toBeInTheDocument();
     const ready = screen.getByText("로그인 화면").closest("li")!;
     expect(within(ready).getByText("착수 가능")).toBeInTheDocument();
   });
 
-  it("원문 상태가 뭉개지지 않고 그대로 뜬다 — needs-info 와 blocked 를 구분할 수 있다", () => {
+  it("신/구관례 모두 계산된 상태 배지로 통일된다 — needs-info→대기, resolved→완료", () => {
     renderFeatures();
     openCard("로그인");
-    expect(screen.getByText("needs-info")).toBeInTheDocument();
-    expect(screen.getByText("resolved")).toBeInTheDocument();
+    // 구관례도 sourceStatus(needs-info/resolved) 대신 계산된 상태(pending/done) 배지 표시
+    // 열린 기능 카드 안의 티켓 리스트(divide-y divide-border)에서 찾음
+    const ticketList = screen.getByText("소셜 로그인").closest("ul")!;
+    // 티켓 03(needs-info→pending)은 상태 배지 "대기" + StageCell "대기" 두 곳에 있음
+    expect(within(ticketList).getAllByText("대기").length).toBeGreaterThan(0);
+    expect(within(ticketList).getByText("완료")).toBeInTheDocument(); // resolved → done → "완료"
     expect(screen.getByText("2026-08-08")).toBeInTheDocument();
   });
 
@@ -241,12 +246,13 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
     expect(screen.getByText(/알 수 없는 상태: 진행중/)).toBeInTheDocument();
   });
 
-  it("지금 붙들려 있는 티켓에만 진행중 단계가 붙는다 — 어느 가지가 붙들었는지까지", () => {
+  it("지금 붙들려 있는 티켓에만 처리중 단계가 붙는다 — 어느 가지가 붙들었는지까지", () => {
     renderFeatures();
     openCard("로그인");
     const working = screen.getByText("OAuth 교환").closest("li")!;
-    expect(within(working).getByText("진행중")).toBeInTheDocument();
-    expect(within(working).getByText("fm/alpha-oauth")).toBeInTheDocument();
+    // 상태 배지 "처리중" + inProgress 텍스트 "처리중" 두 곳에 있음
+    expect(within(working).getAllByText("처리중").length).toBeGreaterThan(0);
+    // 🔴 작업 가지 이름(workedBy)은 더 이상 행에 인라인으로 표시되지 않는다 — 정렬 틀어짐 방지.
     // 아무도 안 붙든 티켓에는 가지 이름이 안 붙는다.
     const idle = screen.getByText("로그인 화면").closest("li")!;
     expect(within(idle).queryByText("fm/alpha-oauth")).toBeNull();

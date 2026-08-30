@@ -7,7 +7,7 @@ import { createProjectUpdateScheduler } from "./snapshot";
 import { createSnapshotRevalidator } from "./snapshot-revalidator";
 import { startWatchers, type Watchers } from "./watchers";
 import type { ChangeEvent } from "@gootte/contract";
-import { readSettings, deriveWatchRoots } from "@gootte/core-io";
+import { readSettings, resolveWatchRoots } from "@gootte/core-io";
 
 /** 로컬 dev/prod 엔트리. PORT env 가 포트를 정한다(기본값은 prod `start` 몫). */
 // dev 포트의 SoT 는 code/web/.ports.* 이고 scripts/dev-backend.sh 가 그 값을 PORT 로 넣어준다 —
@@ -31,10 +31,12 @@ const savedSettings = (() => {
 })();
 /** 부팅 시점의 firstmate 홈 — 문서 감시기·백로그 감시기 둘 다의 시작 뿌리. 미설정이면 감시 없음. */
 const savedFirstmateHome = savedSettings?.firstmateHome ?? null;
-const watcherRoots = (firstmateHome: string | null): string[] => {
-  const derived = deriveWatchRoots(firstmateHome);
-  return derived.length > 0 ? derived : roots;
-};
+/**
+ * 지금 감시해야 할 뿌리 — 명시 `watchRoots` 가 있으면 그것이 권위, 없으면 firstmate 홈에서 파생,
+ * 그래도 없으면 env·플랫폼 기본값(`roots`). `resolveWatchRoots` 가 그 판별 하나를 갖는다
+ * (per-folder-watch-roots). 감시기는 이 함수가 내놓는 뿌리로 문서를 본다.
+ */
+const currentWatchRoots = (): string[] => resolveWatchRoots(dataDir, roots);
 
 const hub = createLiveHub();
 // T05: 프로젝트 단위 증분 갱신 — 변경 신호를 debounce 로 뭉쳐 재계산하고, **계산이 끝난 뒤** 같은
@@ -42,12 +44,12 @@ const hub = createLiveHub();
 // 메운다. 완료/시작 여부 판정은 이 신호가 아니라 문서의 `Time:` 줄이 정한다(T04/ADR-0001).
 const scheduleProjectUpdate = createProjectUpdateScheduler({
   dataDir,
-  roots: () => watcherRoots(readSettings(dataDir).firstmateHome),
+  roots: () => currentWatchRoots(),
   broadcast: hub.broadcast,
 }).schedule;
 const snapshotRevalidator = createSnapshotRevalidator({
   dataDir,
-  roots: () => watcherRoots(readSettings(dataDir).firstmateHome),
+  roots: () => currentWatchRoots(),
   onChange: (event) => {
     if (event.kind === "projects") clearDiscoverCache();
     hub.broadcast(event);
@@ -66,8 +68,12 @@ const app = createApp({
   // 홈에서 파생된 값으로 다시 묶는다 — 일반화된 재구성 프레임워크가 아니라 있던 startWatchers
   // 위의 배선이다(T02 문서 · T03 백로그 · T05 로 한 통보에서 둘 다 재묶임).
   onFirstmateHomeChange: (firstmateHome) => {
-    void watchers.rebind(watcherRoots(firstmateHome));
+    void watchers.rebind(currentWatchRoots());
     void watchers.rebindBacklog(firstmateHome);
+  },
+  // per-folder-watch-roots — 명시 감시 뿌리가 바뀌면 문서 감시기를 새 목록으로 다시 묶는다.
+  onWatchRootsChange: (nextRoots) => {
+    void watchers.rebind(nextRoots);
   },
   // T07: 처리중 관측 갱신이 끝나면 같은 `project` 이벤트로 프론트에 swap 을 알린다.
   broadcast: hub.broadcast,
@@ -92,12 +98,12 @@ mountFallback(app);
 // 문서·계획·백로그 감시기 → coarse invalidate broadcast (INV-3 웹 실현, plan-board/09 · tauri-desktop-app T03).
 // 셋을 한 함수(startWatchers)로 함께 세운다 — 하나만 세우고 잊는 일이 없게. 어느 하나라도
 // 감시 불가면 watch-fallback 신호가 나가고 프론트가 주기 풀스캔으로 갈아탄다.
-// 시작 뿌리는 저장된 firstmate 홈에서 파생된 값이 이긴다(위 watcherRoots·savedFirstmateHome) —
+// 시작 뿌리는 저장된 설정(`resolveWatchRoots`)이 이긴다 — 명시 `watchRoots` 가 있으면 그것이,
 // 부팅부터 설정값을 본다.
 let watchers: Watchers;
 {
   const w = startWatchers({
-    roots: watcherRoots(savedFirstmateHome),
+    roots: currentWatchRoots(),
     dataDir,
     firstmateHome: savedFirstmateHome,
     onChange: (c: ChangeEvent) => {

@@ -18,21 +18,10 @@ import { useHoverTip } from "../HoverTip";
 const STATE_ICON_SIZE = 15;
 
 /**
- * T04 — `tickets/` 신관례인데 백로그에 조인되지 않은 티켓. 파일에 상태가 없으므로 이 경우는
- * "모른다" 지 "착수 가능" 이 아니다 — 조인 실패 시 상태를 안 보여주는 것이 정답이다
- * (T04 §구현 원칙, 추측 금지).
- */
-function isUnjoinedNewTicket(ticket: FeatureTicket): boolean {
-  return ticket.docConvention === "tickets" && ticket.joinFailed === true;
-}
-
-/**
  * 상태 아이콘 — semantic(장식 아님). 처리중 = active(작업중 신호), 착수 가능 = accent, 기다리는 중 = muted.
  * 원문 상태(`sourceStatus`)는 아이콘으로 뭉개지 않고 옆에 그대로 띄운다(결정 Q3).
  */
 function StateIcon({ ticket }: { ticket: FeatureTicket }) {
-  if (isUnjoinedNewTicket(ticket))
-    return <IconCircleDashed size={STATE_ICON_SIZE} className="shrink-0 text-muted" />;
   if (ticket.status === "done")
     return <IconCircleCheckFilled size={STATE_ICON_SIZE} className="shrink-0 text-accent" />;
   if (ticket.status === "dropped")
@@ -47,8 +36,9 @@ function StateIcon({ ticket }: { ticket: FeatureTicket }) {
 }
 
 /**
- * 단계 칸의 값 — 셋 중 하나거나(착수 가능·진행중·대기) 아예 없다(끝났거나 취소됐다, 또는
- * 신관례인데 백로그 미조인 — 모르는 것을 "착수 가능" 으로 보여주지 않는다, T04).
+ * 단계 칸의 값 — 셋 중 하나거나(착수 가능·진행중·대기) 아예 없다(끝났거나 취소됐다).
+ * 신관례 티켓은 문서가 자급하므로 백로그 미조인으로도 "모른다" 가 아니고, 막히지 않았으면
+ * "착수 가능" 으로 본다(캡틴 결정 2026-08).
  * 🔴 "임자만 있고 실제로는 안 도는" 티켓(claimed 인데 붙든 사본이 없음)은 여기 넷째 값으로
  * 끼워 넣지 않는다 — `waitingOn` 이 비었는데도 `startable` 이 false 인 경우가 바로 그 경우고,
  * 그건 이 칸이 아니라 "임자 없이 남은 표시"(FeaturesView)가 따로 드러낸다
@@ -57,7 +47,6 @@ function StateIcon({ ticket }: { ticket: FeatureTicket }) {
 type Stage = "startable" | "in_progress" | "waiting" | null;
 
 function stageOf(ticket: FeatureTicket): Stage {
-  if (isUnjoinedNewTicket(ticket)) return null;
   if (ticket.status === "done" || ticket.status === "dropped") return null;
   if (ticket.status === "in_progress") return "in_progress";
   if (ticket.waitingOn.length > 0) return "waiting";
@@ -66,7 +55,7 @@ function stageOf(ticket: FeatureTicket): Stage {
 
 const STAGE_LABEL: Record<Exclude<Stage, null>, string> = {
   startable: "착수 가능",
-  in_progress: "진행중",
+  in_progress: "처리중",
   waiting: "대기",
 };
 
@@ -82,6 +71,25 @@ const STAGE_CLASS: Record<Exclude<Stage, null>, string> = {
  * (완료일 칸과 같은 원리, 다만 셋의 글자 수가 서로 달라 같은 트릭을 그대로는 못 써 grid 로 겹친다).
  * 값이 없으면(끝남·취소) 셋 다 안 보이는 채로 칸만 남는다 — 대체 문자를 넣지 않는다.
  */
+
+/** 계산된 상태(ticket.status)를 통합 라벨로 매핑 — 신/구관례 공통. */
+function statusBadgeLabel(status: FeatureTicket["status"]): string {
+  switch (status) {
+    case "pending":
+    case "in_sprint":
+      return "대기";
+    case "in_progress":
+      return "처리중";
+    case "done":
+      return "완료";
+    case "dropped":
+      return "폐기";
+    default:
+      const _exhaustive: never = status;
+      return _exhaustive;
+  }
+}
+
 function StageCell({ stage }: { stage: Stage }) {
   return (
     <span className="mono grid shrink-0 text-sm">
@@ -185,21 +193,16 @@ export function TicketRow({
 
         {conflict && <ConflictBadge conflicts={[conflict]} />}
 
-        {ticket.docConvention === "tickets" ? (
-          // T04 — 신관례는 파일에 상태가 없다(SoT = Time: 줄). `in_progress` 는 아래 단계칸이
-          // "진행중" 으로 이미 말하므로 여기선 겹치지 않게 빼고, `done`·`dropped` 만 표시한다
-          // (dropped 가 "대기" 로 잘못 릴레이되던 것도 같이 바로잡음). 조인 실패(joinFailed)면
-          // "상태 미표시" 가 정답이다(추측 금지, T04 §구현 원칙).
-          !ticket.joinFailed && (ticket.status === "done" || ticket.status === "dropped") && (
-            <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-              {ticket.status === "done" ? "완료" : "폐기"}
-            </span>
-          )
-        ) : ticket.statusKnown ? (
+        {/* 신/구관례 공통: 계산된 상태(ticket.status)를 통합 라벨로 배지 표시.
+            - 구관례도 sourceStatus(원문) 대신 계산된 상태를 보여줘 열이 통일된다.
+            - statusKnown:false(읽기 실패)만 경고로 폴백.
+            - 🔴 처리중(in_progress)일 때는 별도 workedBy 영역이 "처리중 + 가지"를 말하므로
+              상태 배지에서 "처리중"은 숨겨 중복·정렬 틀어짐을 막는다. */}
+        {ticket.statusKnown && ticket.status !== "in_progress" ? (
           <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-            {ticket.sourceStatus}
+            {statusBadgeLabel(ticket.status)}
           </span>
-        ) : (
+        ) : ticket.statusKnown ? null : (
           // 알 수 없는 상태 = 조용히 버리는 대신 눈에 띄게. 원문을 그대로 보여준다(INV-4 릴레이).
           <span
             role="status"
@@ -223,16 +226,6 @@ export function TicketRow({
             <StageCell stage={stage} />
           )}
         </span>
-
-        {stage === "in_progress" && (
-          // 어느 가지가 붙들고 있는지 verbatim 으로 싣는다 — 감추지 않는다.
-          <span
-            className="mono max-w-full truncate text-sm text-active"
-            title={`작업 가지: ${ticket.workedBy.join(", ")}`}
-          >
-            {ticket.workedBy.join(", ")}
-          </span>
-        )}
         </button>
         {tip}
       </li>

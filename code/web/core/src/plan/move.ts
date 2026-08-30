@@ -92,20 +92,23 @@ export function planMove(
       ? moved
           .filter((slug) => !wasActive(slug))
           .flatMap((slug) => {
-            // 두 관례를 합쳐 읽는다 — 신관례 전용 기능이면 옛 관례만 보던 시절엔 [] 라서
-            // 단계 행이 아예 안 심어졌다(실제 결함, 2026-08 캡틴 보고).
             const f = featureOf.get(slug);
-            const tickets = f ? allTickets(f) : [];
-            const steps = assignSteps(tickets);
-            // 끝난 티켓(done·dropped)에는 행 자체를 만들지 않는다(D2) — 단계 화면에는
-            // 남은 일만 선다. 선행으로서의 몫은 assignSteps 가 계산에서 이미 한다.
-            return tickets
-              .filter((t) => ticketBoxState(t) === "open")
-              .map((t) => ({
-                feature: slug,
-                ticket: t.slug,
-                step: steps.get(t.slug) ?? UNRANKED_STEP,
-              }));
+            const all = f ? allTickets(f) : [];
+            // 🔴 완료/폐기 티켓은 레벨 계산에서 완전히 제외 — 끝난 일은 남은 일에 선행으로
+            // 남지 않으므로(선행이 "끝나서 풀렸다" = 더 이상 block 안 함).
+            const openTickets = all.filter((t) => ticketBoxState(t) === "open");
+            // 완료/폐기 티켓 번호 집합을 assignSteps 에 전달 — 의존이 이 번호면 "이미 끝남"으로 간주
+            const doneNums = new Set(
+              all.filter((t) => ticketBoxState(t) !== "open")
+                .map((t) => Number.parseInt(t.num, 10))
+                .filter((n) => !Number.isNaN(n))
+            );
+            const steps = assignSteps(openTickets, doneNums);
+            return openTickets.map((t) => ({
+              feature: slug,
+              ticket: t.slug,
+              step: steps.get(t.slug) ?? UNRANKED_STEP,
+            }));
           })
       : [],
   };

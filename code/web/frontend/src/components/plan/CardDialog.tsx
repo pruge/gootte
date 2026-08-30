@@ -4,9 +4,26 @@ import type { FeatureConflict, FeatureTicket, PlanCard } from "@gootte/contract"
 import { allTickets } from "@gootte/core";
 import { closedDisplayAt, ticketBoxState, UNRANKED_STEP } from "@gootte/core/plan";
 import { ConflictBadge } from "../features/ConflictBadge";
-import { UnlandedBadge } from "../features/FeatureTree";
 import { useHoverTip } from "../HoverTip";
 import { featureDescription } from "./cardTitle";
+
+/** 계산된 상태(ticket.status)를 통합 라벨로 매핑 — TicketRow 와 공통. */
+function statusBadgeLabel(status: FeatureTicket["status"]): string {
+  switch (status) {
+    case "pending":
+    case "in_sprint":
+      return "대기";
+    case "in_progress":
+      return "처리중";
+    case "done":
+      return "완료";
+    case "dropped":
+      return "폐기";
+    default:
+      const _exhaustive: never = status;
+      return _exhaustive;
+  }
+}
 
 /**
  * 표시 단계 순으로 줄 세운다(plan-board/05) — 값이 없는 티켓(작업 대상 밖 카드, 빈 단계로
@@ -107,26 +124,16 @@ function CardTicketRow({
             처리중
           </span>
         )}
-        {/* T04 — 미착지 표식(캡틴 결정 Q4). 어느 사본에서 왔는지는 말하지 않는다. */}
-        {t.unlanded && <UnlandedBadge />}
-        {/* 원문 상태를 뭉개지 않고 그대로 릴레이한다(INV-4). 정규 값이 아니면 눈에 띄게.
-            `features` 탭 `TicketRow` 와 같은 판정 — tickets/ 신관례는 파일에 상태가
-            없다(SoT = Time: 줄), 조인 실패(joinFailed)면 "상태 미표시" 가 정답이다
-            (T04 §구현 원칙, 추측 금지). */}
-        {t.docConvention === "tickets" ? (
-          // T04 — 신관례는 파일에 상태가 없다(SoT = Time: 줄). `in_progress` 는 위 `inProgress`
-          // 라벨이 이미 "처리중" 으로 말하므로 여기선 겹치지 않게 빼고, `done`·`dropped` 만 표시한다
-          // (dropped 가 "대기" 로 잘못 릴레이되던 것도 같이 바로잡음).
-          !t.joinFailed && (t.status === "done" || t.status === "dropped") && (
-            <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-              {t.status === "done" ? "완료" : "폐기"}
-            </span>
-          )
-        ) : t.statusKnown ? (
+        {/* 신/구관례 공통: 계산된 상태(t.status)를 통합 라벨로 배지 표시.
+            - 구관례도 sourceStatus(원문) 대신 계산된 상태를 보여줘 열이 통일된다.
+            - statusKnown:false(읽기 실패)만 경고로 폴백.
+            - 🔴 처리중(in_progress)일 때는 위 inProgress 영역이 "처리중"을 말하므로
+              상태 배지에서 "처리중"은 숨겨 중복을 막는다. */}
+        {t.statusKnown && t.status !== "in_progress" ? (
           <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
-            {t.sourceStatus}
+            {statusBadgeLabel(t.status)}
           </span>
-        ) : (
+        ) : t.statusKnown ? null : (
           <span
             role="status"
             className="mono flex shrink-0 items-center gap-1 rounded bg-drop/15 px-1.5 py-0.5 text-sm text-drop"

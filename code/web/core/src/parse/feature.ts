@@ -72,7 +72,9 @@ export function mapFirstmateStatus(value: Status | null): TodoStatus {
 // 잘못 걸린다(11 이 지킨 "꾸민 없음은 막힘 없음이다" 가 깨진다).
 const NO_DEPS = /^(?:없음|없다|none|n\/a|[-—–])[\p{S}\p{P}]*(?:\b|$|\s)/imu;
 // 항목 맨 앞의 티켓 번호 — `02`, `#02`, `[02](02-x.md)`, `02 — 사유` 를 모두 같은 번호로 읽는다.
-const LEADING_NUM = /^\[?#?(\d{1,3})\]?\b/;
+// 신관례 `**Blocked by:** T01` 도 받기 위해 `T` 접두를 선택적으로 허용한다 — 구관례는 `01` 만 쓰므로
+// 기존 동작에 영향 없이 신관례 줄의 `T` 접두만 잘라낸다.
+const LEADING_NUM = /^\[?#?[Tt]?(\d{1,3})\]?\b/;
 // "없음" 앞에 붙는 꾸밈(이모지·마크다운 강조 `**`·여는 괄호·공백) — 낱말 자체(한글·숫자)는 걷지 않는다.
 const DECORATION_PREFIX = /^[\p{S}\p{P}\s]+/u;
 
@@ -440,6 +442,20 @@ function dependsSectionBody(content: string): string | null {
 }
 
 /**
+ * 신관례 티켓의 선행 — `## Depends on` 절 **과** `**Blocked by:**` 줄을 둘 다 읽는다(캡틴 결정,
+ * 2026-08). 구관례 `Blocked by:` 줄을 쓰던 티켓이 `tickets/` 폴더로 옮겨져도 선행이 끊기지 않게.
+ * 두 출처를 합집합(중복 제거)해 같은 칸(`blockedBy`)에 싣는다(F2 — 같은 개념의 두 표기).
+ */
+function parseNewBlockedBy(content: string): BlockedByParse {
+  const section = parseNewDependsOn(content);
+  const line = parseBlockedByLine(content);
+  return {
+    blockedBy: [...new Set([...section.blockedBy, ...line.blockedBy])],
+    unreadable: [...new Set([...section.unreadable, ...line.unreadable])],
+  };
+}
+
+/**
  * 신관례 티켓의 `## Depends on` 절 → 선행 목록. 결과는 옛 관례와 같은 칸에 싣는다(F2):
  *
  * - 항목이 번호(`T02`·`02`)로 시작하면 그 번호 — 뒤에 붙은 사유는 주석이다.
@@ -490,25 +506,47 @@ export interface NewTicketDoc {
 
 /**
  * `tickets/T<NN>.md` 한 장 → 신관례 티켓(T04). 상태 줄은 **선택적** — `Status: resolved`(검수 종착)가
- * 있으면 문서가 완료의 SoT 가 되고, 없으면 git 리졸버(T01)·백로그 조인이 나중에 채운다
- * (`applyBacklogStatus`, `core/src/project/backlog-join.ts`). 번호는 파일명이 SoT(F3 과 같은 원리).
+ * 있으면 문서가 완료의 SoT 가 되고, 없으면 **`Time:` 줄의 `started=`/`finished=`로 상태를 파생**한다
+ * (캡틴 결정 2026-08). `gootte start/end` 가 기록하는 시각을 SoT 로 쓴다.
  * 상태 어휘는 구관례와 동일(`parseStatusLine`/`mapFirstmateStatus` 재사용 — 새 어휘 없음).
  */
 export function parseNewTicket(fileName: string, content: string): NewTicketDoc {
   const slug = fileName.replace(/\.md$/i, "");
   const num = /^[Tt](\d+)/.exec(slug)?.[1] ?? "";
-  const { blockedBy, unreadable } = parseNewDependsOn(content);
+  const { blockedBy, unreadable } = parseNewBlockedBy(content);
   const { raw, value, completedAt } = parseStatusLine(content);
   const { startedAt, finishedAt } = parseTimeLine(content);
+
+  // 상태 파생: Status: 줄이 있으면 그것을 쓰고, 없으면 Time: 줄에서 결정
+  let derivedStatus: TodoStatus;
+  let derivedCompletedAt: string | null = completedAt;
+  let statusKnown = value !== null;
+
+  if (value !== null) {
+    // Status: 줄이 있으면 그대로 사용
+    derivedStatus = mapFirstmateStatus(value);
+  } else {
+    // Status: 줄 없음 → Time: 줄로 파생
+    if (finishedAt) {
+      derivedStatus = "done";
+      derivedCompletedAt = finishedAt;
+    } else if (startedAt) {
+      derivedStatus = "in_progress";
+    } else {
+      derivedStatus = "pending";
+    }
+    statusKnown = true; // 문서로 상태를 안다
+  }
+
   return {
     num,
     slug,
     path: `tickets/${fileName}`,
     title: heading(content)?.replace(NEW_TITLE_NUM_PREFIX, "").trim() || slug,
-    status: mapFirstmateStatus(value),
+    status: derivedStatus,
     sourceStatus: raw,
-    statusKnown: value !== null,
-    completedAt,
+    statusKnown,
+    completedAt: derivedCompletedAt,
     blockedBy,
     unreadableBlockedBy: unreadable,
     startedAt,

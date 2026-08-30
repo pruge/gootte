@@ -320,8 +320,8 @@ describe("applyBacklogStatus — T04: Time: 줄 3단 규칙(finishedAt/startedAt
   });
 
   it("대기·착수 가능이 섞였으면 배지는 남음이다", () => {
-    // 🔴 T04 — 빈 백로그면 조인 실패(joinFailed)로 배지가 null 이 된다(D5). 그래서 "남음" 배지를
-    // 내려면 백로그에 queued 로 **조인 성공**한 pending 티켓이 필요하다.
+    // 신관례 티켓은 문서가 자급하므로 빈 백로그여도 막히지 않은 티켓은 착수 가능으로 본다(캡틴 결정 2026-08).
+    // 그래서 "남음" 배지를 내리려면 백로그 조인 성공이 아니라 문서상 열린 일이면 충분하다.
     const f = newConventionFeature([newTicket("01", { startedAt: undefined, finishedAt: undefined })]);
     const parent = task({ id: "widget-tauri", note: "Artifacts: docs/features/tauri-desktop-app/." });
     const child = task({ id: "widget-tauri-t01", section: "queued" });
@@ -331,14 +331,19 @@ describe("applyBacklogStatus — T04: Time: 줄 3단 규칙(finishedAt/startedAt
     expect(joined?.status).toBe("pending");
   });
 
-  it("조인되지 않은 티켓(joinFailed true)이 하나라도 있으면 배지를 안 띄운다 — 추측 금지(D5)", () => {
+  it("백로그 조인에 실패해도 문서만으로 상태를 아는 신관례 티켓은 숨기지 않는다 — 막히지 않았으면 착수 가능", () => {
+    // T01 은 done, T02 는 상태 줄·Time 없이 선행도 없음 → 빈 백로그여도 착수 가능으로 본다(신관례 자급, 캡틴 결정 2026-08).
     const f = newConventionFeature([
       newTicket("01", { finishedAt: "2026-08-27T13:00:00+09:00", startedAt: "2026-08-27T12:00:00+09:00" }),
-      newTicket("02", { startedAt: undefined, finishedAt: undefined, joinFailed: true }), // joinFailed true
+      newTicket("02", { startedAt: undefined, finishedAt: undefined }),
     ]);
     const [joined] = applyBacklogStatus([f], [], "widget");
-    expect(joined?.sourceStatus).toBeNull();
-    expect(joined?.statusKnown).toBe(false);
+    expect(joined?.newTickets?.[1]?.joinFailed).toBe(false);
+    expect(joined?.newTickets?.[1]?.status).toBe("pending");
+    expect(joined?.newTickets?.[1]?.startable).toBe(true);
+    // 열린 일(착수 가능 T02)이 있으니 머리글은 "남음" — 조인 실패로 null(숨김) 이 아니다.
+    expect(joined?.sourceStatus).toBe("남음");
+    expect(joined?.statusKnown).toBe(true);
   });
 
   it("구관례(newTickets 없음) 기능은 배지도 나머지도 한 글자도 안 바뀐다", () => {
@@ -372,12 +377,13 @@ describe("applyBacklogStatus — T04: Time: 줄 3단 규칙(finishedAt/startedAt
     expect(joined?.newTickets?.[1]?.joinFailed).toBe(false);
   });
 
-  it("취소 배지는 조인 실패(빈 백로그)에도 배지를 '취소'로 낸다 — null(숨김) 이 아니다(D5 예외)", () => {
+  it("취소 배지는 백로그와 무관하게 '취소'로 낸다 — null(숨김) 이 아니다", () => {
     const f = cancelledFeature([
       newTicket("01", { finishedAt: "2026-08-27T13:00:00+09:00", startedAt: "2026-08-27T12:00:00+09:00" }),
       newTicket("02", { startedAt: undefined, finishedAt: undefined }),
     ]);
-    // 빈 백로그 → 개별 티켓은 조인 실패(joinFailed)지만 취소 결정이 있으므로 배지는 '취소' 다.
+    // 빈 백로그여도 신관례 티켓은 문서 자급(막히지 않으면 착수 가능)이므로 joinFailed 가 아니다 —
+    // 취소 결정이 있으니 배지는 '취소' 다.
     const [joined] = applyBacklogStatus([f], [], "widget");
     expect(joined?.sourceStatus).toBe("취소");
     expect(joined?.status).toBe("dropped");
@@ -385,7 +391,7 @@ describe("applyBacklogStatus — T04: Time: 줄 3단 규칙(finishedAt/startedAt
     // 🔴 D4 — finishedAt 티켓(T01)은 done 으로 남고, 미완 티켓(T02)은 dropped 로 내려간다.
     expect(joined?.newTickets?.[0]?.status).toBe("done");
     expect(joined?.newTickets?.[1]?.status).toBe("dropped");
-    // 🔴 취소는 조인 실패를 이긴다 — 모든 티켓의 joinFailed 가 false 로 정정된다.
+    // 🔴 취소는 막힘을 이긴다 — 모든 티켓의 joinFailed 가 false 다.
     expect(joined?.newTickets?.every((t) => t.joinFailed === false)).toBe(true);
   });
 

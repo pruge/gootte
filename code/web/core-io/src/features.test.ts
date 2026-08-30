@@ -544,12 +544,13 @@ describe("readFeatures — 여러 사본 Time: 정방향 병합 (T05)", () => {
     expect(joined(readFeatures([a, b]))?.status).toBe("done");
   });
 
-  it("AC3 — 두 사본 다 없으면 pending, 한쪽만 startedAt 이면 in_progress", () => {
+  it("AC3 — 두 사본 다 없으면 pending(문서 자급: 막히지 않으면 착수 가능), 한쪽만 startedAt 이면 in_progress", () => {
     const a = copyDir(tmp, "main", "f", TICKET_NO_TIME);
     const b = copyDir(tmp, "secondmate", "f", TICKET_NO_TIME);
     const neither = joined(readFeatures([a, b]));
     expect(neither?.status).toBe("pending");
-    expect(neither?.joinFailed).toBe(true); // 백로그 없음 → 조인 실패(정상), done/in_progress 로 안 둔갑
+    expect(neither?.joinFailed).toBe(false); // 신관례 자급 — 백로그 없어도 막히지 않은 티켓은 착수 가능(joinFailed 아님)
+    expect(neither?.startable).toBe(true);
 
     const c = copyDir(tmp, "only-started", "f", ticketWithTime("2026-08-29T10:00:00+09:00"));
     expect(joined(readFeatures([a, c]))?.status).toBe("in_progress");

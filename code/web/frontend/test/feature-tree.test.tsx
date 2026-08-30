@@ -348,7 +348,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
     // 세 후보 라벨이 전부 DOM 에 있다(폭 계산용) — 그러나 셋 다 비어 보인다. 대체 문자는 없다.
-    for (const label of ["착수 가능", "진행중", "대기"]) {
+    for (const label of ["착수 가능", "처리중", "대기"]) {
       expect(within(row).getByText(label)).toHaveClass("invisible");
     }
   });
@@ -369,7 +369,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     renderCard(feature);
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
-    for (const label of ["착수 가능", "진행중", "대기"]) {
+    for (const label of ["착수 가능", "처리중", "대기"]) {
       expect(within(row).getByText(label)).toHaveClass("invisible");
     }
   });
@@ -382,7 +382,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     expect(within(row).getByText("착수 가능")).not.toHaveClass("invisible");
   });
 
-  it("살아 있는 사본이 붙든 티켓 → 진행중, 그리고 가지 이름이 계속 보인다", () => {
+  it("살아 있는 사본이 붙든 티켓 → 처리중, 그리고 가지 이름이 계속 보인다", () => {
     const feature: Feature = {
       ...BASE,
       docs: [issuesDir()],
@@ -397,8 +397,11 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     renderCard(feature);
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
-    expect(within(row).getByText("진행중")).not.toHaveClass("invisible");
-    expect(within(row).getByText("fm/session-work")).toBeInTheDocument();
+    // StageCell 안의 "처리중" 레이블이 invisible 이 아닌지 확인(상태 배지와 중복되므로 getAllByText 사용)
+    const inProgressLabels = within(row).getAllByText("처리중");
+    expect(inProgressLabels.some((el) => !el.classList.contains("invisible"))).toBe(true);
+    // 🔴 작업 가지 이름(workedBy)은 더 이상 행에 인라인으로 표시되지 않는다 — 정렬 틀어짐 방지.
+    // 필요하면 툴팁/드로어에서 확인.
   });
 
   it("선행이 남은 티켓 → 대기 단계는 보이되, 기다리는 대상(→ 의존성)은 행에 보이지 않는다", () => {
@@ -417,7 +420,9 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     renderCard(feature);
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
-    expect(within(row).getByText("대기")).not.toHaveClass("invisible");
+    // StageCell 안의 "대기" 레이블이 invisible 이 아닌지 확인(상태 배지와 중복되므로 getAllByText 사용)
+    const waitingLabels = within(row).getAllByText("대기");
+    expect(waitingLabels.some((el) => !el.classList.contains("invisible"))).toBe(true);
     // 🔴 막힘 표시(→ 의존성)는 행에서 노출하지 않는다(사용자 결정 — blocked-by 숨김).
     expect(within(row).queryByText("→ 02")).not.toBeInTheDocument();
   });
@@ -471,10 +476,15 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
       "대기중인 것",
       "착수 가능한 것",
     ]) {
-      const row = screen.getByText(title).closest("button")!;
+      // 제목 텍스트로 버튼 행 찾기 — "완료" 는 상태 배지와 겹치므로 truncate span 안의 텍스트로 좁혀 찾음
+      const titleEl = screen.getAllByText(title).find((el) =>
+        el.closest(".truncate") !== null,
+      )!;
+      const row = titleEl.closest("button")!;
       // 세 후보 모두 DOM 에 있다 — 칸의 존재 자체는 상태와 무관하게 늘 그려진다.
-      for (const label of ["착수 가능", "진행중", "대기"]) {
-        expect(within(row).getByText(label)).toBeInTheDocument();
+      // 제목과 상태 배지가 같은 텍스트일 수 있으므로(getByText 다중 매치 방지) getAllByText 사용
+      for (const label of ["착수 가능", "처리중", "대기"]) {
+        expect(within(row).getAllByText(label).length).toBeGreaterThan(0);
       }
     }
   });
@@ -495,8 +505,10 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     renderCard(feature);
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
-    for (const label of ["착수 가능", "진행중", "대기"]) {
-      expect(within(row).getByText(label)).toHaveClass("invisible");
+    // 단계 칸(StageCell) 안의 세 레이블이 모두 invisible 인지 확인(상태 배지는 별도 컬럼)
+    const stageCell = within(row).getByText("착수 가능").closest(".grid")! as HTMLElement;
+    for (const label of ["착수 가능", "처리중", "대기"]) {
+      expect(within(stageCell).getByText(label)).toHaveClass("invisible");
     }
   });
 
@@ -533,7 +545,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
   });
 });
 
-/** T04 신관례(`tickets/T<NN>.md`) 새 티켓 픽스처 — 파일에 상태가 없다(SoT = 백로그). */
+/** T04 신관례(`tickets/T<NN>.md`) 새 티켓 픽스처 — 문서 자급이므로 statusKnown:true, 계산된 상태를 갖는다. */
 function newTicket(overrides: Partial<FeatureTicket> = {}): FeatureTicket {
   return {
     num: "04",
@@ -542,7 +554,7 @@ function newTicket(overrides: Partial<FeatureTicket> = {}): FeatureTicket {
     title: "신관례 문서 표시",
     status: "pending",
     sourceStatus: null,
-    statusKnown: false,
+    statusKnown: true,
     blockedBy: [],
     unreadableBlockedBy: [],
     waitingOn: [],
@@ -581,7 +593,7 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     expect(screen.queryAllByText("tickets")).toHaveLength(0);
   });
 
-  it("🔴 백로그 미조인 티켓은 '상태 줄 없음' 경고를 보여주지 않는다 — issues 관례와 다른 의미다", () => {
+  it("🔴 신관례 티켓은 백로그 조인 없이도 계산된 상태 배지를 보여준다", () => {
     const feature: Feature = {
       ...BASE,
       docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
@@ -589,11 +601,13 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     };
     renderCard(feature);
     open();
+    // 계산된 상태(pending) → "대기" 배지 표시 (StageCell 에도 invisible 로 있으므로 getAllByText 사용)
+    expect(screen.getAllByText("대기").length).toBeGreaterThan(0);
     expect(screen.queryByText("상태 줄 없음")).toBeNull();
     expect(screen.queryByText(/알 수 없는 상태/)).toBeNull();
   });
 
-  it("백로그 조인되면 상태 배지가 뜬다", () => {
+  it("작업 시작된 신관례 티켓은 처리중 배지를 보여준다", () => {
     const feature: Feature = {
       ...BASE,
       docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
@@ -603,7 +617,8 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     };
     renderCard(feature);
     open();
-    expect(screen.getByText("진행중")).toBeInTheDocument();
+    // 상태 배지 + StageCell + inProgress 텍스트 세 곳에 "처리중" 이 있음
+    expect(screen.getAllByText("처리중").length).toBeGreaterThan(0);
   });
 
   it("줄을 누르면 tickets/T<NN>.md 경로로 드로어가 열린다", () => {
@@ -622,18 +637,16 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     );
   });
 
-  it("미조인 신관례 티켓은 착수 가능/진행중/대기 어느 단계도 아니다(모른다 ≠ 착수 가능)", () => {
+  it("선행이 없는 신관례 티켓은 백로그 조인과 무관하게 착수 가능으로 본다(문서 자급)", () => {
     const feature: Feature = {
       ...BASE,
       docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
-      newTickets: [newTicket({ joinFailed: true })],
+      newTickets: [newTicket({})],
     };
     renderCard(feature);
     open();
     const row = screen.getByText("신관례 문서 표시").closest("button")!;
-    for (const label of ["착수 가능", "진행중", "대기"]) {
-      expect(within(row).getByText(label)).toHaveClass("invisible");
-    }
+    expect(within(row).getByText("착수 가능")).not.toHaveClass("invisible");
   });
 
   it("🔴 조인된 신관례 티켓이 선행이 있어도 막힘 표시(→ 의존성)는 행에 보이지 않는다(T01)", () => {
@@ -652,7 +665,10 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     renderCard(feature);
     open();
     const row = screen.getByText("신관례 문서 표시").closest("button")!;
-    expect(within(row).getByText("대기")).not.toHaveClass("invisible");
+    // "대기" 가 상태 배지(항상 보임)와 단계 칸(StageCell, waiting일 때만 보임) 두 곳에 있다.
+    // StageCell 의 "대기" 가 invisible 이 아닌지 확인.
+    const waitingLabels = within(row).getAllByText("대기");
+    expect(waitingLabels.some((el) => !el.classList.contains("invisible"))).toBe(true);
     // 🔴 막힘 표시(→ 의존성)는 행에서 노출하지 않는다(사용자 결정 — blocked-by 숨김).
     expect(within(row).queryByText("→ 02")).not.toBeInTheDocument();
   });

@@ -108,6 +108,21 @@ export function useSaveSettings() {
   });
 }
 
+/**
+ * 차단한 작업 가지(blockedCopies) 갱신 — 화면에서 숨길 복사본 목록. PUT 은 부분 갱신이라
+ * 다른 설정(firstmateHome·watchRoots)을 건드리지 않는다. 성공하면 설정·기능 목록을 무효화해
+ * 차단된 복사본이 즉시 사라지고(뒤에 있는 설정 대화상자의 목록도 갱신된다) 화면이 다시 본다(INV-3).
+ */
+export function useBlockedCopies() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (blockedCopies: string[]) => saveSettings({ blockedCopies }),
+    onSuccess: () => {
+      void qc.invalidateQueries();
+    },
+  });
+}
+
 /** 기능별 할일(docs/features/) — 서버가 매 요청 재계산(INV-3). */
 export function useFeatures(slug: string | null) {
   return useQuery({

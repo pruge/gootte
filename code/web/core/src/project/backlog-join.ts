@@ -84,7 +84,8 @@ function joinTicket(
 ): FeatureTicket {
   // 🔴 T04 — 문서에 명시 상태(`Status: resolved`/`wontfix`, T04)가 있으면 **그것이 출처**(문서가 SoT,
   // grill D5). 리졸버·백로그보다 우선 — 검수 종착 티켓은 머지 커밋 없이도 문서 한 줄로 완료된다.
-  if (ticket.statusKnown) {
+  // `sourceStatus !== null` 은 명시적 Status: 줄이 있을 때만 true — Time 줄 파생 상태는 해당 안 됨.
+  if (ticket.sourceStatus !== null) {
     // T02 — 문서의 시각에서 elapsed 계산
     const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now) : undefined;
     return { ...ticket, joinFailed: false, ...(elapsed ? { elapsed } : {}) };
@@ -100,11 +101,12 @@ function joinTicket(
     const elapsed = elapsedPhrase(ticket.startedAt, ticket.finishedAt, now);
     return { ...ticket, status: "in_progress", joinFailed: false, ...(elapsed ? { elapsed } : {}) };
   }
-  // `Time:` 줄이 없으면 백로그를 따르되 — 백로그가 "done" 이어도 `Time:` 줄에 완료가 없으니
-  // done 으로는 쓰지 않는다(백로그는 완료를 말할 권한이 없다). 처리중/대기/url 은 백로그 것.
-  // T02 — elapsed 는 티켓 문서의 시각에서 계산(백로그 time: 줄은 더 이상 읽지 않음).
+  // `Time:` 줄도 `Status:` 줄도 없으면 문서 자체(Blocked by/Depends on)로 상태를 안다 —
+  // 신관례 티켓은 문서가 자급하다(캡틴 결정 2026-08). 백로그 조인에 실패해도 막히지 않은
+  // 티켓은 착수 가능, 막힌 티켓은 대기로 본다 — 조인 실패로 "모른다" 고 숨기지 않는다.
+  // `ticket` 은 toNewTicket 에서 이미 status="pending"·startable=(waitingOn 비었음) 로 세팅돼 있다.
   const join = joinTicketBacklog(tasks, repo, featureSlug, ticket.num);
-  if (!join) return { ...ticket, joinFailed: true };
+  if (!join) return { ...ticket, joinFailed: false };
   const joinedStatus = join.status === "done" ? "pending" : join.status;
   const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now) : undefined;
   return {
@@ -122,12 +124,12 @@ function joinTicket(
  * `spec.md` 의 `Status:` 줄은 출처가 아니다 — 앞의 네 수(`counts()`)와 같은 입력에서 나와야
  * 같은 줄이 자기모순하지 않는다. 순수·결정적(INV-4), 어디에도 저장하지 않는다(INV-1).
  *
- * - 🔴 **판정 술어를 새로 만들지 않는다** — 처리중 = `in_progress` 존재, 완료 = 티켓이 있고
- *   `hasOpenWork` 가 거짓(`featureFullyChecked` 와 같은 계산). 그 외는 남음.
- * - 🔴 **조인 실패는 추측하지 않는다**(D5) — 티켓 하나라도 백로그에 조인되지 않아 상태를
- *   모르면 null(배지를 안 띄운다). `isUnjoinedNewTicket`(TicketRow)이 티켓 줄에서 지키는
- *   규율과 같다. 조인 실패를 "착수 가능" 이나 "완료" 로 읽는 것은 INV-4 위반이다.
- * - 🔴 **구관례(`issues/`)는 여기서 다루지 않는다** — 티켓 목록이 비으면 null 이고 호출자는
+  * - 🔴 **판정 술어를 새로 만들지 않는다** — 처리중 = `in_progress` 존재, 완료 = 티켓이 있고
+  *   `hasOpenWork` 가 거짓(`featureFullyChecked` 와 같은 계산). 그 외는 남음.
+  * - 🔴 **신관례 티켓은 문서가 자급하다** — 상태는 `Status:`/`Time:`/`Blocked by`·`Depends on` 에서
+  *   결정되므로 백로그 조인 실패로 "모른다" 고 숨기지 않는다(캡틴 결정 2026-08). 막히지 않은 티켓은
+  *   착수 가능, 막힌 티켓은 대기로 보인다. 조인은 성공할 때만 덧붙인다(처리중/대기·url).
+  * - 🔴 **구관례(`issues/`)는 여기서 다루지 않는다** — 티켓 목록이 비으면 null 이고 호출자는
  *   기능을 그대로 둔다. 그쪽 배지는 문서 줄 verbatim 이고 문서가 SoT 이므로 지금이 옳다(D2).
  */
 export interface FeatureHeaderBadge {
@@ -139,9 +141,6 @@ export interface FeatureHeaderBadge {
 /** 신관례 티켓 무리 → 머리글 배지. 구관례(빈 목록)·조인 실패는 null — 배지를 띄우지 않는다. */
 export function deriveHeaderBadge(tickets: readonly FeatureTicket[]): FeatureHeaderBadge | null {
   if (tickets.length === 0) return null; // 구관례 — 문서가 SoT, 지금 그대로(D2)
-  // 하나라도 "모른다" 면 전체를 모른다 — 일부만 보고 완료·착수 가능을 말하는 것이 추측이다.
-  // 조인 실패한 티켓이 있으면(joinFailed true) 배지를 안 띄운다.
-  if (tickets.some((t) => t.joinFailed)) return null;
   if (tickets.some((t) => t.status === "in_progress"))
     return { status: "in_progress", sourceStatus: "처리중", statusKnown: true };
   if (!hasOpenWork(tickets)) return { status: "done", sourceStatus: "완료", statusKnown: true };
@@ -211,9 +210,8 @@ export function applyBacklogStatus(
         status: "dropped",
         sourceStatus: "취소",
         statusKnown: true,
-        // 🔴 취소는 상태를 **아는** 상태다 — 조인 실패(알 수 없음)로 취급하지 않는다. 조인에
-        // 실패한 티켓도 취소 결정이 있으므로 joinFailed 를 false 로 정정한다(D5 예외). 그래야
-        // 화면(`isUnjoinedNewTicket`)이 취소 기능의 티켓을 "모른다" 로 숨기지 않는다.
+        // 🔴 취소는 상태를 **아는** 상태다 — 신관례 티켓은 문서 자급이므로 조인 여부와 무관하게
+        // 상태를 안다(캡틴 결정 2026-08). 취소 결정이 있으므로 joinFailed 는 false 다.
         newTickets: newTickets.map((t) =>
           t.status === "done"
             ? { ...t, joinFailed: false }
@@ -221,8 +219,8 @@ export function applyBacklogStatus(
         ),
       };
     const badge = deriveHeaderBadge(newTickets);
-    // 배지를 못 정하면(조인 실패, D5) 손으로 쓴 낡은 `Status:` 글자를 내주지 않는다 —
-    // 썩은 배지(문제 1)의 반대편인 "없음" 이 답이다. 추측해서 채우지 않는다.
+    // 구관례(newTickets 없음)만 배지를 못 정한다(문서가 SoT, 지금 그대로) — 그때는 손으로 쓴 낡은
+    // `Status:` 글자를 내주지 않는다. 신관례는 문서로 판정되므로 배지를 못 정하는 일이 없다.
     return badge ? { ...rejudged, ...badge } : { ...rejudged, sourceStatus: null, statusKnown: false };
   });
 }

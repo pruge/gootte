@@ -28,6 +28,8 @@ function settings(partial: Partial<SettingsResponseType>): SettingsResponseType 
     firstmateHome: null,
     firstmateHomeExists: false,
     firstmateHomeSuggestion: null,
+    watchRoots: [],
+    effectiveWatchRoots: [],
     ...partial,
   });
 }
@@ -56,7 +58,7 @@ describe("SettingsDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
     await waitFor(() => expect(mockSave).toHaveBeenCalled());
     // react-query 가 mutationFn 에 두 번째 인수(context)를 주므로 첫 인수만 본다.
-    expect(mockSave.mock.calls[0]![0]).toEqual({ firstmateHome: "/tmp/fm" });
+    expect(mockSave.mock.calls[0]![0]).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [] });
     expect(await screen.findByText(/저장했습니다/)).toBeInTheDocument();
   });
 
@@ -92,21 +94,21 @@ describe("SettingsDialog", () => {
     expect(mockSave.mock.calls[0]![0]).toEqual(expect.objectContaining({ firstmateHome: null }));
   });
 
-  it("firstmate 홈 안내문은 실제 동작을 말한다 — 감시 뿌리 파생과 백로그 감시를 함께 안내한다", () => {
+  it("firstmate 홈 안내문은 실제 동작을 말한다 — 감시 뿌리와는 무관하고 백로그 조인에만 쓴다고 안내한다", () => {
     renderDialog();
-    expect(screen.getByText(/감시 대상이 되고/)).toBeInTheDocument();
+    expect(screen.getByText(/감시 뿌리와는 무관하다/)).toBeInTheDocument();
   });
 
-  it("입력은 firstmate 홈 하나뿐이다(수용 기준 1) — 찾아보기 버튼도 하나", () => {
+  it("firstmate 홈 입력과 감시 폴더 목록이 함께 있다 — 찾아보기 버튼은 firstmate 홈과 감시 폴더 추가 각각 하나씩", () => {
     renderDialog();
     const buttons = screen.getAllByRole("button", { name: /찾아보기/ });
-    expect(buttons).toHaveLength(1);
+    expect(buttons).toHaveLength(2);
   });
 
   it("firstmate 홈 찾아보기로 고르면 그 값이 입력 칸에 앉는다", async () => {
     mockPickFolder.mockResolvedValue("/골라온/경로");
     renderDialog();
-    fireEvent.click(screen.getByRole("button", { name: /찾아보기/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: /찾아보기/ })[0]!);
     await waitFor(() =>
       expect(screen.getByLabelText("firstmate 홈 경로")).toHaveValue("/골라온/경로"),
     );
@@ -115,8 +117,17 @@ describe("SettingsDialog", () => {
   it("찾아보기 다이얼로그가 실패하면 조용히 흘리지 않고 경고를 보여준다(review F2)", async () => {
     mockPickFolder.mockRejectedValue(new Error("플러그인 오류"));
     renderDialog();
-    fireEvent.click(screen.getByRole("button", { name: /찾아보기/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: /찾아보기/ })[0]!);
     expect(await screen.findByText(/폴더 선택 실패: 플러그인 오류/)).toBeInTheDocument();
+  });
+
+  it("감시 폴더 찾아보기로 고르면 그 경로가 목록에 들어간다", async () => {
+    mockPickFolder.mockResolvedValue("/골라온/projects");
+    renderDialog();
+    fireEvent.click(screen.getAllByRole("button", { name: /찾아보기/ })[1]!);
+    await waitFor(() =>
+      expect(screen.getByText("/골라온/projects")).toBeInTheDocument(),
+    );
   });
 
   it("firstmate 홈 미설정 시 placeholder 에 서버가 준 추천 경로가 보인다", () => {

@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
-import type { Feature, FeatureConflict, FeatureDocNode } from "@gootte/contract";
+import type { Feature, FeatureConflict, FeatureDocNode, TodoStatus } from "@gootte/contract";
 import { buildFeatures, parseFeatureSpec, parseNewTicket, parseTicket, parseTimeLine, type FeatureDocs, type TimeLine } from "@gootte/core";
 import {
   checkIgnored,
@@ -321,6 +321,13 @@ function earliest(xs: string[]): string {
 function latest(xs: string[]): string {
   return xs.reduce((best, x) => (cmpTime(x, best) > 0 ? x : best));
 }
+
+/** Time 줄 병합 후 상태 재파생 — core `parseNewTicket` 와 같은 로직. */
+function deriveStatusFromTime(startedAt: string | null, finishedAt: string | null): TodoStatus {
+  if (finishedAt) return "done";
+  if (startedAt) return "in_progress";
+  return "pending";
+}
 function cmpTime(a: string, b: string): number {
   const pa = Date.parse(a);
   const pb = Date.parse(b);
@@ -373,7 +380,11 @@ function mergeSlug(parts: CopySlug[], slug: string, copies: string[], resolver: 
       // 어떤 사본이든 값을 기록하면 그 값은 다른 사본에 없다는 이유로 사라지지 않는다(
       // "있다가 없어지는" 갱신 금지, 정방향 전용). 사본별로 각각 읽어 값이 있는 쪽이 이긴다.
       const times = (participantsByPath.get(p) ?? []).map((x) => parseTimeLine(x.content));
-      return { ...merged, ...mergeTicketTimes(times) };
+      const mergedTimes = mergeTicketTimes(times);
+      // 병합된 Time 줄로 상태 재파생 — parseNewTicket 이 "나중 판" 내용으로 이미 파싱했으나
+      // Time 값은 전체 사본에서 모은 것이므로 상태도 그에 맞춰 다시 정한다.
+      const derivedStatus = deriveStatusFromTime(mergedTimes.startedAt, mergedTimes.finishedAt);
+      return { ...merged, ...mergedTimes, status: derivedStatus };
     });
   const tree = mergeDocTrees(parts.map((p) => p.tree));
   return { slug, spec, tickets, tree, newTickets, conflict: conflicts };

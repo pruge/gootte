@@ -123,9 +123,9 @@ describe("planMove — 캡틴이 놓은 자리가 곧 정답이다(티켓 03)", 
     // 예약에 내려가 있던 기능에 티켓이 생겨 다시 작업 대상으로 올라온다.
     const rows = [row("re-raised", "reserved", 0)];
     const plan = planMove(features, rows, move(["re-raised"], "active"), NOW);
-    // 끝난 01·02 에는 행이 없고, 남은 03 은 끝난 선행 위에서 계산된 단계를 받는다.
+    // 끝난 01·02 에는 행이 없고, 남은 03 은 완료된 선행(01)이 풀려 1단계가 된다.
     expect(plan.setSteps).toEqual([
-      { feature: "re-raised", ticket: "03-x", step: 2 },
+      { feature: "re-raised", ticket: "03-x", step: 1 },
     ]);
   });
 
@@ -166,8 +166,9 @@ describe("planMove — 캡틴이 놓은 자리가 곧 정답이다(티켓 03)", 
     ];
     const rows = [row("new-re-raised", "reserved", 0)];
     const plan = planMove(features, rows, move(["new-re-raised"], "active"), NOW);
+    // 끝난 01 은 풀려 02 가 1단계가 된다.
     expect(plan.setSteps).toEqual([
-      { feature: "new-re-raised", ticket: "T02", step: 2 },
+      { feature: "new-re-raised", ticket: "T02", step: 1 },
     ]);
   });
 

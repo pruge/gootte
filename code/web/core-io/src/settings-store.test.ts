@@ -7,6 +7,8 @@ import {
   normalizeDirPath,
   readSettings,
   settingsFile,
+  settingsHasWatchRoots,
+  resolveWatchRoots,
   suggestFirstmateHome,
   writeSettings,
 } from "./settings-store";
@@ -23,12 +25,12 @@ afterEach(() => {
 
 describe("readSettings", () => {
   test("파일이 없으면 null — 소비처는 기본값으로 떨어진다", () => {
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: null });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: null, watchRoots: [], blockedCopies: [] });
   });
 
   test("저장한 값을 그대로 읽는다", () => {
     writeSettings(dataDir, { firstmateHome: "/tmp/fm" });
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm" });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [], blockedCopies: [] });
   });
 
   test("망가진 JSON 은 빈 설정으로 위장하지 않고 던진다", () => {
@@ -43,7 +45,7 @@ describe("readSettings", () => {
       settingsFile(dataDir),
       `${JSON.stringify({ watchRoot: "/옛/값", firstmateHome: "/tmp/fm" }, null, 2)}\n`,
     );
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm" });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [], blockedCopies: [] });
   });
 });
 
@@ -51,13 +53,13 @@ describe("writeSettings", () => {
   test("들어온 키만 갈아 끼운다(merge)", () => {
     writeSettings(dataDir, {});
     writeSettings(dataDir, { firstmateHome: "/b" });
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/b" });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/b", watchRoots: [], blockedCopies: [] });
   });
 
   test("null 은 지움(unset)이다", () => {
     writeSettings(dataDir, { firstmateHome: "/b" });
     writeSettings(dataDir, { firstmateHome: null });
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: null });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: null, watchRoots: [], blockedCopies: [] });
   });
 
   test("재시작(새 read) 후에도 유지된다 — 같은 자리를 다시 읽으면 같은 값", () => {
@@ -121,5 +123,81 @@ describe("suggestFirstmateHome", () => {
     const existing = join(dataDir, "firstmate2");
     mkdirSync(existing);
     expect(suggestFirstmateHome([missing, existing])).toBe(existing);
+  });
+});
+
+describe("settingsHasWatchRoots", () => {
+  test("키가 없으면 false — 파생 규칙이 적용된다", () => {
+    writeSettings(dataDir, { firstmateHome: "/tmp/fm" });
+    expect(settingsHasWatchRoots(dataDir)).toBe(false);
+  });
+
+  test("키가 있으면(빈 배열 포함) true — 명시 값이 권위다", () => {
+    writeSettings(dataDir, { watchRoots: [] });
+    expect(settingsHasWatchRoots(dataDir)).toBe(true);
+    writeSettings(dataDir, { watchRoots: ["/a/projects"] });
+    expect(settingsHasWatchRoots(dataDir)).toBe(true);
+  });
+});
+
+describe("resolveWatchRoots", () => {
+  const fallback = ["/env/projects"];
+
+  test("키가 있으면(빈 배열 포함) 그것이 권위다 — fallback 도 건드리지 않는다", () => {
+    writeSettings(dataDir, { watchRoots: ["/a/projects", "/b/projects"] });
+    expect(resolveWatchRoots(dataDir, fallback)).toEqual(["/a/projects", "/b/projects"]);
+    writeSettings(dataDir, { watchRoots: [] });
+    expect(resolveWatchRoots(dataDir, fallback)).toEqual([]);
+  });
+
+  test("키가 없고 firstmateHome 이 있으면 홈에서 파생된다", () => {
+    writeSettings(dataDir, { firstmateHome: "/tmp/fm" });
+    expect(resolveWatchRoots(dataDir, fallback)).toEqual([join("/tmp/fm", "projects")]);
+  });
+
+  test("키도 없고 firstmateHome 도 없으면 fallback 으로 떨어진다", () => {
+    writeSettings(dataDir, {});
+    expect(resolveWatchRoots(dataDir, fallback)).toEqual(fallback);
+  });
+});
+
+describe("writeSettings watchRoots", () => {
+  test("들어온 키만 갈아 끼우고 나머지(키 부재)를 보존한다", () => {
+    writeSettings(dataDir, { firstmateHome: "/b" });
+    expect(settingsHasWatchRoots(dataDir)).toBe(false); // watchRoots 키를 안 건드렸다
+    writeSettings(dataDir, { watchRoots: ["/c/projects"] });
+    // firstmateHome 은 남고 watchRoots 키가 생겼다
+    expect(readSettings(dataDir).firstmateHome).toBe("/b");
+    expect(readSettings(dataDir).watchRoots).toEqual(["/c/projects"]);
+    expect(settingsHasWatchRoots(dataDir)).toBe(true);
+  });
+
+  test("null 은 지움(unset) — 파생 규칙으로 되돌아간다", () => {
+    writeSettings(dataDir, { watchRoots: ["/c/projects"] });
+    writeSettings(dataDir, { watchRoots: null });
+    expect(settingsHasWatchRoots(dataDir)).toBe(false);
+  });
+});
+
+describe("writeSettings blockedCopies", () => {
+  test("차단 목록을 그대로 저장하고, 다른 키는 건드리지 않는다", () => {
+    writeSettings(dataDir, { firstmateHome: "/b", watchRoots: ["/c/projects"] });
+    writeSettings(dataDir, { blockedCopies: ["pool/1", "pool/2"] });
+    const s = readSettings(dataDir);
+    expect(s.firstmateHome).toBe("/b");
+    expect(s.watchRoots).toEqual(["/c/projects"]);
+    expect(s.blockedCopies).toEqual(["pool/1", "pool/2"]);
+  });
+
+  test("빈 배열이면 명시적으로 모두 해제된다", () => {
+    writeSettings(dataDir, { blockedCopies: ["pool/1"] });
+    expect(readSettings(dataDir).blockedCopies).toEqual(["pool/1"]);
+    writeSettings(dataDir, { blockedCopies: [] });
+    expect(readSettings(dataDir).blockedCopies).toEqual([]);
+  });
+
+  test("경로 정규화를 거치지 않는다 — slug 그대로 보관", () => {
+    writeSettings(dataDir, { blockedCopies: ["jinwooauto-e5b4fc/1"] });
+    expect(readSettings(dataDir).blockedCopies).toEqual(["jinwooauto-e5b4fc/1"]);
   });
 });

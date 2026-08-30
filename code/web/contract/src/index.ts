@@ -295,9 +295,21 @@ export type ChangeEvent = z.infer<typeof ChangeEvent>;
  *
  * 🔴 저장 파일에 남아 있는 옛 `watchRoot` 칸은 무시한다 — 읽지도 쓰지도 않는다(spec §Data and
  * migration). zod 가 알 수 없는 키를 조용히 버리므로 마이그레이션이 따로 필요 없다.
+ *
+ * 🔴 `watchRoots` — 사용자가 **명시적으로** 감시에 올린 projects 폴더 목록(per-folder-watch-roots).
+ * firstmate 구조에 종속되지 않게 한 칸화한 것이다: 설정창에서 폴더를 하나씩 추가하고, 목록에서
+ * 빼면 그 폴더(와 그 사본)는 더 이상 감시되지 않는다. JSON 에 이 키가 **없으면**(최초·마이그레이션
+ * 전) 아래 파생 규칙(`resolveWatchRoots`)이 firstmate 홈에서 뿌리를 만들어 내며, 키가 **있으면**
+ * (빈 배열 포함) 그것이 권위다 — 빈 배열은 "아무것도 감시하지 않음" 이다. 저장값은 어디에도
+ * 적혀 있지 않고 사람만 아는 것이라 INV-5 가 허락하는 칸이다.
  */
 export const Settings = z.object({
-  firstmateHome: z.string().nullable().default(null), // firstmate 홈 — 감시 뿌리 파생과 백로그 조인(T04)의 입력
+  firstmateHome: z.string().nullable().default(null), // firstmate 홈 — 백로그 조인(T04)의 입력. 감시 뿌리 파생은 watchRoots 가 대체
+  watchRoots: z.array(z.string()).default([]), // 명시 감시 폴더 목록(per-folder-watch-roots)
+  // 🔴 차단한 작업 가지 식별자(`<풀>/<슬롯>`) 목록 — gootte 자기 저장소의 **사용자 결정**이다
+  // (INV-5: 어디 문서에도 없고 사람만 아는 "이 복사본은 더 보지 않겠다"는 표). 트리하우스를
+  // 건드리지 않고(read-only 관측, INV-2) read-time 필터로만 화면에서 숨긴다. 빈 배열 = 차단 없음.
+  blockedCopies: z.array(z.string()).default([]),
 });
 export type Settings = z.infer<typeof Settings>;
 
@@ -309,15 +321,26 @@ export const SettingsResponse = Settings.extend({
   firstmateHomeExists: z.boolean(),
   // 호스트 실측 기반 추천 경로(placeholder 용) — 저장값이 아니다(INV-1). 후보가 없으면 null.
   firstmateHomeSuggestion: z.string().nullable().default(null),
+  // 🔴 실제로 감시되는 뿌리 — 요청마다 다시 계산(INV-3, 파생물). 키 부재 시 firstmate 홈에서
+  // 파생되고, 그래도 없으면 env·플랫폼 기본값으로 떨어진다(`resolveWatchRoots`). 화면이 이 값으로
+  // 명시 목록 편집기를 미리 채운다(per-folder-watch-roots).
+  effectiveWatchRoots: z.array(z.string()),
 });
 export type SettingsResponse = z.infer<typeof SettingsResponse>;
 
 /**
- * 설정 바꾸기(PUT) — 부분 갱신. `undefined` = 그대로, `null` = 지움(unset), 문자열 = 교체.
+ * 설정 바꾸기(PUT) — 부분 갱신. `undefined` = 그대로, `null` = 지움(unset), 문자열/배열 = 교체.
  * 서버가 절대 경로로 정규화하고(`~` 전개 포함), 상대 경로는 400 으로 거절한다.
  */
 export const SettingsUpdateRequest = z.object({
   firstmateHome: z.string().min(1).nullable().optional(),
+  // 명시 감시 폴더 목록. `undefined` = 그대로, `null` = 지움(unset → 파생 규칙으로 되돌아감),
+  // `[]` = 아무것도 감시하지 않음(명시). 각 항목은 절대 경로여야 한다(상대 경로는 400).
+  watchRoots: z.array(z.string().min(1)).nullable().optional(),
+  // 차단한 작업 가지 식별자 목록 — 화면에서 숨길 복사본. `undefined` = 그대로, `[]` = 모두 해제.
+  // 경로가 아니라 `<풀>/<슬롯>` 식별자라 경로 정규화는 하지 않는다. 두 항목 Put 이 섞여 와도
+  // 누락 없이 그대로 저장된다(부분 갱신).
+  blockedCopies: z.array(z.string().min(1)).optional(),
 });
 export type SettingsUpdateRequest = z.infer<typeof SettingsUpdateRequest>;
 

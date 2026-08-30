@@ -31,6 +31,7 @@ import {
   readReadMarks,
   readSteps,
   writeStep,
+  deriveWatchRoots,
 } from "@gootte/core-io";
 import { createApp } from "../src/app";
 import {
@@ -253,6 +254,35 @@ describe("GET /api/features/:slug", () => {
       }
     }));
 
+  test("차단 목록에 든 작업 가지는 화면에 실리지 않는다(read-time 필터, INV-2 관측만)", async () =>
+    withDataDir(async (dataDir) => {
+      const th = makeTreehouse();
+      try {
+        const app = createApp({ roots, treehouse: th, dataDir });
+        const before = FeaturesResponse.parse(
+          await (await app.request("/api/features/alpha")).json(),
+        );
+        const blockedSlug = before.inProgress.unknown[0]?.slug;
+        expect(blockedSlug).toBeTruthy();
+        // 차단 목록에 넣는다 — gootte 자기 저장소의 사용자 결정(INV-5).
+        const put = await app.request("/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ blockedCopies: [blockedSlug] }),
+        });
+        expect(put.status).toBe(200);
+        expect(SettingsResponse.parse(await put.json()).blockedCopies).toEqual([blockedSlug]);
+        const after = FeaturesResponse.parse(
+          await (await app.request("/api/features/alpha")).json(),
+        );
+        // 🔴 숨긴 복사본은 unknown 에도, working 카운트에도 없다 — 실제 worktree 는 그대로(inProgressFor 필터).
+        expect(after.inProgress.unknown.map((u) => u.slug)).not.toContain(blockedSlug);
+        expect(after.inProgress.working).toBe(before.inProgress.working - 1);
+      } finally {
+        rmSync(th, { recursive: true, force: true });
+      }
+    }));
+
   test("미해소 slug → 404 ApiError", async () => {
     const app = createApp(APP);
     const res = await app.request("/api/features/does-not-exist");
@@ -433,7 +463,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
       }
     }));
 
-  test("조인 실패(미매칭)면 상태를 보여주지 않는다 — 크래시도 빈 화면도 아니다", async () =>
+  test("조인 실패(미매칭)여도 문서만으로 상태를 아는 신관례 티켓은 뜬다 — 막히지 않았으면 착수 가능", async () =>
     withDataDir(async (dataDir) => {
       const projectRoot = makeProjectRoot("T09.md"); // 백로그엔 t04 만 있다
       const home = makeFirstmateHome(BACKLOG);
@@ -449,14 +479,15 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         expect(res.status).toBe(200);
         const body = FeaturesResponse.parse(await res.json());
         const f = body.features.find((x) => x.slug === "tauri-desktop-app");
-        expect(f?.newTickets?.[0]?.joinFailed).toBe(true);
+        expect(f?.newTickets?.[0]?.joinFailed).toBe(false); // 신관례 자급 — 미매칭이어도 착수 가능
         expect(f?.newTickets?.[0]?.status).toBe("pending");
+        expect(f?.newTickets?.[0]?.startable).toBe(true);
       } finally {
         rmSync(home, { recursive: true, force: true });
       }
     }));
 
-  test("firstmate 홈 미설정이면 신관례 티켓은 그대로 뜨되 상태는 비어 있다", async () =>
+  test("firstmate 홈 미설정이면 신관례 티켓은 그대로 뜨되 문서만으로 착수 가능으로 본다", async () =>
     withDataDir(async (dataDir) => {
       const projectRoot = makeProjectRoot();
       try {
@@ -464,7 +495,9 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         const body = FeaturesResponse.parse(await (await app.request("/api/features/widget")).json());
         const f = body.features.find((x) => x.slug === "tauri-desktop-app");
         expect(f?.newTickets?.[0]?.num).toBe("04");
-        expect(f?.newTickets?.[0]?.joinFailed).toBe(true);
+        expect(f?.newTickets?.[0]?.joinFailed).toBe(false);
+        expect(f?.newTickets?.[0]?.status).toBe("pending");
+        expect(f?.newTickets?.[0]?.startable).toBe(true);
       } finally {
         rmSync(projectRoot, { recursive: true, force: true });
       }
@@ -909,11 +942,11 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
     test("🔴 작업 대상으로 올라오면 의존에서 단계를 계산해 심는다 — 끝난 티켓에는 행이 없다(T02/D2)", () =>
       withDataDir(async (dataDir) => {
         await post(dataDir, { features: ["auth-login"], area: "active", index: 0 });
-        // fixture: 01(resolved) → 02 → 03. 끝난 01 에는 행이 없고(D2), 남은 티켓은
-        // 끝난 선행까지 포함한 위상 순서대로 2·3단계를 받는다.
+        // fixture: 01(resolved) → 02 → 03. 끝난 01 에는 행이 없고(D2), 남은 02 는
+        // 완료된 선행(01)이 풀려 1단계가 된다. 03 은 02 다음인 2단계.
         expect(readSteps(dataDir, "alpha")).toEqual([
-          { feature: "auth-login", ticket: "02-screen", step: 2 },
-          { feature: "auth-login", ticket: "03-social", step: 3 },
+          { feature: "auth-login", ticket: "02-screen", step: 1 },
+          { feature: "auth-login", ticket: "03-social", step: 2 },
         ]);
       }));
 
@@ -1407,6 +1440,9 @@ describe("설정 GET/PUT /api/settings", () => {
         firstmateHome: null,
         firstmateHomeExists: false,
         firstmateHomeSuggestion: null,
+        watchRoots: [],
+        blockedCopies: [],
+        effectiveWatchRoots: roots,
       });
     }));
 
@@ -1429,6 +1465,9 @@ describe("설정 GET/PUT /api/settings", () => {
         firstmateHome: FIXTURES,
         firstmateHomeExists: true,
         firstmateHomeSuggestion: null,
+        watchRoots: [],
+        blockedCopies: [],
+        effectiveWatchRoots: deriveWatchRoots(FIXTURES),
       });
     }));
 
@@ -1583,6 +1622,9 @@ describe("설정 GET/PUT /api/settings", () => {
         firstmateHome: FIXTURES,
         firstmateHomeExists: true,
         firstmateHomeSuggestion: null,
+        watchRoots: [],
+        blockedCopies: [],
+        effectiveWatchRoots: deriveWatchRoots(FIXTURES),
       });
     }));
 });

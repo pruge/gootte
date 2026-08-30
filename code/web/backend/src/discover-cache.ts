@@ -64,13 +64,22 @@ interface PayloadEntry {
 }
 let payloadCache: PayloadEntry | null = null;
 
-/** roots 로 본 `/api/projects` 페이로드 (TTL 내 재사용). `build` 는 캐시 미스 시에만 호출된다. */
+/**
+ * roots 로 본 `/api/projects` 페이로드 (TTL 내 재사용). `build` 는 캐시 미스 시에만 호출된다.
+ *
+ * 🔴 캐시 키는 **roots 만** 보는 게 아니다 — `openFeatures`(남은 일 있는 기능 수)는
+ * `firstmateHome`(백로그 조인 원천)에도 달려 있다. `firstmateHome` 만 바꿔도 discover 목록(roots)은
+ * 그대로라 키가 안 바뀌어 stale 카운트를 내준다(실측: firstmateHome 해제 후 좌측 숫자가 안 바뀜).
+ * 그래서 `keySalt`(보통 `readSettings().firstmateHome`)를 키에 같이 넣어, 백로그 원천이 바뀌면
+ * 다른 캐시로 빌드되게 한다. `keySalt` 미전달은 빈 문자열(기존 동작 보존).
+ */
 export function getProjectsPayload(
   roots: string[],
   build: () => Project[],
+  keySalt: string = "",
   now: number = Date.now(),
 ): Project[] {
-  const key = roots.join(" ");
+  const key = `${roots.join(" ")}\u0000${keySalt}`;
   if (payloadCache && payloadCache.key === key && now - payloadCache.at < DISCOVER_TTL_MS)
     return payloadCache.payload;
   const payload = build();

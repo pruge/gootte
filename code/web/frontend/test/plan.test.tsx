@@ -197,7 +197,7 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
       title: "조인된 신관례 티켓",
       status: "done",
       sourceStatus: null,
-      statusKnown: false,
+      statusKnown: true,
       completedAt: "2026-08-25",
       blockedBy: [],
       unreadableBlockedBy: [],
@@ -216,7 +216,7 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
     expect(within(opened).queryByText("상태 줄 없음")).toBeNull();
   });
 
-  it("tickets/ 신관례가 미조인이면(백로그에 없음) 배지 없이 조용하다 — 경고로 보이지 않는다", () => {
+  it("tickets/ 신관례가 백로그에 없어도 문서상 막히지 않았으면 착수 가능으로 본다 — 경고도 없다", () => {
     const unjoined: FeatureTicket = {
       num: "01",
       slug: "T01",
@@ -224,7 +224,7 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
       title: "미조인 신관례 티켓",
       status: "pending",
       sourceStatus: null,
-      statusKnown: false,
+      statusKnown: true,
       blockedBy: [],
       unreadableBlockedBy: [],
       waitingOn: [],
@@ -232,13 +232,15 @@ describe("PlanView — 다섯 자리 판(plan-board/02)", () => {
       workedBy: [],
       needsCaptainEye: false,
       docConvention: "tickets",
-      joinFailed: true,
+      joinFailed: false,
     };
     const f: Feature = { ...feature("unjoined-convention"), tickets: [], newTickets: [unjoined] };
     renderBoard({ ...EMPTY_BOARD, waiting: [card(f)] });
     const opened = openCard("unjoined-convention 제목");
     expect(within(opened).queryByText("상태 줄 없음")).toBeNull();
     expect(within(opened).queryByRole("status", { name: /정규 아홉 값이 아닙니다/ })).toBeNull();
+    // 계산된 상태(pending) → "대기" 배지 표시
+    expect(within(opened).getByText("대기")).toBeInTheDocument();
   });
 
   it("🔴 안 읽은 티켓 줄에 표시가 뜬다 — features 탭과 같은 표시(unread-tickets-show-themselves/02)", () => {
@@ -421,7 +423,8 @@ describe("PlanView — 처리중과 안 읽음이 카드 대화상자에서 함�
 
     const unreadInProgress = rowOf("안읽음 처리중");
     expect(within(unreadInProgress).getByText("안 읽음")).toBeInTheDocument();
-    expect(within(unreadInProgress).getByText("처리중")).toBeInTheDocument();
+    // 상태 배지 "처리중" + inProgress 텍스트 "처리중" 두 곳에 뜨므로 getAllByText 로 확인
+    expect(within(unreadInProgress).getAllByText("처리중").length).toBeGreaterThan(0);
 
     const unreadOnly = rowOf("안읽음 아님");
     expect(within(unreadOnly).getByText("안 읽음")).toBeInTheDocument();
@@ -429,7 +432,7 @@ describe("PlanView — 처리중과 안 읽음이 카드 대화상자에서 함�
 
     const inProgressOnly = rowOf("읽음 처리중");
     expect(within(inProgressOnly).queryByText("안 읽음")).toBeNull();
-    expect(within(inProgressOnly).getByText("처리중")).toBeInTheDocument();
+    expect(within(inProgressOnly).getAllByText("처리중").length).toBeGreaterThan(0);
 
     const neither = rowOf("읽음 아님");
     expect(within(neither).queryByText("안 읽음")).toBeNull();
@@ -691,8 +694,8 @@ describe("PlanView — 티켓 상자와 닫힌 카드(plan-board/04)", () => {
     });
     const c = openCard("wf 제목");
     expect(boxesIn(c)).toEqual(["[-]"]);
-    // 원문 상태는 그 줄에 verbatim 으로 남아 어느 쪽인지 말한다(INV-4).
-    expect(within(c).getByText("wontfix")).toBeInTheDocument();
+    // 계산된 상태(dropped) → "폐기" 배지 표시 (구관례도 sourceStatus 대신 계산된 상태를 보여준다)
+    expect(within(c).getByText("폐기")).toBeInTheDocument();
   });
 
   it("🔴 문서가 바뀌면 새로 고치지 않아도 상자가 바뀐다 — 판을 다시 받는 것으로 족하다", async () => {

@@ -48,7 +48,7 @@ import {
   dirExists,
   suggestFirstmateHome,
   effectiveProjectRoots,
-  deriveWatchRoots,
+  resolveWatchRoots,
 } from "@gootte/core-io";
 import type { CopyScan } from "@gootte/core";
 import { getProjects, getProjectsPayload, resolveSlug } from "./discover-cache";
@@ -105,6 +105,12 @@ export interface AppOptions {
    */
   onFirstmateHomeChange?: (firstmateHome: string | null) => void;
   /**
+   * 명시 감시 뿌리(`watchRoots`)가 바뀐 뒤의 통보(per-folder-watch-roots) — 문서 감시기를
+   * 새 뿌리 목록으로 다시 묶는다. 백로그는 firstmate 홈에 종속되므로 여기선 건드리지 않는다.
+   * 값은 저장 뒤 다시 계산한 실제 뿌리(`resolveWatchRoots`).
+   */
+  onWatchRootsChange?: (roots: string[]) => void;
+  /**
    * firstmate 홈 placeholder 추천 후보 (테스트 주입). 없으면 `suggestFirstmateHome` 기본 후보
    * (실제 host 경로) — 테스트는 실제 host 를 보지 않도록 임시 디렉토리를 주입한다.
    */
@@ -143,21 +149,20 @@ export function createApp(options: AppOptions = {}): Hono {
   const app = new Hono();
 
   /**
-   * 지금 이 요청이 볼 discover 루트 — firstmate 홈에서 파생된 뿌리가 기본값을 이긴다
-   * (one-setting-finds-every-copy T05, `deriveWatchRoots`). 🔴 생성 시 한 번 얼려 두지 않고
+   * 지금 이 요청이 볼 discover 루트 — 명시 `watchRoots` 가 있으면 그것이 권위고, 없으면 firstmate
+   * 홈에서 파생(`deriveWatchRoots`), 그래도 없으면 env·플랫폼 기본값(`fallbackRoots`)으로
+   * 떨어진다(per-folder-watch-roots, `resolveWatchRoots`). 🔴 생성 시 한 번 얼려 두지 않고
    * **요청마다 다시 읽는다**(INV-3) — 설정을 바꾸면 다음 요청부터 곧장 새 루트가 보여야 하고,
    * 재시작 없이 적용된다는 것이 그래서 참이 된다. 파일 read 하나라 매 요청에 감당 가능하다.
-   * 홈 미설정이면 `deriveWatchRoots` 가 빈 목록을 내고 env·플랫폼 기본값으로 떨어진다.
    */
   const effectiveRoots = (): string[] => {
     try {
-      const derived = deriveWatchRoots(readSettings(dataDir).firstmateHome);
-      if (derived.length > 0) return derived;
+      return resolveWatchRoots(dataDir, fallbackRoots);
     } catch {
       // 설정 파일을 못 읽는 것은 기본값으로 떨어질 이유가 아니라 알릴 사실이다 — 아래
       // /api/settings 가 같은 자리를 읽으며 큰 소리로 낸다. 여기선 서비스 연속성을 택한다.
+      return fallbackRoots;
     }
-    return fallbackRoots;
   };
 
   /** 설정 + 응답 시점에 다시 본 존재 여부(INV-3 — 존재는 저장하지 않는다). */
@@ -167,6 +172,7 @@ export function createApp(options: AppOptions = {}): Hono {
     firstmateHomeSuggestion: options.firstmateHomeSuggestionCandidates
       ? suggestFirstmateHome(options.firstmateHomeSuggestionCandidates)
       : suggestFirstmateHome(),
+    effectiveWatchRoots: effectiveRoots(),
   });
 
   /**
@@ -220,19 +226,37 @@ export function createApp(options: AppOptions = {}): Hono {
       }, 200),
     );
   };
+  /**
+   * 차단 목록(blockedCopies) 필터 — gootte 자기 저장소의 사용자 결정(INV-5)을 read-time 으로
+   * 적용해 화면에서만 숨긴다. 실제 worktree 는 건드리지 않는다(INV-2, 트리하우스는 관측만).
+   * 식별자는 `CopyScan.copies[].slug`(`<풀>/<슬롯>`). 캐시(mem/disk)엔 안 필터된 원본을 두고,
+   * 서빙할 때마다 설정을 다시 읽어 거른다 — 사용자가 차단을 풀면 즉시 다시 뜬다. `inProgressFor` 와
+   * `/api/features/:slug` 라우트(직접 `scanWorkingCopies` 를 부르는 길) 둘 다 이걸로 같이 거른다.
+   */
+  const filterBlockedCopies = (scan: CopyScan): CopyScan => {
+    const blocked = new Set(readSettings(dataDir).blockedCopies);
+    if (blocked.size === 0) return scan;
+    return { ...scan, copies: scan.copies.filter((c) => !blocked.has(c.slug)) };
+  };
+
   const inProgressFor = (project: string): CopyScan => {
     const mem = inProgressMem.get(project);
-    if (mem && Date.now() - mem.at < IN_PROGRESS_TTL_MS) return mem.scan;
-    const disk = snapshotInProgress(dataDir, project);
-    if (disk) {
-      inProgressMem.set(project, { at: Date.now(), scan: disk });
-      scheduleInProgressRefresh(project);
-      return disk;
+    let scan: CopyScan;
+    if (mem && Date.now() - mem.at < IN_PROGRESS_TTL_MS) {
+      scan = mem.scan;
+    } else {
+      const disk = snapshotInProgress(dataDir, project);
+      if (disk) {
+        inProgressMem.set(project, { at: Date.now(), scan: disk });
+        scheduleInProgressRefresh(project);
+        scan = disk;
+      } else {
+        scan = scanWorkingCopies(treehouse, project);
+        saveInProgress(project, scan);
+        scheduleInProgressRefresh(project);
+      }
     }
-    const scan = scanWorkingCopies(treehouse, project);
-    saveInProgress(project, scan);
-    scheduleInProgressRefresh(project);
-    return scan;
+    return filterBlockedCopies(scan);
   };
 
   const notFound = (slug: string): ApiError => ({ error: `프로젝트 없음: ${slug}` });
@@ -312,7 +336,11 @@ export function createApp(options: AppOptions = {}): Hono {
   // 경고 표시는 응답의 `*Exists` 를 본다(화면 몫). 거절하는 것은 절대 경로가 아닌 입력뿐이다.
   app.put("/api/settings", zValidator("json", SettingsUpdateRequest), (c) => {
     const update = c.req.valid("json");
-    const normalized: { firstmateHome?: string | null } = {};
+    const normalized: {
+      firstmateHome?: string | null;
+      watchRoots?: string[] | null;
+      blockedCopies?: string[];
+    } = {};
     for (const key of ["firstmateHome"] as const) {
       const raw = update[key];
       if (raw === undefined) continue;
@@ -326,6 +354,20 @@ export function createApp(options: AppOptions = {}): Hono {
         return c.json({ error: planError(err) } satisfies ApiError, 400);
       }
     }
+    if (update.watchRoots !== undefined) {
+      if (update.watchRoots === null) {
+        normalized.watchRoots = null; // unset → 파생 규칙으로 되돌아감
+      } else {
+        try {
+          // 각 항목을 절대 경로로 정규화 — 상대 경로는 거절(400). 빈 배열은 "아무것도 안 보기".
+          normalized.watchRoots = update.watchRoots.map((p) => normalizeDirPath(p));
+        } catch (err) {
+          return c.json({ error: planError(err) } satisfies ApiError, 400);
+        }
+      }
+    }
+    // 차단 목록은 경로가 아니라 `<풀>/<슬롯>` 식별자라 정규화하지 않고 그대로 둔다.
+    if (update.blockedCopies !== undefined) normalized.blockedCopies = update.blockedCopies;
     try {
       writeSettings(dataDir, normalized);
       // firstmate 홈이 실제로 바뀌었다면 감시기에도 알린다 — 요청 경로(effectiveRoots) 만
@@ -333,6 +375,9 @@ export function createApp(options: AppOptions = {}): Hono {
       // 백로그 감시기 둘 다 이 하나의 통보로 다시 묶인다(server.ts 배선).
       if (update.firstmateHome !== undefined)
         options.onFirstmateHomeChange?.(readSettings(dataDir).firstmateHome);
+      // 명시 감시 뿌리가 바뀌었으면 문서 감시기를 새 뿌리로 다시 묶는다(per-folder-watch-roots).
+      if (update.watchRoots !== undefined)
+        options.onWatchRootsChange?.(effectiveRoots());
     } catch (err) {
       return c.json({ error: planError(err) } satisfies ApiError, 500);
     }
@@ -355,13 +400,17 @@ export function createApp(options: AppOptions = {}): Hono {
     // features·plan 탭과 **같은 판정 자리**(`withBacklogStatus`)를 지난다.
     // 🔴 readFeatures 는 스냅샷 우선(fast-cold-start T03) — 재부팅 직후에도 git 없이 즉시.
     // 백로그 조인·카운트는 요청마다 다시 한다(INV-1 — 스냅샷에 담지 않는 파생물).
-    const projects = getProjectsPayload(effectiveRoots(), () => {
-      const backlog = readBacklogTasks(readSettings(dataDir).firstmateHome);
+    const projects = getProjectsPayload(
+      effectiveRoots(),
+      () => {
+        const backlog = readBacklogTasks(readSettings(dataDir).firstmateHome);
       return getProjects(effectiveRoots()).map((p) => ({
         ...p,
         openFeatures: countOpenFeatures(applyBacklogStatus(featuresFor(p.slug, p.copies, p.path), backlog, p.slug)),
       }));
-    });
+    },
+      readSettings(dataDir).firstmateHome ?? "",
+    );
     return c.json(ProjectsResponse.parse({ projects }));
   });
 
@@ -391,7 +440,7 @@ export function createApp(options: AppOptions = {}): Hono {
     }
     const observed = applyInProgress(
       applyReadState(features, readMarks),
-      scanWorkingCopies(treehouse, project),
+      filterBlockedCopies(scanWorkingCopies(treehouse, project)),
     );
     // T04 — `tickets/T<NN>.md` 신관례의 상태는 문서가 아니라 firstmate 홈 백로그가 SoT(D4).
     // 홈 미설정·백로그 없음은 readBacklogTasks 가 빈 목록으로 흡수 — 조인 실패는 상태 미표시로만 드러난다.

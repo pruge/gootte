@@ -671,9 +671,9 @@ describe("parseNewTicket — `## Depends on` 을 읽는다(T01)", () => {
     expect(doc.completedAt).toBe(null);
   });
 
-  it("🔴 T04 — `Status:` 줄이 없으면 statusKnown=false·pending 기본(리졸버가 채움, 회귀 없음)", () => {
+  it("🔴 T04 — `Status:` 줄이 없으면 `Time:` 줄로 상태 파생(줄 없으면 pending, statusKnown=true)", () => {
     const doc = parseNewTicket("T03.md", "# T03 — 제목\n\n## Depends on\n- none\n");
-    expect(doc.statusKnown).toBe(false);
+    expect(doc.statusKnown).toBe(true);
     expect(doc.status).toBe("pending");
     expect(doc.sourceStatus).toBe(null);
     expect(doc.completedAt).toBe(null);

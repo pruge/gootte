@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { IconAlertTriangle, IconProgressAlert } from "@tabler/icons-react";
+import { IconAlertTriangle, IconEyeOff, IconProgressAlert } from "@tabler/icons-react";
 import type { InProgressSummary } from "@gootte/contract";
-import { useFeatures, usePlanBoard } from "../../lib/query";
+import { useBlockedCopies, useFeatures, usePlanBoard, useSettings } from "../../lib/query";
 import { ALL_AREAS, AREA_LABEL, type BoardAreaId } from "../plan/areas";
 import { Loading, ErrorMsg, Empty } from "../common/states";
 import { FeatureCard } from "./FeatureCard";
@@ -27,13 +27,35 @@ const UNREADABLE_REASON: Record<InProgressSummary["unreadable"][number]["reason"
   "git-failed": "git 이 답하지 않음",
 };
 
-function CopyRow({ slug, detail, title }: { slug: string; detail: string; title: string }) {
+function CopyRow({
+  slug,
+  detail,
+  title,
+  onHide,
+}: {
+  slug: string;
+  detail: string;
+  title: string;
+  /** 있으면 행 끝에 "숨기기" 버튼이 붙는다 — 차단 목록에 이 복사본 slug 를 넣는다. */
+  onHide?: () => void;
+}) {
   return (
-    <li className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 px-4 py-2">
+    <li className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 py-2">
       <span className="mono shrink-0 text-sm text-muted">{slug}</span>
       <span className="mono min-w-0 flex-1 truncate text-active" title={title}>
         {detail}
       </span>
+      {onHide && (
+        <button
+          type="button"
+          onClick={onHide}
+          aria-label="이 작업 가지 숨기기"
+          title="다시는 보지 않겠습니다 — 설정의 '차단한 작업 가지'에서 해제할 수 있습니다"
+          className="shrink-0 rounded p-1.5 text-muted transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          <IconEyeOff size={16} stroke={1.75} />
+        </button>
+      )}
     </li>
   );
 }
@@ -43,7 +65,14 @@ function CopyRow({ slug, detail, title }: { slug: string; detail: string; title:
  * 조용히 빠뜨리면 화면이 "아무도 아무것도 안 하는 중" 이라고 거짓말하고, 캡틴은 이미
  * 진행 중인 일을 다시 배정한다. 어느 사본의 어느 가지인지 원문 그대로 보여준다(INV-4 릴레이).
  */
-function UnresolvedWork({ inProgress }: { inProgress: InProgressSummary }) {
+function UnresolvedWork({
+  inProgress,
+  onHide,
+}: {
+  inProgress: InProgressSummary;
+  /** 숨기기 버튼을 누르면 해당 복사본 slug 로 호출된다. 없으면 버튼을 붙이지 않는다. */
+  onHide?: (slug: string) => void;
+}) {
   const { unknown, unreadable, unclaimed } = inProgress;
   if (unknown.length === 0 && unreadable.length === 0 && unclaimed.length === 0) return null;
 
@@ -65,7 +94,13 @@ function UnresolvedWork({ inProgress }: { inProgress: InProgressSummary }) {
           </header>
           <ul className="divide-y divide-border/60 border-t border-partial/25">
             {unknown.map((w) => (
-              <CopyRow key={w.slug} slug={w.slug} detail={w.branch} title={w.path} />
+              <CopyRow
+                key={w.slug}
+                slug={w.slug}
+                detail={w.branch}
+                title={w.path}
+                onHide={onHide ? () => onHide(w.slug) : undefined}
+              />
             ))}
           </ul>
         </>
@@ -89,6 +124,7 @@ function UnresolvedWork({ inProgress }: { inProgress: InProgressSummary }) {
                 slug={c.slug}
                 detail={UNREADABLE_REASON[c.reason]}
                 title={c.path}
+                onHide={onHide ? () => onHide(c.slug) : undefined}
               />
             ))}
           </ul>
@@ -158,6 +194,14 @@ function useExpandedFeatures() {
  */
 export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
   const { data, isError, error } = useFeatures(project);
+  // 차단 목록(blockedCopies) — gootte 자기 저장소의 사용자 결정(INV-5). 화면에서 숨길 작업 가지.
+  const { data: settings } = useSettings();
+  const block = useBlockedCopies();
+  const hideCopy = (slug: string) => {
+    const current = settings?.blockedCopies ?? [];
+    if (current.includes(slug)) return;
+    block.mutate([...current, slug]);
+  };
   const containerRef = useRef<HTMLDivElement | null>(null);
   const docView = decodeDocView(view);
   // 검색은 지금 이 순간의 일이지 저장할 상태가 아니다 — 주소에 싣지 않는다(티켓 01 §주소).
@@ -278,7 +322,7 @@ export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
           data-virtual-viewport
           className="flex-1 overflow-y-auto pb-2"
         >
-          <UnresolvedWork inProgress={data.inProgress} />
+          <UnresolvedWork inProgress={data.inProgress} onHide={hideCopy} />
           {searching && tabMatches.length === 0 && (
             <p className="px-1 text-sm text-muted">찾는 것이 없습니다</p>
           )}
