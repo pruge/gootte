@@ -13,6 +13,7 @@ import { triggerKey } from "./docTrigger";
 import { UnlandedBadge } from "./FeatureTree";
 import type { OpenDocFn } from "./FeatureTree";
 import { HighlightedText } from "./HighlightedText";
+import { useHoverTip } from "../HoverTip";
 
 /** 트리 나머지가 쓰는 문서 아이콘 폭(15px) — 상태 아이콘도 여기 맞춘다(F20). 뜻·색은 그대로다. */
 const STATE_ICON_SIZE = 15;
@@ -98,13 +99,35 @@ function StageCell({ stage }: { stage: Stage }) {
 }
 
 /**
+ * 완료 시점부터의 경과 표시 — 7일 이내는 "N분/시간/일 전"(방금 포함),
+ * 넘기면 절댓값 날짜(YYYY-MM-DD)로 바꾼다(read-path 계산, INV-4).
+ * 파싱이 안 되거나 미래 시각이면 원문을 그대로(지어내지 않는다).
+ */
+function formatCompleted(at: string): string {
+  const ms = Date.parse(at.includes(" ") ? at.replace(" ", "T") : at);
+  if (Number.isNaN(ms)) return at;
+  const diff = Date.now() - ms;
+  const DAY = 86400000;
+  if (diff < 0) return at;
+  if (diff < DAY * 7) {
+    if (diff < 60000) return "방금";
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}분 전`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}시간 전`;
+    return `${Math.floor(hrs / 24)}일 전`;
+  }
+  return at.length >= 10 ? at.slice(0, 10) : at;
+}
+
+/**
  * 티켓 한 줄 — 번호 · 제목 · **원문 상태** · 단계(계산) · 완료일 · 딸린 상세.
  *
  * 🔴 상태를 못 읽은 티켓을 숨기지 않는다. 숨기면 화면이 "할 일이 없다" 고 거짓말한다 —
  * 대신 무엇이 이상한지(원문 문자열)를 드러낸다.
  * 처리중은 문서에 없는 값이라 원문 상태 옆에 **따로** 붙는다(뭉개지 않는다).
  *
- * 단계 칸과 완료일 칸은 값이 없어도 자리를 지킨다(같은 너비의 빈 칸) — 그 뒤에 오는
+ * 단계/완료 한 칸은 값이 없어도 자리를 지킨다(같은 너비의 빈 칸) — 그 뒤에 오는
  * **가지 이름 · 기다리는 대상**(딸린 상세)만 줄마다 폭이 다르고, 맨 끝에 있어 고정 칸을 밀지 않는다
  * (ticket-row-repair/03).
  *
@@ -128,11 +151,16 @@ export function TicketRow({
 }) {
   const stage = stageOf(ticket);
   const unread = ticket.unread === true;
+  // T02(a-ticket-tells-how-long-it-took) — 걸린 시간 어림 문구를 hover 툴팁으로(ProcessView 와 동일 모양).
+  // 시간이 없으면 툴팁을 띄우지 않는다(INV-4 — 값이 없으면 아무것도 안 보여준다).
+  const tipLabel = ticket.elapsed ?? null;
+  const { triggerProps, tip } = useHoverTip(tipLabel);
 
   return (
     <li>
       <button
         type="button"
+        {...triggerProps}
         style={treeIndentStyle(TICKET_LIST_DEPTH)}
         data-doc-trigger={triggerKey({ featureSlug, path: ticket.path })}
         onClick={(e) => onOpenDoc(featureSlug, ticket.path, e.currentTarget)}
@@ -186,20 +214,15 @@ export function TicketRow({
           </span>
         )}
 
-        <StageCell stage={stage} />
-
-        {/* 완료일 칸은 값이 없어도 늘 그린다 — 값이 있을 때와 같은 자리표시 문자열을 같은 글꼴로
-            렌더링해 폭을 맞추고, invisible 로 보이지만 않게 한다.
-            `—` 같은 대체 문자는 넣지 않는다 — 이 목록에서 `—` 는 이미 번호 없는 티켓을 뜻한다.
-            🔴 시각까지 있는 완료일(`YYYY-MM-DD HH:MM`)과 날짜만 있는 완료일(`YYYY-MM-DD`)이 섞여도
-            칸이 어긋나지 않게, 폭을 **가장 긴 서식**(`w-[16ch]`)으로 고정한다(06) — 글자 수가
-            줄마다 달라도 이 칸의 왼쪽 시작점은 늘 같은 자리다. */}
-        <span
-          className={`mono inline-block w-[16ch] shrink-0 text-sm tabular-nums text-muted ${
-            ticket.completedAt ? "" : "invisible"
-          }`}
-        >
-          {ticket.completedAt ?? "0000-00-00 00:00"}
+        {/* 🔴 단계/완료를 한 칸에 합침(사용자 결정 #2) — 한 행에서 둘은 배타적이라
+            하나의 고정폭(16ch) 칸으로 충분하다. done 은 완료 시점부터의 경과를 적되
+            7일을 넘기면 절댓값 날짜(YYYY-MM-DD)로 바꾼다. 값이 없어도 칸은 자리를 지킨다(alignment). */}
+        <span className="mono inline-block w-[16ch] shrink-0 text-sm">
+          {ticket.completedAt ? (
+            <span className="tabular-nums text-muted">{formatCompleted(ticket.completedAt)}</span>
+          ) : (
+            <StageCell stage={stage} />
+          )}
         </span>
 
         {stage === "in_progress" && (
@@ -211,17 +234,8 @@ export function TicketRow({
             {ticket.workedBy.join(", ")}
           </span>
         )}
-
-        {stage === "waiting" && (
-          // 번호로 해소되지 않은 선행(다른 기능을 가리키는 문구 등)도 그대로 보인다 — verbatim 릴레이(INV-4).
-          <span
-            className="mono max-w-full truncate text-sm text-muted"
-            title={ticket.waitingOn.join(", ")}
-          >
-            → {ticket.waitingOn.join(", ")}
-          </span>
-        )}
-      </button>
-    </li>
+        </button>
+        {tip}
+      </li>
   );
 }

@@ -35,15 +35,13 @@ function issuesDir(children: FeatureDocNode[] = []): FeatureDocNode {
 }
 
 function renderCard(feature: Feature, onOpenDoc = vi.fn()) {
-  const onGoToPlan = vi.fn();
   render(
     <FeatureCard
       feature={feature}
       onOpenDoc={onOpenDoc}
-      onGoToPlan={onGoToPlan}
     />,
   );
-  return { onOpenDoc, onGoToPlan };
+  return { onOpenDoc };
 }
 
 // 🔴 표제 앞부분이 슬러그 배지와 겹쳐 h2 는 뗀 설명만 보여준다(`FeatureCard`, `featureDescription`).
@@ -403,7 +401,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     expect(within(row).getByText("fm/session-work")).toBeInTheDocument();
   });
 
-  it("선행이 남은 티켓 → 대기, 그리고 기다리는 대상이 계속 보인다", () => {
+  it("선행이 남은 티켓 → 대기 단계는 보이되, 기다리는 대상(→ 의존성)은 행에 보이지 않는다", () => {
     const feature: Feature = {
       ...BASE,
       docs: [issuesDir()],
@@ -420,7 +418,8 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     open();
     const row = screen.getByText("세션 발급").closest("button")!;
     expect(within(row).getByText("대기")).not.toHaveClass("invisible");
-    expect(within(row).getByText("→ 02")).toBeInTheDocument();
+    // 🔴 막힘 표시(→ 의존성)는 행에서 노출하지 않는다(사용자 결정 — blocked-by 숨김).
+    expect(within(row).queryByText("→ 02")).not.toBeInTheDocument();
   });
 
   it("🔴 네 상태가 한 목록에 섞여 있어도 네 줄의 단계 칸이 모두 그려진다", () => {
@@ -637,7 +636,7 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     }
   });
 
-  it("🔴 조인된 신관례 티켓이 선행이 있으면 '대기 → 02' 로 보여준다(T01)", () => {
+  it("🔴 조인된 신관례 티켓이 선행이 있어도 막힘 표시(→ 의존성)는 행에 보이지 않는다(T01)", () => {
     const feature: Feature = {
       ...BASE,
       docs: [{ kind: "dir", name: "tickets", path: "tickets", children: [] }],
@@ -654,7 +653,8 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     open();
     const row = screen.getByText("신관례 문서 표시").closest("button")!;
     expect(within(row).getByText("대기")).not.toHaveClass("invisible");
-    expect(within(row).getByText("→ 02")).toBeInTheDocument();
+    // 🔴 막힘 표시(→ 의존성)는 행에서 노출하지 않는다(사용자 결정 — blocked-by 숨김).
+    expect(within(row).queryByText("→ 02")).not.toBeInTheDocument();
   });
 
   /**
@@ -672,8 +672,6 @@ describe("FeatureTree — tickets/T<NN>.md 신관례(T04)", () => {
     renderCard(feature);
     expect(screen.getByText(/남은 일 1/)).toBeInTheDocument();
     expect(screen.getByText(/착수 가능 1/)).toBeInTheDocument();
-    // 🔴 남은 일이 있으면 `plan` 버튼이 뜬다(development-order/16 ④) — 0으로 세면 이 버튼도 사라진다.
-    expect(screen.getByRole("button", { name: "plan" })).toBeInTheDocument();
   });
 
   it("🔴 신관례 티켓의 startable 이 실제 값으로 집계된다 — 대기 중인 티켓은 착수 가능 수에서 뺀다(T01)", () => {

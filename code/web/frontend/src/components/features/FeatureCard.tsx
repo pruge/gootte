@@ -8,8 +8,8 @@ import { HighlightedText } from "./HighlightedText";
 /**
  * 남은 일 / 완료 / 착수 가능 / 처리중 세기 — 서버가 준 값을 세기만 한다(재계산 X, INV-1).
  * 🔴 `issues/`(구관례, `tickets`)와 `tickets/`(신관례, `newTickets`)를 합쳐서 센다 — 안 그러면
- * `tickets/` 만 쓰는 기능은 머리글이 전부 0을 보여주고 `plan` 버튼도 뜨지 않는다(`open > 0` 게이트
- * 가 안 열린다) — 클릭해서 펼쳐야만 실제 티켓이 있다는 걸 알 수 있던 결함(2026-08-25 캡틴 보고).
+ * `tickets/` 만 쓰는 기능은 머리글이 전부 0을 보여주던 결함(2026-08-25 캡틴 보고) — `open > 0`
+ * 게이트가 안 열려 클릭해 펼쳐야만 실제 티켓이 있다는 걸 알 수 있었다.
  */
 function counts(f: Feature) {
   const all = [...f.tickets, ...(f.newTickets ?? [])];
@@ -24,9 +24,6 @@ function counts(f: Feature) {
 interface FeatureCardProps {
   feature: Feature;
   onOpenDoc: OpenDocFn;
-  /** 남은 일이 있으면 이 카드에 `plan` 버튼이 뜬다 — 누르면 `plan` 탭 기능 보기, 그 자리로
-   * 돌아간다(development-order/16 ④). */
-  onGoToPlan: (feature: string) => void;
   /**
    * 검색이 티켓 제목으로 이 카드를 걸렀을 때 참(티켓 01). 접힌 카드 안 티켓이 걸리면
    * 캡틴이 왜 걸렸는지 봐야 하므로 펼쳐서 띄운다 — 사용자가 손으로 접었던 상태는 건드리지
@@ -51,14 +48,13 @@ interface FeatureCardProps {
  * 🔴 카드는 **내용만큼 자란다** — `shrink-0` 이 이 카드를 flex 부모(FeaturesView 의
  * `overflow-y-auto` 목록) 안에서 눌리지 않게 한다. 눌리는 대신 바깥 목록이 스크롤된다(F1 회귀 고정).
  *
- * 🔴 머리글 토글은 여전히 `<button>` 하나다 — `plan` 버튼은 그 **옆(형제)** 에 둔다, 안이 아니다.
- * 버튼 안에 버튼을 넣는 것은 무효 HTML 이라(중첩 인터랙티브), 토글과 `plan` 을 같은 줄의
- * 형제 버튼 둘로 가른다(development-order/16 ④).
+ * 🔴 머리글은 토글 `<button>` 하나뿐이다 — 상태 배지·`plan` 버튼은 2026-08-30 에 모두 제거됐다.
+ * 배지·버튼을 토글 안에 넣으면 중첩 인터랙티브라 무효 HTML 이므로, 넣지 말아야 할 근거
+ * (development-order/16 ④)는 여전히 같다.
  */
 export function FeatureCard({
   feature,
   onOpenDoc,
-  onGoToPlan,
   forceExpanded = false,
   query = "",
   expanded: controlledExpanded,
@@ -101,15 +97,6 @@ export function FeatureCard({
               안 읽음
             </span>
           )}
-          {feature.sourceStatus && (
-            <span
-              className={`mono rounded px-1.5 py-0.5 text-sm ${
-                feature.statusKnown ? "bg-surface-2 text-muted" : "bg-drop/15 text-drop"
-              }`}
-            >
-              {feature.sourceStatus}
-            </span>
-          )}
           {/* T03 — 갈라진 사본이 있으면 조용히 하나를 고르지 않고 화면이 말한다(ADR-0001). */}
           <ConflictBadge conflicts={feature.conflict ?? []} />
           {/* 네 수는 항상 뜬다 — 0 이어도 칸이 사라지지 않는다(티켓 01 §설계 5 🔴). */}
@@ -121,17 +108,6 @@ export function FeatureCard({
             <span className={working > 0 ? "font-medium text-active" : undefined}>처리중 {working}</span>
           </span>
         </button>
-        {/* 🔴 남은 일이 없으면 뜨지 않는다 — plan 에서 볼 것이 없다(development-order/16 ④). */}
-        {open > 0 && (
-          <button
-            type="button"
-            onClick={() => onGoToPlan(feature.slug)}
-            title="plan 탭에서 이 기능이 있는 자리로 이동"
-            className="mono shrink-0 self-center px-3 text-sm text-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-          >
-            plan
-          </button>
-        )}
       </div>
 
       {isExpanded && (

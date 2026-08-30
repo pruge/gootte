@@ -6,7 +6,7 @@ import { useProjects } from "./lib/query";
 
 /** 셸 — 사이드바(프로젝트) + 메인(본문 header + features 탭). 브랜드=본문 header 좌측, 테마=사이드바 하단. */
 export function App() {
-  const { project, tab, view, setProject, setTab, setView, goToPlanFeature } = useUrlState();
+  const { project, tab, view, setProject, setTab, setView } = useUrlState();
   const { data: projects } = useProjects();
 
   useKeyboardNav({
@@ -26,7 +26,6 @@ export function App() {
         onTab={setTab}
         view={view}
         onView={setView}
-        onGoToPlanFeature={goToPlanFeature}
       />
     </div>
   );

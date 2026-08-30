@@ -65,7 +65,7 @@ function dataWith(features: Feature[]): FeaturesResponse {
 
 function Harness({ data, initialView = null }: { data: FeaturesResponse; initialView?: string | null }) {
   const [view, setView] = useState<string | null>(initialView);
-  return <FeaturesView project={data.project} view={view} onView={setView} onGoToPlanFeature={vi.fn()} />;
+  return <FeaturesView project={data.project} view={view} onView={setView} />;
 }
 
 function renderView(data: FeaturesResponse, initialView: string | null = null) {

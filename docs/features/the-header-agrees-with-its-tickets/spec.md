@@ -15,7 +15,7 @@ Status: ready-for-agent (2026-08-26)
 기능 카드 머리글의 상태 배지는 `spec.md` 의 손으로 쓴 `Status:` 줄을 **verbatim 으로 그린 것**이다.
 계산값이 아니다.
 
-    code/web/frontend/src/components/features/FeatureCard.tsx:103-109   {feature.sourceStatus} 를 그대로 출력
+    code/web/frontend/src/components/features/FeatureCard.tsx   (과거) 머리글 배지가 {feature.sourceStatus} 를 그대로 그렸다 — 2026-08-30 에 배지 자체가 제거됨(아래 "상태(2026-08-30)" 참고).
     code/web/core/src/project/features.ts:191-194                       docs.spec 에서 그대로 옮긴다
       title:        docs.spec?.title ?? docs.slug,
       status:       docs.spec?.status ?? "pending",
@@ -100,6 +100,13 @@ Status: ready-for-agent (2026-08-26)
 손으로 쓴 `Status:` 줄을 신관례 기능의 배지 출처로 쓰지 않는다.
 판정 술어는 **이미 있다**(`hasOpenWork`, `featureFullyChecked`) — 새로 만들지 마라.
 
+🔴 **상태(2026-08-30) — 머리글 상태 배지 제거.** 캡틴 결정으로 기능 카드 머리글의 상태 배지
+(파생된 `완료`/`처리중`/`남음`/`취소`)를 통째로 없앴다. 머리글은 이제 네 수(`counts()`,
+남은 일·완료·착수 가능·처리중)만 그린다. 배지가 없으므로 문제 1 의 자기모순은 **발생 자체가
+불가**해졌다 — 이 기능의 목표(머리글이 자기 숫자와 모순하지 않는다)는 배지를 빼는 쪽으로 달성된다.
+`deriveHeaderBadge`(core/project/backlog-join.ts)는 계속 계산하되 화면이 쓰지 않는다 — 판단
+자리 단일성(INV-1)은 유지된다(계산은 남고 표시만 빠짐).
+
 🔴 구관례(`issues/`) 기능의 배지는 **지금 그대로** 문서 줄 verbatim 이다.
 그쪽은 문서가 SoT 이므로 이 기능이 건드릴 이유가 없다.
 
@@ -137,6 +144,6 @@ TicketRow.tsx:25). 그 티켓만 있는 기능의 머리글 배지도 **추측�
 
 `pnpm -C code/web verify` green + 실물:
 
-1. 신관례 기능 6개의 머리글 배지가 옆 숫자와 모순하지 않는다(완료 기능은 완료로 보인다).
+1. 기능 카드 머리글에 상태 배지가 없다(2026-08-30 제거) — 대신 네 수만 보인다. 그 덕에 문제 1 의 자기모순은 발생하지 않는다.
 2. `spec.md` 에 `wontfix` 를 선언한 신관례 기능이 `next` 에서 안 나오고 남은 일에서 빠진다.
 3. 구관례 기능 배지가 하나도 안 바뀐다.

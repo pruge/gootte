@@ -13,8 +13,6 @@ interface MainPanelProps {
   onTab: (t: Tab) => void;
   view: string | null;
   onView: (v: string | null) => void;
-  /** `features` 탭의 `plan` 버튼으로 `plan` 탭, 그 자리로 돌아간다(development-order/16 ④). */
-  onGoToPlanFeature: (feature: string) => void;
 }
 
 /** 셸의 메인 영역 — 본문 header(브랜드 + 프로젝트 + 탭) + 뷰. */
@@ -24,7 +22,6 @@ export function MainPanel({
   onTab,
   view,
   onView,
-  onGoToPlanFeature,
 }: MainPanelProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   return (
@@ -69,7 +66,6 @@ export function MainPanel({
               project={project}
               view={view}
               onView={onView}
-              onGoToPlanFeature={onGoToPlanFeature}
             />
           )}
         </div>

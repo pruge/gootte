@@ -118,28 +118,25 @@ const DATA: FeaturesResponse = {
 function Harness({
   project,
   initialView = null,
-  onGoToPlanFeature = vi.fn(),
 }: {
   project: string;
   initialView?: string | null;
-  onGoToPlanFeature?: (feature: string) => void;
 }) {
   const [view, setView] = useState<string | null>(initialView);
   return (
-    <FeaturesView project={project} view={view} onView={setView} onGoToPlanFeature={onGoToPlanFeature} />
+    <FeaturesView project={project} view={view} onView={setView} />
   );
 }
 
 function renderView(
   data: FeaturesResponse,
   initialView: string | null = null,
-  opts: { onGoToPlanFeature?: (feature: string) => void } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData(qk.features(data.project), data);
   return render(
     <QueryClientProvider client={qc}>
-      <Harness project={data.project} initialView={initialView} {...opts} />
+      <Harness project={data.project} initialView={initialView} />
     </QueryClientProvider>,
   );
 }
@@ -218,12 +215,13 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
     expect(card.className).toContain("shrink-0");
   });
 
-  it("선행이 남은 티켓은 무엇을 기다리는지 보이고, 풀린 티켓은 착수 가능으로 보인다", () => {
+  it("선행이 남은 티켓은 대기 단계만 보이고(막힘 표시는 행에 노출 않음), 풀린 티켓은 착수 가능으로 보인다", () => {
     renderFeatures();
     openCard("로그인");
     const blocked = screen.getByText("소셜 로그인").closest("li")!;
     expect(within(blocked).getByText("대기")).toBeInTheDocument();
-    expect(within(blocked).getByText("→ 02")).toBeInTheDocument();
+    // 🔴 막힘 표시(→ 의존성)는 행에서 노출하지 않는다(사용자 결정 — blocked-by 숨김).
+    expect(within(blocked).queryByText("→ 02")).not.toBeInTheDocument();
     const ready = screen.getByText("로그인 화면").closest("li")!;
     expect(within(ready).getByText("착수 가능")).toBeInTheDocument();
   });
@@ -299,57 +297,6 @@ describe("FeaturesView — 머리글 네 수는 항상 뜬다(티켓 01 §설계
   });
 });
 
-// 🔴 첫 커버(development-order/16 ④) — features 탭 카드의 plan 버튼. 남은 일이 있으면 뜨고,
-// 누르면 plan 탭 기능 보기, 그 기능이 있는 자리로 건너간다.
-describe("FeaturesView — 남은 일이 있으면 plan 버튼이 뜬다(development-order/16 ④, 🔴 첫 커버)", () => {
-  it("남은 일이 있는 기능(auth-login)엔 plan 버튼이 있다", () => {
-    renderFeatures();
-    expect(screen.getByRole("button", { name: "plan" })).toBeInTheDocument();
-  });
-
-  it("남은 일이 없으면(전부 done/dropped) 버튼이 없다", () => {
-    const data: FeaturesResponse = {
-      project: "alpha",
-      inProgress: NO_WORK,
-      features: [
-        {
-          slug: "done-feature",
-          title: "done-feature — 다 끝남",
-          status: "done",
-          sourceStatus: "resolved",
-          statusKnown: true,
-          docs: [ISSUES_DIR],
-          tickets: [
-            {
-              num: "01",
-              slug: "01-a",
-              path: "issues/01-a.md",
-              title: "끝난 것",
-              status: "done",
-              sourceStatus: "resolved",
-              statusKnown: true,
-              blockedBy: [],
-              unreadableBlockedBy: [],
-              waitingOn: [],
-              startable: true,
-              workedBy: [],
-              needsCaptainEye: false,
-            },
-          ],
-        },
-      ],
-    };
-    renderView(data);
-    expect(screen.queryByRole("button", { name: "plan" })).toBeNull();
-  });
-
-  it("누르면 onGoToPlanFeature 가 그 기능으로 불린다", () => {
-    const onGoToPlanFeature = vi.fn();
-    renderView(DATA, null, { onGoToPlanFeature });
-    fireEvent.click(screen.getByRole("button", { name: "plan" }));
-    expect(onGoToPlanFeature).toHaveBeenCalledWith("auth-login");
-  });
-});
 
 describe("FeaturesView — 이어지지 않은 작업(격리 사본 관측)", () => {
   it("🔴 티켓에 잇지 못한 작업중 사본이 화면에서 사라지지 않는다", () => {

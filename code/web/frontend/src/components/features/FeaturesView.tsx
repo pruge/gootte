@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { IconAlertTriangle, IconProgressAlert } from "@tabler/icons-react";
 import type { InProgressSummary } from "@gootte/contract";
-import { useFeatures } from "../../lib/query";
+import { useFeatures, usePlanBoard } from "../../lib/query";
+import { ALL_AREAS, AREA_LABEL, type BoardAreaId } from "../plan/areas";
 import { Loading, ErrorMsg, Empty } from "../common/states";
 import { FeatureCard } from "./FeatureCard";
 import { FeatureSearchBox } from "./FeatureSearchBox";
@@ -17,6 +18,9 @@ const ESTIMATED_ROW_HEIGHT = 64;
 const OVERSCAN = 6;
 /** 카드 사이 간격(구 `gap-4` = 1rem) — 목록이 flex 가 아니라 절대 위치라 각 줄 아래 여백으로 흉내낸다. */
 const CARD_GAP_PX = 16;
+
+/** features 탭의 영역 탭 — plan 탭과 같은 다섯 칸(작업 대상 + 대기/예약/폐기/완료)을 그대로 쓴다. */
+const AREA_TABS: readonly BoardAreaId[] = ["active", "waiting", "reserved", "discarded", "done"];
 
 const UNREADABLE_REASON: Record<InProgressSummary["unreadable"][number]["reason"], string> = {
   "no-repo": "저장소를 찾지 못함",
@@ -124,8 +128,6 @@ interface FeaturesViewProps {
   /** 드로어에 열린 문서 — URL `view` 파라미터(F8). null 이면 드로어가 닫혀 있다. */
   view: string | null;
   onView: (v: string | null) => void;
-  /** 카드의 `plan` 버튼 — `plan` 탭 기능 보기, 그 자리로 건너간다(development-order/16 ④). */
-  onGoToPlanFeature: (feature: string) => void;
 }
 
 /** 카드 펼침 상태 — 카드 밖(여기)에 둔다, 가상 스크롤로 카드가 DOM 에서 빠졌다 돌아와도
@@ -154,13 +156,22 @@ function useExpandedFeatures() {
  * 아홉 장이든 구백 장이든 이 한 길로 그린다. 높이는 실측해서 쓴다(③) — 짐작한 높이로 고정하면
  * 접힘·펼침·설명 유무로 제각각인 실제 높이가 들어오는 순간 보던 자리가 밀린다.
  */
-export function FeaturesView({ project, view, onView, onGoToPlanFeature }: FeaturesViewProps) {
+export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
   const { data, isError, error } = useFeatures(project);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const docView = decodeDocView(view);
   // 검색은 지금 이 순간의 일이지 저장할 상태가 아니다 — 주소에 싣지 않는다(티켓 01 §주소).
   const [query, setQuery] = useState("");
   const { expanded, toggle: toggleExpanded } = useExpandedFeatures();
+  // plan 탭의 영역 분류(작업 대상/대기/예약/폐기/완료)를 그대로 가져와 기능을 같은 칸에 묶는다.
+  // 🔴 화면이 자기만의 분류를 짜지 않는다 — 판정 자리는 서버(`planMove`) 하나뿐(areas.ts).
+  const { data: board } = usePlanBoard(project);
+  const [tab, setTab] = useState<BoardAreaId>("waiting");
+  const areaBySlug = useMemo(() => {
+    const m = new Map<string, BoardAreaId>();
+    if (board) for (const a of ALL_AREAS) for (const c of board[a]) m.set(c.feature.slug, a);
+    return m;
+  }, [board]);
 
   // 문서를 연 자리의 신원(요소가 아니라 "무엇을 열었는지") — 드로어를 닫을 때 그 자리로
   // 스크롤한 뒤 포커스를 돌려준다(②). 카드가 스크롤을 벗어났다 돌아오면 버튼은 새 DOM
@@ -168,19 +179,26 @@ export function FeaturesView({ project, view, onView, onGoToPlanFeature }: Featu
   const lastOpenedRef = useRef<DocTrigger | null>(null);
   const [pendingFocus, setPendingFocus] = useState<DocTrigger | null>(null);
 
-  const matches = useMemo(
+  const baseMatches = useMemo(
     () => (data ? filterFeaturesBySearch(data.features, query) : []),
     [data, query],
+  );
+  const tabMatches = useMemo(
+    () =>
+      baseMatches.filter(
+        (m) => (areaBySlug.get(m.feature.slug) ?? "waiting") === tab,
+      ),
+    [baseMatches, areaBySlug, tab],
   );
   const searching = query.trim() !== "";
 
   // count 는 늘 matches.length 다 — 목록이 짧을 때만 다른 길로 그리는 분기를 두지 않는다(INV-V3).
   const virtualizer = useVirtualizer({
-    count: matches.length,
+    count: tabMatches.length,
     getScrollElement: () => containerRef.current,
     estimateSize: () => ESTIMATED_ROW_HEIGHT,
     overscan: OVERSCAN,
-    getItemKey: (index) => matches[index]!.feature.slug,
+    getItemKey: (index) => tabMatches[index]!.feature.slug,
   });
   const virtualItems = virtualizer.getVirtualItems();
   const visibleKey = virtualItems.map((v) => v.key).join(",");
@@ -205,7 +223,7 @@ export function FeaturesView({ project, view, onView, onGoToPlanFeature }: Featu
     const opened = lastOpenedRef.current;
     lastOpenedRef.current = null;
     if (!opened) return;
-    const idx = matches.findIndex((m) => m.feature.slug === opened.featureSlug);
+    const idx = tabMatches.findIndex((m) => m.feature.slug === opened.featureSlug);
     if (idx === -1) return; // 검색이 그 사이 걸러냈다 — 돌아갈 자리가 없다.
     virtualizer.scrollToIndex(idx, { align: "center" });
     setPendingFocus(opened);
@@ -226,52 +244,89 @@ export function FeaturesView({ project, view, onView, onGoToPlanFeature }: Featu
 
   return (
     <>
-      <div ref={containerRef} data-virtual-viewport className="flex h-full flex-col gap-4 overflow-y-auto pb-2">
-        <FeatureSearchBox value={query} onChange={setQuery} />
-        <UnresolvedWork inProgress={data.inProgress} />
-        {searching && matches.length === 0 && (
-          <p className="px-1 text-sm text-muted">찾는 것이 없습니다</p>
-        )}
-        {matches.length > 0 && (
-          // 🔴 shrink-0 없으면 flex 부모가 이 자리표시 칸을 실제 총 높이(virtualizer.getTotalSize())
-          // 보다 좁게 눌러버린다 — 카드 각각에 shrink-0 을 주던 것과 같은 회귀(F1)가 여기서도
-          // 일어난다. 눌리는 대신 컨테이너(overflow-y-auto)가 스크롤돼야 한다.
-          <div
-            className="shrink-0"
-            style={{ position: "relative", height: virtualizer.getTotalSize(), width: "100%" }}
-          >
-            {virtualItems.map((vi) => {
-              const { feature, forceExpanded } = matches[vi.index]!;
-              const isLast = vi.index === matches.length - 1;
+      <div className="flex h-full flex-col">
+        <div className="shrink-0 flex flex-col gap-3 px-1 pb-2">
+          <FeatureSearchBox value={query} onChange={setQuery} />
+          {/* plan 탭과 같은 다섯 영역(작업 대상 + 대기/예약/폐기/완료) — 정보를 그대로 쓴다. */}
+          <div role="tablist" aria-label="기능 영역" className="flex flex-wrap gap-1.5">
+            {AREA_TABS.map((id) => {
+              const n = baseMatches.filter(
+                (m) => (areaBySlug.get(m.feature.slug) ?? "waiting") === id,
+              ).length;
               return (
-                <div
-                  key={vi.key}
-                  data-index={vi.index}
-                  data-virtual-row
-                  ref={virtualizer.measureElement}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${vi.start}px)`,
-                    paddingBottom: isLast ? 0 : CARD_GAP_PX,
-                  }}
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === id}
+                  onClick={() => setTab(id)}
+                  className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
+                    tab === id
+                      ? "bg-accent text-accent-fg"
+                      : "bg-surface-2 text-muted hover:text-fg"
+                  }`}
                 >
-                  <FeatureCard
-                    feature={feature}
-                    onOpenDoc={openDoc}
-                    onGoToPlan={onGoToPlanFeature}
-                    forceExpanded={forceExpanded}
-                    query={query}
-                    expanded={expanded.has(feature.slug)}
-                    onToggleExpanded={() => toggleExpanded(feature.slug)}
-                  />
-                </div>
+                  {AREA_LABEL[id]}
+                  <span className="mono ml-1.5 tabular-nums opacity-70">{n}</span>
+                </button>
               );
             })}
           </div>
-        )}
+        </div>
+        <div
+          ref={containerRef}
+          data-virtual-viewport
+          className="flex-1 overflow-y-auto pb-2"
+        >
+          <UnresolvedWork inProgress={data.inProgress} />
+          {searching && tabMatches.length === 0 && (
+            <p className="px-1 text-sm text-muted">찾는 것이 없습니다</p>
+          )}
+          {!searching && tabMatches.length === 0 && data.features.length > 0 && (
+            <p className="px-1 text-sm text-muted">
+              {AREA_LABEL[tab]} 영역에 기능이 없습니다.
+            </p>
+          )}
+          {tabMatches.length > 0 && (
+            // 🔴 shrink-0 없으면 flex 부모가 이 자리표시 칸을 실제 총 높이(virtualizer.getTotalSize())
+            // 보다 좁게 눌러버린다 — 카드 각각에 shrink-0 을 주던 것과 같은 회귀(F1)가 여기서도
+            // 일어난다. 눌리는 대신 컨테이너(overflow-y-auto)가 스크롤돼야 한다.
+            <div
+              className="shrink-0"
+              style={{ position: "relative", height: virtualizer.getTotalSize(), width: "100%" }}
+            >
+              {virtualItems.map((vi) => {
+                const { feature, forceExpanded } = tabMatches[vi.index]!;
+                const isLast = vi.index === tabMatches.length - 1;
+                return (
+                  <div
+                    key={vi.key}
+                    data-index={vi.index}
+                    data-virtual-row
+                    ref={virtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${vi.start}px)`,
+                      paddingBottom: isLast ? 0 : CARD_GAP_PX,
+                    }}
+                  >
+                    <FeatureCard
+                      feature={feature}
+                      onOpenDoc={openDoc}
+                      forceExpanded={forceExpanded}
+                      query={query}
+                      expanded={expanded.has(feature.slug)}
+                      onToggleExpanded={() => toggleExpanded(feature.slug)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
       <DocDrawer
         project={project}
