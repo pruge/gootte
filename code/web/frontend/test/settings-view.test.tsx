@@ -1,9 +1,10 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import type { ReactElement } from "react";
 import { SettingsResponse, type SettingsResponse as SettingsResponseType } from "@gootte/contract";
 import { SettingsView } from "../src/components/settings/SettingsView";
+import { ThemeProvider } from "../src/theme/ThemeProvider";
 import { qk } from "../src/lib/query";
 
 vi.mock("../src/lib/api", () => ({
@@ -44,12 +45,31 @@ function renderView(): void {
   );
 }
 
+/** 테마 카테고리는 `useTheme` 컨텍스트(ThemeProvider)를 필요로 한다 — 감싸서 렌더. */
+function renderViewWithTheme(): void {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(qk.settings, settings({}));
+  render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider>
+        <SettingsView />
+      </ThemeProvider>
+    </QueryClientProvider>,
+  );
+}
+
 afterEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
+});
+
+beforeEach(() => {
+  localStorage.clear();
+  document.documentElement.removeAttribute("data-theme");
 });
 
 describe("SettingsView — VSCode 레이아웃 (settings-in-main-area T02)", () => {
-  it("좌측 레일에 검색창 + 카테고리(일반/감시/숨김/테마 예정)가 보인다", () => {
+  it("좌측 레일에 검색창 + 카테고리(일반/감시/숨김/테마)가 보인다", () => {
     renderView();
     expect(screen.getByRole("searchbox", { name: "설정 검색" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /일반/ })).toBeInTheDocument();
@@ -79,19 +99,19 @@ describe("SettingsView — VSCode 레이아웃 (settings-in-main-area T02)", () 
     expect(screen.queryByRole("button", { name: /일반/ })).not.toBeInTheDocument();
   });
 
-  it("저장은 firstmate 홈 경로 하나를 PUT 하고 성공 표시를 낸다", async () => {
+  it("입력 변경 시 자동 저장 — 저장 버튼 없이 PUT 이 간다", async () => {
     renderView();
     mockSave.mockResolvedValue(settings({ firstmateHome: "/tmp/fm", firstmateHomeExists: true }));
+    expect(screen.queryByRole("button", { name: "저장" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("firstmate 홈 경로"), {
       target: { value: "/tmp/fm" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "저장" }));
     await waitFor(() => expect(mockSave).toHaveBeenCalled());
     expect(mockSave.mock.calls[0]![0]).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [] });
-    expect(await screen.findByText(/저장했습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/저장됨/)).toBeInTheDocument();
   });
 
-  it("존재하지 않는 경로는 서버 판정(INV-3)대로 경고를 보여준다 — 저장 자체는 막지 않는다", () => {
+  it("존재하지 않는 경로는 서버 판정(INV-3)대로 경고를 보여준다", () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     qc.setQueryData(
       qk.settings,
@@ -103,11 +123,9 @@ describe("SettingsView — VSCode 레이아웃 (settings-in-main-area T02)", () 
       </QueryClientProvider>,
     );
     expect(screen.getByRole("alert")).toHaveTextContent(/없거나 폴더가 아닙니다/);
-    // 값이 그대로면 dirty 가 아니다 → 저장 버튼은 비활성(저장 불필요).
-    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();
   });
 
-  it("입력 칸을 비워 저장하면 unset(null) 이 간다 — 기본값으로 돌아가는 유일한 길", async () => {
+  it("입력 칸을 비워 변경하면 unset(null) 이 간다 — 기본값으로 돌아가는 유일한 길", async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     qc.setQueryData(qk.settings, settings({ firstmateHome: "/tmp/fm", firstmateHomeExists: true }));
     render(
@@ -117,7 +135,6 @@ describe("SettingsView — VSCode 레이아웃 (settings-in-main-area T02)", () 
     );
     mockSave.mockResolvedValue(settings({}));
     fireEvent.change(screen.getByLabelText("firstmate 홈 경로"), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "저장" }));
     await waitFor(() => expect(mockSave).toHaveBeenCalled());
     expect(mockSave.mock.calls[0]![0]).toEqual(expect.objectContaining({ firstmateHome: null }));
   });
@@ -145,7 +162,7 @@ describe("SettingsView — VSCode 레이아웃 (settings-in-main-area T02)", () 
     expect(screen.getByPlaceholderText("/Users/x/Documents/ai2/firstmate2")).toBeInTheDocument();
   });
 
-  it("감시 카테고리 — 감시 폴더 추가·삭제가 목록에 반영되고 저장에 실린다", async () => {
+  it("감시 카테고리 — 감시 폴더 추가·삭제가 목록에 반영되고 자동 저장된다", async () => {
     renderView();
     fireEvent.click(screen.getByRole("button", { name: /감시/ }));
     const input = screen.getByLabelText("감시 폴더 추가 경로");
@@ -153,10 +170,7 @@ describe("SettingsView — VSCode 레이아웃 (settings-in-main-area T02)", () 
     fireEvent.click(screen.getByRole("button", { name: "추가" }));
     expect(screen.getByText("/new/root")).toBeInTheDocument();
 
-    mockSave.mockResolvedValue(
-      settings({ effectiveWatchRoots: ["/new/root"] }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    mockSave.mockResolvedValue(settings({ effectiveWatchRoots: ["/new/root"] }));
     await waitFor(() => expect(mockSave).toHaveBeenCalled());
     expect(mockSave.mock.calls[0]![0]).toEqual({ firstmateHome: null, watchRoots: ["/new/root"] });
 
@@ -180,5 +194,16 @@ describe("SettingsView — VSCode 레이아웃 (settings-in-main-area T02)", () 
     expect(screen.getByText("gootte/3")).toBeInTheDocument();
     expect(screen.getByText("jinwooauto/2")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "차단 해제" })).toHaveLength(2);
+  });
+
+  it("테마 카테고리 — 실제 테마 토글이 보이고 클릭해 전환된다", () => {
+    renderViewWithTheme();
+    fireEvent.click(screen.getByRole("button", { name: /테마/ }));
+    const toggles = screen.getAllByRole("button", { name: /테마/ });
+    const themeBtn = toggles.find((b) => b.getAttribute("title")?.startsWith("테마:"));
+    expect(themeBtn).toBeDefined();
+    // system → dark 전환
+    fireEvent.click(themeBtn!);
+    expect(screen.getByText("다크")).toBeInTheDocument();
   });
 });

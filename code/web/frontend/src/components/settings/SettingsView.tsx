@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   IconAlertTriangle,
   IconCheck,
@@ -14,20 +14,19 @@ import {
 } from "@tabler/icons-react";
 import { useBlockedCopies, useSaveSettings, useSettings } from "../../lib/query";
 import { isTauri, pickFolder } from "../../lib/tauri";
+import { ThemeToggle } from "../../theme/ThemeToggle";
 
-/** 좌측 레일의 카테고리 — VSCode 설정 트리와 같은 자리. 🔴 전역 설정이라 프로젝트와 무관하다. */
 type CategoryId = "general" | "watch" | "hidden" | "theme";
 
 const CATEGORIES: {
   id: CategoryId;
   label: string;
   icon: typeof IconHome;
-  soon?: boolean;
 }[] = [
   { id: "general", label: "일반", icon: IconHome },
   { id: "watch", label: "감시", icon: IconFolder },
   { id: "hidden", label: "숨김", icon: IconEyeOff },
-  { id: "theme", label: "테마", icon: IconMoon, soon: true },
+  { id: "theme", label: "테마", icon: IconMoon },
 ];
 
 const CATEGORY_LABEL: Record<CategoryId, string> = {
@@ -37,21 +36,6 @@ const CATEGORY_LABEL: Record<CategoryId, string> = {
   theme: "테마",
 };
 
-/**
- * 설정 화면 — 본문 영역에 그려지는 **전역** 설정 뷰(settings-in-main-area).
- *
- * VSCode 설정과 같은 골격: 좌측 레일(검색 + 카테고리) + 우측 폼. 각 설정 행은
- * 제목 → 설명 → 입력란 세로 스택(VSCode 배치). 저장은 명시적 "저장" 버튼(dirty 판정).
- *
- * 🔴 전역 하나다 — 프로젝트 선택과 무관하게 gear 로 열리는 같은 화면. 값 저장 정책은 그대로
- * `settings.json`(INV-5), 관리대상 문서엔 한 글자도 쓰지 않는다(INV-2). 존재 여부·유효 뿌리는
- * 서버가 응답 때 다시 본 값(`*Exists`·`effectiveWatchRoots`, INV-3)을 그대로 릴레이한다.
- *
- * 입력 칸 동기는 두 순간뿐이다(F4 규율): **마운트 시** (본문 배치라 마운트 = 열림)과 **저장 성공**
- * (본문 배치라 마운트 = 열림)과 **저장 성공**(정규화된 결과 반영). 마운트 후 다른 캐시
- * 무효화(WS 재접 등)가 `useSettings` 를 다시 불러와도 사용자가 타고 있는 미저장 입력을
- * 덮어쓰지 않는다.
- */
 export function SettingsView() {
   const { data } = useSettings();
   const save = useSaveSettings();
@@ -64,19 +48,16 @@ export function SettingsView() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [pickErrorFirstmateHome, setPickErrorFirstmateHome] = useState<string | null>(null);
   const [pickErrorWatchRoots, setPickErrorWatchRoots] = useState<string | null>(null);
-  /** 마운트 시 한 번만 서버 값으로 채운다(F4 — 이후 data 변화는 무시). */
-  const seededRef = useRef(false);
+  /** 시드 완료 — 다음 렌더에서 true, 그 후부터 자동저장 활성화 */
+  const [seeded, setSeeded] = useState(false);
 
   useEffect(() => {
-    if (seededRef.current || !data) return;
-    seededRef.current = true;
+    if (seeded || !data) return;
     setFirstmateHome(data.firstmateHome ?? "");
-    // 감시 폴더 편집기는 실제 감시 중인 뿌리로 미리 채운다(per-folder-watch-roots) — 사용자가
-    // 현재 보고 있는 항목을 보고 뺄 항목을 고르게 한다. 키가 없으면 firstmate 홈에서 파생된 값.
     setWatchRoots(data.effectiveWatchRoots ?? []);
-  }, [data]);
+    setSeeded(true);
+  }, [seeded, data]);
 
-  // 저장 성공 — 서버가 정규화해 돌려준 값을 입력 칸에 앉힌다(2차 사본이 아니라 판정값).
   useEffect(() => {
     if (!save.isSuccess || !save.data) return;
     setFirstmateHome(save.data.firstmateHome ?? "");
@@ -87,7 +68,22 @@ export function SettingsView() {
     firstmateHome !== (data?.firstmateHome ?? "") ||
     watchRoots.join("\u0000") !== (data?.effectiveWatchRoots ?? []).join("\u0000");
 
-  // 존재하지 않는 경로 경고 — 서버가 응답 때 다시 본 값(INV-3)과 폴더 선택 실패 둘을 한 줄로.
+  // 자동 저장 — 변경 시 500ms 뒤 저장, 저장 버튼 없음(VSCode 스타일)
+  useEffect(() => {
+    if (!seeded || !data || !dirty || save.isPending) return;
+    const t = setTimeout(() => {
+      const trimToNull = (v: string) => {
+        const c = v.trim();
+        return c === "" ? null : c;
+      };
+      save.mutate(
+        { firstmateHome: trimToNull(firstmateHome), watchRoots },
+        { onSuccess: () => setSavedAt(Date.now()) },
+      );
+    }, 500);
+    return () => clearTimeout(t);
+  }, [seeded, firstmateHome, watchRoots, dirty, data]);
+
   const firstmateHomeWarning =
     data && data.firstmateHome !== null && !data.firstmateHomeExists
       ? `이 경로가 없거나 폴더가 아닙니다: ${data.firstmateHome}`
@@ -119,25 +115,11 @@ export function SettingsView() {
   };
   const removeRoot = (root: string) => setWatchRoots((prev) => prev.filter((r) => r !== root));
 
-  /** 차단 해제 — 저장된 목록에서 이 slug 를 빼고 다시 저장한다(blockedCopies 부분 갱신). */
   const unblock = (slug: string) => {
     const current = data?.blockedCopies ?? [];
     block.mutate(current.filter((s) => s !== slug));
   };
 
-  const submit = () => {
-    const trimToNull = (v: string) => {
-      const t = v.trim();
-      return t === "" ? null : t;
-    };
-    setSavedAt(null);
-    save.mutate(
-      { firstmateHome: trimToNull(firstmateHome), watchRoots },
-      { onSuccess: () => setSavedAt(Date.now()) },
-    );
-  };
-
-  // 검색 — 카테고리 이름 매칭(VSCode 의 "설정 검색"과 같은 자리). 순수 프론트 필터다.
   const q = query.trim().toLowerCase();
   const visibleCategories = useMemo(
     () =>
@@ -152,7 +134,6 @@ export function SettingsView() {
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
-      {/* 좌측 레일 — 검색 + 카테고리(VSCode 설정 사이드바) */}
       <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-surface">
         <div className="relative p-3 pb-1">
           <IconSearch
@@ -187,28 +168,26 @@ export function SettingsView() {
               >
                 <Icon size={16} stroke={1.75} className={active ? "text-accent" : ""} />
                 <span className="min-w-0 flex-1">{c.label}</span>
-                {c.soon && (
-                  <span className="rounded-full border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold text-muted">
-                    예정
-                  </span>
-                )}
               </button>
             );
           })}
         </nav>
       </aside>
 
-      {/* 우측 폼 */}
       <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
-        <div className="mb-1 flex items-center gap-1.5 text-sm text-muted">
-          <span>설정</span>
-          <span className="opacity-60">›</span>
-          <span>{CATEGORY_LABEL[activeCategory]}</span>
-          {CATEGORIES.find((c) => c.id === activeCategory)?.soon && (
-            <span className="rounded-full border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold text-muted">
-              예정
+        <div className="mb-1 flex items-center justify-between gap-3 text-sm text-muted">
+          <div className="flex items-center gap-1.5">
+            <span>설정</span>
+            <span className="opacity-60">›</span>
+            <span>{CATEGORY_LABEL[activeCategory]}</span>
+          </div>
+          {save.isPending ? (
+            <span className="text-xs text-muted">저장 중…</span>
+          ) : savedAt !== null && save.isSuccess ? (
+            <span className="inline-flex items-center gap-1 text-xs text-accent" role="status">
+              <IconCheck size={14} /> 저장됨
             </span>
-          )}
+          ) : null}
         </div>
         <h2 className="text-2xl font-bold tracking-tight">{CATEGORY_LABEL[activeCategory]}</h2>
         <p className="mt-1 mb-5 text-sm text-muted">
@@ -217,7 +196,7 @@ export function SettingsView() {
           {activeCategory === "watch" && "gootte 가 살펴볼 projects 폴더 뿌리를 하나씩 추가합니다."}
           {activeCategory === "hidden" &&
             "기능 탭에서 숨긴 작업 가지(트리하우스 복사본)를 관리합니다."}
-          {activeCategory === "theme" && "확장성 시연용 — 아직 구현되지 않았습니다."}
+          {activeCategory === "theme" && "화면 테마를 system · dark · light 중 고릅니다."}
         </p>
 
         {activeCategory === "general" && (
@@ -265,7 +244,7 @@ export function SettingsView() {
             title={`감시 폴더 목록 (${watchRoots.length})`}
             hint="목록에서 빼면 그 폴더(와 그 사본)는 더 이상 감시되지 않습니다. 비워 두면 아무것도 감시하지 않습니다."
           >
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col gap-3">
               {watchRoots.map((root) => (
                 <li key={root} className="flex items-center gap-2">
                   <span className="mono min-w-0 flex-1 truncate rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm">
@@ -325,7 +304,7 @@ export function SettingsView() {
             title={`차단한 작업 가지 (${(data?.blockedCopies ?? []).length})`}
             hint="실제 복사본은 그대로 남습니다 — 필요하면 여기서 해제하거나 트리하우스에서 직접 지울 수 있습니다."
           >
-            <ul className="flex flex-col gap-1.5">
+            <ul className="flex flex-col gap-3">
               {(data?.blockedCopies ?? []).map((slug) => (
                 <li key={slug} className="flex items-center gap-2">
                   <span className="mono min-w-0 flex-1 truncate rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm">
@@ -351,14 +330,9 @@ export function SettingsView() {
         {activeCategory === "theme" && (
           <SettingRow
             title="화면 테마"
-            hint="다크 모드는 사이드바 하단 토글에 있습니다. 설정 안에도 두는 자리는 이 자리입니다."
+            hint="사이드바 하단 토글과 같은 설정입니다. system → dark → light 순서로 전환됩니다."
           >
-            <input
-              type="text"
-              disabled
-              value="시스템 기본"
-              className="mono min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm opacity-50"
-            />
+            <ThemeToggle />
           </SettingRow>
         )}
 
@@ -368,28 +342,11 @@ export function SettingsView() {
             <span>{save.error instanceof Error ? save.error.message : "저장 실패"}</span>
           </p>
         )}
-
-        <div className="mt-6 flex items-center justify-end gap-3">
-          {savedAt !== null && save.isSuccess && (
-            <span className="inline-flex items-center gap-1 text-sm text-accent" role="status">
-              <IconCheck size={15} /> 저장했습니다 — 바로 적용됩니다
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!dirty || save.isPending}
-            className="rounded-md bg-accent px-3.5 py-1.5 text-sm font-medium text-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-accent"
-          >
-            저장
-          </button>
-        </div>
       </div>
     </div>
   );
 }
 
-/** 설정 행 하나 — VSCode 배치: 제목 → 설명 → 입력란(세로 스택). */
 function SettingRow({
   title,
   hint,
