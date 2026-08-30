@@ -65,4 +65,20 @@ describe("MainPanel settings toggle (T01)", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByTestId("settings-view")).toBeInTheDocument();
   });
+
+  it("설정 열린 채 프로젝트를 바꾸면(사이드바 클릭) 설정이 닫히고 그 프로젝트 뷰를 보여준다", () => {
+    const { rerender } = renderMain("jinwooauto");
+    fireEvent.click(screen.getByRole("button", { name: "설정" }));
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+
+    // 사이드바에서 다른 프로젝트 선택 → project prop 변경 (App이 setProject로 이 값을 바꾼다)
+    rerender(
+      <MainPanel project="gootte" tab="features" onTab={() => {}} view={null} onView={() => {}} />,
+    );
+    expect(screen.getByRole("heading", { name: "gootte" })).toBeInTheDocument();
+    expect(screen.getByTestId("features-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("settings-view")).not.toBeInTheDocument();
+    // 탭도 다시 보인다
+    expect(screen.getByRole("tab", { name: "features" })).toBeInTheDocument();
+  });
 });
