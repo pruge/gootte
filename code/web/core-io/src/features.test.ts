@@ -565,12 +565,15 @@ describe("readFeatures — 여러 사본 Time: 정방향 병합 (T05)", () => {
     expect(joined(readFeatures([a, b]))?.status).toBe("done");
   });
 
-  it("여러 사본이 서로 다른 시각을 둘 다 갖으면 가장 빠른 start · 가장 늦은 finish", () => {
-    const a = copyDir(tmp, "main", "f", ticketWithTime("2026-08-29T10:00:00+09:00", "2026-08-29T11:00:00+09:00"));
-    const b = copyDir(tmp, "secondmate", "f", ticketWithTime("2026-08-29T09:30:00+09:00", "2026-08-29T13:00:00+09:00"));
+  it("🔴 명시적 Status: wontfix 는 Time 재파생에 덮이지 않는다 — started 만 있어도 dropped(실제 결함 2026-08-31)", () => {
+    // 실물 티켓: `Status: wontfix (2026-08-31 21:52)` + `Time: started=...` (finished 없음).
+    // Time 병합이 상태를 무조건 재파생하던 시절엔 started → in_progress 로 보였다.
+    const wontfixTicket = "# T03 — 취소됨\n\nBlocked by: 없음\n\nTime: started=2026-08-31T09:06:40+09:00\n\nStatus: wontfix (2026-08-31 21:52)\n";
+    const a = copyDir(tmp, "main", "f", wontfixTicket);
+    const b = copyDir(tmp, "secondmate", "f", wontfixTicket);
     const t = readFeatures([a, b])[0]?.newTickets?.[0];
-    expect(t?.startedAt).toBe("2026-08-29T09:30:00+09:00"); // 둘 중 더 빠른 start
-    expect(t?.finishedAt).toBe("2026-08-29T13:00:00+09:00"); // 둘 중 더 늦은 finish
-    expect(joined(readFeatures([a, b]))?.status).toBe("done");
+    expect(t?.startedAt).toBe("2026-08-31T09:06:40+09:00"); // Time 은 병합된다
+    expect(t?.status).toBe("dropped"); // 상태는 명시 Status 가 이긴다
+    expect(joined(readFeatures([a, b]))?.status).toBe("dropped");
   });
 });

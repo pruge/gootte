@@ -381,9 +381,13 @@ function mergeSlug(parts: CopySlug[], slug: string, copies: string[], resolver: 
       // "있다가 없어지는" 갱신 금지, 정방향 전용). 사본별로 각각 읽어 값이 있는 쪽이 이긴다.
       const times = (participantsByPath.get(p) ?? []).map((x) => parseTimeLine(x.content));
       const mergedTimes = mergeTicketTimes(times);
-      // 병합된 Time 줄로 상태 재파생 — parseNewTicket 이 "나중 판" 내용으로 이미 파싱했으나
-      // Time 값은 전체 사본에서 모은 것이므로 상태도 그에 맞춰 다시 정한다.
-      const derivedStatus = deriveStatusFromTime(mergedTimes.startedAt, mergedTimes.finishedAt);
+      // 🔴 상태 재파생은 **명시적 `Status:` 줄이 없을 때만** Time 줄로 한다. `Status: wontfix` 같은
+      // 명시 상태는 문서가 말하는 최종값이라 Time 이 병합돼도 그것을 덮지 않는다(실제 결함 2026-08-31:
+      // wontfix 티켓이 started 만 있어 in_progress 로 보였다). `sourceStatus` 가 곧 명시 줄 유무다.
+      const derivedStatus =
+        merged.sourceStatus === null
+          ? deriveStatusFromTime(mergedTimes.startedAt, mergedTimes.finishedAt)
+          : merged.status;
       return { ...merged, ...mergedTimes, status: derivedStatus };
     });
   const tree = mergeDocTrees(parts.map((p) => p.tree));
