@@ -612,7 +612,7 @@ export function createApp(options: AppOptions = {}): Hono {
       const { path } = c.req.valid("query");
       const proj = resolveSlug(effectiveRoots(), slug);
       if (!proj) return c.json(notFound(slug), 404);
-      const result = readFeatureDoc(proj.copies, feature, path);
+      const result = readFeatureDoc(withWorktrees(proj.copies), feature, path);
       if (!result.ok) {
         const error: ApiError =
           result.reason === "outside"
