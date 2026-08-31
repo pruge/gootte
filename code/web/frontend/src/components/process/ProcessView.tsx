@@ -62,6 +62,17 @@ export function ProcessView({ project }: ProcessViewProps) {
                       안 읽음
                     </span>
                   )}
+                  {/* 🔴 처리중 티켓이 있으면 파란 원점 — 배경색 말고도 붙들 것이 있다(INV-C2).
+                      `allTickets` 로 두 관례(구 issues/ · 신 tickets/)를 합쳐, status 가 in_progress 인
+                      티켓이 하나라도 있으면 점을 찍는다. 판정 자리는 서버(`applyInProgress`) 하나다. */}
+                  {allTickets(f).some((t) => t.status === "in_progress") && (
+                    <span
+                      role="status"
+                      aria-label={`${f.slug} 처리중 티켓 있음`}
+                      title="처리중 티켓 있음"
+                      className="h-2 w-2 shrink-0 rounded-full bg-active"
+                    />
+                  )}
                 </button>
               </li>
             ))}

@@ -100,6 +100,32 @@ describe("ProcessView — 2컬럼(1:2) 읽기 화면(process-two-column/T01)", (
     expect(screen.queryByText("가 티켓")).toBeNull();
   });
 
+  it("🔴 처리중 티켓이 있는 feature 옆에 파란 원점이 찍힌다 — 없으면 점이 없다", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [
+        card(feature("working", [["01", "붙들린 것", "in_progress"]])),
+        card(feature("idle", [["02", "남은 것"]])),
+      ],
+    });
+    const workingBtn = screen.getByRole("button", { name: /working/ });
+    const idleBtn = screen.getByRole("button", { name: /idle/ });
+    expect(within(workingBtn).getByRole("status", { name: /처리중/ })).toBeInTheDocument();
+    expect(within(idleBtn).queryByRole("status", { name: /처리중/ })).toBeNull();
+  });
+
+  it("신관례(tickets/) 티켓이 처리중이어도 왼쪽 원점이 찍힌다 — 두 관례를 합쳐 본다", () => {
+    const nt: Feature = {
+      ...feature("a", []),
+      newTickets: [
+        { ...feature("a", [["01", "x"]])["tickets"][0]!, status: "in_progress" as const },
+      ],
+    };
+    renderProcess({ ...EMPTY_BOARD, active: [card(nt)] });
+    const btn = screen.getByRole("button", { name: /a/ });
+    expect(within(btn).getByRole("status", { name: /처리중/ })).toBeInTheDocument();
+  });
+
   it("오른쪽 컬럼에는 선택된 feature 의 **모든** 티켓이 보인다 — 완료([x])·폐기([-]) 도 숨기지 않는다(캡틴 지시)", () => {
     renderProcess({
       ...EMPTY_BOARD,
