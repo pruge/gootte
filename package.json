@@ -18,6 +18,7 @@
     "dev:stop": "bash scripts/dev-stop.sh",
     "dev:tauri": "bash scripts/tauri-dev.sh",
     "build:tauri": "bash scripts/tauri-build.sh",
-    "e2e": "pnpm -C code/web/frontend e2e"
+    "e2e": "pnpm -C code/web/frontend e2e",
+    "install:tauri": "bash scripts/tauri-install.sh"
   }
 }
