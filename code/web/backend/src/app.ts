@@ -53,7 +53,7 @@ import {
 } from "@gootte/core-io";
 import type { CopyScan } from "@gootte/core";
 import { getProjects, getProjectsPayload, resolveSlug } from "./discover-cache";
-import { recordProjectScan, recordInProgress, snapshotFeatures, snapshotInProgress } from "./snapshot";
+import { recordProjectScan, recordInProgress, snapshotCopiesFor, snapshotFeatures, snapshotInProgress } from "./snapshot";
 
 /**
  * 읽음 기록 대상 문서인가 — **티켓뿐이다**(캡틴 결정 ②). 경로 모양만 본다(INV-4, 문서를 다시 안 읽는다).
@@ -190,8 +190,14 @@ export function createApp(options: AppOptions = {}): Hono {
 
   const featuresFor = (slug: string, copies: readonly string[], path: string): Feature[] => {
     const all = withWorktrees(copies);
-    const hit = snapshotFeatures(dataDir, slug, all);
-    if (hit) return hit;
+    // 🔴 스냅샷 hit 는 copies 를 가리지 않는다(저장 시점 구성의 낡은 값일 수 있다). 새 worktree 가
+    // 생기면(구성이 달라지면) 그 자리에서 다시 읽어 기록한다 — 옛 스냅샷이 worktree 의 문서·Time 을
+    // 빠뜨린 채 즉시 서빙되는 것을 막는다(INV-3 stale 뷰 금지, 캡틴 지시: 새 worktree 자동 갱신).
+    const savedCopies = snapshotCopiesFor(dataDir, slug);
+    if (savedCopies && savedCopies.length === all.length && savedCopies.every((c, i) => c === all[i])) {
+      const hit = snapshotFeatures(dataDir, slug, all);
+      if (hit) return hit;
+    }
     const features = readFeatures([...all]);
     recordProjectScan(dataDir, { slug, path, copies: [...all] }, features);
     return features;

@@ -83,6 +83,17 @@ export function snapshotFeatures(dataDir: string, slug: string, _copies?: readon
 }
 
 /**
+ * 스냅샷에 기록된 프로젝트의 copies(worktree 포함) — `featuresFor` 가 옛 스냅샷을 즉시 서빙하기 전에
+ * **지금 구성과 다른지** 가릴 때 쓴다. 새 worktree 가 생기면 copies 가 달라져 스냅샷을 우회하고
+ * 그 자리에서 다시 읽는다(빈 화면 없이, 15초 재검증까지 기다리지 않게). slug 가 없으면 null.
+ */
+export function snapshotCopiesFor(dataDir: string, slug: string): string[] | null {
+  const doc = loadDoc(dataDir);
+  if (!doc) return null;
+  return doc.projects.find((x) => x.slug === slug)?.copies ?? null;
+}
+
+/**
  * 스캔(또는 재계산) 결과를 스탬프와 함께 한 트랜잭션으로 기록한다 — "언제 어떤 입력에서
  * 계산했나" 가 한 덩어리다(adr/0001 결정 1). 통째로 다시 쓰지만 보존 규칙은 upsert 하나:
  * 같은 slug 는 덮고, 다른 slug 의 행은 그대로 남는다.
@@ -113,8 +124,9 @@ export function updateProjectSnapshot(dataDir: string, slug: string, roots: read
   const projects = discoverProjects([...roots]);
   const project = projects.find((p) => p.slug === slug);
   if (!project) return;
-  const features = readFeatures([...project.copies]);
-  recordProjectScan(dataDir, project, features);
+  const copies = projectCopiesWithWorktrees(project.copies);
+  const features = readFeatures(copies);
+  recordProjectScan(dataDir, { ...project, copies }, features);
 }
 
 /**
@@ -290,6 +302,11 @@ export function createProjectUpdateScheduler(opts: {
 const sameCopies = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((copy, i) => copy === b[i]);
 
+/** discover copies + Claude Code worktree 루트 — 스냅샷 기록·갱신 판정이 늘 이 목록을 본다. */
+function projectCopiesWithWorktrees(copies: readonly string[]): string[] {
+  return [...copies, ...claudeWorktreeRoots(copies)];
+}
+
 const sameStamps = (
   saved: SnapshotStampInfo["stamps"],
   currentCopies: readonly string[],
@@ -326,11 +343,10 @@ export function revalidateSnapshot(
 
   for (const project of currentProjects) {
     const previous = savedBySlug.get(project.slug);
-    if (!previous || !sameCopies(previous.copies, project.copies) || !sameStamps(previous.stamps, project.copies)) {
-      const copies = [...project.copies, ...claudeWorktreeRoots(project.copies)];
+    const copies = projectCopiesWithWorktrees(project.copies);
+    if (!previous || !sameCopies(previous.copies, copies) || !sameStamps(previous.stamps, copies)) {
       const features = readFeatures(copies);
-      const projectWithWorktrees = { ...project, copies };
-      recordProjectScan(dataDir, projectWithWorktrees, features);
+      recordProjectScan(dataDir, { ...project, copies }, features);
       changedProjects.push(project.slug);
       if (!previous) projectsChanged = true;
     }
