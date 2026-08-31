@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   IconAlertTriangle,
   IconCheck,
@@ -9,10 +10,12 @@ import {
   IconHome,
   IconMoon,
   IconPlus,
+  IconRefresh,
   IconSearch,
   IconTrash,
 } from "@tabler/icons-react";
 import { useBlockedCopies, useSaveSettings, useSettings } from "../../lib/query";
+import { refreshBackend } from "../../lib/api";
 import { isTauri, pickFolder } from "../../lib/tauri";
 import { ThemeToggle } from "../../theme/ThemeToggle";
 
@@ -118,6 +121,24 @@ export function SettingsView() {
   const unblock = (slug: string) => {
     const current = data?.blockedCopies ?? [];
     block.mutate(current.filter((s) => s !== slug));
+  };
+
+  // 캐시 강제 새로고침 — 새 worktree·기능 폴더가 생겼는데 감지가 안 될 때 손으로 미는 길(캡틴 지시).
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshDone, setRefreshDone] = useState(false);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshDone(false);
+    try {
+      await refreshBackend();
+      await qc.invalidateQueries();
+      setRefreshDone(true);
+    } catch {
+      // 실패해도 조용히 — 다음 요청이 다시 시도한다
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const q = query.trim().toLowerCase();
@@ -236,6 +257,30 @@ export function SettingsView() {
               )}
             </div>
             {firstmateHomeWarning && <Warning text={firstmateHomeWarning} />}
+          </SettingRow>
+        )}
+
+        {activeCategory === "general" && (
+          <SettingRow
+            title="캐시 다시 읽기"
+            hint="새 worktree 나 새 기능 폴더가 생겼는데 화면에 안 보일 때 누른다 — 백엔드 캐시·스냅샷을 통째로 비우고 다시 스캔한다."
+          >
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-accent hover:text-fg focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <IconRefresh size={16} stroke={1.75} className={refreshing ? "animate-spin" : ""} />
+                {refreshing ? "다시 읽는 중…" : "다시 읽기"}
+              </button>
+              {refreshDone && !refreshing && (
+                <span className="inline-flex items-center gap-1 text-sm text-accent" role="status">
+                  <IconCheck size={15} /> 다시 읽었습니다
+                </span>
+              )}
+            </div>
           </SettingRow>
         )}
 

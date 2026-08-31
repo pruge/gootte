@@ -52,8 +52,16 @@ import {
   resolveWatchRoots,
 } from "@gootte/core-io";
 import type { CopyScan } from "@gootte/core";
-import { getProjects, getProjectsPayload, resolveSlug } from "./discover-cache";
-import { recordProjectScan, recordInProgress, snapshotCopiesFor, snapshotFeatures, snapshotInProgress } from "./snapshot";
+import { getProjects, getProjectsPayload, resolveSlug, clearDiscoverCache } from "./discover-cache";
+import {
+  recordProjectScan,
+  recordInProgress,
+  snapshotCopiesFor,
+  snapshotFeatures,
+  snapshotInProgress,
+  clearSnapshot,
+  clearInProgressMemory,
+} from "./snapshot";
 
 /**
  * 읽음 기록 대상 문서인가 — **티켓뿐이다**(캡틴 결정 ②). 경로 모양만 본다(INV-4, 문서를 다시 안 읽는다).
@@ -402,6 +410,21 @@ export function createApp(options: AppOptions = {}): Hono {
     // (/move 와 같은 규율, INV-1·INV-3).
     try {
       return c.json(SettingsResponse.parse(settingsWithExists(readSettings(dataDir))));
+    } catch (err) {
+      return c.json({ error: planError(err) } satisfies ApiError, 500);
+    }
+  });
+
+  // POST /api/refresh — 캐시·스냅샷을 통째로 비운다. 새 worktree 나 새 기능 폴더가 생겼는데
+  // 감지가 안 될 때(스냅샷이 낡았을 때) 사용자가 손으로 밀어 넣는 길(캡틴 지시 2026-08-31).
+  // 다음 요청부터 각 라우트가 빈 스냅샷 위에서 다시 스캔해 기록한다 — INV-1 파생물이라 지우는
+  // 것만으로 충분하고, 관리대상에는 아무것도 쓰지 않는다(INV-2).
+  app.post("/api/refresh", (c) => {
+    try {
+      clearDiscoverCache(); // discover 메모리 캐시 + 페이로드 TTL
+      clearSnapshot(); // 기능 스냅샷(디스크+메모리)
+      clearInProgressMemory(); // 처리중 관측 메모리
+      return c.json({ ok: true });
     } catch (err) {
       return c.json({ error: planError(err) } satisfies ApiError, 500);
     }

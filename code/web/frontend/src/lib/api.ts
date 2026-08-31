@@ -98,3 +98,11 @@ export const saveSettings = (update: SettingsUpdateRequest): Promise<SettingsRes
     headers: { "content-type": "application/json" },
     body: JSON.stringify(update),
   });
+
+/**
+ * 캐시·스냅샷 강제 초기화(settings-in-main-area, 2026-08-31) — 새 worktree 나 새 기능 폴더가
+ * 생겼는데 감지가 안 될 때 사용자가 손으로 밀어 넣는 길. 다음 요청부터 각 라우트가 다시 스캔한다.
+ */
+export const refreshBackend = async (): Promise<void> => {
+  await send("/api/refresh", z.object({ ok: z.boolean() }), { method: "POST" });
+};

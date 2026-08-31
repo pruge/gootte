@@ -10,6 +10,7 @@ import { qk } from "../src/lib/query";
 vi.mock("../src/lib/api", () => ({
   fetchSettings: vi.fn(),
   saveSettings: vi.fn(),
+  refreshBackend: vi.fn(),
 }));
 
 vi.mock("../src/lib/tauri", () => ({
@@ -17,11 +18,12 @@ vi.mock("../src/lib/tauri", () => ({
   pickFolder: vi.fn(),
 }));
 
-import { fetchSettings, saveSettings } from "../src/lib/api";
+import { fetchSettings, refreshBackend, saveSettings } from "../src/lib/api";
 import { pickFolder } from "../src/lib/tauri";
 
 const mockFetch = vi.mocked(fetchSettings);
 const mockSave = vi.mocked(saveSettings);
+const mockRefresh = vi.mocked(refreshBackend);
 const mockPickFolder = vi.mocked(pickFolder);
 
 function settings(partial: Partial<SettingsResponseType>): SettingsResponseType {
@@ -205,5 +207,15 @@ describe("SettingsView — VSCode 레이아웃 (settings-in-main-area T02)", () 
     // system → dark 전환
     fireEvent.click(themeBtn!);
     expect(screen.getByText("다크")).toBeInTheDocument();
+  });
+
+  it("🔴 캐시 다시 읽기 — 버튼이 refreshBackend 를 부르고 성공 표시를 낸다", async () => {
+    mockRefresh.mockResolvedValue(undefined);
+    renderView();
+    // 일반 카테고리 기본 — "다시 읽기" 버튼
+    const btn = screen.getByRole("button", { name: /다시 읽기/ });
+    fireEvent.click(btn);
+    await waitFor(() => expect(mockRefresh).toHaveBeenCalled());
+    expect(await screen.findByText(/다시 읽었습니다/)).toBeInTheDocument();
   });
 });
