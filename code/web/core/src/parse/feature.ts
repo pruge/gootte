@@ -346,7 +346,7 @@ const NEW_TITLE_NUM_PREFIX = /^T?\d+\s*[—–.-]\s*/i;
 
 // `**Time:** started=<iso> finished=<iso>` 와 `Time: started=<iso> finished=<iso>` 둘 다 —
 // `Status:` 줄과 같은 관대함. 펜스 밖에서만 읽는다(같은 원리).
-const TIME_LINE = /^[ \t]*(?:\*\*)?Time:(?:\*\*)?[ \t]*(.*)$/m;
+const TIME_LINE = /\bTime:[ \t]*(.*)$/m;
 // ISO 8601 — `finished=` 는 optional. `Status:` 완료일과 달리 시각이 없으면 null(지어내지 않는다).
 const TIME_STARTED = /started=(\S+)/;
 const TIME_FINISHED = /finished=(\S+)/;

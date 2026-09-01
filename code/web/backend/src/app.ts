@@ -701,6 +701,10 @@ export function createApp(options: AppOptions = {}): Hono {
     try {
       const target = pickTimeTarget(proj, feature, ticket, action);
       execFileSync(gootteBin, [action, feature, ticket], { cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      // 🔴 CLI 가 티켓 파일(관리대상)에 Time 을 기록했으므로 기능 스냅샷을 비운다 — 스냅샷이
+      // 낡은 finished= 없는 상태를 그대로 서빙하면 완료/시작이 화면에 늦게 보인다(INV-3 stale 뷰).
+      // 다음 read 가 파일에서 다시 계산해 즉시 갱신한다(/api/refresh 와 같은 원칙).
+      clearSnapshot();
       broadcast?.({ kind: "project", project: slug });
       return c.json({ ok: true });
     } catch (err) {
