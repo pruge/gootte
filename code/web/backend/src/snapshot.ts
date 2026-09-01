@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Feature, type Feature as FeatureT, type Project } from "@gootte/contract";
 import type { CopyScan } from "@gootte/core";
 import { z } from "zod";
-import { discoverProjects, headCommit, readFeatures, claudeWorktreeRoots } from "@gootte/core-io";
+import { discoverProjects, headCommit, readFeatures, claudeWorktreeRoots, hasUncommittedChange } from "@gootte/core-io";
 
 /**
  * discover + readFeatures 스캔 결과의 **영구 스냅샷** (fast-cold-start T03, adr/0001).
@@ -312,7 +312,16 @@ const sameStamps = (
   currentCopies: readonly string[],
 ): boolean => {
   if (saved.length !== currentCopies.length) return false;
-  return currentCopies.every((repo, i) => saved[i]?.repo === repo && saved[i]?.head === headCommit(repo));
+  return currentCopies.every((repo, i) => {
+    if (saved[i]?.repo !== repo) return false;
+    if (saved[i]?.head !== headCommit(repo)) return false;
+    // 🔴 `gootte start/end/pause/resume` 은 커밋 없이 티켓 파일만 편집한다(파일만 수정) —
+    // HEAD 가 같아도 `docs/features/` 아래가 바뀌었으면 스냅샷은 낡았다(INV-3). Time: finished=
+    // 기록 직후에도 완료/시작이 화면에 반영되게 git status 로 미커밋 변경을 잡아 재스캔을 일으킨다.
+    // (실제 결함 2026-09-01: `gootte end` 후 재시작해도 처리중으로 보였다 — HEAD 비교만 하던 탓.)
+    if (hasUncommittedChange(repo, "docs/features") === true) return false;
+    return true;
+  });
 };
 
 /**
