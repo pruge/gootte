@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { IconSettings, IconTelescope } from "@tabler/icons-react";
 import type { Tab } from "../../hooks/useUrlState";
 import { MemoView } from "../memo/MemoView";
@@ -14,6 +14,9 @@ interface MainPanelProps {
   onTab: (t: Tab) => void;
   view: string | null;
   onView: (v: string | null) => void;
+  /** 설정 창 열림 — 셸(App)이 들고 있다. 사이드바 클릭(어느 프로젝트든)·ESC 로 닫힌다. */
+  settingsOpen: boolean;
+  onSettingsOpenChange: (open: boolean) => void;
 }
 
 export function MainPanel({
@@ -22,16 +25,23 @@ export function MainPanel({
   onTab,
   view,
   onView,
+  settingsOpen,
+  onSettingsOpenChange,
 }: MainPanelProps) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const headerTitle = settingsOpen ? "Settings" : project;
 
-  // 좌측 사이드바에서 프로젝트를 클릭하면 설정을 닫고 그 프로젝트 뷰를 보여준다 —
-  // 설정이 전역이라 프로젝트 전환과 무관하게 열려 있지만, 진입 후 나가는 가장 자연스러운
-  // 길은 "다른 프로젝트를 고르는 것"이다(캡틴 지시).
+  // ESC — 설정이 열려 있으면 닫는다
   useEffect(() => {
-    setSettingsOpen(false);
-  }, [project]);
+    if (!settingsOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onSettingsOpenChange(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [settingsOpen, onSettingsOpenChange]);
 
   return (
     <section className="flex flex-1 flex-col overflow-hidden">
@@ -45,7 +55,7 @@ export function MainPanel({
           {project && !settingsOpen && <Tabs tab={tab} onTab={onTab} />}
           <button
             type="button"
-            onClick={() => setSettingsOpen((p) => !p)}
+            onClick={() => onSettingsOpenChange(!settingsOpen)}
             aria-label="설정"
             aria-expanded={settingsOpen}
             title="설정"
