@@ -14,6 +14,7 @@ import {
   moveStep,
   saveSettings,
 } from "./api";
+import { useToast } from "./toast";
 
 const PERSIST_KEY = "gootte-query-cache-v1";
 // 영속 캐시가 앱 재시작(브라우저 리로드)에서 살아남는 보관 기한 — 이 안에서는 GC 되지 않는다.
@@ -206,12 +207,26 @@ export function useStepMove(slug: string) {
  */
 export function useRecordTime(project: string) {
   const qc = useQueryClient();
+  const toast = useToast();
+  const label: Record<"start" | "pause" | "resume" | "end", string> = {
+    start: "시작",
+    pause: "일시중단",
+    resume: "재개",
+    end: "완료",
+  };
   const mutation = useMutation({
     mutationFn: (req: { feature: string; ticket: string; action: "start" | "pause" | "resume" | "end" }) =>
       recordTime(project, req.feature, req.ticket, req.action),
-    onSuccess: () => {
+    onSuccess: (_data, req) => {
       void qc.invalidateQueries({ queryKey: ["plan", project] });
       void qc.invalidateQueries({ queryKey: ["features", project] });
+      toast.show(`${label[req.action]} 기록됨 — ${req.feature}/${req.ticket}`);
+    },
+    onError: (err, req) => {
+      toast.show(
+        `${label[req.action]} 실패 — ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+      );
     },
   });
   return { record: mutation.mutate, isPending: mutation.isPending, isError: mutation.isError, error: mutation.error };

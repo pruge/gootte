@@ -4,6 +4,7 @@ import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { ThemeProvider } from "./theme/ThemeProvider";
 import { makeQueryClient } from "./lib/query";
 import { useLiveSync } from "./lib/live";
+import { ToastProvider } from "./lib/toast";
 import { App } from "./App";
 import "./styles/global.css";
 
@@ -20,9 +21,11 @@ createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={makeQueryClient()}>
       <ThemeProvider>
-        <LiveSync>
-          <App />
-        </LiveSync>
+        <ToastProvider>
+          <LiveSync>
+            <App />
+          </LiveSync>
+        </ToastProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,

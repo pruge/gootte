@@ -44,6 +44,7 @@ import {
   markDocRead,
   scanWorkingCopies,
   claudeWorktreeRoots,
+  currentBranch,
   defaultPlanDataDir,
   defaultTreehouseRoot,
   readSettings,
@@ -665,16 +666,25 @@ export function createApp(options: AppOptions = {}): Hono {
    */
   const pickTimeTarget = (proj: { copies: readonly string[]; path: string }, feature: string, ticket: string, action: string): string => {
     const allCopies = withWorktrees(proj.copies);
-    if (action !== "start") {
-      for (const copy of allCopies) {
-        const ticketFile = join(copy, "docs", "features", feature, "tickets", `${ticket}.md`);
-        if (existsSync(ticketFile) && readFileSync(ticketFile, "utf8").includes("started=")) return copy;
-        const num = ticket.replace(/^T/i, "");
-        const issuesDir = join(copy, "docs", "features", feature, "issues");
-        if (existsSync(issuesDir)) {
-          for (const f of readdirSync(issuesDir)) {
-            if (f.startsWith(num) && f.endsWith(".md") && readFileSync(join(issuesDir, f), "utf8").includes("started=")) return copy;
-          }
+    if (action === "start") {
+      // ADR-0002 §1 — 새 start 는 working 상태인 worktree 사본 우선(지금 그 일을 붙들고 있는
+      // 사본에 이어 기록), 없으면 대표(copies[0], main). 여러 working worktree 는 드문 경우로
+      // 아직 dialog 대체 전까지 첫 번째를 쓴다(TODO: 모호함 → dialog, ADR-0002 §2).
+      for (const copy of claudeWorktreeRoots(proj.copies)) {
+        if (currentBranch(copy)) return copy;
+      }
+      return proj.path;
+    }
+    for (const copy of allCopies) {
+      // 신관례(tickets/T<NN>.md): 프론트가 보내는 t.num 은 "01" 꼴이므로 T<NN>.md 로 시도
+      const newTicketFile = join(copy, "docs", "features", feature, "tickets", `T${ticket.replace(/^T/i, "")}.md`);
+      if (existsSync(newTicketFile) && readFileSync(newTicketFile, "utf8").includes("started=")) return copy;
+      // 구관례(issues/<NN>-*.md)
+      const num = ticket.replace(/^T/i, "");
+      const issuesDir = join(copy, "docs", "features", feature, "issues");
+      if (existsSync(issuesDir)) {
+        for (const f of readdirSync(issuesDir)) {
+          if (f.startsWith(num) && f.endsWith(".md") && readFileSync(join(issuesDir, f), "utf8").includes("started=")) return copy;
         }
       }
     }
