@@ -102,6 +102,10 @@ function touchedOnBranch(repo: string): string[] {
     }).replace(/\n+$/, "");
     if (out) {
       uncommitted = out.split("\n")
+        .filter((l) => !l.startsWith("??")) // 🔴 untracked(??) 는 세지 않는다 — 새 파일 존재는 "지금 붙들고
+        // 있음"의 증거가 아니다(실제 결함 2026-09-01: 커밋 안 된 T03.md 가 처리중으로 오판됐다).
+        // `gootte start/end` 는 **tracked** 티켓 파일의 Time 줄을 수정하므로(` M`) 그 변경은 그대로 잡힌다.
+        // untracked 티켓의 처리중 여부는 Time 줄(started=)이 정한다 — git 상태가 아니라 문서가 SoT(INV-1).
         .map((l) => {
           const p = l.includes(" -> ") ? l.split(" -> ").pop()!.trim() : l.slice(3).trim();
           return p;

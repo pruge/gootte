@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Feature, type Feature as FeatureT, type Project } from "@gootte/contract";
 import type { CopyScan } from "@gootte/core";
 import { z } from "zod";
-import { discoverProjects, headCommit, readFeatures, claudeWorktreeRoots, hasUncommittedChange } from "@gootte/core-io";
+import { discoverProjects, headCommit, readFeatures, claudeWorktreeRoots, hasTrackedUncommittedChange } from "@gootte/core-io";
 
 /**
  * discover + readFeatures 스캔 결과의 **영구 스냅샷** (fast-cold-start T03, adr/0001).
@@ -319,7 +319,10 @@ const sameStamps = (
     // HEAD 가 같아도 `docs/features/` 아래가 바뀌었으면 스냅샷은 낡았다(INV-3). Time: finished=
     // 기록 직후에도 완료/시작이 화면에 반영되게 git status 로 미커밋 변경을 잡아 재스캔을 일으킨다.
     // (실제 결함 2026-09-01: `gootte end` 후 재시작해도 처리중으로 보였다 — HEAD 비교만 하던 탓.)
-    if (hasUncommittedChange(repo, "docs/features") === true) return false;
+    // 🔴 untracked(`??`)는 제외한다 — 새 기능 폴더가 미커밋 상태인 프로젝트는 항상 그 파일이
+    // 남아 15초마다 재스캔이 도는 지연이 재발한다(실제 결함 2026-09-01). untracked 의 처리중 여부는
+    // Time 줄이 정하고, tracked 수정(` M`)만이 스냅샷 staleness 의 증거다.
+    if (hasTrackedUncommittedChange(repo, "docs/features") === true) return false;
     return true;
   });
 };

@@ -392,6 +392,41 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     expect(inProgress.working).toBe(1);
     expect(inProgress.unknown).toEqual([]);
   });
+
+  it("🔴 untracked(??) 티켓 파일은 처리중으로 만들지 않는다 — 새 파일 존재는 붙든 증거가 아니다", () => {
+    // 새로 등록한 기능 폴더 전체가 아직 커밋 안 된 경우(git status `??`) — 파일이 있다는 것은
+    // "지금 붙들고 있음"의 증거가 아니다(실제 결함 2026-09-01: jinwooauto worktree 의
+    // live-state-display/T03.md 가 처리중으로 오판됐다). 처리중 여부는 Time 줄(started=)이 정한다.
+    const mainRepo = join(tmp, "projects", PROJECT);
+    initRepo(mainRepo);
+    git(mainRepo, "checkout", "-q", "-b", "main");
+    commit(mainRepo, { "README.md": "base\n" }, "base");
+    const wt = join(mainRepo, ".claude", "worktrees", "fm-x");
+    execFileSync("git", ["-C", mainRepo, "worktree", "add", "-q", "-b", "worktree-fm-x", wt], {
+      stdio: "ignore",
+    });
+    // 관리대상(프로젝트)에는 이 기능이 없고, worktree 에만 untracked 로 존재한다
+    mkdirSync(join(wt, "docs", "features", "billing", "tickets"), { recursive: true });
+    writeFileSync(
+      join(wt, "docs", "features", "billing", "tickets", "T01.md"),
+      "# T01 — 청구서\n",
+    );
+    expect(
+      execFileSync("git", ["-C", wt, "status", "--porcelain", "--untracked-files=all"], { encoding: "utf8" }),
+    ).toContain("?? docs/features/billing/tickets/T01.md");
+
+    const scan = scanWorkingCopies(root, PROJECT, [mainRepo]);
+    const { features, inProgress } = applyInProgress(
+      readFeatures([mainRepo, wt]), // 실제 백엔드는 withWorktrees 로 worktree 를 함께 읽는다
+      scan,
+    );
+    const billing = features.find((f) => f.slug === "billing");
+    expect(billing?.newTickets?.[0]?.status).toBe("pending");
+    expect(inProgress.tickets).toBe(0);
+    // worktree 는 branch 를 가진 working 이지만 티켓에 못 잇는다 → '티켓 미상 · 작업중' 으로 세는
+    // 것은 설계대로다(새 파일 존재는 그 자체로 "붙들고 있음"의 증거가 아니다 — Time 줄이 증거다).
+    expect(inProgress.unknown.map((u) => u.slug)).toContain("alpha/claude/fm-x");
+  });
 });
 
 describe("정렬 — 처리중인 기능이 무리 안에서 위로 온다(티켓 03)", () => {

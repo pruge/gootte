@@ -701,10 +701,14 @@ export function createApp(options: AppOptions = {}): Hono {
     try {
       const target = pickTimeTarget(proj, feature, ticket, action);
       execFileSync(gootteBin, [action, feature, ticket], { cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-      // 🔴 CLI 가 티켓 파일(관리대상)에 Time 을 기록했으므로 기능 스냅샷을 비운다 — 스냅샷이
-      // 낡은 finished= 없는 상태를 그대로 서빙하면 완료/시작이 화면에 늦게 보인다(INV-3 stale 뷰).
-      // 다음 read 가 파일에서 다시 계산해 즉시 갱신한다(/api/refresh 와 같은 원칙).
-      clearSnapshot();
+      // 🔴 CLI 가 티켓 파일(관리대상)에 Time 을 기록했으므로 **이 프로젝트만** 다시 읽어 스냅샷을
+      // 갱신한다 — 스냅샷이 낡은 finished= 없는 상태를 그대로 서빙하면 완료/시작이 화면에 늦게
+      // 보인다(INV-3 stale 뷰). 🔴 `clearSnapshot()`(전체 무효화) 은 쓰지 않는다 — 한 프로젝트의
+      // 기록이 다른 프로젝트까지 전부 재스캔하게 만들면 문서 읽기 시간이 재발한다(실제 결함
+      // 2026-09-01). worktree 의 미커밋 변경도 `sameStamps` 의 git status 검사가 15초 내에
+      // 백그라운드로 잡으므로, 여기서는 당장 보여야 할 이 프로젝트만 고친다.
+      const all = withWorktrees(proj.copies);
+      recordProjectScan(dataDir, { slug, path: proj.path, copies: [...all] }, readFeatures([...all]));
       broadcast?.({ kind: "project", project: slug });
       return c.json({ ok: true });
     } catch (err) {

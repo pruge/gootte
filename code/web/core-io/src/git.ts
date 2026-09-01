@@ -85,6 +85,19 @@ export function hasUncommittedChange(repo: string, path: string): boolean | null
 }
 
 /**
+ * `path`(repo 루트 기준)에 **tracked** 파일의 미커밋 변경이 있는가 — `??`(untracked)는 제외한다.
+ * untracked 파일 존재는 "지금 붙들고 있음"의 증거가 아니므로 스냅샷 staleness 판정에는 쓰지 않는다
+ * (실제 결함 2026-09-01: jinwooauto worktree 의 untracked live-state-display 폴더가 15초마다
+ * 재스캔을 일으켜 문서 읽기 지연이 재발했다). `gootte start/end` 같은 tracked 파일 수정(` M`)은
+ * 잡힌다. 못 읽으면 null(판정 불가 → staleness 판정에서는 "변경 없음"으로 간주한다).
+ */
+export function hasTrackedUncommittedChange(repo: string, path: string): boolean | null {
+  const out = gitSafe(repo, ["status", "--porcelain", "--untracked-files=no", "--", path]);
+  if (out === null) return null;
+  return out.trim().length > 0;
+}
+
+/**
  * `paths`(repo 루트 기준) 중 추적 제외된 것 — `git check-ignore --stdin` 한 번으로 전부 묻는다
  * (T04 §구현 노트, 기능 폴더 단위로 호출 수를 줄인다). 돌려주는 Set 은 `paths` 의 부분집합
  * (매치된 줄을 그대로 돌려주는 `check-ignore` 의 성질을 그대로 쓴다 — 다시 파싱하지 않는다).
