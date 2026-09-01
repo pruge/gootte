@@ -1,5 +1,7 @@
 import { useState } from "react";
 import {
+  IconArrowMoveRight,
+  IconFileText,
   IconFlag,
   IconPlayerPause,
   IconPlayerPlay,
@@ -8,10 +10,13 @@ import {
 import { allTickets } from "@gootte/core";
 import type { Feature, FeatureTicket } from "@gootte/contract";
 import { useHoverTip } from "../HoverTip";
-import { usePlanBoard, useRecordTime } from "../../lib/query";
+import { usePlanBoard, usePlanMove, useRecordTime } from "../../lib/query";
 import { featureDescription } from "../plan/cardTitle";
 import { DocDrawer } from "../features/DocDrawer";
 import { Loading, ErrorMsg } from "../common/states";
+import { MoveDialog } from "../plan/MoveDialog";
+import { featureDocPath } from "../plan/planDoc";
+import { changesBoard, storedArea, type BoardAreaId } from "../plan/areas";
 
 interface ProcessViewProps {
   project: string;
@@ -31,14 +36,32 @@ interface ProcessViewProps {
 export function ProcessView({ project }: ProcessViewProps) {
   const { data, isError, error } = usePlanBoard(project);
   const { record: recordTime } = useRecordTime(project);
+  const move = usePlanMove(project);
   const [selected, setSelected] = useState<string | null>(null);
   const [ticketDoc, setTicketDoc] = useState<{ feature: string; path: string } | null>(null);
+  const [moveDialog, setMoveDialog] = useState<string | null>(null);
 
   if (isError && !data) return <ErrorMsg error={error} />;
   if (!data) return <Loading label="순서를 읽는 중…" />;
 
   const features = data.active.map((c) => c.feature);
   const current = features.find((f) => f.slug === selected) ?? features[0] ?? null;
+
+  // 🔴 판의 다섯 칸 — 카드가 어느 칸에 담겨 있는가가 곧 그 카드의 자리다(contract, `PlanCard` 는
+  // `area` 를 싣지 않는다). 이동 아이콘의 "지금 있는 칸"(`MoveDialog` 의 `from`)을 알기 위해서만
+  // 쓴다 — 자리를 판정하는 자리는 여전히 서버 하나다.
+  const areaOfCard = (slug: string): BoardAreaId | undefined => {
+    const keys: BoardAreaId[] = ["waiting", "active", "reserved", "discarded", "done"];
+    return keys.find((k) => data[k].some((c) => c.feature.slug === slug));
+  };
+
+  /** spec.md 읽기 — plan 탭 카드 머리의 문서 아이콘과 같은 경로(`featureDocPath`)를 연다. */
+  const openSpecDoc = (slug: string) => {
+    const feature = features.find((f) => f.slug === slug);
+    if (!feature) return;
+    const path = featureDocPath(feature);
+    if (path) setTicketDoc({ feature: slug, path });
+  };
 
   return (
     <div className="flex h-full min-h-0">
@@ -93,7 +116,11 @@ export function ProcessView({ project }: ProcessViewProps) {
           <p className="text-sm text-muted">작업 대상에 올라온 것이 없다</p>
         ) : (
           <div>
-            <FeatureHeading feature={current} />
+            <FeatureHeading
+              feature={current}
+              onOpenDoc={openSpecDoc}
+              onRequestMove={setMoveDialog}
+            />
             <ul className="mt-2 divide-y divide-border/30">
               {allTickets(current).map((t) => (
                 <TicketLine
@@ -119,21 +146,50 @@ export function ProcessView({ project }: ProcessViewProps) {
         path={ticketDoc?.path ?? null}
         onClose={() => setTicketDoc(null)}
       />
+
+      {moveDialog && current && (
+        <MoveDialog
+          features={[moveDialog]}
+          from={areaOfCard(moveDialog) ?? "active"}
+          onClose={() => setMoveDialog(null)}
+          onMove={(to) => {
+            setMoveDialog(null);
+            const from = areaOfCard(moveDialog) ?? "active";
+            if (!changesBoard(from, to, data[to].map((c) => c.feature.slug), [moveDialog], data[to].length)) return;
+            move.move({ features: [moveDialog], area: storedArea(to), index: data[to].length });
+          }}
+        />
+      )}
     </div>
   );
 }
 
-/** 오른쪽 컬럼 머리 — 기능 이름 + 설명문구 두 줄(plan 탭 카드 머리와 같은 자리). */
-function FeatureHeading({ feature }: { feature: Feature }) {
+/** 오른쪽 컬럼 머리 — 기능 이름 + 설명문구 두 줄(plan 탭 카드 머리와 같은 자리).
+ * plan 탭 카드 머리의 곁다리 세 가지(티켓 수 · spec.md 읽기 · 이동)를 그대로 실는다(캡틴 지시):
+ * 캡틴이 steps 탭에 머문 채로 "이 기능이 무슨 문서인지" 와 "이 기능을 어디로 보낼지"를 정할 수 있다. */
+function FeatureHeading({
+  feature,
+  onOpenDoc,
+  onRequestMove,
+}: {
+  feature: Feature;
+  onOpenDoc: (slug: string) => void;
+  onRequestMove: (slug: string) => void;
+}) {
   const description = featureDescription(feature.title, feature.slug);
+  // 🔴 issues/(구관례)와 tickets/(신관례, T04) 를 합친다 — 안 그러면 tickets/ 만 쓰는 기능은
+  // "티켓 0" 을 보여준다(`FeatureCard` 와 같은 결함, 2026-08-25).
+  const ticketCount = allTickets(feature).length;
   return (
     <div className="flex flex-col gap-y-0.5 border-b border-border px-2 pb-2">
-      <span
-        className={`mono flex flex-wrap items-center gap-x-2 text-sm ${
-          description ? "text-muted" : "font-medium tracking-tight"
-        }`}
-      >
-        {feature.slug}
+      <div className="flex flex-wrap items-center gap-x-2">
+        <span
+          className={`mono min-w-0 text-sm ${
+            description ? "text-muted" : "font-medium tracking-tight"
+          }`}
+        >
+          {feature.slug}
+        </span>
         {feature.hasUnreadTicket === true && (
           <span
             role="status"
@@ -142,7 +198,28 @@ function FeatureHeading({ feature }: { feature: Feature }) {
             안 읽음
           </span>
         )}
-      </span>
+        <span className="mono shrink-0 text-sm tabular-nums text-muted">티켓 {ticketCount}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => onOpenDoc(feature.slug)}
+            aria-label={`${feature.slug} 문서 열기`}
+            title="이 기능의 spec.md 를 연다"
+            className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <IconFileText size={17} stroke={1.6} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onRequestMove(feature.slug)}
+            aria-label={`${feature.slug} 다른 칸으로 보내기`}
+            title="어느 칸으로 보낼지 고른다"
+            className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <IconArrowMoveRight size={17} stroke={1.6} />
+          </button>
+        </span>
+      </div>
       {description && (
         <span className="break-words text-sm font-medium tracking-tight">{description}</span>
       )}
