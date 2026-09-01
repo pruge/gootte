@@ -13,6 +13,9 @@ interface FeatureSearchBoxProps {
  * 🔴 한글 조합 중에는 확정하지 않는다 — `compositionstart`~`compositionend` 사이에는
  * 입력창의 표시만 갱신하고 `onChange` 를 미룬다. 조립 중인 낱자마다 목록을 다시 그리면
  * 화면이 떨린다(캡틴이 짚은 문제). 조합이 끝나야 그 순간 값 하나로 확정해 올린다.
+ *
+ * 🟢 ESC — 검색 중일 때 한 번 누르면 검색어를 비운다(티켓 03). 포커스는 상자에 남아
+ * 바로 다시 입력할 수 있다. 이미 비어 있으면 아무 일도 하지 않는다.
  */
 export function FeatureSearchBox({ value, onChange }: FeatureSearchBoxProps) {
   const [text, setText] = useState(value);
@@ -42,6 +45,12 @@ export function FeatureSearchBox({ value, onChange }: FeatureSearchBoxProps) {
         onCompositionEnd={(e) => {
           composing.current = false;
           commit(e.currentTarget.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            clear();
+          }
         }}
         placeholder="기능·티켓 검색"
         aria-label="기능·티켓 검색"

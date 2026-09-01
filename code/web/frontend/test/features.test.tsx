@@ -477,6 +477,14 @@ describe("FeaturesView — 검색 상자가 기능과 티켓을 찾아 준다(a-
     expect(screen.queryByRole("heading", { name: "로그인" })).toBeNull();
   });
 
+  it("🔴 기능 이름(title)으로도 걸린다 — slug 가 아닌 표제 글자로도 찾는다", () => {
+    renderView(SEARCH_DATA);
+    // plan-board 의 title 은 "계획은 판 위에서 움직인다" — 표제의 글자로도 걸려야 한다.
+    fireEvent.change(searchBox(), { target: { value: "움직인다" } });
+    expect(screen.getByRole("heading", { name: "계획은 판 위에서 움직인다" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "결제" })).toBeNull();
+  });
+
   it("걸린 자리가 노란 칩(<mark>)으로 뜬다 — 글자 크기는 그대로, 원문 대소문자 그대로 보인다", () => {
     renderView(SEARCH_DATA);
     fireEvent.change(searchBox(), { target: { value: "결제" } });
@@ -549,6 +557,29 @@ describe("FeaturesView — 검색 상자가 기능과 티켓을 찾아 준다(a-
     fireEvent.click(screen.getByRole("button", { name: "검색어 지우기" }));
     expect(screen.getByRole("heading", { name: "로그인" })).toBeInTheDocument();
     expect((searchBox() as HTMLInputElement).value).toBe("");
+  });
+
+  it("🔴 ESC 를 누르면 검색어가 지워지고 원래 목록으로 돌아온다(티켓 03)", () => {
+    renderView(SEARCH_DATA);
+    fireEvent.change(searchBox(), { target: { value: "소셜" } });
+    expect(screen.queryByRole("heading", { name: "결제" })).toBeNull();
+    fireEvent.keyDown(searchBox(), { key: "Escape" });
+    expect((searchBox() as HTMLInputElement).value).toBe("");
+    expect(screen.getByRole("heading", { name: "로그인" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "결제" })).toBeInTheDocument();
+  });
+
+  it("🔴 ESC 후에도 포커스가 검색 상자에 남는다 — 바로 다시 칠 수 있다(티켓 03)", () => {
+    renderView(SEARCH_DATA);
+    const input = searchBox() as HTMLInputElement;
+    input.focus();
+    fireEvent.change(input, { target: { value: "소셜" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(input).toHaveFocus();
+    expect(input.value).toBe("");
+    // 다시 검색이 바로 들어간다 — 포커스가 상자에 있어야 타이핑이 그대로 쌓인다.
+    fireEvent.change(input, { target: { value: "결제" } });
+    expect(screen.getByRole("heading", { name: "결제" })).toBeInTheDocument();
   });
 
   it("🔴 미해소 사본 구역은 검색과 무관하게 그대로 선다 — 경고를 검색어로 숨길 수 없다", () => {
