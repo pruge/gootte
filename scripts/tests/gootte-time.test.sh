@@ -41,7 +41,7 @@ make_fixture() {
   printf '%s\n' "$@" > "$dir/docs/features/$feature/tickets/$ticket_file"
 }
 
-# case 1: start — 제목 뒤(본문 앞)에 Time: started=<ISO> 삽입
+# case 1: start — 제목 뒤(본문 앞)에 **Time:** started=<ISO> 삽입
 FIXTURE1="$TMP_DIR/case1"
 make_fixture "$FIXTURE1" "my-feature" "T01.md" \
   "# T01 — 실물 모양 티켓" \
@@ -56,18 +56,18 @@ make_fixture "$FIXTURE1" "my-feature" "T01.md" \
   || fail "case1: start 가 실패함: $(cat "$TMP_DIR/case1.err")"
 
 TICKET1="$FIXTURE1/docs/features/my-feature/tickets/T01.md"
-grep -qE '^Time: started=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$' "$TICKET1" \
-  || fail "case1: Time: started=<ISO> 줄이 없음"
+grep -qE '^\*\*Time:\*\* started=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$' "$TICKET1" \
+  || fail "case1: **Time:** started=<ISO> 줄이 없음"
 grep -n '^Status: in-progress$' "$TICKET1" >/dev/null || fail "case1: Status: 줄이 사라짐"
-TIME_LINE_NO="$(grep -n '^Time:' "$TICKET1" | head -1 | cut -d: -f1)"
+TIME_LINE_NO="$(grep -n '^\*\*Time:\*\*' "$TICKET1" | head -1 | cut -d: -f1)"
 STATUS_LINE_NO="$(grep -n '^Status:' "$TICKET1" | head -1 | cut -d: -f1)"
-[ "$TIME_LINE_NO" -eq $((STATUS_LINE_NO + 1)) ] || fail "case1: Time: 줄이 Status: 블록 바로 뒤가 아님"
-echo "✅ case 1 (start → Time: started=<ISO> 삽입, Status: 블록 뒤) OK"
+[ "$TIME_LINE_NO" -eq $((STATUS_LINE_NO + 1)) ] || fail "case1: **Time:** 줄이 Status: 블록 바로 뒤가 아님"
+echo "✅ case 1 (start → **Time:** started=<ISO> 삽입, Status: 블록 뒤) OK"
 
 # case 2: end — 같은 줄에 finished=<ISO> 추가
 (cd "$FIXTURE1" && "$GOOTTE_BIN" end my-feature T01) >"$TMP_DIR/case2.out" 2>"$TMP_DIR/case2.err" \
   || fail "case2: end 가 실패함: $(cat "$TMP_DIR/case2.err")"
-grep -qE '^Time: started=\S+ finished=\S+$' "$TICKET1" || fail "case2: finished= 가 같은 줄에 안 붙음"
+grep -qE '^\*\*Time:\*\* started=\S+ finished=\S+$' "$TICKET1" || fail "case2: finished= 가 같은 줄에 안 붙음"
 echo "✅ case 2 (end → 같은 줄에 finished=<ISO> 추가) OK"
 
 # case 3: 이미 시작된 티켓에 start → 에러, exit 0 아님, 파일 안 바뀜
@@ -130,8 +130,8 @@ make_fixture "$FIXTURE7" "my-feature" "T03.md" \
   "Body."
 (cd "$FIXTURE7" && "$GOOTTE_BIN" start my-feature 03) >"$TMP_DIR/case7.out" 2>"$TMP_DIR/case7.err" \
   || fail "case7: 숫자만 인자(03)로 start 가 실패함: $(cat "$TMP_DIR/case7.err")"
-grep -qE '^Time: started=' "$FIXTURE7/docs/features/my-feature/tickets/T03.md" \
-  || fail "case7: 숫자만 인자로도 Time: 줄이 삽입돼야 함"
+grep -qE '^\*\*Time:\*\* started=' "$FIXTURE7/docs/features/my-feature/tickets/T03.md" \
+  || fail "case7: 숫자만 인자로도 **Time:** 줄이 삽입돼야 함"
 echo "✅ case 7 (티켓 인자 T01/01 둘 다 지원) OK"
 
 # case 8: 제목만 있고 Status: 블록이 없는 티켓 — 제목 바로 뒤에 삽입
@@ -145,8 +145,8 @@ make_fixture "$FIXTURE8" "my-feature" "T04.md" \
 (cd "$FIXTURE8" && "$GOOTTE_BIN" start my-feature T04) >"$TMP_DIR/case8.out" 2>"$TMP_DIR/case8.err" \
   || fail "case8: start 가 실패함: $(cat "$TMP_DIR/case8.err")"
 TICKET8="$FIXTURE8/docs/features/my-feature/tickets/T04.md"
-[ "$(sed -n '2p' "$TICKET8")" = "$(grep '^Time:' "$TICKET8")" ] \
-  || fail "case8: Status: 없는 티켓은 제목 바로 다음 줄에 Time: 이 와야 함"
+[ "$(sed -n '2p' "$TICKET8")" = "$(grep '^\*\*Time:\*\*' "$TICKET8")" ] \
+  || fail "case8: Status: 없는 티켓은 제목 바로 다음 줄에 **Time:** 이 와야 함"
 echo "✅ case 8 (Status: 없는 티켓 → 제목 바로 뒤에 삽입) OK"
 
 # case 9: 구관례(issues/) 티켓 — **Time:** 줄 기록, 메타데이터 블록 뒤 삽입
@@ -207,7 +207,7 @@ FIXTURE11B="$TMP_DIR/case11b"
 make_fixture "$FIXTURE11B" "my-feature" "T07.md" "# T07 — --at= 형태" "" "## Goal" "" "Body."
 (cd "$FIXTURE11B" && "$GOOTTE_BIN" start my-feature T07 --at=90m) >"$TMP_DIR/case11b.out" 2>"$TMP_DIR/case11b.err" \
   || fail "case11b: --at=90m 실패: $(cat "$TMP_DIR/case11b.err")"
-grep -qE '^Time: started=[0-9]{4}-' "$FIXTURE11B/docs/features/my-feature/tickets/T07.md" || fail "case11b: --at= 형태 미작동"
+grep -qE '^\*\*Time:\*\* started=[0-9]{4}-' "$FIXTURE11B/docs/features/my-feature/tickets/T07.md" || fail "case11b: --at= 형태 미작동"
 # 잘못된 값 → 에러
 if (cd "$FIXTURE11B" && "$GOOTTE_BIN" start my-feature T07 --at abc) >"$TMP_DIR/case11c.out" 2>"$TMP_DIR/case11c.err"; then
   fail "case11c: 잘못된 --at 값이 에러여야 함"
@@ -223,7 +223,7 @@ TICKET12="$FIXTURE12/docs/features/my-feature/tickets/T08.md"
   || fail "case12: start 실패"
 (cd "$FIXTURE12" && "$GOOTTE_BIN" pause my-feature T08) >"$TMP_DIR/case12p.out" 2>"$TMP_DIR/case12p.err" \
   || fail "case12: pause 실패: $(cat "$TMP_DIR/case12p.err")"
-grep -qE '^Time: started=\S+ paused=\S+$' "$TICKET12" || fail "case12: paused= 가 같은 줄에 안 붙음"
+grep -qE '^\*\*Time:\*\* started=\S+ paused=\S+$' "$TICKET12" || fail "case12: paused= 가 같은 줄에 안 붙음"
 # 중복 pause → 에러(이미 일시중단)
 if (cd "$FIXTURE12" && "$GOOTTE_BIN" pause my-feature T08) >"$TMP_DIR/case12p2.out" 2>"$TMP_DIR/case12p2.err"; then
   fail "case12: 일시중단 중 pause 가 성공하면 안 됨"
@@ -236,14 +236,14 @@ grep -q 'resumed=' "$TICKET12" && fail "case12: end 가 실패했는데 resumed=
 # resume → paused+resumed 쌍 완성
 (cd "$FIXTURE12" && "$GOOTTE_BIN" resume my-feature T08) >"$TMP_DIR/case12r.out" 2>"$TMP_DIR/case12r.err" \
   || fail "case12: resume 실패: $(cat "$TMP_DIR/case12r.err")"
-grep -qE '^Time: started=\S+ paused=\S+ resumed=\S+$' "$TICKET12" || fail "case12: resumed= 가 같은 줄에 안 붙음"
+grep -qE '^\*\*Time:\*\* started=\S+ paused=\S+ resumed=\S+$' "$TICKET12" || fail "case12: resumed= 가 같은 줄에 안 붙음"
 # resume 후 end → 정상
 (cd "$FIXTURE12" && "$GOOTTE_BIN" end my-feature T08) >"$TMP_DIR/case12e2.out" 2>"$TMP_DIR/case12e2.err" \
   || fail "case12: resume 후 end 실패: $(cat "$TMP_DIR/case12e2.err")"
-grep -qE '^Time: started=\S+ paused=\S+ resumed=\S+ finished=\S+$' "$TICKET12" || fail "case12: finished= 가 같은 줄에 안 붙음"
+grep -qE '^\*\*Time:\*\* started=\S+ paused=\S+ resumed=\S+ finished=\S+$' "$TICKET12" || fail "case12: finished= 가 같은 줄에 안 붙음"
 echo "✅ case 12 (pause → 중복pause 에러 → end 에러 → resume → end) OK"
 
-# case 13: 다중 줄 **Blocked by:** 문단 — Time: 을 문단 중간이 아니라 문단 뒤(끝)에 삽입
+# case 13: 다중 줄 **Blocked by:** 문단 — **Time:** 을 문단 중간이 아니라 문단 뒤(끝)에 삽입
 FIXTURE13="$TMP_DIR/case13"
 make_fixture "$FIXTURE13" "my-feature" "T09.md" \
   "# T09 — 다중 줄 Blocked by" \
@@ -257,13 +257,13 @@ make_fixture "$FIXTURE13" "my-feature" "T09.md" \
 TICKET13="$FIXTURE13/docs/features/my-feature/tickets/T09.md"
 (cd "$FIXTURE13" && "$GOOTTE_BIN" start my-feature T09) >"$TMP_DIR/case13.out" 2>"$TMP_DIR/case13.err" \
   || fail "case13: start 실패: $(cat "$TMP_DIR/case13.err")"
-# Time: 줄이 문단 마지막 줄(5) 뒤에 와야 한다 — 문단을 쪼개지 않은 자리
-TIME13="$(grep -n '^Time:' "$TICKET13" | head -1 | cut -d: -f1)"
-[ "$TIME13" -eq 5 ] || fail "case13: Time: 이 문단 마지막 줄(5) 뒤가 아님 — ${TIME13}번 줄"
+# **Time:** 줄이 문단 마지막 줄(5) 뒤에 와야 한다 — 문단을 쪼개지 않은 자리
+TIME13="$(grep -n '^\*\*Time:\*\*' "$TICKET13" | head -1 | cut -d: -f1)"
+[ "$TIME13" -eq 5 ] || fail "case13: **Time:** 이 문단 마지막 줄(5) 뒤가 아님 — ${TIME13}번 줄"
 [ "$(sed -n '3p' "$TICKET13")" = '**Blocked by:** T01 — T01이 먼저 와야 한다. 지금 이' ] \
   || fail "case13: Blocked by 문단 첫 줄이 깨짐"
 [ "$(sed -n '4p' "$TICKET13")" = '티켓만 먼저 착지하면 경로가 없어진다.' ] \
   || fail "case13: Blocked by 문단 둘째 줄이 깨짐"
-echo "✅ case 13 (다중 줄 **Blocked by:** 문단 → Time: 을 문단 끝에 삽입, 문단 보존) OK"
+echo "✅ case 13 (다중 줄 **Blocked by:** 문단 → **Time:** 을 문단 끝에 삽입, 문단 보존) OK"
 
 echo "✅ scripts/tests/gootte-time.test.sh 전체 통과 (구관례·--at·pause/resume 포함)"

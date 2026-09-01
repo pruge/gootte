@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # bin/gootte — 독립 bash CLI. gootte TS 모노레포의 워크스페이스 패키지를 전혀 참조하지 않는다.
 #
-# gootte start  [--at <TIME>] <feature-slug> <ticket> # 티켓 문서에 Time: started=<ISO> 삽입
+# gootte start  [--at <TIME>] <feature-slug> <ticket> # 티켓 문서에 **Time:** started=<ISO> 삽입
 # gootte pause  [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 paused=<ISO> 추가(일시 중단)
 # gootte resume [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 resumed=<ISO> 추가(재개)
 # gootte end    [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 finished=<ISO> 추가
@@ -15,9 +15,13 @@
 #
 # 이 스크립트가 찾는 경로는 실행 위치(cwd) 기준이다 — <프로젝트> 인자는 받지 않는다.
 # git 루트가 있으면 그 루트, 없으면 cwd 를 기준으로 티켓을 찾는다. 두 관례를 본다:
-#   - 신관례: docs/features/<feature-slug>/tickets/T<NN>.md  (Time: 줄 기록)
+#   - 신관례: docs/features/<feature-slug>/tickets/T<NN>.md  (**Time:** 줄 기록)
 #   - 구관례: docs/features/<feature-slug>/issues/<NN>-*.md  (**Time:** 줄 기록)
-# drop 은 두 관례 모두에서 Status: 줄을 갱신한다(구관례는 **Status:**).
+# drop 은 두 관례 모두에서 **Status:** 줄을 갱신한다.
+#
+# 🔴 **Time:** / **Status:** 굵은 표기는 장식이 아니다 — 제목 뒤에 이어 쓰는 줄(특히 다중 줄
+# **Blocked by:** 문단 뒤)이 본문에 붙어 읽히지 않게, Blocked by 와 같은 표기로 세운다. 파서는
+# 굵은/일반 둘 다 읽는다(core `STATUS_LINE`·`TIME_LINE` 의 `(?:\*\*)?`).
 
 set -euo pipefail
 
@@ -227,9 +231,8 @@ cmd_start() {
   local iso
   iso="$(resolve_time "$at")" || exit 1
 
-  # 구관례(issues/)는 굵은 **Time:** 표기를 쓴다 — 신관례(tickets/)는 Time:.
-  local time_label="Time:"
-  [[ "$file" == */issues/* ]] && time_label="**Time:**"
+  # 두 관례 모두 굵은 **Time:** — Blocked by 와 같은 표기로 본문에 붙어 읽히지 않게 한다.
+  local time_label="**Time:**"
 
   local tmp
   tmp="$(mktemp)"
@@ -402,13 +405,9 @@ drop_file() {
       return 1
     fi
   fi
-  # 구관례(issues/)는 굵은 **Status:**, 신관례(tickets/)는 Status: — 단 기존 줄이 있으면 그 bold 를 따른다.
-  local status_label="Status:"
-  [[ "$file" == */issues/* ]] && status_label="**Status:**"
-  local new_line="$status_label wontfix ($drop_date)"
-  if [ -n "$existing_line_no" ] && printf '%s' "$existing_line" | grep -qiE '^\*\*status:'; then
-    new_line="**Status:** wontfix ($drop_date)"
-  fi
+  # 두 관례 모두 굵은 **Status:** — Blocked by 와 같은 표기로 본문에 붙어 읽히지 않게 한다.
+  # 기존 줄이 일반 `Status:` 여도 **Status:** 로 덮어 쓴다(파서는 둘 다 읽는다).
+  local new_line="**Status:** wontfix ($drop_date)"
   local tmp
   tmp="$(mktemp)"
   if [ -n "$existing_line_no" ]; then
