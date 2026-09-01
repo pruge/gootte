@@ -353,6 +353,43 @@ export const ApiError = z.object({
 });
 export type ApiError = z.infer<typeof ApiError>;
 
+// ── 메모 (memo-pad) — gootte 자기 저장소 ─────────────────
+/**
+ * 메모 한 장 — 캡틴이 기능을 쓰기 전에 떠오르는 생각을 짧게 적어 두는 칸(INV-5:
+ * 어디 문서에도 없고 사람만 아는 값이라 저장할 자격이 있다). 관리대상(INV-2)이 아니라
+ * gootte 자기 저장소(`GOOTTE_DATA_DIR`/memos/<project>.json)에만 쓴다.
+ * `content` 는 사람이 적은 그대로(verbatim, INV-4 요약 없음).
+ */
+export const Memo = z.object({
+  /** 전역 고유 id — `<epochMs>-<counter>`. 화면 키·삭제 대상 식별에만 쓴다. */
+  id: z.string(),
+  content: z.string(),
+  /** 작성 시각(ISO 8601, UTC) — 좌측 날짜 목록의 그룹 키. */
+  createdAt: z.string(),
+  /** 마지막 수정 시각(ISO 8601, UTC). 저장 안 하고 새로 만든 것과 구분하려고 둔다. */
+  updatedAt: z.string(),
+});
+export type Memo = z.infer<typeof Memo>;
+
+/** 프로젝트 메모 목록 — 최신순 정렬은 화면 몫(서버는 저장 순서 그대로 싣는다). */
+export const MemosResponse = z.object({
+  project: z.string(),
+  memos: z.array(Memo).default([]),
+});
+export type MemosResponse = z.infer<typeof MemosResponse>;
+
+/** 메모 쓰기 — 새로 쓰기(POST)·고치기(PUT) 같은 칸을 쓴다. 내용 그대로 저장한다(INV-4). */
+export const MemoWriteRequest = z.object({
+  content: z.string(),
+});
+export type MemoWriteRequest = z.infer<typeof MemoWriteRequest>;
+
+/** 메모 삭제 응답. */
+export const MemoDeleteResponse = z.object({
+  ok: z.boolean(),
+});
+export type MemoDeleteResponse = z.infer<typeof MemoDeleteResponse>;
+
 // ── 계획 판(plan-board) — 다섯 자리 ──────────────────────
 // 옛 배선(트랙·순위·왜·어긋남·드래그 경고·extra 큐)은 여기 있었고 plan-board/01 이 걷어냈다.
 // 아래가 그 자리에 서는 다섯 자리 모델이다(docs/features/plan-board/spec.md §저장 형태).

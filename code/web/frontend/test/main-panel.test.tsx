@@ -15,6 +15,9 @@ vi.mock("../src/components/plan/PlanView", () => ({
 vi.mock("../src/components/process/ProcessView", () => ({
   ProcessView: () => <div data-testid="process-view">ProcessView</div>,
 }));
+vi.mock("../src/components/memo/MemoView", () => ({
+  MemoView: () => <div data-testid="memo-view">MemoView</div>,
+}));
 
 function renderMain(project: string | null = "jinwooauto") {
   return render(
@@ -80,5 +83,15 @@ describe("MainPanel settings toggle (T01)", () => {
     expect(screen.queryByTestId("settings-view")).not.toBeInTheDocument();
     // 탭도 다시 보인다
     expect(screen.getByRole("tab", { name: "features" })).toBeInTheDocument();
+  });
+
+  it("memo 탭이면 MemoView 가 렌더된다 — memo-pad 는 프로젝트별 고유 키로 붙는다", () => {
+    render(
+      <MainPanel project="jinwooauto" tab="memo" onTab={() => {}} view={null} onView={() => {}} />,
+    );
+    expect(screen.getByTestId("memo-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("features-view")).not.toBeInTheDocument();
+    // 탭 줄에 memo 가 있다
+    expect(screen.getByRole("tab", { name: "memo" })).toBeInTheDocument();
   });
 });

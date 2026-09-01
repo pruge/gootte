@@ -1,6 +1,7 @@
 import type { Tab } from "../../hooks/useUrlState";
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: "memo", label: "memo" },
   { id: "features", label: "features" },
   { id: "plan", label: "plan" },
   { id: "process", label: "steps" },

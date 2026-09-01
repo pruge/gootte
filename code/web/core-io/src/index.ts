@@ -9,3 +9,4 @@ export * from "./backlog";
 export * from "./plan-store";
 export * from "./settings-store";
 export * from "./secondmates";
+export * from "./memo-store";

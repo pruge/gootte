@@ -13,6 +13,10 @@ import {
   movePlanCards,
   moveStep,
   saveSettings,
+  fetchMemos,
+  createMemo,
+  updateMemo,
+  deleteMemo,
 } from "./api";
 import { useToast } from "./toast";
 
@@ -74,6 +78,7 @@ export const qk = {
   projects: ["projects"] as const,
   features: (slug: string) => ["features", slug] as const,
   settings: ["settings"] as const,
+  memos: (slug: string) => ["memos", slug] as const,
   /**
    * 🔴 자리 둘을 동시에 만족해야 하는 열쇠다(`lib/live.ts`): 맨 앞이 `"plan"` 이라 계획 DB 변경
    * (`kind:"plan"`)에 걸리고, slug 를 담고 있어 그 프로젝트 문서 변경(`kind:"project"`)에도 걸린다.
@@ -131,6 +136,42 @@ export function useFeatures(slug: string | null) {
     queryKey: qk.features(slug ?? ""),
     queryFn: () => fetchFeatures(slug as string),
     enabled: slug !== null,
+  });
+}
+
+/** 프로젝트 메모(memo-pad) — gootte 자기 저장소에서 읽는다. */
+export function useMemos(slug: string | null) {
+  return useQuery({
+    queryKey: qk.memos(slug ?? ""),
+    queryFn: () => fetchMemos(slug as string),
+    enabled: slug !== null,
+  });
+}
+
+/** 새 메모 — 성공하면 메모 목록을 무효화해 다시 읽는다(INV-3). */
+export function useCreateMemo(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (content: string) => createMemo(slug, content),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.memos(slug) }),
+  });
+}
+
+/** 메모 고치기 — 내용만 바꾼다. */
+export function useUpdateMemo(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) => updateMemo(slug, id, content),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.memos(slug) }),
+  });
+}
+
+/** 메모 지우기. */
+export function useDeleteMemo(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteMemo(slug, id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.memos(slug) }),
   });
 }
 

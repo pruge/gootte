@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type Tab = "features" | "plan" | "process";
-const TABS: readonly Tab[] = ["features", "plan", "process"];
+export type Tab = "memo" | "features" | "plan" | "process";
+const TABS: readonly Tab[] = ["memo", "features", "plan", "process"];
 export interface UrlState {
   project: string | null;
   tab: Tab;

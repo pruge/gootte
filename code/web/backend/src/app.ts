@@ -14,6 +14,10 @@ import {
   StepMoveRequest,
   SettingsResponse,
   SettingsUpdateRequest,
+  MemosResponse,
+  Memo,
+  MemoWriteRequest,
+  MemoDeleteResponse,
   type ApiError,
   type Feature,
   type Settings,
@@ -54,6 +58,10 @@ import {
   suggestFirstmateHome,
   effectiveProjectRoots,
   resolveWatchRoots,
+  readMemos,
+  appendMemo,
+  updateMemo,
+  deleteMemo,
 } from "@gootte/core-io";
 import type { CopyScan } from "@gootte/core";
 import { getProjects, getProjectsPayload, resolveSlug, clearDiscoverCache } from "./discover-cache";
@@ -758,6 +766,76 @@ export function createApp(options: AppOptions = {}): Hono {
       return c.json({ error: `시간 기록 실패: ${err instanceof Error ? err.message : String(err)}` } satisfies ApiError, 500);
     }
   });
+
+  // ── 메모 (memo-pad) — gootte 자기 저장소 CRUD ──────────
+  // 관리대상(INV-2)이 아니라 `GOOTTE_DATA_DIR`/memos/<project>.json 에만 쓴다. 사람만 아는
+  // 캡틴의 생각(INV-5)이라 저장할 자격이 있고, 화면이 이 API 로 추가·수정·삭제한다.
+  // 🔴 시각은 요청마다의 `now()`(ISO 8601 UTC)로 찍는다 — `nowStamp`(판 완료용)와 다르다.
+
+  // GET /api/memos/:slug → MemosResponse
+  app.get("/api/memos/:slug", zValidator("param", slugParam), (c) => {
+    const { slug } = c.req.valid("param");
+    const proj = resolveSlug(effectiveRoots(), slug);
+    if (!proj) return c.json(notFound(slug), 404);
+    try {
+      return c.json(MemosResponse.parse({ project: slug, memos: readMemos(dataDir, slug) }));
+    } catch (err) {
+      return c.json({ error: planError(err) } satisfies ApiError, 500);
+    }
+  });
+
+  // POST /api/memos/:slug → Memo (새 메모 한 장 — 작성 순서대로 목록 뒤에 붙는다)
+  app.post("/api/memos/:slug", zValidator("param", slugParam), zValidator("json", MemoWriteRequest), (c) => {
+    const { slug } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const proj = resolveSlug(effectiveRoots(), slug);
+    if (!proj) return c.json(notFound(slug), 404);
+    try {
+      const memo = appendMemo(dataDir, slug, body, now());
+      return c.json(Memo.parse(memo));
+    } catch (err) {
+      return c.json({ error: planError(err) } satisfies ApiError, 500);
+    }
+  });
+
+  // PUT /api/memos/:slug/:id → Memo (한 장 고치기 — 내용만 바꾸고 수정 시각을 고친다)
+  app.put(
+    "/api/memos/:slug/:id",
+    zValidator("param", slugParam.extend({ id: z.string().min(1) })),
+    zValidator("json", MemoWriteRequest),
+    (c) => {
+      const { slug, id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      const proj = resolveSlug(effectiveRoots(), slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      try {
+        const memo = updateMemo(dataDir, slug, id, body, now());
+        if (!memo) return c.json({ error: `메모 없음: ${id}` } satisfies ApiError, 404);
+        return c.json(Memo.parse(memo));
+      } catch (err) {
+        return c.json({ error: planError(err) } satisfies ApiError, 500);
+      }
+    },
+  );
+
+  // DELETE /api/memos/:slug/:id → MemoDeleteResponse
+  app.delete(
+    "/api/memos/:slug/:id",
+    zValidator("param", slugParam.extend({ id: z.string().min(1) })),
+    (c) => {
+      const { slug, id } = c.req.valid("param");
+      const proj = resolveSlug(effectiveRoots(), slug);
+      if (!proj) return c.json(notFound(slug), 404);
+      try {
+        if (!deleteMemo(dataDir, slug, id)) {
+          return c.json({ error: `메모 없음: ${id}` } satisfies ApiError, 404);
+        }
+        return c.json(MemoDeleteResponse.parse({ ok: true }));
+      } catch (err) {
+        return c.json({ error: planError(err) } satisfies ApiError, 500);
+      }
+    },
+  );
 
   return app;
 }

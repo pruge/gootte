@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { IconSettings, IconTelescope } from "@tabler/icons-react";
 import type { Tab } from "../../hooks/useUrlState";
+import { MemoView } from "../memo/MemoView";
 import { FeaturesView } from "../features/FeaturesView";
 import { PlanView } from "../plan/PlanView";
 import { ProcessView } from "../process/ProcessView";
@@ -68,7 +69,9 @@ export function MainPanel({
         </div>
       ) : (
         <div className="flex-1 overflow-hidden pl-4 pr-6 py-5">
-          {tab === "plan" ? (
+          {tab === "memo" ? (
+            <MemoView key={`${project}-memo`} project={project} />
+          ) : tab === "plan" ? (
             <PlanView key={`${project}-plan`} project={project} />
           ) : tab === "process" ? (
             <ProcessView key={`${project}-process`} project={project} />

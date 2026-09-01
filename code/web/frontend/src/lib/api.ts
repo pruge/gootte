@@ -6,6 +6,9 @@ import {
   PlanBoardResponse,
   SettingsResponse,
   ApiError,
+  MemosResponse,
+  Memo,
+  MemoDeleteResponse,
   type PlanMoveRequest,
   type StepMoveRequest,
   type Project,
@@ -120,3 +123,29 @@ export const recordTime = async (
     body: JSON.stringify({ feature, ticket, action }),
   });
 };
+
+/** 프로젝트 메모 목록(memo-pad) — gootte 자기 저장소에서 읽는다(INV-2 관리대상 아님). */
+export const fetchMemos = (project: string): Promise<MemosResponse> =>
+  get(`/api/memos/${encodeURIComponent(project)}`, MemosResponse);
+
+/** 새 메모 한 장. */
+export const createMemo = async (project: string, content: string): Promise<Memo> =>
+  send(`/api/memos/${encodeURIComponent(project)}`, Memo, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+
+/** 메모 한 장 고치기 — 내용만 바꾼다. */
+export const updateMemo = async (project: string, id: string, content: string): Promise<Memo> =>
+  send(`/api/memos/${encodeURIComponent(project)}/${encodeURIComponent(id)}`, Memo, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+
+/** 메모 한 장 지우기. */
+export const deleteMemo = async (project: string, id: string): Promise<MemoDeleteResponse> =>
+  send(`/api/memos/${encodeURIComponent(project)}/${encodeURIComponent(id)}`, MemoDeleteResponse, {
+    method: "DELETE",
+  });
