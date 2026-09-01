@@ -236,9 +236,11 @@ cmd_start() {
 
   local tmp
   tmp="$(mktemp)"
+  # 🔴 Time 줄 **앞에 빈 줄**을 세운다 — `**Blocked by:**` 문단(특히 다중 줄) 바로 뒤에 이어 쓰면
+  # md 렌더링에서 문단에 붙어 한 줄로 보인다(캡틴 보고 2026-09-01). 한 줄 띄워 자기 문단을 만든다.
   awk -v n="$insert_after" -v line="$time_label started=$iso" '
     { print }
-    NR == n { print line }
+    NR == n { print ""; print line }
   ' "$file" > "$tmp"
   mv "$tmp" "$file"
 
@@ -380,8 +382,9 @@ cmd_end() {
         done_date="$(resolve_drop_date "$at")" || done_date="$(date +%Y-%m-%d\ %H:%M)"
         local tmp2
         tmp2="$(mktemp)"
+        # 🔴 재기록하는 **Status:** 앞에도 빈 줄이 없으면 넣는다 — 문단에 붙어 보이지 않게.
         awk -v n="$status_line_no" -v d="$done_date" \
-          'NR == n { print "**Status:** resolved (" d ")"; next } { print }' "$file" > "$tmp2"
+          '{ if (NR == n) { if (prev != "") print ""; print "**Status:** resolved (" d ")"; next } print; prev = $0 }' "$file" > "$tmp2"
         mv "$tmp2" "$file"
         echo "gootte: $file 의 **Status:** 를 resolved ($done_date) 로 갱신함"
       fi
@@ -411,11 +414,15 @@ drop_file() {
   local tmp
   tmp="$(mktemp)"
   if [ -n "$existing_line_no" ]; then
-    awk -v n="$existing_line_no" -v line="$new_line" 'NR == n { print line; next } { print }' "$file" > "$tmp"
+    # 🔴 **Status:** 앞에 빈 줄이 없으면 넣는다 — md 렌더링에서 문단에 붙어 보이지 않게.
+    awk -v n="$existing_line_no" -v line="$new_line" '
+      { if (NR == n) { if (prev != "") print ""; print line; next } print; prev = $0 }
+    ' "$file" > "$tmp"
   else
     local insert_after
     insert_after="$(find_header_block_end_line_no "$file")"
-    awk -v n="$insert_after" -v line="$new_line" '{ print } NR == n { print line }' "$file" > "$tmp"
+    # 🔴 새로 삽입하는 **Status:** 앞에 빈 줄을 세운다.
+    awk -v n="$insert_after" -v line="$new_line" '{ print } NR == n { print ""; print line }' "$file" > "$tmp"
   fi
   mv "$tmp" "$file"
   echo "gootte: $file 에 $new_line 기록됨"

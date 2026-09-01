@@ -61,8 +61,9 @@ grep -qE '^\*\*Time:\*\* started=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0
 grep -n '^Status: in-progress$' "$TICKET1" >/dev/null || fail "case1: Status: 줄이 사라짐"
 TIME_LINE_NO="$(grep -n '^\*\*Time:\*\*' "$TICKET1" | head -1 | cut -d: -f1)"
 STATUS_LINE_NO="$(grep -n '^Status:' "$TICKET1" | head -1 | cut -d: -f1)"
-[ "$TIME_LINE_NO" -eq $((STATUS_LINE_NO + 1)) ] || fail "case1: **Time:** 줄이 Status: 블록 바로 뒤가 아님"
-echo "✅ case 1 (start → **Time:** started=<ISO> 삽입, Status: 블록 뒤) OK"
+[ "$TIME_LINE_NO" -eq $((STATUS_LINE_NO + 2)) ] || fail "case1: **Time:** 줄이 Status: 블록 뒤 빈 줄 다음이 아님"
+[ -z "$(sed -n "$((STATUS_LINE_NO + 1))p" "$TICKET1")" ] || fail "case1: Status: 와 **Time:** 사이에 빈 줄이 없음"
+echo "✅ case 1 (start → **Time:** started=<ISO> 삽입, Status: 뒤 빈 줄+Time) OK"
 
 # case 2: end — 같은 줄에 finished=<ISO> 추가
 (cd "$FIXTURE1" && "$GOOTTE_BIN" end my-feature T01) >"$TMP_DIR/case2.out" 2>"$TMP_DIR/case2.err" \
@@ -145,9 +146,11 @@ make_fixture "$FIXTURE8" "my-feature" "T04.md" \
 (cd "$FIXTURE8" && "$GOOTTE_BIN" start my-feature T04) >"$TMP_DIR/case8.out" 2>"$TMP_DIR/case8.err" \
   || fail "case8: start 가 실패함: $(cat "$TMP_DIR/case8.err")"
 TICKET8="$FIXTURE8/docs/features/my-feature/tickets/T04.md"
-[ "$(sed -n '2p' "$TICKET8")" = "$(grep '^\*\*Time:\*\*' "$TICKET8")" ] \
-  || fail "case8: Status: 없는 티켓은 제목 바로 다음 줄에 **Time:** 이 와야 함"
-echo "✅ case 8 (Status: 없는 티켓 → 제목 바로 뒤에 삽입) OK"
+# Time: 줄 앞에 빈 줄이 서므로 제목(1) 뒤 빈 줄(2) 다음 3번 줄이 **Time:**
+[ "$(sed -n '3p' "$TICKET8")" = "$(grep '^\*\*Time:\*\*' "$TICKET8")" ] \
+  || fail "case8: Status: 없는 티켓은 제목 뒤 빈 줄 다음에 **Time:** 이 와야 함"
+[ -z "$(sed -n '2p' "$TICKET8")" ] || fail "case8: 제목(1)과 **Time:** 사이에 빈 줄이 없음"
+echo "✅ case 8 (Status: 없는 티켓 → 제목 뒤 빈 줄 다음에 삽입) OK"
 
 # case 9: 구관례(issues/) 티켓 — **Time:** 줄 기록, 메타데이터 블록 뒤 삽입
 FIXTURE9="$TMP_DIR/case9"
@@ -168,10 +171,12 @@ TICKET9="$FIXTURE9/docs/features/my-feature/issues/01-x.md"
   || fail "case9: 구관례 start 가 실패함: $(cat "$TMP_DIR/case9.err")"
 grep -qE '^\*\*Time:\*\* started=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$' "$TICKET9" \
   || fail "case9: **Time:** started=<ISO> 줄이 없음"
-# **Time:** 는 제목 바로 뒤에 온다 — `**What to build:**` 는 산문 문단이라 메타데이터 블록을
-# 끊으므로, 블록 탐지가 임의의 ** 줄을 블록으로 오인하지 않도록 Time: 이 제목 직후에 놓인다.
+# **Time:** 는 제목(1) 뒤 빈 줄(2) 다음 3번 줄에 온다 — `**What to build:**` 는 산문 문단이라
+# 메타데이터 블록을 끊으므로, 블록 탐지가 임의의 ** 줄을 블록으로 오인하지 않도록 Time: 이
+# 제목 직후 영역에 놓인다.
 TIME9="$(grep -niE '^\*{0,2}time:' "$TICKET9" | head -1 | cut -d: -f1)"
-[ "$TIME9" -eq 2 ] || fail "case9: **Time:** 가 제목 바로 뒤(2번 줄)가 아님"
+[ "$TIME9" -eq 3 ] || fail "case9: **Time:** 가 제목 뒤 빈 줄 다음(3번 줄)이 아님"
+[ -z "$(sed -n '2p' "$TICKET9")" ] || fail "case9: 제목과 **Time:** 사이에 빈 줄이 없음"
 STATUS9="$(grep -n '^\*\*Status:\*\*' "$TICKET9" | head -1 | cut -d: -f1)"
 [ "$STATUS9" -gt "$TIME9" ] || fail "case9: **Time:** 가 Status: 앞에 와야 함(산문 중간에 안 끼어듦)"
 (cd "$FIXTURE9" && "$GOOTTE_BIN" end my-feature 01) >"$TMP_DIR/case9b.out" 2>"$TMP_DIR/case9b.err" \
@@ -257,13 +262,14 @@ make_fixture "$FIXTURE13" "my-feature" "T09.md" \
 TICKET13="$FIXTURE13/docs/features/my-feature/tickets/T09.md"
 (cd "$FIXTURE13" && "$GOOTTE_BIN" start my-feature T09) >"$TMP_DIR/case13.out" 2>"$TMP_DIR/case13.err" \
   || fail "case13: start 실패: $(cat "$TMP_DIR/case13.err")"
-# **Time:** 줄이 문단 마지막 줄(5) 뒤에 와야 한다 — 문단을 쪼개지 않은 자리
+# **Time:** 줄이 문단 마지막 줄(4) 뒤 빈 줄(5) 다음 6번 줄에 와야 한다
 TIME13="$(grep -n '^\*\*Time:\*\*' "$TICKET13" | head -1 | cut -d: -f1)"
-[ "$TIME13" -eq 5 ] || fail "case13: **Time:** 이 문단 마지막 줄(5) 뒤가 아님 — ${TIME13}번 줄"
+[ "$TIME13" -eq 6 ] || fail "case13: **Time:** 이 문단 뒤 빈 줄 다음(6번 줄)이 아님 — ${TIME13}번 줄"
+[ -z "$(sed -n '5p' "$TICKET13")" ] || fail "case13: 문단과 **Time:** 사이에 빈 줄이 없음"
 [ "$(sed -n '3p' "$TICKET13")" = '**Blocked by:** T01 — T01이 먼저 와야 한다. 지금 이' ] \
   || fail "case13: Blocked by 문단 첫 줄이 깨짐"
 [ "$(sed -n '4p' "$TICKET13")" = '티켓만 먼저 착지하면 경로가 없어진다.' ] \
   || fail "case13: Blocked by 문단 둘째 줄이 깨짐"
-echo "✅ case 13 (다중 줄 **Blocked by:** 문단 → **Time:** 을 문단 끝에 삽입, 문단 보존) OK"
+echo "✅ case 13 (다중 줄 **Blocked by:** 문단 → 빈 줄 + **Time:** 을 문단 끝에 삽입, 문단 보존) OK"
 
 echo "✅ scripts/tests/gootte-time.test.sh 전체 통과 (구관례·--at·pause/resume 포함)"
