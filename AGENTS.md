@@ -111,7 +111,10 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 
 | 명령 | 목적 | 누가 |
 |---|---|---|
-| `pnpm setup` | 최초 1회 의존 설치 (`pnpm -C code/web install`) | 에이전트 가능 |
+| `pnpm setup` | 최초 1회 환경 준비 (`setup:web` + `setup:tauri` 순차) | 에이전트 가능 |
+| `pnpm setup:web` | 웹 의존성 설치 (`pnpm -C code/web install`) | 에이전트 가능 |
+| `pnpm setup:tauri` | macOS Tauri 도구·의존성 설치 (`scripts/tauri-setup.sh` — Xcode·Rust·rustup target·npm deps·cargo check) | 에이전트 가능 |
+| `pnpm install:tauri` | .app 빌드 후 이 컴퓨터에 설치 (`scripts/tauri-install.sh` — frontend build + tauri build + `/Applications` 복사) | 에이전트 가능 |
 | `pnpm verify` | **전체 회귀 — 포트 테스트 + tsc + vitest** | 에이전트 가능 |
 | `pnpm test` | vitest 만 | 에이전트 가능 |
 | `pnpm test:ports` | 포트 해석기 테스트만 (`scripts/tests/ports.test.sh`) | 에이전트 가능 |
@@ -160,7 +163,7 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
   조용한 폴백 = 두 사본이 같은 포트를 쥔 채 아무도 모르는 상태. 그 거절이 설계의 요점이므로
   기본값 폴백을 되살리지 않는다(`pnpm test:ports` 가 이 거절을 지킨다).
 
-격리 사본(worktree)에서는 진입 후 `pnpm setup` 을 한 번 돌린다(멱등). 복사해야 할 untracked dev secret 은 없다.
+격리 사본(worktree)에서는 진입 후 `pnpm setup` 을 한 번 돌린다(멱등 — 웹 의존성 + Tauri 환경). 복사해야 할 untracked dev secret 은 없다.
 
 **캡틴 작업 사본의 dev 서버(백엔드 `8804` · 프론트 `5304`, `~/Documents/ai2/projects/gootte`)는 죽이거나
 재시작하거나 포트를 헤집지 않는다** — 이 줄의 원래 뜻이 그것이다. 🔴 **격리 사본의 작업자에게는 반대로

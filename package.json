@@ -5,7 +5,9 @@
     "gootte": "bin/gootte"
   },
   "scripts": {
-    "setup": "pnpm -C code/web install",
+    "setup": "pnpm run setup:web && pnpm run setup:tauri",
+    "setup:web": "pnpm -C code/web install",
+    "setup:tauri": "bash scripts/tauri-setup.sh",
     "gootte": "bash scripts/gootte.sh",
     "discover": "bash scripts/gootte.sh discover",
     "db": "bash scripts/gootte.sh db",
@@ -18,7 +20,7 @@
     "dev:stop": "bash scripts/dev-stop.sh",
     "dev:tauri": "bash scripts/tauri-dev.sh",
     "build:tauri": "bash scripts/tauri-build.sh",
-    "e2e": "pnpm -C code/web/frontend e2e",
-    "install:tauri": "bash scripts/tauri-install.sh"
+    "install:tauri": "bash scripts/tauri-install.sh",
+    "e2e": "pnpm -C code/web/frontend e2e"
   }
 }
