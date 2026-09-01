@@ -270,6 +270,21 @@ export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
   const virtualItems = virtualizer.getVirtualItems();
   const visibleKey = virtualItems.map((v) => v.key).join(",");
 
+  // ESC — 검색어가 있으면 포커스와 무관하게 취소한다(티켓 03). 창 단위.
+  // 🔴 단, **문서 드로어가 열려 있으면 ESC 는 문서 닫기에 먼저 쓰인다**(DocDrawer 의 ESC).
+  // 문서를 닫은 뒤 다음 ESC 가 검색을 취소한다 — 검색 중 여러 문서를 읽을 수 있으므로
+  // ESC 가 검색을 지워버리면 읽던 자리가 사라진다(캡틴 지시 2026-09-02).
+  useEffect(() => {
+    const q = query.trim();
+    if (q === "") return;
+    if (docView) return; // 문서가 열려 있는 동안 ESC 는 검색을 건드리지 않는다
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setQuery("");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [query, docView]);
+
   // 스크롤이 그 자리를 다시 그릴 때까지 기다렸다가 포커스를 준다 — 스크롤 직후 한 번에
   // 못 찾으면(아직 안 그려졌으면) visibleKey 가 바뀔 때마다 다시 시도한다.
   useEffect(() => {

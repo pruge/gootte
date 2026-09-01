@@ -140,6 +140,21 @@ function renderView(
     </QueryClientProvider>,
   );
 }
+
+/** 문서 드로어가 열린 채 시작 — 검색 ESC 와 문서 ESC 의 우선순위를 검증한다(티켓 03). */
+function renderViewWithOpenDoc(data: FeaturesResponse, path: string) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  qc.setQueryData(qk.features(data.project), data);
+  qc.setQueryData(qk.featureDoc(data.project, "auth-login", path), {
+    path,
+    content: "# auth-login\n",
+  });
+  return render(
+    <QueryClientProvider client={qc}>
+      <Harness project={data.project} initialView={`auth-login/${path}`} />
+    </QueryClientProvider>,
+  );
+}
 const renderFeatures = () => renderView(DATA);
 
 /** 기능 카드 머리글(제목이 든 `<h2>`)의 조상 `<button>` 을 눌러 연다. */
@@ -579,6 +594,36 @@ describe("FeaturesView — 검색 상자가 기능과 티켓을 찾아 준다(a-
     expect(input.value).toBe("");
     // 다시 검색이 바로 들어간다 — 포커스가 상자에 있어야 타이핑이 그대로 쌓인다.
     fireEvent.change(input, { target: { value: "결제" } });
+    expect(screen.getByRole("heading", { name: "결제" })).toBeInTheDocument();
+  });
+
+  it("🔴 검색 후 포커스가 상자 밖으로 나가도 ESC 로 취소된다 — 문서를 읽다 돌아와도(티켓 03)", () => {
+    renderView(SEARCH_DATA);
+    fireEvent.change(searchBox(), { target: { value: "소셜" } });
+    expect(screen.queryByRole("heading", { name: "결제" })).toBeNull();
+    // 포커스가 상자 밖(예: 문서 드로어)에 있어도 창 단위 ESC 가 검색을 취소한다
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect((searchBox() as HTMLInputElement).value).toBe("");
+    expect(screen.getByRole("heading", { name: "로그인" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "결제" })).toBeInTheDocument();
+  });
+
+  it("🔴 문서가 열려 있으면 ESC 가 먼저 문서를 닫고, 그다음 ESC 가 검색을 취소한다(티켓 03)", () => {
+    renderViewWithOpenDoc(SEARCH_DATA, "issues/01-session.md");
+    // 문서 드로어가 열려 있다
+    expect(screen.getByRole("dialog", { name: "issues/01-session.md" })).toBeInTheDocument();
+    fireEvent.change(searchBox(), { target: { value: "소셜" } });
+    expect(screen.queryByRole("heading", { name: "결제" })).toBeNull();
+
+    // 1차 ESC — 문서 닫기. 검색어는 그대로 남는다
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "issues/01-session.md" })).toBeNull();
+    expect((searchBox() as HTMLInputElement).value).toBe("소셜");
+
+    // 2차 ESC — 검색 취소
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect((searchBox() as HTMLInputElement).value).toBe("");
+    expect(screen.getByRole("heading", { name: "로그인" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "결제" })).toBeInTheDocument();
   });
 

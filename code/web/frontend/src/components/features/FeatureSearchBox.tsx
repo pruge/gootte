@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconSearch, IconX } from "@tabler/icons-react";
 
 interface FeatureSearchBoxProps {
@@ -20,6 +20,12 @@ interface FeatureSearchBoxProps {
 export function FeatureSearchBox({ value, onChange }: FeatureSearchBoxProps) {
   const [text, setText] = useState(value);
   const composing = useRef(false);
+
+  // 🔴 부모(query state)가 밖에서 바뀌면(창 단위 ESC 등) 이 상자의 표시도 따라간다 —
+  // value 가 곧 SoT 이고 text 는 한글 조합 중 표시용이다. 조합 중이 아니면 늘 동기화.
+  useEffect(() => {
+    if (!composing.current) setText(value);
+  }, [value]);
 
   const commit = (next: string) => {
     setText(next);
