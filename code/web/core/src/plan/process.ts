@@ -25,6 +25,10 @@ export interface ProcessRow {
   // 그대로 옮긴다. 어림 계산 자리는 `elapsedPhrase`(core) 하나뿐이다 — 여기서 다시 재지 않는다.
   // 값이 없으면 undefined — 지어내지 않는다(INV-4).
   elapsed?: string;
+  // ADR-0002(pause) — 티켓 문서의 Time: 줄에서 읽은 시각들. 버튼 표시 상태 결정에 쓴다.
+  startedAt: string | null;
+  finishedAt: string | null;
+  pauses: readonly { pausedAt: string; resumedAt: string | null }[];
 }
 
 /** `process` 탭 단계 묶음 하나 — 제목과 그 밑 줄들. */
@@ -63,6 +67,9 @@ export function groupProcessSteps(cards: readonly PlanCard[]): ProcessStepGroup[
         unread: ticket.unread === true,
         inProgress: ticket.status === "in_progress",
         elapsed: ticket.elapsed,
+        startedAt: ticket.startedAt ?? null,
+        finishedAt: ticket.finishedAt ?? null,
+        pauses: ticket.pauses ?? [],
       };
       const list = byStep.get(step);
       if (list) list.push(row);

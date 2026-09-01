@@ -19,6 +19,9 @@ const row = (feature: string, ticket: string, title = "제목"): ProcessRow => (
   box: "open",
   unread: false,
   inProgress: false,
+  startedAt: null,
+  finishedAt: null,
+  pauses: [],
 });
 
 const RECT = { top: 100, height: 200 };

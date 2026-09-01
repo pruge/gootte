@@ -88,6 +88,7 @@ function toNewTicket(
     // `finishedAt` 이며, `applyBacklogStatus`/`joinTicket` 가 이것을 우선해 판정한다.
     startedAt: doc.startedAt ?? undefined,
     finishedAt: doc.finishedAt ?? undefined,
+    pauses: doc.pauses.map((p) => ({ pausedAt: p.pausedAt, resumedAt: p.resumedAt })),
     ...(unlanded !== undefined ? { unlanded } : {}),
   };
 }
@@ -206,6 +207,7 @@ function toTicket(
     // 완료(done) 출처는 여전히 문서 `Status:` 줄(D2) — 이 시각은 표시(elapsed)만 한다.
     startedAt: doc.startedAt ?? undefined,
     finishedAt: doc.finishedAt ?? undefined,
+    pauses: doc.pauses.map((p) => ({ pausedAt: p.pausedAt, resumedAt: p.resumedAt })),
   };
 }
 

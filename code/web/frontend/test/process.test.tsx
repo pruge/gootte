@@ -108,8 +108,9 @@ describe("ProcessView — 2컬럼(1:2) 읽기 화면(process-two-column/T01)", (
         card(feature("idle", [["02", "남은 것"]])),
       ],
     });
-    const workingBtn = screen.getByRole("button", { name: /working/ });
-    const idleBtn = screen.getByRole("button", { name: /idle/ });
+    const left = screen.getByText("FEATURES").closest("aside") as HTMLElement;
+    const workingBtn = within(left).getByRole("button", { name: /working/ });
+    const idleBtn = within(left).getByRole("button", { name: /idle/ });
     expect(within(workingBtn).getByRole("status", { name: /처리중/ })).toBeInTheDocument();
     expect(within(idleBtn).queryByRole("status", { name: /처리중/ })).toBeNull();
   });
@@ -122,7 +123,8 @@ describe("ProcessView — 2컬럼(1:2) 읽기 화면(process-two-column/T01)", (
       ],
     };
     renderProcess({ ...EMPTY_BOARD, active: [card(nt)] });
-    const btn = screen.getByRole("button", { name: /a/ });
+    const left = screen.getByText("FEATURES").closest("aside") as HTMLElement;
+    const btn = within(left).getByRole("button", { name: /a/ });
     expect(within(btn).getByRole("status", { name: /처리중/ })).toBeInTheDocument();
   });
 

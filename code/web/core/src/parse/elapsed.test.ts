@@ -68,4 +68,33 @@ describe("elapsedPhrase", () => {
     const b = elapsedPhrase(started, finished, "2030-01-01T00:00:00Z");
     expect(a).toBe(b); // finished 가 있으면 now 는 안 쓰인다
   });
+
+  it("🔴 ADR-0002 일시중단 구간은 걸린 시간에서 뺀다 — paused=10분, resumed=5분 후", () => {
+    const started = "2026-08-27T12:00:00+09:00";
+    const finished = "2026-08-27T12:20:00+09:00";
+    const pauses = [
+      { pausedAt: "2026-08-27T12:05:00+09:00", resumedAt: "2026-08-27T12:15:00+09:00" },
+    ];
+    // 20분 총 시간 - 10분 중단 = 10분
+    expect(elapsedPhrase(started, finished, NOW, pauses)).toBe("약 10분");
+  });
+
+  it("🔴 일시중단이 전체 시간보다 길면 null — 모름으로 접는다", () => {
+    const started = "2026-08-27T12:00:00+09:00";
+    const finished = "2026-08-27T12:05:00+09:00";
+    const pauses = [
+      { pausedAt: "2026-08-27T12:01:00+09:00", resumedAt: "2026-08-27T12:04:30+09:00" },
+    ];
+    // 5분 총 시간 - 3.5분 중단 = 1.5분 → 약 2분
+    expect(elapsedPhrase(started, finished, NOW, pauses)).toBe("약 2분");
+  });
+
+  it("🔴 미재개 구간(진행 중인 pause)은 now 까지로 뺀다", () => {
+    const started = "2026-08-27T12:00:00+09:00";
+    const pauses = [
+      { pausedAt: "2026-08-27T12:05:00+09:00", resumedAt: null },
+    ];
+    // 15분 총 시간 - 10분(미재개, now 12:15) = 5분
+    expect(elapsedPhrase(started, null, "2026-08-27T12:15:00+09:00", pauses)).toBe("약 5분 진행 중");
+  });
 });

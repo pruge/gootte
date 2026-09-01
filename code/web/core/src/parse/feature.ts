@@ -281,6 +281,8 @@ export interface TicketDoc {
   startedAt: string | null;
   /** `Time:` 줄에서 읽은 완료 시각. 줄이 있되 `finished=` 가 없으면 null(진행 중). */
   finishedAt: string | null;
+  /** ADR-0002(pause) — 일시중단 구간. `gootte pause`/`resume` 이 기록한다. */
+  pauses: TimePause[];
 }
 
 /** 기능 사양 한 장 — 표제와 상태. */
@@ -306,7 +308,7 @@ export function parseTicket(fileName: string, content: string): TicketDoc {
   const num = /^(\d+)/.exec(slug)?.[1] ?? "";
   const { raw, value, completedAt } = parseStatusLine(content);
   const { blockedBy, unreadable } = parseBlockedByLine(content);
-  const { startedAt, finishedAt } = parseTimeLine(content);
+  const { startedAt, finishedAt, pauses } = parseTimeLine(content);
   return {
     num,
     slug,
@@ -321,6 +323,7 @@ export function parseTicket(fileName: string, content: string): TicketDoc {
     needsCaptainEye: parseNeedsCaptainEye(content),
     startedAt,
     finishedAt,
+    pauses,
   };
 }
 
@@ -347,6 +350,17 @@ const TIME_LINE = /^[ \t]*(?:\*\*)?Time:(?:\*\*)?[ \t]*(.*)$/m;
 // ISO 8601 — `finished=` 는 optional. `Status:` 완료일과 달리 시각이 없으면 null(지어내지 않는다).
 const TIME_STARTED = /started=(\S+)/;
 const TIME_FINISHED = /finished=(\S+)/;
+// 일시중단 구간(ADR-0002) — `paused=`/`resumed=` 는 한 줄에 여러 쌍이 연속할 수 있다:
+//   started=A paused=B resumed=C paused=D resumed=E finished=F
+// `gootte pause`/`gootte resume` 이 기록한다. 짝이 안 맞는(아직 재개 안 된) paused 는 진행 중이다.
+const TIME_PAUSED = /paused=(\S+)/g;
+const TIME_RESUMED = /resumed=(\S+)/g;
+
+/** 일시중단 구간 하나 — 재개 전(`resumed` 없음)이면 진행 중이다. */
+export interface TimePause {
+  pausedAt: string;
+  resumedAt: string | null;
+}
 
 /** `Time:` 줄에서 읽어낸 것. 줄이 없으면 raw=null, 값이 없으면 startedAt=null. */
 export interface TimeLine {
@@ -356,6 +370,8 @@ export interface TimeLine {
   startedAt: string | null;
   /** 완료 시각(ISO 8601). 줄이 있되 `finished=` 가 없으면 null(진행 중). */
   finishedAt: string | null;
+  /** 일시중단 구간 — 기록 순서대로. 짝이 안 맞는 paused(미재개)는 resumedAt 이 null. */
+  pauses: TimePause[];
 }
 
 /**
@@ -366,12 +382,34 @@ export function parseTimeLine(content: string): TimeLine {
   // 🔴 구조(표시 줄)는 펜스 밖에서만 읽는다 — 예시로 인용한 `**Time:** ...` 가 진짜 시각이
   // 되면 안 된다(parseStatusLine·parseBlockedByLine 와 같은 규율).
   const rest = TIME_LINE.exec(withoutFencedCode(content))?.[1]?.trim();
-  if (!rest) return { raw: null, startedAt: null, finishedAt: null };
+  if (!rest) return { raw: null, startedAt: null, finishedAt: null, pauses: [] };
   // 값 토큰 = 공백 앞까지. 알 수 없는 문자열도 그대로 잡아 원문에 싣는다.
   const raw = /^\S+/.exec(rest)?.[0] ?? rest;
   const startedAt = TIME_STARTED.exec(rest)?.[1] ?? null;
   const finishedAt = TIME_FINISHED.exec(rest)?.[1] ?? null;
-  return { raw, startedAt, finishedAt };
+
+  // paused=/resumed= 를 발생 순서로 나란히 뽑아 쌍으로 묶는다.
+  const marks: { kind: "paused" | "resumed"; at: string }[] = [];
+  let m: RegExpExecArray | null;
+  TIME_PAUSED.lastIndex = 0;
+  while ((m = TIME_PAUSED.exec(rest)) !== null) marks.push({ kind: "paused", at: m[1]! });
+  TIME_RESUMED.lastIndex = 0;
+  while ((m = TIME_RESUMED.exec(rest)) !== null) marks.push({ kind: "resumed", at: m[1]! });
+  marks.sort((a, b) => a.at.localeCompare(b.at));
+
+  const pauses: TimePause[] = [];
+  let open: string | null = null;
+  for (const mark of marks) {
+    if (mark.kind === "paused") {
+      open = mark.at;
+    } else if (mark.kind === "resumed" && open !== null) {
+      pauses.push({ pausedAt: open, resumedAt: mark.at });
+      open = null;
+    }
+  }
+  if (open !== null) pauses.push({ pausedAt: open, resumedAt: null }); // 재개 안 된 구간
+
+  return { raw, startedAt, finishedAt, pauses };
 }
 
 // ── 신관례 `## Depends on` 절(T01) ────────────────────────────────────────────
@@ -502,6 +540,8 @@ export interface NewTicketDoc {
   /** T02 — `Time:` 줄에서 읽은 착수·완료 시각(ISO 8601). 줄이 없거나 파싱 실패면 null. */
   startedAt: string | null;
   finishedAt: string | null;
+  /** ADR-0002(pause) — 일시중단 구간. `gootte pause`/`resume` 이 기록한다. */
+  pauses: TimePause[];
 }
 
 /**
@@ -515,7 +555,7 @@ export function parseNewTicket(fileName: string, content: string): NewTicketDoc 
   const num = /^[Tt](\d+)/.exec(slug)?.[1] ?? "";
   const { blockedBy, unreadable } = parseNewBlockedBy(content);
   const { raw, value, completedAt } = parseStatusLine(content);
-  const { startedAt, finishedAt } = parseTimeLine(content);
+  const { startedAt, finishedAt, pauses } = parseTimeLine(content);
 
   // 상태 파생: Status: 줄이 있으면 그것을 쓰고, 없으면 Time: 줄에서 결정
   let derivedStatus: TodoStatus;
@@ -551,5 +591,6 @@ export function parseNewTicket(fileName: string, content: string): NewTicketDoc 
     unreadableBlockedBy: unreadable,
     startedAt,
     finishedAt,
+    pauses,
   };
 }

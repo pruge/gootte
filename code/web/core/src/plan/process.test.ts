@@ -20,9 +20,9 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       {
         step: 1,
         rows: [
-          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "open", unread: false, inProgress: false },
-          { feature: "a", ticket: "04-x", num: "04", title: "티켓 04", path: "issues/04-x.md", box: "open", unread: false, inProgress: false },
-          { feature: "b", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "open", unread: false, inProgress: false },
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "open", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] },
+          { feature: "a", ticket: "04-x", num: "04", title: "티켓 04", path: "issues/04-x.md", box: "open", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] },
+          { feature: "b", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "open", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] },
         ],
       },
     ]);
@@ -38,7 +38,7 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
     expect(groupProcessSteps(cards)).toEqual([
       {
         step: UNRANKED_STEP,
-        rows: [{ feature: "a", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "open", unread: false, inProgress: false }],
+        rows: [{ feature: "a", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "open", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] }],
       },
     ]);
   });
@@ -63,8 +63,8 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       {
         step: 1,
         rows: [
-          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "done", unread: false, inProgress: false },
-          { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", path: "issues/02-x.md", box: "open", unread: false, inProgress: false },
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "done", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] },
+          { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", path: "issues/02-x.md", box: "open", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] },
         ],
       },
     ]);
@@ -85,6 +85,9 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
             box: "open",
             unread: false,
             inProgress: true,
+            startedAt: null,
+            finishedAt: null,
+            pauses: [],
           },
         ],
       },
@@ -97,8 +100,8 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       {
         step: 1,
         rows: [
-          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "dropped", unread: false, inProgress: false },
-          { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", path: "issues/02-x.md", box: "open", unread: false, inProgress: false },
+          { feature: "a", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "dropped", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] },
+          { feature: "a", ticket: "02-x", num: "02", title: "티켓 02", path: "issues/02-x.md", box: "open", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] },
         ],
       },
     ]);
@@ -119,13 +122,13 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       {
         step: 1,
         rows: [
-          { feature: "new-only", ticket: "T01", num: "01", title: "티켓 01", path: "tickets/T01.md", box: "open", unread: false, inProgress: false },
+          { feature: "new-only", ticket: "T01", num: "01", title: "티켓 01", path: "tickets/T01.md", box: "open", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] },
         ],
       },
       {
         step: 2,
         rows: [
-          { feature: "new-only", ticket: "T02", num: "02", title: "티켓 02", path: "tickets/T02.md", box: "open", unread: false, inProgress: false },
+          { feature: "new-only", ticket: "T02", num: "02", title: "티켓 02", path: "tickets/T02.md", box: "open", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] },
         ],
       },
     ]);
@@ -147,6 +150,9 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
             unread: false,
             inProgress: false,
             elapsed: "약 14분",
+            startedAt: null,
+            finishedAt: null,
+            pauses: [],
           },
         ],
       },
@@ -167,8 +173,8 @@ describe("groupProcessSteps — 이미 계산된 표시 단계를 다시 묶기�
       {
         step: 1,
         rows: [
-          { feature: "mixed", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "open", unread: false, inProgress: false },
-          { feature: "mixed", ticket: "T02", num: "02", title: "티켓 02", path: "tickets/T02.md", box: "open", unread: false, inProgress: false },
+          { feature: "mixed", ticket: "01-x", num: "01", title: "티켓 01", path: "issues/01-x.md", box: "open", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] },
+          { feature: "mixed", ticket: "T02", num: "02", title: "티켓 02", path: "tickets/T02.md", box: "open", unread: false, inProgress: false, startedAt: null, finishedAt: null, pauses: [] },
         ],
       },
     ]);

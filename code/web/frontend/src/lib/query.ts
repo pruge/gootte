@@ -8,6 +8,7 @@ import {
   fetchFeatures,
   fetchFeatureDoc,
   fetchPlanBoard,
+  recordTime,
   fetchSettings,
   movePlanCards,
   moveStep,
@@ -197,6 +198,23 @@ export function useStepMove(slug: string) {
     onSuccess: (board) => qc.setQueryData(qk.plan(slug), board),
   });
   return { move: mutation.mutate, isError: mutation.isError, error: mutation.error };
+}
+
+/**
+ * 시간 기록(ADR-0002) — steps 탭 버튼으로 start/pause/resume/end 를 티켓 문서에 남긴다.
+ * 성공하면 plan·features 를 무효화해 다시 읽는다(INV-3 — 낡은 걸린 시간을 안 그린다).
+ */
+export function useRecordTime(project: string) {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (req: { feature: string; ticket: string; action: "start" | "pause" | "resume" | "end" }) =>
+      recordTime(project, req.feature, req.ticket, req.action),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["plan", project] });
+      void qc.invalidateQueries({ queryKey: ["features", project] });
+    },
+  });
+  return { record: mutation.mutate, isPending: mutation.isPending, isError: mutation.isError, error: mutation.error };
 }
 
 /**

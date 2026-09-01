@@ -100,6 +100,9 @@ export const FeatureTicket = z.object({
   // 백로그 `time:` 줄은 더 이상 읽지 않는다(grill D2 — 완전 교체).
   startedAt: z.string().optional(),
   finishedAt: z.string().optional(),
+  // ADR-0002(pause) — 일시중단 구간(ISO 8601 쌍). `gootte pause`/`resume` 이 기록하고,
+  // `elapsedPhrase` 가 걸린 시간에서 뺀다. 미재개 구간은 resumedAt 이 null(아직 멈춤).
+  pauses: z.array(z.object({ pausedAt: z.string(), resumedAt: z.string().nullable() })).optional(),
   // T04 — 이 티켓 파일이 아직 착지하지 않았는가(추적 안 됨 또는 커밋 안 된 변경) — `docs.tree`
   // 안의 같은 경로 노드에서 그대로 옮겨 싣는다(판정 자리는 `FeatureDocNode.unlanded` 하나뿐).
   // git 이 못 답한 사본은 이 값이 아예 없다(표식 없이 그대로 보여준다).

@@ -106,3 +106,17 @@ export const saveSettings = (update: SettingsUpdateRequest): Promise<SettingsRes
 export const refreshBackend = async (): Promise<void> => {
   await send("/api/refresh", z.object({ ok: z.boolean() }), { method: "POST" });
 };
+
+/** 시간 기록 요청(ADR-0002, pause/resume/start/end) — `action` + feature/ticket. */
+export const recordTime = async (
+  project: string,
+  feature: string,
+  ticket: string,
+  action: "start" | "pause" | "resume" | "end",
+): Promise<void> => {
+  await send(`/api/projects/${encodeURIComponent(project)}/time`, z.object({ ok: z.boolean() }), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ feature, ticket, action }),
+  });
+};

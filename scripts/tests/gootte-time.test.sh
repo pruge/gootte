@@ -215,4 +215,32 @@ fi
 [ -s "$TMP_DIR/case11c.err" ] || fail "case11c: stderr 에 에러 메시지가 없음"
 echo "✅ case 11 (--at 명시 ISO / --at= 형태 / 잘못된 값 에러) OK"
 
-echo "✅ scripts/tests/gootte-time.test.sh 전체 통과 (구관례·--at 포함)"
+# case 12: pause → resumed 없이 end → 에러 / resume → end
+FIXTURE12="$TMP_DIR/case12"
+make_fixture "$FIXTURE12" "my-feature" "T08.md" "# T08 — pause/resume" "" "## Goal" "" "Body."
+TICKET12="$FIXTURE12/docs/features/my-feature/tickets/T08.md"
+(cd "$FIXTURE12" && "$GOOTTE_BIN" start my-feature T08) >"$TMP_DIR/case12.out" 2>"$TMP_DIR/case12.err" \
+  || fail "case12: start 실패"
+(cd "$FIXTURE12" && "$GOOTTE_BIN" pause my-feature T08) >"$TMP_DIR/case12p.out" 2>"$TMP_DIR/case12p.err" \
+  || fail "case12: pause 실패: $(cat "$TMP_DIR/case12p.err")"
+grep -qE '^Time: started=\S+ paused=\S+$' "$TICKET12" || fail "case12: paused= 가 같은 줄에 안 붙음"
+# 중복 pause → 에러(이미 일시중단)
+if (cd "$FIXTURE12" && "$GOOTTE_BIN" pause my-feature T08) >"$TMP_DIR/case12p2.out" 2>"$TMP_DIR/case12p2.err"; then
+  fail "case12: 일시중단 중 pause 가 성공하면 안 됨"
+fi
+# pause 상태에서 resume 없이 end → 에러(시간이 부정확해지는 것을 막는다)
+if (cd "$FIXTURE12" && "$GOOTTE_BIN" end my-feature T08) >"$TMP_DIR/case12e.out" 2>"$TMP_DIR/case12e.err"; then
+  fail "case12: 일시중단 중 end 가 성공하면 안 됨"
+fi
+grep -q 'resumed=' "$TICKET12" && fail "case12: end 가 실패했는데 resumed= 가 추가됨"
+# resume → paused+resumed 쌍 완성
+(cd "$FIXTURE12" && "$GOOTTE_BIN" resume my-feature T08) >"$TMP_DIR/case12r.out" 2>"$TMP_DIR/case12r.err" \
+  || fail "case12: resume 실패: $(cat "$TMP_DIR/case12r.err")"
+grep -qE '^Time: started=\S+ paused=\S+ resumed=\S+$' "$TICKET12" || fail "case12: resumed= 가 같은 줄에 안 붙음"
+# resume 후 end → 정상
+(cd "$FIXTURE12" && "$GOOTTE_BIN" end my-feature T08) >"$TMP_DIR/case12e2.out" 2>"$TMP_DIR/case12e2.err" \
+  || fail "case12: resume 후 end 실패: $(cat "$TMP_DIR/case12e2.err")"
+grep -qE '^Time: started=\S+ paused=\S+ resumed=\S+ finished=\S+$' "$TICKET12" || fail "case12: finished= 가 같은 줄에 안 붙음"
+echo "✅ case 12 (pause → 중복pause 에러 → end 에러 → resume → end) OK"
+
+echo "✅ scripts/tests/gootte-time.test.sh 전체 통과 (구관례·--at·pause/resume 포함)"

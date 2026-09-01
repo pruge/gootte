@@ -79,8 +79,10 @@ Time: started=2026-08-28T13:08:10+09:00 finished=2026-08-28T13:32:18+09:00
 ### CLI 명령 (grill D5 — 독립 셸 스크립트)
 
 ```
-gootte start <feature-slug> <ticket>    # Time: started=<ISO> 삽입
-gootte end   <feature-slug> <ticket>    # finished=<ISO> 추가
+gootte start  <feature-slug> <ticket>    # Time: started=<ISO> 삽입
+gootte pause  <feature-slug> <ticket>    # 같은 줄에 paused=<ISO> 추가(일시 중단)
+gootte resume <feature-slug> <ticket>    # 같은 줄에 resumed=<ISO> 추가(재개)
+gootte end    <feature-slug> <ticket>    # finished=<ISO> 추가
 ```
 
 - 🔴 **`@gootte/core`·`@gootte/core-io` 등 TS 모노레포 워크스페이스를 참조하지 않는다.**
@@ -89,9 +91,25 @@ gootte end   <feature-slug> <ticket>    # finished=<ISO> 추가
   `docs/features/<feature-slug>/` 존재를 기준으로 판정. `<프로젝트>` 인자를 받지 않는다.
 - 티켓 파일(`docs/features/<feature-slug>/tickets/T<NN>.md`)이 없으면 에러.
 - `start` — 이미 `Time:` 줄이 있으면 에러(중복 시작 방지).
-- `end` — `Time:` 줄이 없거나 이미 `finished`가 있으면 에러.
+- `pause` — `Time:` 줄이 없거나, 이미 일시중단 중(`paused=` 가 있고 짝이 되는 `resumed=` 가 없음)이면 에러.
+- `resume` — 일시중단 중이 아니면(시작 전·이미 재개) 에러.
+- `end` — `Time:` 줄이 없거나 이미 `finished` 가 있으면 에러. **일시중단 중(`paused=` 미해결)에는 에러** —
+  중단 구간을 섞지 않고 재개를 먼저 강제한다.
+- `paused=`/`resumed=` 는 같은 줄에 나란히 쌓인다 — `started=A paused=B resumed=C finished=D` 처럼
+  여러 중단 구간이 연속할 수 있다(INV-5: 사람만 아는 계획 저장).
 - 커밋하지 않는다(grill D3).
 - `package.json`(gootte 루트)의 `bin` 필드로 `npm i -g .` 전역 설치 가능해야 한다.
+
+#### 앱(웹)에서 기록할 때 — 어느 사본에 쓸 것인가 (ADR-0002)
+
+앱은 프로젝트 slug만 알고 여러 사본을 병합해 본다. `start`/`pause`/`resume`/`end` 기록 대상 문서는
+[`adr/0002-pause-resume-target-copy.md`](adr/0002-pause-resume-target-copy.md)가 정한다:
+
+1. **자동 선택 우선** — 같은 티켓에 `started=` 가 이미 기록된 사본이 있으면 그 문서에 이어서 기록.
+   새 `start` 는 working 상태의 worktree 사본 우선, 없으면 대표 사본(`copies[0]`).
+2. **모호하면 dialog** — 자동 판단이 불가능하면(여러 working worktree 등) 모든 사본 경로 목록을
+   dialog 로 띄워 사용자가 선택한다.
+3. 앱도 사람이 버튼을 누르는 것일 뿐 — CLI 와 동등한 INV-2 예외로 기록한다.
 
 ### 구현 노트
 

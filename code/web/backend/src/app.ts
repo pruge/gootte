@@ -1,4 +1,7 @@
-import { basename } from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -651,6 +654,49 @@ export function createApp(options: AppOptions = {}): Hono {
       return c.json(FeatureDocResponse.parse({ path, content: result.content }));
     },
   );
+
+  /** `bin/gootte` CLI 절대 경로 — 이 파일에서 ../.. 으로 코드 루트를 찾아 bin/ 으로. */
+  const gootteBin = join(resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".."), "bin", "gootte");
+
+  /**
+   * ADR-0002: 대상 사본 선택 — 버튼으로 시간 기록할 때 어느 사본의 티켓 문서를 수정할지 정한다.
+   * - `start` 이외: `started=` 가 이미 있는 사본 우선. 없으면 대표.
+   * - `start`: working worktree 우선, 없으면 대표(copies[0]).
+   */
+  const pickTimeTarget = (proj: { copies: readonly string[]; path: string }, feature: string, ticket: string, action: string): string => {
+    const allCopies = withWorktrees(proj.copies);
+    if (action !== "start") {
+      for (const copy of allCopies) {
+        const ticketFile = join(copy, "docs", "features", feature, "tickets", `${ticket}.md`);
+        if (existsSync(ticketFile) && readFileSync(ticketFile, "utf8").includes("started=")) return copy;
+        const num = ticket.replace(/^T/i, "");
+        const issuesDir = join(copy, "docs", "features", feature, "issues");
+        if (existsSync(issuesDir)) {
+          for (const f of readdirSync(issuesDir)) {
+            if (f.startsWith(num) && f.endsWith(".md") && readFileSync(join(issuesDir, f), "utf8").includes("started=")) return copy;
+          }
+        }
+      }
+    }
+    return proj.path;
+  };
+
+  const TimeAction = z.object({ feature: z.string().min(1), ticket: z.string().min(1), action: z.enum(["start", "pause", "resume", "end"]) });
+
+  app.post("/api/projects/:slug/time", zValidator("param", slugParam), zValidator("json", TimeAction), (c) => {
+    const { slug } = c.req.valid("param");
+    const { feature, ticket, action } = c.req.valid("json");
+    const proj = resolveSlug(effectiveRoots(), slug);
+    if (!proj) return c.json(notFound(slug), 404);
+    try {
+      const target = pickTimeTarget(proj, feature, ticket, action);
+      execFileSync(gootteBin, [action, feature, ticket], { cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      broadcast?.({ kind: "project", project: slug });
+      return c.json({ ok: true });
+    } catch (err) {
+      return c.json({ error: `시간 기록 실패: ${err instanceof Error ? err.message : String(err)}` } satisfies ApiError, 500);
+    }
+  });
 
   return app;
 }

@@ -87,18 +87,18 @@ function joinTicket(
   // `sourceStatus !== null` 은 명시적 Status: 줄이 있을 때만 true — Time 줄 파생 상태는 해당 안 됨.
   if (ticket.sourceStatus !== null) {
     // T02 — 문서의 시각에서 elapsed 계산
-    const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now) : undefined;
+    const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now, ticket.pauses) : undefined;
     return { ...ticket, joinFailed: false, ...(elapsed ? { elapsed } : {}) };
   }
   // 🔴 완료(done) 단일 출처 = 티켓 문서의 `Time:` 줄 `finishedAt`(T04). `finishedAt` 이 있으면 done.
   if (ticket.finishedAt) {
     // T02 — 리졸버 done 도 티켓 문서의 시각을 쓴다
-    const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now) : undefined;
+    const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now, ticket.pauses) : undefined;
     return { ...ticket, status: "done", joinFailed: false, waitingOn: [], ...(elapsed ? { elapsed } : {}) };
   }
   // `finishedAt` 이 없고 `startedAt` 만 있으면 in_progress
   if (ticket.startedAt) {
-    const elapsed = elapsedPhrase(ticket.startedAt, ticket.finishedAt, now);
+    const elapsed = elapsedPhrase(ticket.startedAt, ticket.finishedAt, now, ticket.pauses);
     return { ...ticket, status: "in_progress", joinFailed: false, ...(elapsed ? { elapsed } : {}) };
   }
   // `Time:` 줄도 `Status:` 줄도 없으면 문서 자체(Blocked by/Depends on)로 상태를 안다 —
@@ -108,7 +108,7 @@ function joinTicket(
   const join = joinTicketBacklog(tasks, repo, featureSlug, ticket.num);
   if (!join) return { ...ticket, joinFailed: false };
   const joinedStatus = join.status === "done" ? "pending" : join.status;
-  const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now) : undefined;
+  const elapsed = ticket.startedAt ? elapsedPhrase(ticket.startedAt, ticket.finishedAt, now, ticket.pauses) : undefined;
   return {
     ...ticket,
     status: joinedStatus,
@@ -170,7 +170,7 @@ export function applyBacklogStatus(
     // 매 read 재계산). 신관례와 같은 `elapsedPhrase` 를 쓴다.
     tickets: (f.tickets ?? []).map((t) => {
       if (!t.startedAt) return t;
-      const elapsed = elapsedPhrase(t.startedAt, t.finishedAt, now);
+      const elapsed = elapsedPhrase(t.startedAt, t.finishedAt, now, t.pauses);
       return elapsed ? { ...t, elapsed } : t;
     }),
     newTickets: (f.newTickets ?? []).map((t) => joinTicket(t, tasks, repo, f.slug, now)),

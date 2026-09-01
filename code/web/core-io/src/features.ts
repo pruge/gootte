@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import type { Feature, FeatureConflict, FeatureDocNode, TodoStatus } from "@gootte/contract";
-import { buildFeatures, parseFeatureSpec, parseNewTicket, parseTicket, parseTimeLine, type FeatureDocs, type TimeLine } from "@gootte/core";
+import { buildFeatures, parseFeatureSpec, parseNewTicket, parseTicket, parseTimeLine, type FeatureDocs, type TimeLine, type TimePause } from "@gootte/core";
 import {
   checkIgnored,
   hasUncommittedChange,
@@ -299,17 +299,39 @@ function representative(parts: { copy: string; content: string }[], copies: stri
  *   가장 먼저 시작한 시각을 `startedAt`, 가장 나중에 끝난 시각을 `finishedAt` 으로(안전쪽).
  * 판정은 순수·결정적(INV-4). 완료/시작 여부 자체는 `joinTicket`(T04)가 정하므로 여기선 값만 모은다.
  */
-function mergeTicketTimes(times: TimeLine[]): { startedAt: string | null; finishedAt: string | null } {
+function mergeTicketTimes(
+  times: TimeLine[],
+): { startedAt: string | null; finishedAt: string | null; pauses: TimePause[] } {
   const started: string[] = [];
   const finished: string[] = [];
+  // 사본별 pauses 를 전부 모은다 — 한 사본이 paused 만 기록하고 다른 사본이 resumed 를 기록해도
+  // 짝이 맞는 쌍이 여기서 완성될 수 있다(정방향 병합과 같은 규율, ADR-0002).
+  const pauseMarks: { pausedAt: string; resumedAt: string | null }[] = [];
   for (const t of times) {
     if (t.startedAt) started.push(t.startedAt);
     if (t.finishedAt) finished.push(t.finishedAt);
+    for (const p of t.pauses) pauseMarks.push(p);
   }
+  // 값을 정렬해 쌍으로 묶는다 — 단일 사본이라면 이미 순서대로지만, 병합이면 시각순이 맞다.
+  pauseMarks.sort((a, b) => cmpTime(a.pausedAt, b.pausedAt));
+  const pauses: TimePause[] = [];
+  let open: string | null = null;
+  for (const mark of pauseMarks) {
+    if (mark.resumedAt === null) {
+      open = mark.pausedAt;
+    } else if (open !== null) {
+      pauses.push({ pausedAt: open, resumedAt: mark.resumedAt });
+      open = null;
+    } else {
+      pauses.push(mark); // 짝 없는 resumed(열린 paused 가 없음) — 그대로 담는다
+    }
+  }
+  if (open !== null) pauses.push({ pausedAt: open, resumedAt: null });
   // 값이 하나도 없으면 둘 다 null — "없음" 은 값이 있는 쪽에 밀린다(역방향 갱신은 금지).
   return {
     startedAt: started.length > 0 ? earliest(started) : null,
     finishedAt: finished.length > 0 ? latest(finished) : null,
+    pauses,
   };
 }
 
