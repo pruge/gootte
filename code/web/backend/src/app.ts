@@ -208,11 +208,36 @@ export function createApp(options: AppOptions = {}): Hono {
     const savedCopies = snapshotCopiesFor(dataDir, slug);
     if (savedCopies && savedCopies.length === all.length && savedCopies.every((c, i) => c === all[i])) {
       const hit = snapshotFeatures(dataDir, slug, all);
-      if (hit) return hit;
+      // 🔴 새 기능 폴더 감지 — 사본 구성이 같아도 `docs/features/` 아래에 **새 폴더**(untracked 로
+      // 아직 커밋 안 된 기능 포함)가 생기면 스냅샷은 낡았다(INV-3). `sameStamps` 는 untracked 를
+      // 보지 않으므로(15초 재스캔 지연 방지) 여기서 디스크 폴더 목록과 스냅샷 feature slug 를
+      // 견줘, 다르면 스냅샷을 우회하고 다시 읽는다(실제 결함 2026-09-01: slider-widget-operator
+      // worktree 에 spec.md 만 있는 command-field-authoring 폴더가 감지되지 않았다).
+      if (hit && sameFeatureFolders(hit, all)) return hit;
     }
     const features = readFeatures([...all]);
     recordProjectScan(dataDir, { slug, path, copies: [...all] }, features);
     return features;
+  };
+
+  /**
+   * 스냅샷이 여전히 유효한가 — **디스크의 기능 폴더가 스냅샷에 이미 있는 것뿐인가**.
+   * 새 폴더(untracked 로 아직 커밋 안 된 기능 포함)가 스냅샷에 없으면 stale(true 아님).
+   * 🔴 단방향이다 — **문서가 사라진 쪽**(스냅샷엔 있고 디스크엔 없는)은 stale 로 보지 않는다.
+   * 그건 stale-while-validate 의 원래 의미다: 작업 중 문서가 잠깐 사라져도(체크아웃 등) 스냅샷을
+   * 서빙해 빈 화면을 막는다(snapshot.test.ts 가 고정). 🔴 `readdirSync` 만 쓴다 — git 하위프로세스
+   * 없이 저렴하게 새 폴더 유무만 본다.
+   */
+  const sameFeatureFolders = (snapshotFeatures: readonly Feature[], copies: readonly string[]): boolean => {
+    const snapshotSlugs = new Set(snapshotFeatures.map((f) => f.slug));
+    for (const copy of copies) {
+      const root = join(copy, "docs", "features");
+      if (!existsSync(root)) continue;
+      for (const name of readdirSync(root)) {
+        if (dirExists(join(root, name)) && !snapshotSlugs.has(name)) return false;
+      }
+    }
+    return true;
   };
 
   /**
