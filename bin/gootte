@@ -158,7 +158,7 @@ find_time_line_no() {
   grep -niE '^\*{0,2}time:' "$file" | head -1 | cut -d: -f1 || true
 }
 
-# 제목 뒤, 본문 앞의 메타데이터 블록(연속된 Status:/Time: 줄) 마지막 줄 번호를 찾는다.
+# 제목 뒤, 본문 앞의 메타데이터 블록(연속된 Status:/Time:/Blocked by: 줄) 마지막 줄 번호를 찾는다.
 # 그 블록이 없으면 제목 줄 번호를 돌려준다.
 find_header_block_end_line_no() {
   local file="$1"
@@ -170,9 +170,11 @@ find_header_block_end_line_no() {
   fi
   local total_lines
   total_lines="$(wc -l < "$file" | tr -d ' ')"
-  # 빈 줄은 건너뛰고, Status:/Time: 줄만 블록의 일부로 센다. 그 외 내용을 만나면 멈춘다.
+  # 메타데이터 키 줄과, 그 키가 시작한 문단의 연속 줄(다중 줄 `**Blocked by:**` 값 등)을
+  # 블록의 일부로 센다. 빈 줄은 건너뛰되 그 다음 키 줄이 더 있으면 이어서 센다.
   # (실물 티켓은 보통 제목 뒤에 빈 줄 → Status: → 빈 줄 → 본문 순서다.)
   local last="$title_line"
+  local in_paragraph=0
   local i=$((title_line + 1))
   while [ "$i" -le "$total_lines" ]; do
     local content
@@ -182,13 +184,22 @@ find_header_block_end_line_no() {
       # 산문 문단이 `**` 로 줄을 이을 수 있어서). 빈 줄은 건너뛰되 last 는 갱신하지 않는다.
       Status:*|Time:*|Blocked\ by:*|\*\*Status:*|**Time:*|**Blocked\ by:*|\*\*Needs\ Captain\ Eye:*)
         last="$i"
+        in_paragraph=1
         i=$((i + 1))
         ;;
       '')
+        in_paragraph=0
         i=$((i + 1))
         ;;
       *)
-        break
+        # 키 줄이 시작한 문단의 연속 줄 — Time: 을 문단 중간에 끼워 넣지 않도록 블록을 잇는다
+        # (실제 결함 2026-09-01: 다중 줄 **Blocked by:** 문단의 2번째 줄에서 멈춰 끼어들었다).
+        if [ "$in_paragraph" -eq 1 ] && [[ "$content" != '#'* ]]; then
+          last="$i"
+          i=$((i + 1))
+        else
+          break
+        fi
         ;;
     esac
   done

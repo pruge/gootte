@@ -243,4 +243,27 @@ grep -qE '^Time: started=\S+ paused=\S+ resumed=\S+$' "$TICKET12" || fail "case1
 grep -qE '^Time: started=\S+ paused=\S+ resumed=\S+ finished=\S+$' "$TICKET12" || fail "case12: finished= 가 같은 줄에 안 붙음"
 echo "✅ case 12 (pause → 중복pause 에러 → end 에러 → resume → end) OK"
 
+# case 13: 다중 줄 **Blocked by:** 문단 — Time: 을 문단 중간이 아니라 문단 뒤(끝)에 삽입
+FIXTURE13="$TMP_DIR/case13"
+make_fixture "$FIXTURE13" "my-feature" "T09.md" \
+  "# T09 — 다중 줄 Blocked by" \
+  "" \
+  "**Blocked by:** T01 — T01이 먼저 와야 한다. 지금 이" \
+  "티켓만 먼저 착지하면 경로가 없어진다." \
+  "" \
+  "## Goal" \
+  "" \
+  "Body."
+TICKET13="$FIXTURE13/docs/features/my-feature/tickets/T09.md"
+(cd "$FIXTURE13" && "$GOOTTE_BIN" start my-feature T09) >"$TMP_DIR/case13.out" 2>"$TMP_DIR/case13.err" \
+  || fail "case13: start 실패: $(cat "$TMP_DIR/case13.err")"
+# Time: 줄이 문단 마지막 줄(5) 뒤에 와야 한다 — 문단을 쪼개지 않은 자리
+TIME13="$(grep -n '^Time:' "$TICKET13" | head -1 | cut -d: -f1)"
+[ "$TIME13" -eq 5 ] || fail "case13: Time: 이 문단 마지막 줄(5) 뒤가 아님 — ${TIME13}번 줄"
+[ "$(sed -n '3p' "$TICKET13")" = '**Blocked by:** T01 — T01이 먼저 와야 한다. 지금 이' ] \
+  || fail "case13: Blocked by 문단 첫 줄이 깨짐"
+[ "$(sed -n '4p' "$TICKET13")" = '티켓만 먼저 착지하면 경로가 없어진다.' ] \
+  || fail "case13: Blocked by 문단 둘째 줄이 깨짐"
+echo "✅ case 13 (다중 줄 **Blocked by:** 문단 → Time: 을 문단 끝에 삽입, 문단 보존) OK"
+
 echo "✅ scripts/tests/gootte-time.test.sh 전체 통과 (구관례·--at·pause/resume 포함)"
