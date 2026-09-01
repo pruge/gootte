@@ -660,6 +660,21 @@ export function createApp(options: AppOptions = {}): Hono {
   const gootteBin = join(resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".."), "bin", "gootte");
 
   /**
+   * 그 사본에 티켓 파일이 실재하는가 — 신관례(`tickets/T<NN>.md`)와 구관례(`issues/<NN>-*.md`)
+   * 둘 다 본다. `pickTimeTarget` 이 기록 대상을 고를 때, 그 사본에서 CLI 가 실제로 파일을 찾을 수
+   * 있는지를 확인하기 위해 쓴다 — 파일이 없는 사본을 고르면 `gootte start` 가 "티켓 파일을 찾을 수
+   * 없습니다" 로 죽는다(실제 결함 2026-09-01: fsm-coordination-docs worktree 에는 live-state-display
+   * 가 없는데 시작 버튼이 그쪽을 골랐다).
+   */
+  const hasTicketFile = (copy: string, feature: string, ticket: string): boolean => {
+    const num = ticket.replace(/^T/i, "");
+    if (existsSync(join(copy, "docs", "features", feature, "tickets", `T${num}.md`))) return true;
+    const issuesDir = join(copy, "docs", "features", feature, "issues");
+    if (!existsSync(issuesDir)) return false;
+    return readdirSync(issuesDir).some((f) => f.startsWith(num) && f.endsWith(".md"));
+  };
+
+  /**
    * ADR-0002: 대상 사본 선택 — 버튼으로 시간 기록할 때 어느 사본의 티켓 문서를 수정할지 정한다.
    * - `start` 이외: `started=` 가 이미 있는 사본 우선. 없으면 대표.
    * - `start`: working worktree 우선, 없으면 대표(copies[0]).
@@ -668,11 +683,14 @@ export function createApp(options: AppOptions = {}): Hono {
     const allCopies = withWorktrees(proj.copies);
     if (action === "start") {
       // ADR-0002 §1 — 새 start 는 working 상태인 worktree 사본 우선(지금 그 일을 붙들고 있는
-      // 사본에 이어 기록), 없으면 대표(copies[0], main). 여러 working worktree 는 드문 경우로
-      // 아직 dialog 대체 전까지 첫 번째를 쓴다(TODO: 모호함 → dialog, ADR-0002 §2).
-      for (const copy of claudeWorktreeRoots(proj.copies)) {
-        if (currentBranch(copy)) return copy;
-      }
+      // 사본에 이어 기록). 🔴 그 worktree 에 그 티켓 파일이 **실재할 때만** 고른다 — 파일이 없는
+      // worktree(다른 기능 전용)를 고르면 CLI 가 파일을 못 찾아 죽는다(실제 결함 2026-09-01).
+      // working worktree 여럿 중 티켓이 있는 것을, 없으면 아무 worktree 나, 그래도 없으면 대표.
+      const worktrees = claudeWorktreeRoots(proj.copies);
+      const workingWithTicket = worktrees.find((c) => currentBranch(c) && hasTicketFile(c, feature, ticket));
+      if (workingWithTicket) return workingWithTicket;
+      const withTicket = allCopies.find((c) => hasTicketFile(c, feature, ticket));
+      if (withTicket) return withTicket;
       return proj.path;
     }
     for (const copy of allCopies) {
