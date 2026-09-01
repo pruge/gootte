@@ -47,7 +47,10 @@ export function splitByQuery(text: string, query: string): TextSegment[] {
 }
 
 /**
- * 기능 이름 + 티켓 제목(접힌 카드 안까지)으로 기능 목록을 거른다(티켓 01).
+ * 기능 이름(spec 표제) + **슬러그(폴더명)** + 티켓 제목(접힌 카드 안까지)으로 기능 목록을
+ * 거른다(티켓 01). 슬러그도 범위에 넣는다 — 카드 머리글의 배지로 보이는 `plan-board` 같은
+ * 값으로도 찾아야 화면에 보이는 이름으로 검색이 된다(2026-09-02 캡틴 보고: title 이 slug 를
+ * 포함하지 않는 기능 — `plan-board`·`development-order` — 을 slug 로 검색하면 안 잡혔다).
  * 서버를 다시 부르지 않는다 — 이미 받은 `features` 배열 안에서만 거른다(INV-1).
  * 검색어가 비어 있으면 원래 목록을 그대로 돌려준다(펼침 강제도 없다).
  */
@@ -62,7 +65,9 @@ export function filterFeaturesBySearch(
 
   const matches: FeatureSearchMatch[] = [];
   for (const feature of features) {
-    const nameMatches = includesQuery(feature.title, normalizedQuery);
+    const nameMatches =
+      includesQuery(feature.title, normalizedQuery) ||
+      includesQuery(feature.slug, normalizedQuery);
     const ticketMatches = allTickets(feature).some((t) => includesQuery(t.title, normalizedQuery));
     if (nameMatches || ticketMatches) {
       matches.push({ feature, forceExpanded: ticketMatches });

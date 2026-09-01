@@ -433,6 +433,17 @@ const SEARCH_DATA: FeaturesResponse = {
         },
       ],
     },
+    // 🔴 title 이 slug 를 포함하지 않는 기능 — 화면에 보이는 이름(slug 배지)으로도 검색돼야
+    // 한다(2026-09-02 캡틴 보고: `plan-board` 를 검색어로 넣으면 안 잡혔다).
+    {
+      slug: "plan-board",
+      title: "계획은 판 위에서 움직인다",
+      status: "pending",
+      sourceStatus: "ready-for-agent",
+      statusKnown: true,
+      docs: [],
+      tickets: [],
+    },
   ],
 };
 
@@ -454,6 +465,15 @@ describe("FeaturesView — 검색 상자가 기능과 티켓을 찾아 준다(a-
     renderView(SEARCH_DATA);
     fireEvent.change(searchBox(), { target: { value: "BILL" } });
     expect(screen.getByRole("heading", { name: "결제" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "로그인" })).toBeNull();
+  });
+
+  it("🔴 슬러그(slug)로도 걸린다 — title 이 slug 를 포함하지 않는 기능(실제 결함 2026-09-02)", () => {
+    renderView(SEARCH_DATA);
+    // plan-board 의 title 은 "계획은 판 위에서 움직인다" — slug 는 검색 범위에 들어가야 한다.
+    fireEvent.change(searchBox(), { target: { value: "plan-board" } });
+    expect(screen.getByRole("heading", { name: "계획은 판 위에서 움직인다" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "결제" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "로그인" })).toBeNull();
   });
 
