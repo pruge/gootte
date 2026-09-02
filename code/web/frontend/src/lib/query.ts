@@ -157,11 +157,12 @@ export function useCreateMemo(slug: string) {
   });
 }
 
-/** 메모 고치기 — 내용만 바꾼다. */
+/** 메모 고치기 — 내용을 바꾸고, `done` 이 주어지면 완료 표시(취소선)를 토글한다. */
 export function useUpdateMemo(slug: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, content }: { id: string; content: string }) => updateMemo(slug, id, content),
+    mutationFn: ({ id, content, done }: { id: string; content: string; done?: boolean }) =>
+      updateMemo(slug, id, content, done),
     onSuccess: () => void qc.invalidateQueries({ queryKey: qk.memos(slug) }),
   });
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { IconNote, IconSearch, IconTrash, IconDeviceFloppy } from "@tabler/icons-react";
+import { IconNote, IconSearch, IconTrash, IconDeviceFloppy, IconCircleCheck, IconCircle } from "@tabler/icons-react";
 import type { Memo } from "@gootte/contract";
 import { useMemos, useCreateMemo, useUpdateMemo, useDeleteMemo } from "../../lib/query";
 import { Loading, ErrorMsg, Empty } from "../common/states";
@@ -173,6 +173,7 @@ export function MemoView({ project }: { project: string }) {
                 key={memo.id}
                 memo={memo}
                 onSave={(content) => updateMemo.mutate({ id: memo.id, content })}
+                onToggleDone={(done) => updateMemo.mutate({ id: memo.id, content: memo.content, done })}
                 onDelete={() => deleteMemo.mutate(memo.id)}
                 isSaving={updateMemo.isPending}
               />
@@ -184,15 +185,17 @@ export function MemoView({ project }: { project: string }) {
   );
 }
 
-/** 메모지 한 장 — sticky note 스타일, 바로 수정·삭제. */
+/** 메모지 한 장 — sticky note 스타일, 바로 수정·삭제. 체크(완료)로 취소선을 건다. */
 function MemoNote({
   memo,
   onSave,
+  onToggleDone,
   onDelete,
   isSaving,
 }: {
   memo: Memo;
   onSave: (content: string) => void;
+  onToggleDone: (done: boolean) => void;
   onDelete: () => void;
   isSaving: boolean;
 }) {
@@ -211,12 +214,31 @@ function MemoNote({
   const clock = time.slice(11, 19);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-surface-2 dark:border-border dark:bg-surface shadow-sm">
+    <div
+      className={`overflow-hidden rounded-lg border shadow-sm ${
+        memo.done
+          ? "border-border bg-surface-2/60 dark:border-border dark:bg-surface-2/40"
+          : "border-border bg-surface-2 dark:border-border dark:bg-surface"
+      }`}
+    >
       <div className="flex items-baseline justify-between gap-2 border-b border-border px-3 py-1.5">
         <span className="mono shrink-0 text-xs text-amber-800 dark:text-muted">
           {date} {clock}
         </span>
         <span className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onToggleDone(!memo.done)}
+            aria-label={memo.done ? "완료 해제" : "완료로 표시"}
+            title={memo.done ? "완료 해제" : "완료로 표시"}
+            className={`${iconBtn} ${memo.done ? "text-accent" : ""}`}
+          >
+            {memo.done ? (
+              <IconCircleCheck size={15} stroke={2} />
+            ) : (
+              <IconCircle size={15} stroke={1.75} />
+            )}
+          </button>
           <button
             type="button"
             onClick={handleSave}
@@ -247,7 +269,11 @@ function MemoNote({
             if (dirty) handleSave();
           }
         }}
-        className="min-h-[4rem] w-full resize-none bg-transparent px-3 py-2 text-sm text-fg placeholder:text-muted focus:outline-none"
+        className={`min-h-[4rem] w-full resize-none bg-transparent px-3 py-2 text-sm placeholder:text-muted focus:outline-none ${
+          memo.done
+? "text-muted line-through decoration-2 decoration-strike"
+          : "text-fg"
+        }`}
         placeholder="내용 없음"
       />
     </div>

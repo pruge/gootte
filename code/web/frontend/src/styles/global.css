@@ -24,6 +24,8 @@
   --color-inprogress-strong: var(--inprogress-strong);
   --color-search-mark: var(--search-mark);
   --color-search-mark-fg: var(--search-mark-fg);
+  /* 완료 메모의 취소선 — 라이트에서 선명한 레드, 다크에서 코럴(둘 다 밝은 배경 위 또렷) */
+  --color-strike: var(--strike);
 
   --font-sans: Pretendard, "Pretendard Variable", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
@@ -80,6 +82,8 @@
      안 겹치는 hue 95 */
   --search-mark: oklch(88% 0.16 95);
   --search-mark-fg: oklch(28% 0.05 95);
+  /* 완료 메모 취소선 — 종이 바탕에서 또렷한 레드(다른 뜻과 안 겹치는 hue 25) */
+  --strike: oklch(52% 0.16 25);
 }
 
 /* dark = 미션 컨트롤: 깊은 배경, 밀도, 단일 accent */
@@ -107,6 +111,8 @@
   /* 검색어 표시 — 어두운 배경 위에서도 눈에 띄는 진한 노랑 */
   --search-mark: oklch(75% 0.16 95);
   --search-mark-fg: oklch(20% 0.04 95);
+  /* 완료 메모 취소선 — 어두운 배경 위에서도 또렷한 코럴 */
+  --strike: oklch(72% 0.12 25);
 }
 
 @layer base {

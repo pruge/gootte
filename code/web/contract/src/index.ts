@@ -364,6 +364,8 @@ export const Memo = z.object({
   /** 전역 고유 id — `<epochMs>-<counter>`. 화면 키·삭제 대상 식별에만 쓴다. */
   id: z.string(),
   content: z.string(),
+  /** 완료 표시(취소선). 체크 아이콘 클릭 시 토글 — 사람이 정한 것(INV-5). */
+  done: z.boolean().default(false),
   /** 작성 시각(ISO 8601, UTC) — 좌측 날짜 목록의 그룹 키. */
   createdAt: z.string(),
   /** 마지막 수정 시각(ISO 8601, UTC). 저장 안 하고 새로 만든 것과 구분하려고 둔다. */
@@ -378,9 +380,11 @@ export const MemosResponse = z.object({
 });
 export type MemosResponse = z.infer<typeof MemosResponse>;
 
-/** 메모 쓰기 — 새로 쓰기(POST)·고치기(PUT) 같은 칸을 쓴다. 내용 그대로 저장한다(INV-4). */
+/** 메모 쓰기 — 새로 쓰기(POST)·고치기(PUT) 같은 칸을 쓴다. 내용 그대로 저장한다(INV-4).
+ * `done`(완료 표시) 은 선택 — 고치기(PUT)에서 체크 토글에 쓴다. */
 export const MemoWriteRequest = z.object({
   content: z.string(),
+  done: z.boolean().optional(),
 });
 export type MemoWriteRequest = z.infer<typeof MemoWriteRequest>;
 

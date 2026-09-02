@@ -45,12 +45,18 @@ function writeMemosFile(dataDir: string, project: string, memos: readonly MemoT[
 export function appendMemo(dataDir: string, project: string, body: MemoWriteRequest, now: string): MemoT {
   const memos = readMemos(dataDir, project);
   const id = `${Date.now()}-${memos.length + 1}`;
-  const memo: MemoT = { id, content: body.content, createdAt: now, updatedAt: now };
+  const memo: MemoT = {
+    id,
+    content: body.content,
+    done: body.done ?? false,
+    createdAt: now,
+    updatedAt: now,
+  };
   writeMemosFile(dataDir, project, [...memos, memo]);
   return memo;
 }
 
-/** 한 장 고치기 — id 가 없으면 null(404). 내용만 바꾸고 시각은 고친다. */
+/** 한 장 고치기 — id 가 없으면 null(404). 내용을 바꾸고, `done` 이 주어지면 완료 표시를 토글한다. */
 export function updateMemo(
   dataDir: string,
   project: string,
@@ -61,7 +67,16 @@ export function updateMemo(
   const memos = readMemos(dataDir, project);
   const idx = memos.findIndex((m) => m.id === id);
   if (idx === -1) return null;
-  const next = memos.map((m) => (m.id === id ? { ...m, content: body.content, updatedAt: now } : m));
+  const next = memos.map((m) =>
+    m.id === id
+      ? {
+          ...m,
+          content: body.content,
+          ...(body.done !== undefined ? { done: body.done } : {}),
+          updatedAt: now,
+        }
+      : m,
+  );
   writeMemosFile(dataDir, project, next);
   return next[idx]!;
 }

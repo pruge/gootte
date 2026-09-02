@@ -92,6 +92,27 @@ describe("updateMemo", () => {
     expect(all).toHaveLength(1);
     expect(all[0]!.content).toBe("변경");
   });
+
+  test("done 을 주면 완료 표시가 저장된다 — 내용은 그대로", () => {
+    const m = appendMemo(dataDir, "project-a", { content: "원본" }, "2026-01-01T00:00:00.000Z");
+    const updated = updateMemo(
+      dataDir,
+      "project-a",
+      m.id,
+      { content: "원본", done: true },
+      "2026-06-01T00:00:00.000Z",
+    );
+    expect(updated!.done).toBe(true);
+    expect(updated!.content).toBe("원본");
+    expect(readMemos(dataDir, "project-a")[0]!.done).toBe(true);
+  });
+
+  test("done 을 안 주면 완료 표시를 건드리지 않는다(토글에 content 만 쓰는 안전선)", () => {
+    const m = appendMemo(dataDir, "project-a", { content: "원본", done: true }, "2026-01-01T00:00:00.000Z");
+    updateMemo(dataDir, "project-a", m.id, { content: "고침" }, "2026-06-01T00:00:00.000Z");
+    expect(readMemos(dataDir, "project-a")[0]!.done).toBe(true);
+    expect(readMemos(dataDir, "project-a")[0]!.content).toBe("고침");
+  });
 });
 
 describe("deleteMemo", () => {

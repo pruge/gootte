@@ -16,9 +16,10 @@ vi.mock("../src/lib/api", async (importOriginal) => {
   };
 });
 
-const m = (id: string, content: string, at: string): Memo => ({
+const m = (id: string, content: string, at: string, done = false): Memo => ({
   id,
   content,
+  done,
   createdAt: at,
   updatedAt: at,
 });
@@ -114,7 +115,14 @@ describe("MemoView — memo-pad 탭", () => {
       target: { value: "고친 것" },
     });
     fireEvent.click(within(note).getByRole("button", { name: "저장" }));
-    await waitFor(() => expect(api.updateMemo).toHaveBeenCalledWith("alpha", "1", "고친 것"));
+    await waitFor(() => expect(api.updateMemo).toHaveBeenCalledWith("alpha", "1", "고친 것", undefined));
+  });
+
+  it("체크 아이콘 클릭 → updateMemo 가 done: true 로 불리고, 취소선이 걸린다", async () => {
+    vi.mocked(api.updateMemo).mockResolvedValue(m("1", "원본", "2026-09-01T10:00:00.000Z", true));
+    renderMemo([m("1", "원본", "2026-09-01T10:00:00.000Z")]);
+    fireEvent.click(screen.getByRole("button", { name: "완료로 표시" }));
+    await waitFor(() => expect(api.updateMemo).toHaveBeenCalledWith("alpha", "1", "원본", true));
   });
 
   it("검색어로 메모를 걸러낸다 — 내용에 든 메모만 남는다", () => {

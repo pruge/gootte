@@ -136,12 +136,17 @@ export const createMemo = async (project: string, content: string): Promise<Memo
     body: JSON.stringify({ content }),
   });
 
-/** 메모 한 장 고치기 — 내용만 바꾼다. */
-export const updateMemo = async (project: string, id: string, content: string): Promise<Memo> =>
+/** 메모 한 장 고치기 — 내용을 바꾸고, `done` 을 주면 완료 표시(취소선)를 함께 바꾼다. */
+export const updateMemo = async (
+  project: string,
+  id: string,
+  content: string,
+  done?: boolean,
+): Promise<Memo> =>
   send(`/api/memos/${encodeURIComponent(project)}/${encodeURIComponent(id)}`, Memo, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, ...(done !== undefined ? { done } : {}) }),
   });
 
 /** 메모 한 장 지우기. */
