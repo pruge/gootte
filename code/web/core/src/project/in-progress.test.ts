@@ -97,15 +97,35 @@ describe("parseTicketPath — 경로 하나가 티켓을 가리키는가", () =>
 });
 
 describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
-  it("작업 가지의 커밋이 건드린 티켓이 처리중이 된다", () => {
+  it("🔴 브랜치가 티켓 파일을 건드려도 Time 기록(started=)이 없으면 처리중이 아니다 — 자동 처리중 폐기(ADR 0001)", () => {
+    // 캡틴 2026-09-02: 한 worktree 가 여러 티켓 파일을 건드리면 전부 처리중이 되어
+    // "실제로 무엇을 작업하고 있는지" 를 못 본다 — 처리중은 Time 기록으로만 판정한다.
     const { features, inProgress } = applyInProgress(
       FEATURES,
       scan([copy("pool/1", "fm/x", ["docs/features/auth/issues/02-screen.md", "README.md"])]),
     );
 
-    expect(find(features, "auth", "02-screen")?.status).toBe("in_progress");
-    expect(find(features, "auth", "02-screen")?.workedBy).toEqual(["fm/x"]);
+    expect(find(features, "auth", "02-screen")?.status).toBe("pending");
+    expect(find(features, "auth", "02-screen")?.workedBy).toEqual([]);
     expect(find(features, "auth", "01-session")?.status).toBe("pending");
+    expect(inProgress).toMatchObject({ copies: 1, working: 1, tickets: 0, unknown: [] });
+  });
+
+  it("Time 기록(started=)이 있고 가지가 건드린 티켓이 처리중이 된다 — workedBy 에 가지가 실린다", () => {
+    const features = [
+      feature("auth", [
+        ticket("01", "01-session"),
+        ticket("02", "02-screen", { startedAt: "2026-09-02T09:00:00Z" }),
+      ]),
+    ];
+    const { features: marked, inProgress } = applyInProgress(
+      features,
+      scan([copy("pool/1", "fm/x", ["docs/features/auth/issues/02-screen.md", "README.md"])]),
+    );
+
+    expect(find(marked, "auth", "02-screen")?.status).toBe("in_progress");
+    expect(find(marked, "auth", "02-screen")?.workedBy).toEqual(["fm/x"]);
+    expect(find(marked, "auth", "01-session")?.status).toBe("pending");
     expect(inProgress).toMatchObject({ copies: 1, working: 1, tickets: 1, unknown: [] });
   });
 
@@ -143,14 +163,20 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
 
   it("한 티켓을 두 사본이 붙들어도 티켓은 한 번만 센다", () => {
     const path = "docs/features/auth/issues/02-screen.md";
-    const { features, inProgress } = applyInProgress(
-      FEATURES,
+    const features = [
+      feature("auth", [
+        ticket("01", "01-session"),
+        ticket("02", "02-screen", { startedAt: "2026-09-02T09:00:00Z" }),
+      ]),
+    ];
+    const { features: marked, inProgress } = applyInProgress(
+      features,
       scan([copy("pool/1", "fm/a", [path]), copy("pool/2", "fm/b", [path])]),
     );
 
     expect(inProgress.tickets).toBe(1); // 티켓 수 — 사본 수가 아니다
     expect(inProgress.working).toBe(2);
-    expect(find(features, "auth", "02-screen")?.workedBy).toEqual(["fm/a", "fm/b"]);
+    expect(find(marked, "auth", "02-screen")?.workedBy).toEqual(["fm/a", "fm/b"]);
   });
 
   it("끝난 일은 다시 처리중이 되지 않는다 — 상태는 그대로다", () => {
@@ -191,7 +217,7 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     const features = [
       feature("auth", [
         ticket("01", "01-session", { status: "done" }),
-        ticket("02", "02-screen"),
+        ticket("02", "02-screen", { startedAt: "2026-09-02T09:00:00Z" }),
       ]),
     ];
     const marked = applyInProgress(
@@ -240,9 +266,27 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     ]);
   });
 
-  it("claimed 이고 살아 있는 사본이 붙들고 있으면 처리중이다 — 임자 없는 표시로는 안 센다", () => {
+  it("claimed 인데 살아 있는 사본이 붙들고 있어도 Time 기록이 없으면 처리중이 아니다 — 임자 없는 표시도 아니다", () => {
     const features = [
       feature("auth", [ticket("01", "01-session", { sourceStatus: "claimed" })]),
+    ];
+    const marked = applyInProgress(
+      features,
+      scan([copy("pool/1", "fm/a", ["docs/features/auth/issues/01-session.md"])]),
+    );
+
+    // claimed(임자 있음)는 문서의 주장이고, 처리중은 Time 기록으로만 판정한다(ADR 0001).
+    // 붙든 사본이 있으므로 임자 없는(unclaimed) 표시도 아니다 — 다만 처리중도 아니다.
+    expect(find(marked.features, "auth", "01-session")?.status).toBe("pending");
+    expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual([]);
+    expect(marked.inProgress.unclaimed).toEqual([]);
+  });
+
+  it("claimed 이고 Time 기록이 있고 사본이 붙들고 있으면 처리중이다", () => {
+    const features = [
+      feature("auth", [
+        ticket("01", "01-session", { sourceStatus: "claimed", startedAt: "2026-09-02T09:00:00Z" }),
+      ]),
     ];
     const marked = applyInProgress(
       features,
@@ -277,7 +321,7 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
 
   describe("🔴 신관례(T04) — tickets/T<NN>.md 도 처리중이 된다(실제 결함 2026-08)", () => {
     // 신관례 전용 기능 — 옛 관례 티켓 0장. core-io 가 실물에서 뽑는 모양 그대로.
-    const newTicket = (num: string): FeatureTicket => ({
+    const newTicket = (num: string, over: Partial<FeatureTicket> = {}): FeatureTicket => ({
       num,
       slug: `T${num}`,
       path: `tickets/T${num}.md`,
@@ -293,10 +337,14 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
       needsCaptainEye: false,
       docConvention: "tickets",
       joinFailed: false,
+      ...over,
     });
 
-    it("작업 가지의 커밋이 건드린 신관례 티켓이 처리중이 되고 workedBy 를 실는다", () => {
-      const f = feature("new-only", [], [newTicket("01"), newTicket("02")]);
+    it("Time 기록(started=)이 있고 가지가 건드린 신관례 티켓이 처리중이 되고 workedBy 를 실는다", () => {
+      const f = feature("new-only", [], [
+        newTicket("01", { startedAt: "2026-09-02T09:00:00Z" }),
+        newTicket("02"),
+      ]);
       const marked = applyInProgress(
         [f],
         scan([copy("pool/2", "fm/t", ["docs/features/new-only/tickets/T01.md"])]),

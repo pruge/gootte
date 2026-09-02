@@ -63,6 +63,19 @@ function makeCopy(
 const ticketFile = (num: string, title: string) =>
   `# ${num} — ${title}\n\n**Status:** ready-for-agent\n`;
 
+/** 처리중 판정(ADR 0001)은 Time 기록(started=)으로만 — 테스트가 그 기록을 붙이는 자리. */
+const startedTicketFile = (num: string, title: string) =>
+  `# ${num} — ${title}\n\n**Status:** ready-for-agent\n\n**Time:** started=2026-09-02T09:00:00Z\n`;
+
+/**
+ * 관리대상(main 프로젝트)의 티켓 파일에 `Time: started=` 를 얹는다 — applyInProgress 는
+ * readFeatures([project]) 로 읽은 문서의 startedAt 으로 처리중을 판정한다(관측은 workedBy 만).
+ */
+function startTicket(file: string, num: string, title: string): void {
+  const path = join(project, "docs", "features", "auth", "issues", file);
+  writeFileSync(path, startedTicketFile(num, title));
+}
+
 /** 관리대상의 할일 목록 — 여기에는 처리중이 **적혀 있지 않다**(정규 여덟 값에 없다). */
 function makeProject(): void {
   mkdirSync(join(project, "docs", "features", "auth", "issues"), { recursive: true });
@@ -96,11 +109,12 @@ beforeEach(() => {
 afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
 describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => {
-  it("작업 가지의 커밋이 티켓 파일을 건드리면 그 티켓이 처리중", () => {
+  it("작업 가지의 커밋이 티켓 파일을 건드리고 Time 기록(started=)이 있으면 처리중", () => {
+    startTicket("02-screen.md", "02", "로그인 화면");
     makeCopy({
       slot: "1",
       branch: "fm/alpha-login-screen", // 🔴 이름에는 티켓 번호가 없다 — 이름으로 잇지 않는다
-      work: { "docs/features/auth/issues/02-screen.md": ticketFile("02", "로그인 화면") },
+      work: { "docs/features/auth/issues/02-screen.md": startedTicketFile("02", "로그인 화면") },
     });
 
     const { features, inProgress } = observe();
@@ -108,6 +122,23 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     expect(ticketOf(features, "02-screen")?.workedBy).toEqual(["fm/alpha-login-screen"]);
     expect(ticketOf(features, "01-session")?.status).toBe("pending");
     expect(inProgress).toMatchObject({ rootExists: true, copies: 1, working: 1, tickets: 1 });
+    expect(inProgress.unknown).toEqual([]);
+  });
+
+  it("🔴 브랜치가 티켓 파일을 건드려도 Time 기록(started=)이 없으면 처리중이 아니다 — 자동 처리중 폐기(ADR 0001)", () => {
+    // main 프로젝트 티켓에 Time 이 없다(처리중 판정 근거 없음). 브랜치가 파일을 건드려도 pending.
+    makeCopy({
+      slot: "1",
+      branch: "fm/touches-but-not-started",
+      work: { "docs/features/auth/issues/02-screen.md": ticketFile("02", "로그인 화면") },
+    });
+
+    const { features, inProgress } = observe();
+    expect(ticketOf(features, "02-screen")?.status).toBe("pending");
+    expect(ticketOf(features, "02-screen")?.workedBy).toEqual([]);
+    expect(inProgress.tickets).toBe(0);
+    // 작업중 사본은 여전히 보인다(INV-4) — 알려진 티켓을 건드렸으므로 미상도 아니다.
+    expect(inProgress.working).toBe(1);
     expect(inProgress.unknown).toEqual([]);
   });
 
@@ -158,7 +189,8 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
   });
 
   it("한 티켓을 두 사본이 붙들고 있어도 중복으로 두 번 세지 않는다", () => {
-    const work = { "docs/features/auth/issues/02-screen.md": ticketFile("02", "로그인 화면") };
+    startTicket("02-screen.md", "02", "로그인 화면");
+    const work = { "docs/features/auth/issues/02-screen.md": startedTicketFile("02", "로그인 화면") };
     makeCopy({ slot: "1", branch: "fm/a", work });
     makeCopy({ slot: "2", branch: "fm/b", work });
 
@@ -193,7 +225,7 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
   it("비 ASCII 슬러그의 티켓도 이어진다 — git 의 경로 이스케이프에 걸려 미상으로 흘리지 않는다", () => {
     const dir = join(project, "docs", "features", "결제", "issues");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "01-환불.md"), ticketFile("01", "환불"));
+    writeFileSync(join(dir, "01-환불.md"), startedTicketFile("01", "환불"));
     makeCopy({
       slot: "1",
       branch: "fm/refund",
@@ -220,15 +252,17 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
   });
 
   it("사본 여럿이 서로 다른 티켓을 붙들면 각각 처리중", () => {
+    startTicket("01-session.md", "01", "세션 발급");
+    startTicket("02-screen.md", "02", "로그인 화면");
     makeCopy({
       slot: "1",
       branch: "fm/a",
-      work: { "docs/features/auth/issues/01-session.md": ticketFile("01", "세션 발급") },
+      work: { "docs/features/auth/issues/01-session.md": startedTicketFile("01", "세션 발급") },
     });
     makeCopy({
       slot: "2",
       branch: "fm/b",
-      work: { "docs/features/auth/issues/02-screen.md": ticketFile("02", "로그인 화면") },
+      work: { "docs/features/auth/issues/02-screen.md": startedTicketFile("02", "로그인 화면") },
     });
 
     const { features, inProgress } = observe();
@@ -269,10 +303,11 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
   });
 
   it("🔴 remote 가 없는 저장소는 로컬 main 으로 떨어진다 — 빈 목록이 되지 않는다", () => {
+    startTicket("01-session.md", "01", "세션 발급");
     makeCopy({
       slot: "1",
       branch: "fm/no-remote",
-      work: { "docs/features/auth/issues/01-session.md": ticketFile("01", "세션 발급") },
+      work: { "docs/features/auth/issues/01-session.md": startedTicketFile("01", "세션 발급") },
     });
 
     const { features, inProgress } = observe();
@@ -332,10 +367,13 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
       { stdio: "ignore" },
     );
     // 그 worktree 가지에서 티켓 파일을 건드린 커밋을 만든다 — treehouse 사본과 같은 입력이다.
-    commit(wt, { "docs/features/auth/issues/02-screen.md": ticketFile("02", "로그인 화면 v2") }, "work");
+    commit(wt, { "docs/features/auth/issues/02-screen.md": startedTicketFile("02", "로그인 화면 v2") }, "work");
     // worktree 를 만들면 기본 main 가지도 생기므로(기준 가지 존재), 이슈 커밋이 "이 가지의 일" 로 이어진다.
     git(wt, "checkout", "-q", "-b", `worktree-${wtName}-2`);
-    commit(wt, { "docs/features/auth/issues/01-session.md": ticketFile("01", "세션 발급 v2") }, "work2");
+    commit(wt, { "docs/features/auth/issues/01-session.md": startedTicketFile("01", "세션 발급 v2") }, "work2");
+    // 관리대상(main) 티켓에도 Time 기록을 얹는다 — 처리중은 main 문서의 startedAt 으로 판정(ADR 0001).
+    startTicket("01-session.md", "01", "세션 발급");
+    startTicket("02-screen.md", "02", "로그인 화면");
 
     const { features, inProgress } = observe(root, [mainRepo]);
     expect(ticketOf(features, "01-session")?.status).toBe("in_progress");
@@ -358,7 +396,9 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     execFileSync("git", ["-C", mainRepo, "worktree", "add", "-q", "-b", "worktree-fm-x", wt], {
       stdio: "ignore",
     });
-    commit(wt, { "docs/features/auth/issues/02-screen.md": ticketFile("02", "로그인 화면 v2") }, "work");
+    commit(wt, { "docs/features/auth/issues/02-screen.md": startedTicketFile("02", "로그인 화면 v2") }, "work");
+    // main 문서에도 Time 을 얹는다 — 처리중은 main 의 startedAt 으로 판정(ADR 0001).
+    startTicket("02-screen.md", "02", "로그인 화면");
 
     // raw 관측에서 슬러그가 `<프로젝트>/claude/<이름>` 인지 직접 본다 — treehouse(`<풀>/<슬롯>`)와
     // 겹치지 않는 식별자여야 차단 목록(blockedCopies)에서 헷갈리지 않는다(INV-5).
@@ -380,10 +420,18 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
       stdio: "ignore",
     });
     // 🔴 gootte start/end 는 커밋하지 않는다 — working tree 만 편집한다. Time 줄이 커밋 이전에
-    // 작업의 신호가 되어야 그 작업이 화면에서 사라지지 않는다(INV-4).
+    // 작업의 신호가 되어야 그 작업이 화면에서 사라지지 않는다(INV-4). Time(started=) 이 있으면
+    // 처리중 판정(ADR 0001)은 그 기록으로 즉시 잡는다 — 커밋 여부와 무관하다.
+    // main 프로젝트의 티켓 파일에 Time(started=) 을 쓴다(커밋 안 함) — readFeatures 가 이 내용을 읽는다.
+    writeFileSync(
+      join(mainRepo, "docs", "features", "auth", "issues", "02-screen.md"),
+      startedTicketFile("02", "로그인 화면 v3"),
+    );
+    // worktree 쪽에도 같은 편집을 남긴다 — worktree 가 그 티켓을 건드리고 있음을 관측에 남긴다
+    // (이 테스트의 요점은 "커밋 안 된 Time 기록" 이지 "미상 작업" 이 아니다).
     writeFileSync(
       join(wt, "docs", "features", "auth", "issues", "02-screen.md"),
-      ticketFile("02", "로그인 화면 v3"),
+      startedTicketFile("02", "로그인 화면 v3"),
     );
 
     const { features, inProgress } = observe(root, [mainRepo]);
@@ -447,10 +495,13 @@ describe("정렬 — 처리중인 기능이 무리 안에서 위로 온다(티�
   // 보려면 `applyInProgress` 를 거친 뒤의 결과라야 한다. `observe()` 가 정확히 그 전체 경로다.
   it("🔴 처리중인 티켓을 가진 기능이 폴더명 순서를 뒤집고 위로 온다", () => {
     makeSecondFeature();
+    // billing 의 01-plan.md 에 Time(started=) 을 얹는다 — 처리중 판정 필요(ADR 0001).
+    const billingDir = join(project, "docs", "features", "billing", "issues", "01-plan.md");
+    writeFileSync(billingDir, startedTicketFile("01", "요금제"));
     makeCopy({
       slot: "1",
       branch: "fm/billing-plan",
-      work: { "docs/features/billing/issues/01-plan.md": ticketFile("01", "요금제") },
+      work: { "docs/features/billing/issues/01-plan.md": startedTicketFile("01", "요금제") },
     });
 
     const { features } = observe();

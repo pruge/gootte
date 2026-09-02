@@ -62,7 +62,12 @@ function markTicket(ticket: FeatureTicket, branches: readonly string[]): Feature
   // 끝나거나 취소된 티켓은 상태만 지키는 것으로 부족하다 — 붙들린 가지도 싣지 않는다.
   // 값이 실려 있으면 줄이 그걸로 처리중을 그린다(사양 §설계 1).
   if (ticket.status === "done" || ticket.status === "dropped") return ticket;
-  if (branches.length === 0) return ticket;
+  // 🔴 처리중은 **Time 기록(started=, 완료 없음)** 으로만 판정한다(ADR 0001 —
+  // work-claims-its-ticket/02, 캡틴 2026-09-02). 브랜치가 티켓 파일을 건드렸다고 해서
+  // 자동으로 처리중이 되지 않는다 — 한 worktree 가 여러 티켓 파일을 건드리면 전부 처리중이
+  // 되어 "실제로 무엇을 작업하고 있는지" 를 못 본다(실제 결함: studio-function-authoring-ux/T02).
+  // 브랜치 관측은 처리중의 근거가 아니라 **누가 붙들고 있나(workedBy)** 만 실어준다.
+  if (!ticket.startedAt || ticket.finishedAt) return ticket;
   return { ...ticket, status: "in_progress", workedBy: [...branches] };
 }
 
@@ -122,9 +127,13 @@ export function applyInProgress(
     // 'claimed 인데 사본 없음' 판정은 옛 관례의 원문 상태에서만 걸린다(신관례 sourceStatus 는
     // 백로그 SoT 앞에서 늘 null 이다).
     const mark = (t: FeatureTicket): FeatureTicket => {
-      const next = markTicket(t, branchesByTicket.get(key(f.slug, t.slug)) ?? []);
+      const held = branchesByTicket.get(key(f.slug, t.slug)) ?? [];
+      const next = markTicket(t, held);
       if (next.status === "in_progress") tickets += 1;
-      else if (t.sourceStatus === "claimed") {
+      // 🔴 unclaimed = claimed 라고 말하는데 **붙든 사본이 없다**(ADR 0001, 지우다 만 흔적).
+      // 처리중은 Time 기록으로만 판정하므로, claimed + 사본 있음 + Time 없음 = 처리중도
+      // unclaimed 도 아니다 — 사본이 붙들고 있으므로 "임자 없는(unclaimed)" 표시는 거짓이다.
+      else if (t.sourceStatus === "claimed" && held.length === 0) {
         unclaimed.push({ feature: f.slug, ticket: t.slug, title: t.title });
       }
       return next;

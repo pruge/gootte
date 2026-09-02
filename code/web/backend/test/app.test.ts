@@ -206,25 +206,34 @@ describe("GET /api/features/:slug", () => {
     expect(t?.status).toBe("pending");
   });
 
-  test("🔴 문서만으로는 in_progress 가 나오지 않는다 — 처리중은 관측의 몫", async () => {
+  test("🔴 Time(started=) 기록이 있는 티켓은 관측 없이도 처리중이다 — 관측은 workedBy 만 실어준다(ADR 0001)", async () => {
     const app = createApp(APP);
     const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
+    // 02-screen 에는 Time: started= 가 fixture 에 적혀 있다(ADR 0001: 처리중은 Time 기록으로만)
+    const t = body.features
+      .find((f) => f.slug === "auth-login")
+      ?.tickets.find((x) => x.slug === "02-screen");
+    expect(t?.status).toBe("in_progress");
+    expect(t?.workedBy).toEqual([]); // 관측이 없으므로 workedBy 는 빈 배열
+    // 다른 티켓(01-session Time 없음, 03-06 등)은 처리중이 아니다
     for (const f of body.features)
-      for (const t of f.tickets) {
-        expect(t.status).not.toBe("in_progress");
-        expect(t.workedBy).toEqual([]);
-      }
+      for (const t of f.tickets)
+        if (t.path !== "issues/02-screen.md") {
+          expect(t.status).not.toBe("in_progress");
+          expect(t.workedBy).toEqual([]);
+        }
   });
 
-  test("격리 사본 뿌리가 없어도 응답은 산다 — 빈 관측이지 오류가 아니다", async () => {
+  test("격리 사본 뿌리가 없어도 응답은 산다 — Time 기록이 처리중을 만든다", async () => {
     const app = createApp(APP);
     const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
+    // 02-screen 의 Time(started=) 기록이 처리중을 만든다(ADR 0001) — 관측 없이도
     expect(body.inProgress).toMatchObject({
       root: NO_TREEHOUSE,
       rootExists: false,
       copies: 0,
       working: 0,
-      tickets: 0,
+      tickets: 1,
     });
     expect(body.inProgress.unknown).toEqual([]);
     expect(body.inProgress.unreadable).toEqual([]);
