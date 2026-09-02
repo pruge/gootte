@@ -47,6 +47,7 @@ export function SettingsView() {
   const [query, setQuery] = useState("");
   const [firstmateHome, setFirstmateHome] = useState("");
   const [watchRoots, setWatchRoots] = useState<string[]>([]);
+  const [autoClose, setAutoClose] = useState(true);
   const [newRoot, setNewRoot] = useState("");
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [pickErrorFirstmateHome, setPickErrorFirstmateHome] = useState<string | null>(null);
@@ -58,6 +59,7 @@ export function SettingsView() {
     if (seeded || !data) return;
     setFirstmateHome(data.firstmateHome ?? "");
     setWatchRoots(data.effectiveWatchRoots ?? []);
+    setAutoClose(data.autoClose);
     setSeeded(true);
   }, [seeded, data]);
 
@@ -65,11 +67,13 @@ export function SettingsView() {
     if (!save.isSuccess || !save.data) return;
     setFirstmateHome(save.data.firstmateHome ?? "");
     setWatchRoots(save.data.effectiveWatchRoots ?? []);
+    setAutoClose(save.data.autoClose);
   }, [save.isSuccess, save.data]);
 
   const dirty =
     firstmateHome !== (data?.firstmateHome ?? "") ||
-    watchRoots.join("\u0000") !== (data?.effectiveWatchRoots ?? []).join("\u0000");
+    watchRoots.join("\u0000") !== (data?.effectiveWatchRoots ?? []).join("\u0000") ||
+    autoClose !== (data?.autoClose ?? true);
 
   // 자동 저장 — 변경 시 500ms 뒤 저장, 저장 버튼 없음(VSCode 스타일)
   useEffect(() => {
@@ -80,12 +84,12 @@ export function SettingsView() {
         return c === "" ? null : c;
       };
       save.mutate(
-        { firstmateHome: trimToNull(firstmateHome), watchRoots },
+        { firstmateHome: trimToNull(firstmateHome), watchRoots, autoClose },
         { onSuccess: () => setSavedAt(Date.now()) },
       );
     }, 500);
     return () => clearTimeout(t);
-  }, [seeded, firstmateHome, watchRoots, dirty, data]);
+  }, [seeded, firstmateHome, watchRoots, autoClose, dirty, data]);
 
   const firstmateHomeWarning =
     data && data.firstmateHome !== null && !data.firstmateHomeExists
@@ -257,6 +261,34 @@ export function SettingsView() {
               )}
             </div>
             {firstmateHomeWarning && <Warning text={firstmateHomeWarning} />}
+          </SettingRow>
+        )}
+
+        {activeCategory === "general" && (
+          <SettingRow
+            title="자동 완료"
+            hint="켜면 모든 티켓이 완료되면 그 카드를 자동으로 완료 칸으로 옮깁니다. 끄면 캡틴이 손으로 옮깁니다."
+          >
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoClose}
+              onClick={() => setAutoClose((v) => !v)}
+              className="flex items-center gap-3"
+            >
+              <span
+                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                  autoClose ? "bg-accent" : "bg-surface-2"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-fg transition-transform ${
+                    autoClose ? "translate-x-4" : "translate-x-0.5"
+                  }`}
+                />
+              </span>
+              <span className="text-sm text-fg">{autoClose ? "켜짐" : "꺼짐"}</span>
+            </button>
           </SettingRow>
         )}
 

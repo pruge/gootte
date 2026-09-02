@@ -402,6 +402,7 @@ export function createApp(options: AppOptions = {}): Hono {
       firstmateHome?: string | null;
       watchRoots?: string[] | null;
       blockedCopies?: string[];
+      autoClose?: boolean;
     } = {};
     for (const key of ["firstmateHome"] as const) {
       const raw = update[key];
@@ -430,6 +431,8 @@ export function createApp(options: AppOptions = {}): Hono {
     }
     // 차단 목록은 경로가 아니라 `<풀>/<슬롯>` 식별자라 정규화하지 않고 그대로 둔다.
     if (update.blockedCopies !== undefined) normalized.blockedCopies = update.blockedCopies;
+    // 자동 완료 — boolean 하나라 정규화할 것이 없다.
+    if (update.autoClose !== undefined) normalized.autoClose = update.autoClose;
     try {
       writeSettings(dataDir, normalized);
       // firstmate 홈이 실제로 바뀌었다면 감시기에도 알린다 — 요청 경로(effectiveRoots) 만

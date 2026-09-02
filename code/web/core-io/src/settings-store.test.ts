@@ -25,12 +25,12 @@ afterEach(() => {
 
 describe("readSettings", () => {
   test("파일이 없으면 null — 소비처는 기본값으로 떨어진다", () => {
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: null, watchRoots: [], blockedCopies: [] });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: null, watchRoots: [], blockedCopies: [], autoClose: true });
   });
 
   test("저장한 값을 그대로 읽는다", () => {
     writeSettings(dataDir, { firstmateHome: "/tmp/fm" });
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [], blockedCopies: [] });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [], blockedCopies: [], autoClose: true });
   });
 
   test("망가진 JSON 은 빈 설정으로 위장하지 않고 던진다", () => {
@@ -45,7 +45,7 @@ describe("readSettings", () => {
       settingsFile(dataDir),
       `${JSON.stringify({ watchRoot: "/옛/값", firstmateHome: "/tmp/fm" }, null, 2)}\n`,
     );
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [], blockedCopies: [] });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [], blockedCopies: [], autoClose: true });
   });
 });
 
@@ -53,13 +53,13 @@ describe("writeSettings", () => {
   test("들어온 키만 갈아 끼운다(merge)", () => {
     writeSettings(dataDir, {});
     writeSettings(dataDir, { firstmateHome: "/b" });
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/b", watchRoots: [], blockedCopies: [] });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/b", watchRoots: [], blockedCopies: [], autoClose: true });
   });
 
   test("null 은 지움(unset)이다", () => {
     writeSettings(dataDir, { firstmateHome: "/b" });
     writeSettings(dataDir, { firstmateHome: null });
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: null, watchRoots: [], blockedCopies: [] });
+    expect(readSettings(dataDir)).toEqual({ firstmateHome: null, watchRoots: [], blockedCopies: [], autoClose: true });
   });
 
   test("재시작(새 read) 후에도 유지된다 — 같은 자리를 다시 읽으면 같은 값", () => {

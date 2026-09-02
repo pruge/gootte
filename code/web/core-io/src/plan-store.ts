@@ -5,6 +5,7 @@ import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import type { Feature } from "@gootte/contract";
 import { Placement } from "@gootte/contract";
 import { applyReadState, allTickets, planAutoClose, planReopen, type PlanWritePlan } from "@gootte/core";
+import { readSettings } from "./settings-store";
 
 /**
  * 계획 저장소 — SQLite, gootte 자기 저장소(INV-2 — 관리대상에는 아무것도 안 쓴다. INV-2 가
@@ -299,8 +300,12 @@ export function readPlacementsWithAutoClose(
   project: string,
   features: readonly Feature[],
 ): Placement[] {
-  const closing = planAutoClose(features, readPlacements(dataDir, project));
-  if (closing) writePlanMove(dataDir, project, closing);
+  // 🔴 자동 완료는 설정 `autoClose` 로 on/off(캡틴 2026-09-02) — off 면 모든 티켓이 완료되어도
+  // 카드를 완료 칸으로 옮기지 않는다(캡틴이 손으로 옮긴다).
+  if (readSettings(dataDir).autoClose) {
+    const closing = planAutoClose(features, readPlacements(dataDir, project));
+    if (closing) writePlanMove(dataDir, project, closing);
+  }
 
   const withUnread = featuresWithUnreadState(dataDir, project, features);
   const reopening = planReopen(withUnread, readPlacements(dataDir, project));

@@ -16,6 +16,7 @@ import {
   writePlanMove,
   writeStep,
 } from "./plan-store";
+import { writeSettings } from "./settings-store";
 
 /** 티켓 하나짜리 기능 — `done` 이면 상자가 채워진 것(04, `ticketBoxState`). */
 function feature(slug: string, ticketStatus: "done" | "pending"): Feature {
@@ -306,6 +307,16 @@ describe("readPlacementsWithAutoClose — 04 를 태우고 다시 읽는 자리(
     const placements = readPlacementsWithAutoClose(dataDir, "alpha", [feature("done-one", "done")]);
     expect(placements).toEqual([{ feature: "done-one", area: "done", seq: 0, closedAt: null }]);
     // 쓴 값이 실제로 DB 에 남았다 — 다음 read 도 같은 판을 본다.
+    expect(readPlacements(dataDir, "alpha")).toEqual(placements);
+  });
+
+  test("🔴 설정 autoClose=false 면 전부 채워져도 완료 칸으로 옮기지 않는다(캡틴 2026-09-02)", () => {
+    migratePlanDb(dataDir);
+    writeSettings(dataDir, { autoClose: false });
+    insert("alpha", "done-one", "active", 0);
+    const placements = readPlacementsWithAutoClose(dataDir, "alpha", [feature("done-one", "done")]);
+    // 자동 완료가 꺼져 있으므로 작업 대상(active)에 그대로 남는다.
+    expect(placements).toEqual([{ feature: "done-one", area: "active", seq: 0, closedAt: null }]);
     expect(readPlacements(dataDir, "alpha")).toEqual(placements);
   });
 

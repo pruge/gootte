@@ -109,7 +109,7 @@ describe("SettingsView — VSCode 레이아웃 (settings-in-main-area T02)", () 
       target: { value: "/tmp/fm" },
     });
     await waitFor(() => expect(mockSave).toHaveBeenCalled());
-    expect(mockSave.mock.calls[0]![0]).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [] });
+    expect(mockSave.mock.calls[0]![0]).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [], autoClose: true });
     expect(await screen.findByText(/저장됨/)).toBeInTheDocument();
   });
 
@@ -174,7 +174,7 @@ describe("SettingsView — VSCode 레이아웃 (settings-in-main-area T02)", () 
 
     mockSave.mockResolvedValue(settings({ effectiveWatchRoots: ["/new/root"] }));
     await waitFor(() => expect(mockSave).toHaveBeenCalled());
-    expect(mockSave.mock.calls[0]![0]).toEqual({ firstmateHome: null, watchRoots: ["/new/root"] });
+    expect(mockSave.mock.calls[0]![0]).toEqual({ firstmateHome: null, watchRoots: ["/new/root"], autoClose: true });
 
     // 삭제
     fireEvent.click(screen.getByRole("button", { name: "감시 목록에서 제거" }));

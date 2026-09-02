@@ -62,7 +62,7 @@ export function suggestFirstmateHome(
   return candidates.find((p) => dirExists(p)) ?? null;
 }
 
-const DEFAULTS: SettingsT = { firstmateHome: null, watchRoots: [], blockedCopies: [] };
+const DEFAULTS: SettingsT = { firstmateHome: null, watchRoots: [], blockedCopies: [], autoClose: true };
 
 /**
  * 설정 읽기 — 파일이 없으면 기본값(전부 null). 소비처는 null 이면 기존 기본값(env·플랫폼)으로
@@ -119,7 +119,7 @@ export function resolveWatchRoots(dataDir: string, fallbackRoots: string[]): str
 export function writeSettings(
   dataDir: string,
   update: Partial<
-    Pick<SettingsUpdateRequest, "firstmateHome" | "watchRoots" | "blockedCopies">
+    Pick<SettingsUpdateRequest, "firstmateHome" | "watchRoots" | "blockedCopies" | "autoClose">
   >,
 ): SettingsT {
   const file = settingsFile(dataDir);
@@ -137,6 +137,8 @@ export function writeSettings(
   // 차단 목록 — gootte 자기 저장소의 사용자 결정(INV-5). `<풀>/<슬롯>` 식별자 문자열이라 경로
   // 정규화는 하지 않고 그대로 둔다. `[]` 이면 명시적으로 모두 해제.
   if (update.blockedCopies !== undefined) raw.blockedCopies = update.blockedCopies;
+  // 자동 완료 — 모든 티켓이 완료되면 카드를 완료 칸으로 옮길지(캡틴 결정 2026-09-02: 토글).
+  if (update.autoClose !== undefined) raw.autoClose = update.autoClose;
   mkdirSync(dataDir, { recursive: true });
   const tmp = `${file}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(raw, null, 2)}\n`);

@@ -313,6 +313,8 @@ export const Settings = z.object({
   // (INV-5: 어디 문서에도 없고 사람만 아는 "이 복사본은 더 보지 않겠다"는 표). 트리하우스를
   // 건드리지 않고(read-only 관측, INV-2) read-time 필터로만 화면에서 숨긴다. 빈 배열 = 차단 없음.
   blockedCopies: z.array(z.string()).default([]),
+  /** 자동 완료 — 모든 티켓이 완료되면 카드를 완료 칸으로 옮긴다(캡틴 결정 2026-09-02: 토글). */
+  autoClose: z.boolean().default(true),
 });
 export type Settings = z.infer<typeof Settings>;
 
@@ -344,6 +346,8 @@ export const SettingsUpdateRequest = z.object({
   // 경로가 아니라 `<풀>/<슬롯>` 식별자라 경로 정규화는 하지 않는다. 두 항목 Put 이 섞여 와도
   // 누락 없이 그대로 저장된다(부분 갱신).
   blockedCopies: z.array(z.string().min(1)).optional(),
+  // 자동 완료 — 모든 티켓이 완료되면 카드를 완료 칸으로 옮길지(캡틴 결정 2026-09-02: 토글).
+  autoClose: z.boolean().optional(),
 });
 export type SettingsUpdateRequest = z.infer<typeof SettingsUpdateRequest>;
 

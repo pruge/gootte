@@ -1451,6 +1451,7 @@ describe("설정 GET/PUT /api/settings", () => {
         firstmateHomeSuggestion: null,
         watchRoots: [],
         blockedCopies: [],
+        autoClose: true,
         effectiveWatchRoots: roots,
       });
     }));
@@ -1476,6 +1477,7 @@ describe("설정 GET/PUT /api/settings", () => {
         firstmateHomeSuggestion: null,
         watchRoots: [],
         blockedCopies: [],
+        autoClose: true,
         effectiveWatchRoots: deriveWatchRoots(FIXTURES),
       });
     }));
@@ -1633,6 +1635,7 @@ describe("설정 GET/PUT /api/settings", () => {
         firstmateHomeSuggestion: null,
         watchRoots: [],
         blockedCopies: [],
+        autoClose: true,
         effectiveWatchRoots: deriveWatchRoots(FIXTURES),
       });
     }));
