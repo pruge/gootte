@@ -22,6 +22,11 @@ interface ProcessViewProps {
   project: string;
 }
 
+/** 남은(open) 티켓 수 — 완료·폐기 제외. 두 관례(구 issues/ · 신 tickets/)를 합쳐 센다(INV-1). */
+function openCount(f: Feature): number {
+  return allTickets(f).filter((t) => t.status !== "done" && t.status !== "dropped").length;
+}
+
 /**
  * `process`(steps) 탭 — 작업 대상 feature 를 **2컬럼(1:2)** 으로 읽는다(process-two-column/T01).
  *
@@ -87,14 +92,10 @@ export function ProcessView({ project }: ProcessViewProps) {
                   } focus-visible:outline-2 focus-visible:outline-accent`}
                 >
                   <span className="min-w-0 flex-1 truncate">{f.slug}</span>
-                  {f.hasUnreadTicket === true && (
-                    <span className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg">
-                      안 읽음
-                    </span>
-                  )}
                   {/* 🔴 처리중 티켓이 있으면 파란 원점 — 배경색 말고도 붙들 것이 있다(INV-C2).
                       `allTickets` 로 두 관례(구 issues/ · 신 tickets/)를 합쳐, status 가 in_progress 인
-                      티켓이 하나라도 있으면 점을 찍는다. 판정 자리는 서버(`applyInProgress`) 하나다. */}
+                      티켓이 하나라도 있으면 점을 찍는다. 판정 자리는 서버(`applyInProgress`) 하나다.
+                      숫자(남은 티켓 수) 앞에 둔다 — 캡틴 지시(2026-09-02). */}
                   {allTickets(f).some((t) => t.status === "in_progress") && (
                     <span
                       role="status"
@@ -102,6 +103,21 @@ export function ProcessView({ project }: ProcessViewProps) {
                       title="처리중 티켓 있음"
                       className="h-2 w-2 shrink-0 rounded-full bg-active"
                     />
+                  )}
+                  {/* 🔴 남은(open) 티켓 수 — 완료·폐기 제외. `allTickets` 로 두 관례를 합쳐 센다(INV-1,
+                      서버가 준 값만 셀 뿐 다시 판정하지 않는다). 0 이어도 칸이 사라지지 않는다. */}
+                  <span
+                    title="남은 티켓 수"
+                    className={`mono shrink-0 rounded-full px-1.5 text-xs font-medium tabular-nums ${
+                      openCount(f) > 0 ? "bg-accent/15 text-accent" : "bg-surface-2 text-muted"
+                    }`}
+                  >
+                    {openCount(f)}
+                  </span>
+                  {f.hasUnreadTicket === true && (
+                    <span className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg">
+                      안 읽음
+                    </span>
                   )}
                 </button>
               </li>

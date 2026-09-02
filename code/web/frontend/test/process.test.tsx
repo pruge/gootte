@@ -128,6 +128,35 @@ describe("ProcessView — 2컬럼(1:2) 읽기 화면(process-two-column/T01)", (
     expect(within(btn).getByRole("status", { name: /처리중/ })).toBeInTheDocument();
   });
 
+  it("왼쪽 feature 목록에 남은(open) 티켓 수가 배지로 보인다 — 완료·폐기는 세지 않는다", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [
+        card(
+          feature("mixed", [
+            ["01", "남은 것"],
+            ["02", "끝난 것", "done", "2026-08-01"],
+            ["03", "폐기된 것", "dropped"],
+          ]),
+        ),
+      ],
+    });
+    const left = screen.getByText("FEATURES").closest("aside") as HTMLElement;
+    const btn = within(left).getByRole("button", { name: /mixed/ });
+    // 완료·폐기 2개를 제외한 남은 티켓 1개
+    expect(within(btn).getByTitle("남은 티켓 수")).toHaveTextContent("1");
+  });
+
+  it("남은 티켓이 하나도 없으면 배지가 0 을 보여준다 — 감추지 않는다", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(feature("all-done", [["01", "다 끝난 것", "done", "2026-08-01"]]))],
+    });
+    const left = screen.getByText("FEATURES").closest("aside") as HTMLElement;
+    const btn = within(left).getByRole("button", { name: /all-done/ });
+    expect(within(btn).getByTitle("남은 티켓 수")).toHaveTextContent("0");
+  });
+
   it("오른쪽 컬럼에는 선택된 feature 의 **모든** 티켓이 보인다 — 완료([x])·폐기([-]) 도 숨기지 않는다(캡틴 지시)", () => {
     renderProcess({
       ...EMPTY_BOARD,
