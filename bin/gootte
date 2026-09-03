@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # bin/gootte — 독립 bash CLI. gootte TS 모노레포의 워크스페이스 패키지를 전혀 참조하지 않는다.
 #
-# gootte start  [--at <TIME>] <feature-slug> <ticket> # 티켓 문서에 **Time:** started=<ISO> 삽입
+# gootte cancel [--at <TIME>] <feature-slug> <ticket> # Time: 줄을 통째로 삭제 — 시작 취소
+# gootte start  [--at <TIME>] [--update] <feature-slug> <ticket> # 티켓 문서에 **Time:** started=<ISO> 삽입
+#                                                             # 이미 시작된 티켓이면 확인(또는 --update) 후 started= 를 갱신
 # gootte pause  [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 paused=<ISO> 추가(일시 중단)
 # gootte resume [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 resumed=<ISO> 추가(재개)
 # gootte end    [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 finished=<ISO> 추가
@@ -26,12 +28,14 @@
 set -euo pipefail
 
 usage() {
-  echo "사용법: gootte start  [--at <TIME>] <feature-slug> <ticket>" >&2
+  echo "사용법: gootte start  [--at <TIME>] [--update] <feature-slug> <ticket>" >&2
+  echo "      gootte cancel [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte pause  [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte resume [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte end    [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte drop   [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "  TIME: 비우면 지금 / ISO8601 / 상대시간(예 1h30m, 90m, 2h, 1d)" >&2
+  echo "  --update: 이미 시작된 티켓의 started= 를 묻지 않고 바로 갱신(start 전용)" >&2
   exit 1
 }
 
@@ -212,8 +216,9 @@ find_header_block_end_line_no() {
 
 cmd_start() {
   local at="$1"
-  local feature_slug="$2"
-  local ticket_raw="$3"
+  local update="${2:-0}"
+  local feature_slug="$3"
+  local ticket_raw="$4"
   local ticket_norm
   ticket_norm="$(normalize_ticket "$ticket_raw")"
   local file
@@ -222,8 +227,37 @@ cmd_start() {
   local existing_line_no
   existing_line_no="$(find_time_line_no "$file")"
   if [ -n "$existing_line_no" ]; then
-    echo "gootte: 이미 시작된 티켓입니다(Time: 줄이 이미 있음): $file" >&2
-    exit 1
+    local existing_line
+    existing_line="$(sed -n "${existing_line_no}p" "$file")"
+    if printf '%s' "$existing_line" | grep -q 'finished='; then
+      echo "gootte: 이미 끝난 티켓의 시작 시간은 바꿀 수 없습니다: $file" >&2
+      exit 1
+    fi
+    local iso
+    iso="$(resolve_time "$at")" || exit 1
+    # --update 플래그면 묻지 않고 바로, 아니면 확인 후 started= 를 갱신한다.
+    if [ "$update" != "1" ]; then
+      printf 'gootte: 이미 시작된 티켓입니다. 시작 시간을 %s 로 변경할까요? [y/N] ' "$iso" >&2
+      read -r ans
+      case "$ans" in
+        y|Y|yes|Yes|YES) ;;
+        *) echo "gootte: 변경하지 않았습니다" >&2; exit 1 ;;
+      esac
+    fi
+    local tmp
+    tmp="$(mktemp)"
+    # started=<이전> → started=<새 값> — 그 뒤 토큰(paused 등)은 그대로 둔다.
+    awk -v n="$existing_line_no" -v iso="$iso" '
+      NR == n {
+        sub(/started=[^ ]+/, "started=" iso)
+        print
+        next
+      }
+      { print }
+    ' "$file" > "$tmp"
+    mv "$tmp" "$file"
+    echo "gootte: $file 의 started= 를 $iso 로 변경함"
+    return
   fi
 
   local insert_after
@@ -247,10 +281,48 @@ cmd_start() {
   echo "gootte: $file 에 $time_label started=$iso 기록됨"
 }
 
+# gootte cancel <feature-slug> <ticket> — Time: 줄을 통째로 삭제(시작 취소).
+# finished= 나 paused= 가 있으면 거절한다 — 이미 진행된 작업은 취소할 수 없다.
+cmd_cancel() {
+  local feature_slug="$1"
+  local ticket_raw="$2"
+  local ticket_norm
+  ticket_norm="$(normalize_ticket "$ticket_raw")"
+  local file
+  file="$(resolve_ticket_file "$feature_slug" "$ticket_norm")"
+
+  local existing_line_no
+  existing_line_no="$(find_time_line_no "$file")"
+  if [ -z "$existing_line_no" ]; then
+    echo "gootte: 시작되지 않은 티켓입니다(Time: 줄이 없음): $file" >&2
+    exit 1
+  fi
+
+  local existing_line
+  existing_line="$(sed -n "${existing_line_no}p" "$file")"
+  if printf '%s' "$existing_line" | grep -q 'finished='; then
+    echo "gootte: 이미 끝난 티켓은 취소할 수 없습니다: $file" >&2
+    exit 1
+  fi
+  if printf '%s' "$existing_line" | grep -q 'paused='; then
+    echo "gootte: 이미 작업을 시작(paused 있음)한 티켓은 취소할 수 없습니다: $file" >&2
+    exit 1
+  fi
+
+  # Time: 줄과 그 앞의 빈 줄을 제거한다
+  local tmp
+  tmp="$(mktemp)"
+  awk -v n="$existing_line_no" '
+    NR == n - 1 && $0 == "" { next }
+    NR == n { next }
+    { print }
+  ' "$file" > "$tmp"
+  mv "$tmp" "$file"
+
+  echo "gootte: $file 의 Time: 줄이 삭제됨(시작 취소)"
+}
+
 # 공통: Time 줄을 찾고 시작 상태 검증 — `cmd_pause`/`cmd_resume`/`cmd_end` 가 쓴다.
-#   성공: stdout 으로 (줄번호|현재 줄) 를 출력
-#   실패: stderr 로 사유 + exit 1
-# 상태: 0=시작됨, 1=끝남(finished), 2=일시중단 중(paused 최신이고 resumed 없음)
 time_state() {
   local file="$1"
   local existing_line_no
@@ -479,6 +551,7 @@ main() {
     usage
   fi
   local at=""
+  local update=0
   local -a pos=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -486,6 +559,7 @@ main() {
         [ "$#" -ge 2 ] || { echo "gootte: --at 에 시간이 필요합니다" >&2; exit 1; }
         at="$2"; shift 2 ;;
       --at=*) at="${1#--at=}"; shift ;;
+      --update|-u) update=1; shift ;;
       --help|-h) usage ;;
       *) pos+=("$1"); shift ;;
     esac
@@ -493,10 +567,11 @@ main() {
   [ "${#pos[@]}" -ge 2 ] || usage
   local subcmd="${pos[0]}"
   case "$subcmd" in
-    start|pause|resume|end)
+    start|cancel|pause|resume|end)
       [ "${#pos[@]}" -eq 3 ] || usage
       case "$subcmd" in
-        start)  cmd_start  "$at" "${pos[1]}" "${pos[2]}" ;;
+        start)  cmd_start  "$at" "$update" "${pos[1]}" "${pos[2]}" ;;
+        cancel) cmd_cancel "${pos[1]}" "${pos[2]}" ;;
         pause)  cmd_pause  "$at" "${pos[1]}" "${pos[2]}" ;;
         resume) cmd_resume "$at" "${pos[1]}" "${pos[2]}" ;;
         end)    cmd_end    "$at" "${pos[1]}" "${pos[2]}" ;;
