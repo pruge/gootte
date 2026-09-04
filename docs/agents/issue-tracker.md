@@ -20,14 +20,11 @@ docs/features/<기능-slug>/
 
 ## 🔴 지금 쓰는 관례 — `tickets/T<NN>.md`
 
-- 경로 `docs/features/<기능-slug>/tickets/T<NN>.md`, 제목 `# T<NN> — <제목>`(em dash).
-- **손으로 쓰는 머리글 줄은 `**Blocked by:**` 하나뿐이다.** 선행이 없으면
-  `**Blocked by:** 없음 — 즉시 착수 가능` 처럼 그 사실을 명시한다(빈칸으로 두지 않는다).
-- 🔴 **`Time:` 과 `Status:` 는 손으로 쓰지 않는다 — `gootte` 만 쓴다**(아래 §완료는 gootte 가 적는다).
-- 본문 절: `## Goal` · `## Why this slice` · `## Produces` · `## Consumers` · `## Touched surfaces` ·
-  `## Explicitly out of scope` · `## Locked decisions` · `## Evidence anchors` · `## Regression guards` ·
-  `## Scope` · `## Implementation notes` · `## Acceptance criteria` · `## Verification` ·
-  `## Comments`(append-only).
+경로 `docs/features/<기능-slug>/tickets/T<NN>.md`, 제목 `# T<NN> — <제목>`(em dash).
+**손으로 쓰는 머리글 줄은 `**Blocked by:**` 하나뿐이고, `Time:`·`Status:` 는 `gootte` 만 쓴다.**
+
+🔴 **본문 절 목록과 `gootte` 명령 사용법은 스킬 `gootte-ticket` 이 SoT 다** — 티켓을 쓰거나 닫을 때
+그 스킬이 뜬다. 여기 두 벌로 적지 않는다(같은 사실이 두 곳에 있으면 그 순간부터 하나는 거짓이다).
 
 ### 선행 표기 두 가지 — 둘 다 읽힌다
 
@@ -79,21 +76,8 @@ docs/features/<기능-slug>/
 
 ## 🔴 완료는 `gootte` 가 적는다 — 손으로 쓰지 않는다
 
-**티켓을 구현하는 변경이 그 티켓의 완료 기록을 같은 커밋에 담는다.** 코드와 상태를 다른 커밋이나
-다른 PR 로 가르지 않는다. 다만 **적는 주체가 사람이 아니라 `gootte` 다.**
-
-```
-gootte start <기능> <티켓>   # 그 티켓의 첫 편집 직전 — Time: started= 를 넣는다
-gootte end   <기능> <티켓>   # verify 가 green 이 된 뒤에만 — finished= 를 붙인다
-gootte drop  <기능> [<티켓>] # 폐기 — Status: wontfix (날짜) 를 쓴다
-```
-
-- 🔴 **`Time:`·`Status:` 줄을 손으로 쓰거나 편집기에서 고치지 마라.** 완료 판정은
-  **`finished=` 이 있느냐**로 하지, `Status:` 값으로 하지 않는다.
-- 🔴 **`end` 를 미리 부르지 마라.** `started=` 만 있는 티켓이 올바른 작업 중 상태다.
-  verify 가 green 인 것을 **스스로 확인한 뒤에** 닫는다 — 확인 전에 `finished=` 를 찍으면 기록이 거짓이 된다.
-- `gootte` 는 커밋하지 않는다. `Time:` 변경은 그 티켓 자신의 커밋에 같이 실린다.
-- 명령 전체 목록과 `--at` 같은 인자는 루트 [`AGENTS.md`](../../AGENTS.md) §실행 명령 표가 SoT 다.
+**티켓을 구현하는 변경이 그 티켓의 완료 기록을 같은 커밋에 담는다.** 다만 **적는 주체가 사람이
+아니라 `gootte` 다.** 명령과 인자는 스킬 `gootte-ticket` 이 갖는다.
 
 **왜 이렇게까지 못 박는가.** 손으로 적던 시절을 한 번 돌려봤고 결과가 남아 있다 — 2026-08-09 기준
 이 저장소의 티켓 10장이 **전부 구현되어 머지됐는데 파일은 열 장 다 `ready-for-agent`** 였다.
