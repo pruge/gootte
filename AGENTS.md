@@ -210,6 +210,11 @@ env 는 `code/web/backend/src/app.ts` 가 SoT. 계획(INV-5) 저장 자리는 en
 | 정규 `Status:` 여덟 값과 서식 (`resolved` 는 완료일 동반) | [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md) |
 | 이 저장소를 탐색하기 전에 읽는 순서 · 여섯 컨텍스트 | [`docs/agents/domain.md`](docs/agents/domain.md) |
 | 한국어 개념어 → 영문 앵커 사전 | [`docs/agents/codegraph/`](docs/agents/codegraph/) |
+| 브라우저 도구 둘(`chrome-devtools-axi` · `ego-browser`) 중 **무엇을 언제 고르나** | [`docs/agents/browser-tools.md`](docs/agents/browser-tools.md) |
+
+🔴 **브라우저를 쓸 일이 생기면 먼저 위 `browser-tools.md` 를 읽고 고른다.** 두 도구의 설명이
+서로 "나를 우선하라" 고 말해서, 안 읽으면 세션마다 다른 것을 고른다. 사용자가 하나를 지목하면
+그 지시가 우선한다.
 
 작업 표면은 **`docs/features/<기능>/`** (`spec.md` + `issues/NN-*.md` + `adr/`) 다.
 별도 원장은 없다 — 상태는 티켓의 `Status:` 줄이, 순서는 `Blocked by:` 줄이 소유한다.
