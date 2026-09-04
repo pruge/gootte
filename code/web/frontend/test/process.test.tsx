@@ -323,6 +323,21 @@ describe("ProcessView — 왼쪽 아래 대기 목록(a-waiting-card-is-one-drag
     expect(screen.queryByRole("separator", { name: /경계/ })).toBeNull();
   });
 
+  it("🔴 대기 카드는 집을 수 있는 손잡이를 갖는다 — 끌기는 dnd-kit 이다(T02)", () => {
+    renderProcess({ ...EMPTY_BOARD, waiting: [card(feature("w1"))] });
+    const waiting = screen.getByRole("region", { name: "WAITING" });
+    // dnd-kit 의 `useDraggable` 이 얹는 배선 — 손잡이는 <li> 가 아니라 그 안의 상자다.
+    const handle = within(waiting).getByRole("button", { name: /w1 — 위 칸으로 끌어 올리면/ });
+    expect(handle).toHaveAttribute("aria-roledescription", "draggable");
+    // 줄 자체는 여전히 목록 항목이다 — role 을 덮어쓰지 않았다.
+    expect(within(waiting).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("🔴 위 칸(작업 대상)이 놓을 자리다 — 목록이 비어 있어도 접지 않는다(T02)", () => {
+    const { container } = renderProcess({ ...EMPTY_BOARD, waiting: [card(feature("w1"))] });
+    expect(container.querySelector('[data-drop-area="active"]')).not.toBeNull();
+  });
+
   it("대기 목록이 생겨도 작업 대상 목록의 선택은 그대로 동작한다", () => {
     renderProcess({
       ...EMPTY_BOARD,
