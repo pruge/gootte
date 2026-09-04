@@ -99,6 +99,34 @@ export function bbWorktreeRoots(
  * 사본 목록을 만드는 자리(backend `withWorktrees`·스냅샷 기록)는 이 한 창구를 쓴다 — 새 종류가
  * 늘 때 호출부를 다시 훑지 않게.
  */
+/**
+ * 워크트리가 **생기는 것**을 보려면 슬롯 자신이 아니라 *그것을 담는 자리*를 봐야 한다.
+ * Claude Code 는 사본마다 `<사본>/.claude/worktrees`, BB 는 뿌리 하나(`~/.bb/worktrees`).
+ *
+ * `slotDepth` = 컨테이너에서 **슬롯까지의 칸 수**다. 두 종류가 다르다:
+ * Claude 는 `<컨테이너>/<이름>`(1칸), BB 는 `<뿌리>/<env_XXXX>/<프로젝트>`(2칸).
+ * 🔴 두 규칙을 한 숫자로 뭉개지 말 것 — 자리 규칙의 SoT 는 이 파일이고, 감시하는 쪽은 이 값을 쓴다.
+ *
+ * 🔴 **존재 여부로 거르지 않는다** — 아직 없는 컨테이너가 나중에 생기는 것이 바로 감시가 잡아야 할
+ * 사건이다(`~/.bb/worktrees` 는 첫 BB 스레드에 비로소 생긴다). 존재 판정은 감시를 거는 쪽이 한다.
+ */
+export interface WorktreeContainer {
+  root: string;
+  slotDepth: number;
+}
+
+export function worktreeContainerRoots(
+  projectPaths: readonly string[],
+  bbRoot: string = defaultBbWorktreeRoot(),
+): WorktreeContainer[] {
+  const out: WorktreeContainer[] = projectPaths.map((p) => ({
+    root: join(p, ".claude", "worktrees"),
+    slotDepth: 1,
+  }));
+  if (!out.some((c) => c.root === bbRoot)) out.push({ root: bbRoot, slotDepth: 2 });
+  return out;
+}
+
 export function extraWorktreeRoots(
   projectPaths: readonly string[],
   bbRoot?: string,

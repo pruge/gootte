@@ -1,8 +1,19 @@
-import { join, sep } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, sep } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
 import { existsSync, readFileSync, statSync } from "node:fs";
+
+const HOME = homedir();
+
+const isDir = (p: string): boolean => {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
 import { discoverProjects } from "./discover";
-import { extraWorktreeRoots } from "./treehouse";
+import { extraWorktreeRoots, worktreeContainerRoots, type WorktreeContainer } from "./treehouse";
 
 /** coarse 변경 신호(ADR-0004) — project = 그 프로젝트 재조회, projects = 목록 재조회. */
 export type Change = { kind: "project"; project: string } | { kind: "projects" };
@@ -86,8 +97,10 @@ export function watchProjects(
    */
   const copyPathsOf = (p: { copies: string[] }): string[] => [...p.copies, ...extraWorktreeRoots(p.copies)];
 
-  const contentPaths = (ps: typeof projects): string[] =>
-    ps.flatMap((p) => copyPathsOf(p).map((c) => join(c, "docs", "features")));
+  const contentPathsOf = (p: { copies: string[] }): string[] =>
+    copyPathsOf(p).map((c) => join(c, "docs", "features"));
+
+  const contentPaths = (ps: typeof projects): string[] => ps.flatMap(contentPathsOf);
 
   /**
    * 커밋을 보는 자리(축 2, T05) — 사본마다 `HEAD` 와 `refs/`.
@@ -96,9 +109,9 @@ export function watchProjects(
    * 이 감시가 있어야 15초 주기 재검증기를 안전망으로 내릴 수 있다.
    * worktree 는 `.git` 이 **파일**이고 그 안에 실제 gitdir 경로가 적혀 있다 — 그것을 따라간다.
    */
-  const gitRefPaths = (ps: typeof projects): string[] => {
+  const gitRefPathsOf = (p: { copies: string[] }): string[] => {
     const out: string[] = [];
-    for (const p of ps) {
+    {
       for (const c of copyPathsOf(p)) {
         const dotGit = join(c, ".git");
         let gitDir: string | null = null;
@@ -119,6 +132,8 @@ export function watchProjects(
     }
     return out;
   };
+
+  const gitRefPaths = (ps: typeof projects): string[] => ps.flatMap(gitRefPathsOf);
 
   const projectOf = (abs: string): string | null => {
     let best: { slug: string; len: number } | null = null;
@@ -169,6 +184,14 @@ export function watchProjects(
    * 🔴 `.git` 은 다른 감시에서 `HEAVY` 로 걷어내지만 여기서는 **정확히 두 경로만** 콕 집어 건다 —
    * `.git` 전체를 거는 것과 다르다(그건 무겁고, 소켓 같은 것을 끌어들여 백엔드를 죽인 전례가 있다).
    */
+  /**
+   * 지금 걸려 있는 사본 감시 경로 — **프로젝트별로** 들고 있다.
+   * 🔴 슬러그별로 갖는 이유: 프로젝트가 목록에서 빠지면 그 경로를 풀어 줘야 하는데, 평평한
+   * 배열만 들고 있으면 "누구 것이었는지" 를 잃어 죽은 경로를 계속 붙들게 된다.
+   */
+  let curContent = new Map<string, string[]>(projects.map((p) => [p.slug, contentPathsOf(p)]));
+  let curGit = new Map<string, string[]>(projects.map((p) => [p.slug, gitRefPathsOf(p)]));
+
   const gitW: FSWatcher = chokidar.watch(gitRefPaths(projects), {
     ignoreInitial: true,
     ignored: (p) => never(p),
@@ -222,6 +245,131 @@ export function watchProjects(
     return true;
   };
 
+  /**
+   * 축 3 — **워크트리가 생기는 것**을 본다(a-new-worktree-is-seen-at-once/T01).
+   *
+   * 🔴 왜 필요한가: 감시 경로(`contentPaths`·`gitRefPaths`)는 **묶는 시점에 한 번** 계산된다.
+   * 그 뒤에 생긴 워크트리는 어느 그물에도 안 걸렸다 — BB(`~/.bb/worktrees/…`)는 뿌리 **밖**이고,
+   * Claude(`<프로젝트>/.claude/worktrees/…`)는 `listWorthy` 가 막는다. 그래서 그 안의
+   * `gootte start` 가 push 를 못 냈고, 캡틴이 **창을 떠났다 와야만** 보였다(확인 2026-09-04).
+   * 읽기(`readFeatures`)는 이미 워크트리를 합집합으로 본다 — **틀린 것은 신호뿐이었다.**
+   *
+   * 컨테이너만 얕게 본다. 슬롯 안의 문서는 재바인딩된 축 1 이 본다.
+   */
+  let containers: WorktreeContainer[] = worktreeContainerRoots(projects.flatMap((p) => p.copies));
+
+  /**
+   * 컨테이너를 향하는 사슬과 슬롯 한 칸 아래까지만 통과시킨다.
+   * 🔴 슬롯 **한 칸 아래**를 봐야 하는 이유: 슬롯을 세는 판정(`bbWorktreeRoots`)이 `.git` 존재를
+   * 요구한다. 디렉토리만 생긴 순간에 재바인딩하면 아직 `.git` 이 없어 헛일이 되므로,
+   * `.git` 이 쓰이는 것도 사건으로 받아야 한다.
+   * 컨테이너가 아직 없으면 부모를 거는데(아래 `containerTargets`), 그때도 이 술어가
+   * **컨테이너로 가는 사슬만** 남기므로 옆 디렉토리로 새지 않는다.
+   */
+  const wtWorthy = (abs: string): boolean => {
+    for (const c of containers) {
+      if (abs === c.root) return true;
+      if (c.root.startsWith(abs + sep)) return true; // 아직 없는 컨테이너로 가는 조상
+      if (abs.startsWith(c.root + sep)) {
+        const rel = abs.slice(c.root.length + 1).split(sep);
+        if (rel.length <= c.slotDepth + 1) return true;
+      }
+    }
+    return false;
+  };
+
+  /**
+   * 실제로 chokidar 에 거는 경로 — 컨테이너가 있으면 그것, 없으면 **부모**(그래야 컨테이너가
+   * 생기는 것을 본다). 부모도 없으면 건다고 될 일이 아니라 건너뛴다 — 그 경우는 재시작이나
+   * 다음 재발견 때 잡힌다. 🔴 조용히 빼는 것이 아니라 **잡을 수 없다는 사실**이 여기 적혀 있다.
+   */
+  const containerTargets = (): string[] => {
+    const out: string[] = [];
+    for (const c of containers) {
+      // 컨테이너부터 위로 **두 칸까지** 훑어 처음 존재하는 자리를 건다.
+      // 두 칸인 이유: Claude 는 `<사본>/.claude/worktrees` 라 사본 자신까지가 딱 두 칸이고,
+      // 사본은 언제나 존재한다. 🔴 그보다 위로 올라가지 않는다 — `~/.bb/worktrees` 가 없을 때
+      // 홈 디렉토리를 통째로 거는 일이 벌어지면 안 된다(BB 를 안 쓰는 기계).
+      let target: string | null = null;
+      let cur = c.root;
+      for (let i = 0; i <= 2; i++) {
+        if (isDir(cur) && cur !== HOME && dirname(cur) !== cur) {
+          target = cur;
+          break;
+        }
+        const up = dirname(cur);
+        if (up === cur) break;
+        cur = up;
+      }
+      // 못 찾으면 건너뛴다 — 그 워크트리 종류는 **이번 실행에서는 못 잡는다.**
+      // (예: BB 를 아직 한 번도 안 쓴 기계에는 `~/.bb` 조차 없다.) 재시작이나 재발견 때 잡힌다.
+      if (target && !out.includes(target)) out.push(target);
+    }
+    return out;
+  };
+
+  /**
+   * 사본 목록이 바뀌었으면 **차분만** 다시 묶는다.
+   * 🔴 `rediscover` 와 다른 축이다 — 저쪽은 *프로젝트 목록*, 이쪽은 *한 프로젝트의 사본 목록*.
+   * 같은 함수에 얹으면 저쪽의 조기 반환(`if (!changed) return`)이 이쪽까지 막는다.
+   * 실제로 그것이 이 버그였다: 워크트리가 늘어도 프로젝트 목록은 그대로라 재바인딩까지 못 갔다.
+   */
+  const rebindCopies = (): void => {
+    const live = new Set(projects.map((p) => p.slug));
+    for (const [slug, paths] of curContent)
+      if (!live.has(slug) && paths.length) content.unwatch(paths);
+    for (const [slug, paths] of curGit) if (!live.has(slug) && paths.length) gitW.unwatch(paths);
+
+    const nextContent = new Map<string, string[]>();
+    const nextGit = new Map<string, string[]>();
+    for (const p of projects) {
+      const oc = curContent.get(p.slug) ?? [];
+      const nc = contentPathsOf(p);
+      const og = curGit.get(p.slug) ?? [];
+      const ng = gitRefPathsOf(p);
+      const addC = nc.filter((x) => !oc.includes(x));
+      const rmC = oc.filter((x) => !nc.includes(x));
+      const addG = ng.filter((x) => !og.includes(x));
+      const rmG = og.filter((x) => !ng.includes(x));
+      if (rmC.length) content.unwatch(rmC);
+      if (addC.length) content.add(addC);
+      if (rmG.length) gitW.unwatch(rmG);
+      if (addG.length) gitW.add(addG);
+      // 새 사본은 **생기자마자 문서를 갖고 있을 수 있다**(워크트리는 체크아웃된 채 태어난다).
+      // 그래서 감시를 붙이는 것만으로는 부족하고 한 번 다시 읽게 해야 한다(INV-3).
+      if (addC.length || rmC.length || addG.length || rmG.length)
+        fire({ kind: "project", project: p.slug });
+      nextContent.set(p.slug, nc);
+      nextGit.set(p.slug, ng);
+    }
+    curContent = nextContent;
+    curGit = nextGit;
+  };
+
+  let curWtTargets: string[] = containerTargets();
+  const wtW: FSWatcher = chokidar.watch(curWtTargets, {
+    ignoreInitial: true,
+    depth: 4, // 부모 폴백(+1) 까지 감당하는 상한. 실제 가지치기는 `wtWorthy` 가 한다.
+    ignored: (p) => never(p) || hasSeg(p, "node_modules") || !wtWorthy(p),
+  });
+  wtW.on("error", onWatchError("워크트리"));
+  let wtd: ReturnType<typeof setTimeout> | null = null;
+  wtW.on("all", () => {
+    if (wtd) clearTimeout(wtd);
+    wtd = setTimeout(rebindCopies, debounceMs);
+  });
+
+  /** 프로젝트 목록이 바뀌면 컨테이너 목록도 따라 바뀐다(새 프로젝트의 `.claude/worktrees`). */
+  const rebindContainers = (): void => {
+    containers = worktreeContainerRoots(projects.flatMap((p) => p.copies));
+    const next = containerTargets();
+    const add = next.filter((x) => !curWtTargets.includes(x));
+    const rm = curWtTargets.filter((x) => !next.includes(x));
+    if (rm.length) wtW.unwatch(rm);
+    if (add.length) wtW.add(add);
+    curWtTargets = next;
+  };
+
   let rd: ReturnType<typeof setTimeout> | null = null;
   const rediscover = (): void => {
     const next = discoverProjects(roots);
@@ -229,11 +377,11 @@ export function watchProjects(
     const after = new Set(next.map((p) => p.path));
     const changed = before.size !== after.size || [...after].some((p) => !before.has(p));
     if (!changed) return;
-    content.unwatch(contentPaths(projects));
-    gitW.unwatch(gitRefPaths(projects));
     projects = next;
-    content.add(contentPaths(projects));
-    gitW.add(gitRefPaths(projects));
+    // 🔴 사본 감시는 여기서 손으로 다시 걸지 않는다 — 차분 재바인딩 한 곳(`rebindCopies`)이
+    // 갖는다. 두 곳에서 걸면 사라진 프로젝트의 경로가 남는 쪽이 생긴다.
+    rebindCopies();
+    rebindContainers();
     fire({ kind: "projects" });
   };
   const rootsW: FSWatcher = chokidar.watch(roots, {
@@ -252,7 +400,8 @@ export function watchProjects(
     async close() {
       for (const t of pending.values()) clearTimeout(t);
       if (rd) clearTimeout(rd);
-      await Promise.all([content.close(), rootsW.close(), gitW.close()]);
+      if (wtd) clearTimeout(wtd);
+      await Promise.all([content.close(), rootsW.close(), gitW.close(), wtW.close()]);
     },
   };
 }

@@ -242,3 +242,117 @@ describe("watchProjects — worktree 와 커밋도 본다 (read-path-redesign/T0
     await waitFor(() => seen.some((c) => c.kind === "project" && c.project === "alpha"));
   });
 });
+
+describe("watchProjects — 감시 시작 *뒤에* 생긴 워크트리 (a-new-worktree-is-seen-at-once/T01)", () => {
+  let w: ProjectWatcher | null = null;
+  let root = "";
+  let bbRoot = "";
+  const prevBb = process.env.GOOTTE_BB_WORKTREES;
+  afterEach(async () => {
+    await w?.close();
+    w = null;
+    if (prevBb === undefined) delete process.env.GOOTTE_BB_WORKTREES;
+    else process.env.GOOTTE_BB_WORKTREES = prevBb;
+    for (const d of [root, bbRoot]) if (d) rmSync(d, { recursive: true, force: true });
+    root = "";
+    bbRoot = "";
+  });
+
+  const git = (dir: string, ...args: string[]): void => {
+    execFileSync("git", ["-C", dir, ...args], { stdio: "ignore" });
+  };
+  const initRepo = (dir: string): void => {
+    execFileSync("git", ["init", "-q", dir], { stdio: "ignore" });
+    for (const c of [["user.email", "c@e.com"], ["user.name", "c"], ["commit.gpgsign", "false"]])
+      git(dir, "config", ...(c as string[]));
+  };
+  const ticketIn = (wt: string, name: string): void => {
+    mkdirSync(join(wt, "docs", "features", "f", "tickets"), { recursive: true });
+    writeFileSync(join(wt, "docs", "features", "f", "tickets", name), `# ${name}\n`);
+  };
+
+  it("🔴 BB worktree 가 **감시 시작 뒤에** 생겨도 그 안의 티켓 편집이 잡힌다", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-wt-bb-"));
+    bbRoot = mkdtempSync(join(tmpdir(), "gootte-bbroot-"));
+    process.env.GOOTTE_BB_WORKTREES = bbRoot;
+    const proj = join(root, "alpha");
+    makeProject(root, "alpha");
+    initRepo(proj);
+    git(proj, "add", "-A");
+    git(proj, "commit", "-q", "-m", "i");
+
+    const seen: Change[] = [];
+    w = watchProjects([root], (c) => seen.push(c), { debounceMs: 20 });
+    await sleep(400);
+    seen.length = 0;
+
+    // ── 여기서부터가 이 테스트의 전부다: 감시가 이미 돌고 있는 상태에서 worktree 를 만든다.
+    const envDir = join(bbRoot, "env_test01");
+    mkdirSync(envDir, { recursive: true });
+    const wt = join(envDir, "alpha");
+    execFileSync("git", ["-C", proj, "worktree", "add", "-q", "-b", "bb-x", wt], { stdio: "ignore" });
+    await sleep(300); // 재바인딩이 돌 시간
+    seen.length = 0;
+
+    ticketIn(wt, "T77.md");
+    await waitFor(() => seen.some((c) => c.kind === "project" && c.project === "alpha"));
+  });
+
+  it("🔴 Claude Code worktree 도 감시 시작 뒤에 생기면 잡힌다(컨테이너가 아직 없던 경우 포함)", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-wt-cc-"));
+    const proj = join(root, "alpha");
+    makeProject(root, "alpha");
+    initRepo(proj);
+    git(proj, "add", "-A");
+    git(proj, "commit", "-q", "-m", "i");
+
+    const seen: Change[] = [];
+    w = watchProjects([root], (c) => seen.push(c), { debounceMs: 20 });
+    await sleep(400);
+    seen.length = 0;
+
+    // `.claude/worktrees` 자체가 아직 없다 — 그것이 생기는 것부터 봐야 한다.
+    const wt = join(proj, ".claude", "worktrees", "fm-late");
+    mkdirSync(join(proj, ".claude", "worktrees"), { recursive: true });
+    execFileSync("git", ["-C", proj, "worktree", "add", "-q", "-b", "fm-late", wt], { stdio: "ignore" });
+    await sleep(300);
+    seen.length = 0;
+
+    ticketIn(wt, "T78.md");
+    await waitFor(() => seen.some((c) => c.kind === "project" && c.project === "alpha"));
+  });
+
+  // ⚠️ **이것은 회귀 가드가 아니라 성질 기록이다.** 구현을 되돌리고 돌려도 통과한다 —
+  // 지워진 디렉토리의 감시는 chokidar 가 OS 수준에서 이미 놓기 때문이다(실측 2026-09-04).
+  // `rebindCopies` 의 `unwatch` 는 그래서 **관측되는 동작이 아니라 장부 정리**다.
+  // 그래도 남긴다: 재바인딩이 죽은 경로를 다시 붙이는 회귀는 이 테스트가 잡는다.
+  it("worktree 가 사라진 자리는 조용하다 — 재바인딩이 죽은 경로를 되살리지 않는다", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-wt-gone-"));
+    bbRoot = mkdtempSync(join(tmpdir(), "gootte-bbgone-"));
+    process.env.GOOTTE_BB_WORKTREES = bbRoot;
+    const proj = join(root, "alpha");
+    makeProject(root, "alpha");
+    initRepo(proj);
+    git(proj, "add", "-A");
+    git(proj, "commit", "-q", "-m", "i");
+    const envDir = join(bbRoot, "env_gone");
+    mkdirSync(envDir, { recursive: true });
+    const wt = join(envDir, "alpha");
+    execFileSync("git", ["-C", proj, "worktree", "add", "-q", "-b", "bb-gone", wt], { stdio: "ignore" });
+
+    // worktree 를 감시 시작 **전에** 만들어 둔다 — 지워지기 전에 실제로 감시되던 경로여야 한다.
+    const seen: Change[] = [];
+    w = watchProjects([root], (c) => seen.push(c), { debounceMs: 20 });
+    await sleep(400);
+
+    execFileSync("git", ["-C", proj, "worktree", "remove", "--force", wt], { stdio: "ignore" });
+    await sleep(400);
+    seen.length = 0;
+
+    // 같은 자리에 **저장소가 아닌** 평범한 폴더를 세워 문서를 쓴다. 사본이 아니므로 조용해야 한다.
+    mkdirSync(join(wt, "docs", "features", "f", "tickets"), { recursive: true });
+    writeFileSync(join(wt, "docs", "features", "f", "tickets", "T79.md"), "# T79\n");
+    await sleep(500);
+    expect(seen.filter((c) => c.kind === "project")).toEqual([]);
+  });
+});
