@@ -1,4 +1,4 @@
-import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect } from "vitest";
 import type { Feature, FeatureTicket, PlanBoardResponse, PlanCard } from "@gootte/contract";
@@ -347,5 +347,86 @@ describe("ProcessView — 왼쪽 아래 대기 목록(a-waiting-card-is-one-drag
     const aside = screen.getByText("FEATURES").closest("aside") as HTMLElement;
     fireEvent.click(within(aside).getByRole("button", { name: /^b/ }));
     expect(screen.getByText("나 티켓")).toBeInTheDocument();
+  });
+});
+
+describe("ProcessView — 내리는 길과 대기 카드 선택(a-waiting-card-is-one-drag-away/T03)", () => {
+  it("🔴 대기 카드를 누르면 오른쪽에 그 기능의 티켓 목록이 뜬다 — 위 칸과 같은 동작(AC3)", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(feature("a", [["01", "가 티켓"]]))],
+      waiting: [card(feature("w1", [["09", "대기 티켓"]]))],
+    });
+    // 기본은 그대로 작업 대상의 첫 번째다.
+    expect(screen.getByText("가 티켓")).toBeInTheDocument();
+
+    const region = screen.getByRole("region", { name: "WAITING" });
+    fireEvent.click(within(region).getByRole("button", { name: /^w1/ }));
+
+    expect(screen.getByText("대기 티켓")).toBeInTheDocument();
+    expect(screen.queryByText("가 티켓")).toBeNull();
+  });
+
+  it("고른 대기 카드는 위 칸과 같은 결로 드러난다 — aria-current", () => {
+    renderProcess({ ...EMPTY_BOARD, waiting: [card(feature("w1", [["09", "대기 티켓"]]))] });
+    const region = screen.getByRole("region", { name: "WAITING" });
+    const cardEl = within(region).getByRole("button", { name: /^w1/ });
+    expect(cardEl).not.toHaveAttribute("aria-current");
+    fireEvent.click(cardEl);
+    expect(within(region).getByRole("button", { name: /^w1/ })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("🔴 선택은 카드가 칸을 옮겨도 따라간다 — 보던 티켓 목록이 사라지지 않는다(AC4)", () => {
+    const w1 = feature("w1", [["09", "대기 티켓"]]);
+    const { qc } = renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(feature("a", [["01", "가 티켓"]]))],
+      waiting: [card(w1)],
+    });
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "WAITING" })).getByRole("button", { name: /^w1/ }),
+    );
+    expect(screen.getByText("대기 티켓")).toBeInTheDocument();
+
+    // 카드가 대기 → 작업 대상으로 옮겨진 판이 도착한다(끌어 올린 뒤 서버가 돌려주는 것과 같은 모양).
+    act(() => {
+      qc.setQueryData(qk.plan("alpha"), {
+        ...EMPTY_BOARD,
+        active: [card(feature("a", [["01", "가 티켓"]])), card(w1)],
+        waiting: [],
+      });
+    });
+    expect(screen.getByText("대기 티켓")).toBeInTheDocument();
+  });
+
+  it("🔴 위 칸 카드도 집을 수 있다 — 여전히 <button> 이고 클릭도 그대로다(AC1 배선)", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(feature("a", [["01", "가 티켓"]])), card(feature("b", [["02", "나 티켓"]]))],
+    });
+    const aside = screen.getByText("FEATURES").closest("aside") as HTMLElement;
+    const btn = within(aside).getByRole("button", { name: /^b/ });
+    expect(btn.tagName).toBe("BUTTON");
+    expect(btn).toHaveAttribute("aria-roledescription", "카드 — 아래 대기 칸으로 끌어 내립니다");
+    fireEvent.click(btn);
+    expect(screen.getByText("나 티켓")).toBeInTheDocument();
+  });
+
+  it("🔴 아래 칸은 놓을 자리다 — 대기가 0 이어도 내릴 곳이 남는다(AC2)", () => {
+    const { container } = renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(feature("a", [["01", "가"]]))],
+    });
+    expect(container.querySelector('[data-drop-area="waiting"]')).not.toBeNull();
+    // 그래도 빈 상자·손잡이는 여전히 만들지 않는다(T01 회귀 가드).
+    expect(screen.queryByRole("region", { name: "WAITING" })).toBeNull();
+    expect(screen.queryByRole("separator", { name: /경계/ })).toBeNull();
+  });
+
+  it("대기가 있을 때도 아래 칸 전체가 놓을 자리다", () => {
+    const { container } = renderProcess({ ...EMPTY_BOARD, waiting: [card(feature("w1"))] });
+    const zone = container.querySelector('[data-drop-area="waiting"]');
+    expect(zone).not.toBeNull();
+    expect(within(zone as HTMLElement).getByRole("region", { name: "WAITING" })).toBeInTheDocument();
   });
 });
