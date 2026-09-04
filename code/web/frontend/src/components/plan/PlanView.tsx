@@ -26,7 +26,6 @@ import { BoardCard } from "./BoardCard";
 import { CardDialog } from "./CardDialog";
 import { CardList } from "./CardList";
 import { MoveDialog } from "./MoveDialog";
-import { featureDocPath } from "./planDoc";
 import {
   AREA_LABEL,
   TAB_DROP_ID,
@@ -244,10 +243,10 @@ export function PlanView({ project }: PlanViewProps) {
       return { area, slugs: next };
     });
 
-  const openDoc = (slug: string) => {
-    const card = cardOf(slug);
-    const path = card ? featureDocPath(card.feature) : null;
-    if (path) setOpenedDoc({ feature: slug, path });
+  // 어느 문서인가는 `FeatureDocsButton` 이 이미 골라서 준다(목록 팝오버) — 여기서 다시 고르지
+  // 않는다(판정 자리는 하나). 이 자리는 **그 자리에서 드로어를 여는 일**만 한다.
+  const openDoc = (slug: string, path: string) => {
+    setOpenedDoc({ feature: slug, path });
   };
 
   const onDragStart = (e: DragStartEvent) => {

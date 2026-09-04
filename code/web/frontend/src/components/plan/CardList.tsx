@@ -15,7 +15,7 @@ interface CardListProps {
   onToggleSelect: (areaId: BoardAreaId, slug: string) => void;
   /** 머리글을 누르면 티켓 목록이 대화상자로 열린다(캡틴 결정). */
   onOpenCard: (slug: string) => void;
-  onOpenDoc: (slug: string) => void;
+  onOpenDoc: (slug: string, path: string) => void;
   onRequestMove: (areaId: BoardAreaId, slug: string) => void;
 }
 

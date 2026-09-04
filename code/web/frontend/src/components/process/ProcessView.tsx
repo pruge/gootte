@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   IconArrowMoveRight,
-  IconFileText,
   IconFlag,
   IconPlayerPause,
   IconPlayerPlay,
@@ -15,7 +14,7 @@ import { featureDescription } from "../plan/cardTitle";
 import { DocDrawer } from "../features/DocDrawer";
 import { Loading, ErrorMsg } from "../common/states";
 import { MoveDialog } from "../plan/MoveDialog";
-import { featureDocPath } from "../plan/planDoc";
+import { FeatureDocsButton } from "../features/FeatureDocsButton";
 import { changesBoard, storedArea, type BoardAreaId } from "../plan/areas";
 
 interface ProcessViewProps {
@@ -60,12 +59,10 @@ export function ProcessView({ project }: ProcessViewProps) {
     return keys.find((k) => data[k].some((c) => c.feature.slug === slug));
   };
 
-  /** spec.md 읽기 — plan 탭 카드 머리의 문서 아이콘과 같은 경로(`featureDocPath`)를 연다. */
-  const openSpecDoc = (slug: string) => {
-    const feature = features.find((f) => f.slug === slug);
-    if (!feature) return;
-    const path = featureDocPath(feature);
-    if (path) setTicketDoc({ feature: slug, path });
+  // 어느 문서인가는 `FeatureDocsButton` 이 목록에서 골라 준다 — plan 탭과 **같은 컴포넌트**다.
+  // 이 자리는 그 자리에서 드로어를 여는 일만 한다(탭을 옮기지 않는다).
+  const openFeatureDoc = (slug: string, path: string) => {
+    setTicketDoc({ feature: slug, path });
   };
 
   return (
@@ -134,7 +131,7 @@ export function ProcessView({ project }: ProcessViewProps) {
           <div>
             <FeatureHeading
               feature={current}
-              onOpenDoc={openSpecDoc}
+              onOpenDoc={openFeatureDoc}
               onRequestMove={setMoveDialog}
             />
             <ul className="mt-2 divide-y divide-border/30">
@@ -189,7 +186,7 @@ function FeatureHeading({
   onRequestMove,
 }: {
   feature: Feature;
-  onOpenDoc: (slug: string) => void;
+  onOpenDoc: (slug: string, path: string) => void;
   onRequestMove: (slug: string) => void;
 }) {
   const description = featureDescription(feature.title, feature.slug);
@@ -216,15 +213,7 @@ function FeatureHeading({
         )}
         <span className="mono shrink-0 text-sm tabular-nums text-muted">티켓 {ticketCount}</span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
-          <button
-            type="button"
-            onClick={() => onOpenDoc(feature.slug)}
-            aria-label={`${feature.slug} 문서 열기`}
-            title="이 기능의 spec.md 를 연다"
-            className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-          >
-            <IconFileText size={17} stroke={1.6} />
-          </button>
+          <FeatureDocsButton feature={feature} onOpen={(path) => onOpenDoc(feature.slug, path)} />
           <button
             type="button"
             onClick={() => onRequestMove(feature.slug)}

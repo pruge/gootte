@@ -1,7 +1,8 @@
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { IconArrowMoveRight, IconFileText } from "@tabler/icons-react";
+import { IconArrowMoveRight } from "@tabler/icons-react";
+import { FeatureDocsButton } from "../features/FeatureDocsButton";
 import type { PlanCard } from "@gootte/contract";
 import { allTickets } from "@gootte/core";
 import { closedDisplayAt } from "@gootte/core/plan";
@@ -19,8 +20,9 @@ export interface BoardCardProps {
   onToggleSelect?: (slug: string) => void;
   /** 머리글을 그냥 누른 것 — 티켓 목록을 대화상자로 연다(캡틴 결정). */
   onOpenCard?: (slug: string) => void;
-  /** 문서 아이콘 — `plan` 탭에 머문 채 `DocDrawer` 를 그 자리에서 연다(두 번째 문서 보기를 짓지 않는다). */
-  onOpenDoc?: (slug: string) => void;
+  /** 문서 열기 — `plan` 탭에 머문 채 `DocDrawer` 를 그 자리에서 연다(두 번째 문서 보기를 짓지 않는다).
+   *  `path` 는 사용자가 목록에서 고른 문서다(`FeatureDocsButton`). */
+  onOpenDoc?: (slug: string, path: string) => void;
   /** 이동 아이콘 — "어느 칸으로 보낼까요" 대화상자. */
   onRequestMove?: (slug: string) => void;
   /** 끌기 오버레이용 사본 — 끌기 배선 없이 모양만 그린다. */
@@ -192,18 +194,10 @@ export function BoardCard({
             className="col-start-2 row-start-2 flex shrink-0 items-start justify-end gap-0.5"
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenDoc?.(feature.slug);
-              }}
-              aria-label={`${feature.slug} 문서 열기`}
-              title="features 탭에서 이 기능 문서를 연다"
-              className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-            >
-              <IconFileText size={17} stroke={1.6} />
-            </button>
+            <FeatureDocsButton
+              feature={feature}
+              onOpen={(path) => onOpenDoc?.(feature.slug, path)}
+            />
             <button
               type="button"
               onClick={(e) => {

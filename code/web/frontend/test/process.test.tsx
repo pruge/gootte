@@ -201,6 +201,45 @@ describe("ProcessView — 2컬럼(1:2) 읽기 화면(process-two-column/T01)", (
     expect(screen.queryByText("auth-login — 제목")).toBeNull();
   });
 
+  it("🔴 steps 탭에서도 기능 문서 목록을 열어 바로 읽는다 — plan 과 같은 컴포넌트(캡틴 지시 2026-09-04)", async () => {
+    const f = feature("auth-login", [["01", "세션 발급"]]);
+    const withDocs: Feature = {
+      ...f,
+      docs: [
+        { kind: "file", name: "spec.md", path: "spec.md" },
+        {
+          kind: "dir",
+          name: "adr",
+          path: "adr",
+          children: [{ kind: "file", name: "0001-x.md", path: "adr/0001-x.md" }],
+        },
+        // 🔴 티켓 폴더는 목록에 안 뜬다 — 티켓은 이 화면이 이미 오른쪽에 보여 준다.
+        {
+          kind: "dir",
+          name: "tickets",
+          path: "tickets",
+          children: [{ kind: "file", name: "T01.md", path: "tickets/T01.md" }],
+        },
+      ],
+    };
+    const { qc } = renderProcess({ ...EMPTY_BOARD, active: [card(withDocs)] });
+    qc.setQueryData(qk.featureDoc("alpha", "auth-login", "adr/0001-x.md"), {
+      path: "adr/0001-x.md",
+      content: "# 결정 하나\n",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /auth-login 문서 열기/ }));
+    const menu = screen.getByRole("menu", { name: /auth-login 문서/ });
+    const items = within(menu).getAllByRole("menuitem").map((b) => b.textContent ?? "");
+    expect(items.some((t) => t.includes("spec.md"))).toBe(true);
+    expect(items.some((t) => t.includes("0001-x.md"))).toBe(true);
+    expect(items.some((t) => t.includes("T01.md"))).toBe(false);
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /0001-x\.md/ }));
+    const drawer = await screen.findByRole("dialog", { name: "adr/0001-x.md" });
+    expect(within(drawer).getByRole("heading", { name: "결정 하나" })).toBeInTheDocument();
+  });
+
   it("🔴 안 읽은 티켓 줄에 표시가 뜬다 — features 탭과 같은 표시(unread-tickets-show-themselves/02)", () => {
     const a = feature("a", [["01", "안 읽은 것"], ["02", "읽은 것"]]);
     const unreadFeature: Feature = {

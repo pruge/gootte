@@ -532,11 +532,54 @@ describe("PlanView — 카드 머리 아이콘 둘과 이동 대화상자(plan-b
     expect(screen.getByRole("article", { name: "auth-login 제목" })).toBeInTheDocument();
   });
 
-  it("문서가 하나도 없는 기능은 아무것도 열지 않는다 — 없는 주소를 지어내지 않는다", () => {
+  it("문서가 하나도 없는 기능은 **아이콘 자체가 없다** — 눌러도 아무 일 없는 버튼을 두지 않는다", () => {
     const bare = { ...feature("no-docs"), docs: [] };
     renderBoard({ ...EMPTY_BOARD, waiting: [card(bare)] });
-    clickIcon("no-docs 제목", /문서 열기/);
+    const cardEl = screen.getByRole("article", { name: "no-docs 제목" });
+    // 예전에는 아이콘이 있고 눌러도 조용히 아무 일이 없었다. 없는 게 정직하다.
+    expect(within(cardEl).queryByRole("button", { name: /문서 열기/ })).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("🔴 문서가 여럿이면 목록이 뜨고, 고른 문서가 그 자리에서 열린다(캡틴 지시 2026-09-04)", async () => {
+    const many = {
+      ...feature("auth-login"),
+      docs: [
+        { kind: "file" as const, name: "spec.md", path: "spec.md" },
+        {
+          kind: "dir" as const,
+          name: "adr",
+          path: "adr",
+          children: [{ kind: "file" as const, name: "0001-x.md", path: "adr/0001-x.md" }],
+        },
+        // 🔴 티켓 폴더는 목록에 안 뜬다 — 티켓은 이미 다른 자리가 보여 준다.
+        {
+          kind: "dir" as const,
+          name: "issues",
+          path: "issues",
+          children: [{ kind: "file" as const, name: "01-a.md", path: "issues/01-a.md" }],
+        },
+      ],
+    };
+    const { qc } = renderBoard({ ...EMPTY_BOARD, waiting: [card(many)] });
+    qc.setQueryData(qk.featureDoc("alpha", "auth-login", "adr/0001-x.md"), {
+      path: "adr/0001-x.md",
+      content: "# 결정 하나\n",
+    });
+
+    clickIcon("auth-login 제목", /문서 열기/);
+    const menu = screen.getByRole("menu", { name: /auth-login 문서/ });
+    // spec.md 와 adr/0001-x.md 둘뿐 — issues/01-a.md 는 없다.
+    const items = within(menu).getAllByRole("menuitem").map((b) => b.textContent ?? "");
+    expect(items.some((t) => t.includes("spec.md"))).toBe(true);
+    expect(items.some((t) => t.includes("0001-x.md"))).toBe(true);
+    expect(items.some((t) => t.includes("01-a.md"))).toBe(false);
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /0001-x\.md/ }));
+    const drawer = await screen.findByRole("dialog", { name: "adr/0001-x.md" });
+    expect(within(drawer).getByRole("heading", { name: "결정 하나" })).toBeInTheDocument();
+    // 🔴 plan 탭에 머문다 — 카드가 그대로 있다.
+    expect(screen.getByRole("article", { name: "auth-login 제목" })).toBeInTheDocument();
   });
 
   it("이동 아이콘은 대화상자를 띄우고, 🔴 지금 있는 칸은 고를 수 없다", () => {
