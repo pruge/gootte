@@ -88,6 +88,15 @@ export function getProjectsPayload(
 }
 
 /**
+ * `/api/projects` 페이로드 캐시만 비운다(read-path-redesign/T03).
+ * 🔴 `clearDiscoverCache` 와 다르다 — discover 목록과 스냅샷 메모리는 **건드리지 않는다.**
+ * 배지(`openFeatures`)가 백그라운드로 채워졌을 때, 그 한 가지 때문에 무거운 것까지 버리지 않으려고.
+ */
+export function clearPayloadCache(): void {
+  payloadCache = null;
+}
+
+/**
  * slug → Project 해소 (W1). slug = 디렉토리 basename.
  * T01 이후 discover 가 같은 slug 의 사본을 하나의 `Project`(copies 배열)로 묶어 내므로,
  * 여기서 오는 것은 이미 **묶인 결과**다 — slug 당 최대 하나. 중복은 정상 상태가 되었다.

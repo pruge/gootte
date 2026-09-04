@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
@@ -173,5 +174,71 @@ describe("watchProjects (022)", () => {
     // 두 번째 뿌리(비대표) 사본의 문서 변경 → {project: dup} (같은 slug 로 접힘).
     writeFileSync(join(other, "dup", TICKET), "# 01 — x\n\n**Status:** resolved (2026-08-09)\n");
     await waitFor(() => events.some((e) => e.kind === "project" && e.project === "dup"));
+  });
+});
+
+// ── read-path-redesign/T05 — 감시 축 둘 ────────────────────────────────────────
+describe("watchProjects — worktree 와 커밋도 본다 (read-path-redesign/T05)", () => {
+  let w: ProjectWatcher | null = null;
+  let root = "";
+  afterEach(async () => {
+    await w?.close();
+    w = null;
+    if (root) rmSync(root, { recursive: true, force: true });
+    root = "";
+  });
+
+  const git = (dir: string, ...args: string[]): void => {
+    execFileSync("git", ["-C", dir, ...args], { stdio: "ignore" });
+  };
+  const initRepo = (dir: string): void => {
+    execFileSync("git", ["init", "-q", dir], { stdio: "ignore" });
+    for (const c of [["user.email", "c@e.com"], ["user.name", "c"], ["commit.gpgsign", "false"]])
+      git(dir, "config", ...(c as string[]));
+  };
+
+  it("🔴 Claude Code worktree 안의 **커밋 안 된 새 티켓**이 잡힌다 — 예전에는 어느 경로로도 안 잡혔다", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-watch-wt-"));
+    const proj = join(root, "alpha");
+    makeProject(root, "alpha");
+    initRepo(proj);
+    git(proj, "add", "-A");
+    git(proj, "commit", "-q", "-m", "i");
+    const wt = join(proj, ".claude", "worktrees", "fm-x");
+    mkdirSync(join(proj, ".claude", "worktrees"), { recursive: true });
+    execFileSync("git", ["-C", proj, "worktree", "add", "-q", "-b", "fm-x", wt], { stdio: "ignore" });
+
+    const seen: Change[] = [];
+    w = watchProjects([root], (c) => seen.push(c), { debounceMs: 20 });
+    await sleep(300);
+    seen.length = 0;
+
+    // worktree 안에 **커밋하지 않은** 새 티켓을 만든다.
+    mkdirSync(join(wt, "docs", "features", "f", "tickets"), { recursive: true });
+    writeFileSync(join(wt, "docs", "features", "f", "tickets", "T09.md"), "# T09 — 새 티켓\n");
+
+    await waitFor(() => seen.some((c) => c.kind === "project" && c.project === "alpha"));
+  });
+
+  it("🔴 커밋(HEAD 변경)이 잡힌다 — 갈라짐 판정이 커밋으로 바뀌기 때문(축 2, T06 조사)", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-watch-git-"));
+    const proj = join(root, "alpha");
+    makeProject(root, "alpha");
+    initRepo(proj);
+    git(proj, "add", "-A");
+    git(proj, "commit", "-q", "-m", "i");
+
+    const seen: Change[] = [];
+    w = watchProjects([root], (c) => seen.push(c), { debounceMs: 20 });
+    await sleep(300);
+    seen.length = 0;
+
+    // 🔴 `docs/features` **밖** 파일만 커밋한다 — 축 1(문서 감시)이 못 보는 변경이어야
+    // 축 2(커밋 감시)가 일한다는 것이 증명된다.
+    writeFileSync(join(proj, "README.md"), "x\n");
+    git(proj, "add", "-A");
+    git(proj, "commit", "-q", "-m", "unrelated");
+
+    await waitFor(() => seen.some((c) => c.kind === "project" && c.project === "alpha"));
   });
 });

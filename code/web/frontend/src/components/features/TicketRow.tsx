@@ -196,8 +196,7 @@ export function TicketRow({
         {/* 신/구관례 공통: 계산된 상태(ticket.status)를 통합 라벨로 배지 표시.
             - 구관례도 sourceStatus(원문) 대신 계산된 상태를 보여줘 열이 통일된다.
             - statusKnown:false(읽기 실패)만 경고로 폴백.
-            - 🔴 처리중(in_progress)일 때는 별도 workedBy 영역이 "처리중 + 가지"를 말하므로
-              상태 배지에서 "처리중"은 숨겨 중복·정렬 틀어짐을 막는다. */}
+            - 처리중(in_progress)은 상태 배지에서 숨긴다 — 그 줄의 경과 시간 칸이 이미 말한다. */}
         {ticket.statusKnown && ticket.status !== "in_progress" ? (
           <span className="mono shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-sm text-muted">
             {statusBadgeLabel(ticket.status)}

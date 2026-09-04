@@ -23,7 +23,6 @@ const BASE: Omit<Feature, "docs"> = {
       unreadableBlockedBy: [],
       waitingOn: [],
       startable: true,
-      workedBy: [],
       needsCaptainEye: false,
     },
   ],
@@ -390,7 +389,6 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
         {
           ...BASE.tickets[0]!,
           status: "in_progress",
-          workedBy: ["fm/session-work"],
         },
       ],
     };
@@ -400,7 +398,7 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
     // StageCell 안의 "처리중" 레이블이 invisible 이 아닌지 확인(상태 배지와 중복되므로 getAllByText 사용)
     const inProgressLabels = within(row).getAllByText("처리중");
     expect(inProgressLabels.some((el) => !el.classList.contains("invisible"))).toBe(true);
-    // 🔴 작업 가지 이름(workedBy)은 더 이상 행에 인라인으로 표시되지 않는다 — 정렬 틀어짐 방지.
+    // 🔴 작업 가지 이름은 행에 표시되지 않는다(read-path-redesign/T01 에서 값 자체가 삭제됐다).
     // 필요하면 툴팁/드로어에서 확인.
   });
 
@@ -447,7 +445,6 @@ describe("TicketRow — 단계 칸은 늘 자리를 지킨다(ticket-row-repair/
           path: "issues/02-b.md",
           title: "진행중인 것",
           status: "in_progress",
-          workedBy: ["fm/x"],
         },
         {
           ...BASE.tickets[0]!,
@@ -559,7 +556,6 @@ function newTicket(overrides: Partial<FeatureTicket> = {}): FeatureTicket {
     unreadableBlockedBy: [],
     waitingOn: [],
     startable: true,
-    workedBy: [],
     needsCaptainEye: false,
     docConvention: "tickets",
     joinFailed: false,

@@ -115,6 +115,20 @@ function makeTreehouse(): string {
   return root;
 }
 
+/**
+ * 🔴 read-path-redesign/T03 — `/api/projects` 는 사이드바 배지(`openFeatures`)를 **요청 자리에서
+ * 세지 않는다.** 아는 값만 즉시 내고 나머지는 백그라운드로 채운 뒤 `projects` 를 방송한다.
+ * 그래서 배지·스냅샷을 보는 테스트는 **채워질 때까지 기다렸다가** 본다 — 기대값을 낮추는 것이
+ * 아니라, 값이 도착하는 시점이 달라진 것을 그대로 반영한다.
+ */
+async function waitUntil(cond: () => boolean, tries = 200): Promise<void> {
+  for (let i = 0; i < tries; i++) {
+    if (cond()) return;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error("waitUntil: 조건이 끝내 참이 되지 않았다");
+}
+
 describe("GET /api/projects", () => {
   test("ProjectsResponse envelope 반환 + alpha 발견", async () => {
     const app = createApp(APP);
@@ -126,10 +140,93 @@ describe("GET /api/projects", () => {
 
   // 세는 규칙 자체는 core 가 덮는다(`features.test.ts`). 여기서 보는 것은 **라우트가 그것을 싣는가**다.
   // fixture alpha = auth-login(01 resolved · 02 ready · 03 알 수 없음) + doc-tree(01 ready) → 둘 다 남은 일 있음.
-  test("남은 일이 있는 기능 수를 싣는다 — 요청마다 다시 센다(INV-1)", async () => {
+  test("🔴 다시 세는 동안 배지가 사라지지 않는다 — 숫자→없음→숫자 깜빡임 금지(캡틴 피드백 2026-09-04)", async () => {
+    // 무효화가 값을 **지우면** 다시 셀 때까지 배지가 없어져 화면이 깜빡인다. 지우지 말고
+    // "다시 세라" 고 표시만 해야 한다(stale-while-revalidate, adr/0001).
+    const root = mkdtempSync(join(tmpdir(), "gootte-badge-flicker-"));
+    cpSync(FIXTURES, root, { recursive: true });
+    const app = createApp({
+      roots: [root],
+      treehouse: NO_TREEHOUSE,
+      dataDir: mkdtempSync(join(tmpdir(), "gootte-badge-flicker-data-")),
+    });
+    const count = async (): Promise<number | undefined> =>
+      ProjectsResponse.parse(await (await app.request("/api/projects")).json())
+        .projects.find((p) => p.slug === "alpha")?.openFeatures;
+
+    let seen: number | undefined;
+    await waitUntil(() => {
+      void count().then((v) => (seen = v));
+      return seen !== undefined;
+    });
+    const before = seen!;
+
+    // 변경 신호가 온 **직후** — 아직 다시 세기 전이다.
+    (app as typeof app & { invalidateOpenCount?: (slug?: string) => void }).invalidateOpenCount?.("alpha");
+    // 🔴 이 순간에도 배지는 있어야 한다(옛 값). 없으면 화면이 깜빡인다.
+    expect(await count()).toBe(before);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("🔴 문서가 바뀌면 배지도 다시 센다 — 한 번 세어진 값이 굳지 않는다(실제 결함 2026-09-04)", async () => {
+    // 캡틴 신고: gootte 는 남은 기능이 0인데 좌측 배지가 1 로 남아 있었다. 원인은 T03 이 배지를
+    // 캐시하면서 **무효화 경로를 안 만든 것**이었다 — `scheduleCountFill` 은 값이 없는 칸만 채우니
+    // 한 번 센 값은 문서가 바뀌어도 그대로였다(INV-3 stale 뷰 금지 위반).
+    const root = mkdtempSync(join(tmpdir(), "gootte-badge-"));
+    cpSync(FIXTURES, root, { recursive: true });
+    const badgeData = mkdtempSync(join(tmpdir(), "gootte-badge-data-"));
+    const app = createApp({ roots: [root], treehouse: NO_TREEHOUSE, dataDir: badgeData });
+    const count = async (): Promise<number | undefined> =>
+      ProjectsResponse.parse(await (await app.request("/api/projects")).json())
+        .projects.find((p) => p.slug === "alpha")?.openFeatures;
+
+    let seen: number | undefined;
+    await waitUntil(() => {
+      void count().then((v) => (seen = v));
+      return seen !== undefined;
+    });
+    const before = seen!;
+    expect(before).toBeGreaterThan(0);
+
+    // 남은 티켓을 전부 완료로 바꾼다 — 배지는 줄어야 한다.
+    const issues = join(root, "alpha", "docs", "features", "auth-login", "issues");
+    for (const f of readdirSync(issues)) {
+      writeFileSync(join(issues, f), `# ${f}\n\n**Status:** resolved (2026-09-04)\n`);
+    }
+    clearDiscoverCache();
+    // 🔴 프로덕션과 **같은 순서**를 밟는다: 감시 신호 → 스냅샷 갱신 → **갱신 뒤 두 번째 무효화**.
+    // 두 번째가 없으면 다시 센 값이 여전히 낡은 스냅샷에서 나와 그대로 굳는다(이 결함의 정체).
+    const inv = (app as typeof app & { invalidateOpenCount?: (slug?: string) => void }).invalidateOpenCount;
+    inv?.("alpha");
+    await updateProjectSnapshot(badgeData, "alpha", [root]);
+    inv?.("alpha");
+
+    // 🔴 "값이 생길 때까지" 가 아니라 **"값이 바뀔 때까지"** 기다린다 — 이제 다시 세는 동안에도
+    // 옛 값이 그대로 오기 때문이다(깜빡임 방지, 위 테스트). 굳었는지는 **바뀌는지**로만 안다.
+    await waitUntil(() => {
+      void count().then((v) => (seen = v));
+      return seen !== undefined && seen < before;
+    });
+    // 🔴 고치기 전에는 여기서 `before` 가 그대로 나왔다(값이 굳었다).
+    expect(seen).toBeLessThan(before);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("남은 일이 있는 기능 수를 싣는다 — 백그라운드로 채워지고 값은 그대로다(INV-1, T03)", async () => {
     const app = createApp(APP);
-    const body = ProjectsResponse.parse(await (await app.request("/api/projects")).json());
-    expect(body.projects.find((p) => p.slug === "alpha")?.openFeatures).toBe(2);
+    const count = async (): Promise<number | undefined> =>
+      ProjectsResponse.parse(await (await app.request("/api/projects")).json())
+        .projects.find((p) => p.slug === "alpha")?.openFeatures;
+    // 첫 응답은 배지가 비어 있을 수 있다 — 🔴 그때도 **0 이 아니라 undefined** 여야 한다
+    // ("다 끝났다" 와 "안 세어봤다" 가 같은 화면이 되면 안 된다).
+    const first = await count();
+    expect(first === undefined || first === 2).toBe(true);
+    let latest: number | undefined;
+    await waitUntil(() => {
+      void count().then((v) => (latest = v));
+      return latest !== undefined;
+    });
+    expect(latest).toBe(2);
   });
 });
 
@@ -206,7 +303,7 @@ describe("GET /api/features/:slug", () => {
     expect(t?.status).toBe("pending");
   });
 
-  test("🔴 Time(started=) 기록이 있는 티켓은 관측 없이도 처리중이다 — 관측은 workedBy 만 실어준다(ADR 0001)", async () => {
+  test("🔴 Time(started=) 기록이 있는 티켓은 관측 없이도 처리중이다(ADR 0001)", async () => {
     const app = createApp(APP);
     const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
     // 02-screen 에는 Time: started= 가 fixture 에 적혀 있다(ADR 0001: 처리중은 Time 기록으로만)
@@ -214,13 +311,11 @@ describe("GET /api/features/:slug", () => {
       .find((f) => f.slug === "auth-login")
       ?.tickets.find((x) => x.slug === "02-screen");
     expect(t?.status).toBe("in_progress");
-    expect(t?.workedBy).toEqual([]); // 관측이 없으므로 workedBy 는 빈 배열
     // 다른 티켓(01-session Time 없음, 03-06 등)은 처리중이 아니다
     for (const f of body.features)
       for (const t of f.tickets)
         if (t.path !== "issues/02-screen.md") {
           expect(t.status).not.toBe("in_progress");
-          expect(t.workedBy).toEqual([]);
         }
   });
 
@@ -254,7 +349,6 @@ describe("GET /api/features/:slug", () => {
           .find((f) => f.slug === "auth-login")
           ?.tickets.find((x) => x.slug === "02-screen");
         expect(t?.status).toBe("in_progress");
-        expect(t?.workedBy).toEqual(["fm/screen"]);
         expect(body.inProgress).toMatchObject({ rootExists: true, working: 2, tickets: 1 });
         // 🔴 이어지지 않은 작업이 응답에서 사라지지 않는다.
         expect(body.inProgress.unknown.map((u) => u.branch)).toEqual(["fm/elsewhere"]);
@@ -402,7 +496,13 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
           ).projects.find((p) => p.slug === "widget")?.openFeatures;
 
         // 조인 전(홈 미설정 = 백로그 없음): 티켓 상태를 모르니 pending — 남은 일 있는 기능 1개.
-        expect(await count()).toBe(1);
+        // T03 — 배지는 백그라운드로 채워지므로 값이 설 때까지 기다렸다 본다(값 자체는 그대로다).
+        let seen: number | undefined;
+        await waitUntil(() => {
+          void count().then((v) => (seen = v));
+          return seen !== undefined;
+        });
+        expect(seen).toBe(1);
 
         // T05 — 홈을 설정하면 감시 뿌리도 그 홈의 projects/ 로 갈아탄다(discover 입력이 바뀐다).
         // 같은 프로젝트를 계속 찾게 하려면 그 아래로 옮겨 심어야 한다(실물 배치와 같은 모양).
@@ -421,7 +521,12 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
           body: JSON.stringify({ firstmateHome: home }),
         });
         clearSnapshot();
-        expect(await count()).toBe(0);
+        seen = undefined;
+        await waitUntil(() => {
+          void count().then((v) => (seen = v));
+          return seen !== undefined;
+        });
+        expect(seen).toBe(0);
       } finally {
         rmSync(home, { recursive: true, force: true });
       }
@@ -584,7 +689,8 @@ describe("GET /api/features/:slug — 읽음 기록", () => {
         // 저장된 스냅샷이 그대로 서빙되고(stale), 새 티켓은 감시 신호가 만드는 갱신(`updateProjectSnapshot`
         // — 실제론 감시기가 하는 일) 뒤에야 보인다. 그래서 갱신을 직접 트리거해 swap 을 확인한다.
         clearDiscoverCache();
-        updateProjectSnapshot(dataDir, "alpha", [projectRoot]);
+        // T07 후속 — 계산이 워커로 갔으므로 비동기다. 갱신이 끝난 뒤에 봐야 한다.
+        await updateProjectSnapshot(dataDir, "alpha", [projectRoot]);
 
         // "서버 재기동 + 갱신" 흉내 — 같은 dataDir 로 새 `createApp` · 새 요청.
         const second = await requestFeatures();
@@ -840,7 +946,6 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
         const card = body.waiting.find((c) => c.feature.slug === "auth-login");
         const t = card?.feature.tickets.find((x) => x.slug === "02-screen");
         expect(t?.status).toBe("in_progress");
-        expect(t?.workedBy).toEqual(["fm/screen"]);
       } finally {
         rmSync(th, { recursive: true, force: true });
       }

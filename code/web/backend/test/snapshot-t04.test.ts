@@ -38,13 +38,13 @@ beforeEach(() => {
 });
 
 describe("fast-cold-start T04", () => {
-  test("HEAD가 같으면 재검증은 no-op이고 스냅샷을 바꾸지 않는다", () => {
+  test("HEAD가 같으면 재검증은 no-op이고 스냅샷을 바꾸지 않는다", async () => {
     const root = mkdtempSync(join(tmpdir(), "gootte-t04-root-"));
     const alpha = makeRepoProject(root, "alpha");
     try {
       recordProjectScan(dataDir, project(alpha), readFeatures([alpha]));
       const before = readFileSync(snapshotPath(dataDir), "utf8");
-      const result = revalidateSnapshot(dataDir, [root]);
+      const result = await revalidateSnapshot(dataDir, [root]);
       expect(result).toEqual({ changedProjects: [], projectsChanged: false });
       expect(readFileSync(snapshotPath(dataDir), "utf8")).toBe(before);
     } finally {
@@ -52,7 +52,7 @@ describe("fast-cold-start T04", () => {
     }
   });
 
-  test("한 프로젝트의 HEAD만 바뀌면 그 프로젝트만 갱신하고 나머지는 보존한다", () => {
+  test("한 프로젝트의 HEAD만 바뀌면 그 프로젝트만 갱신하고 나머지는 보존한다", async () => {
     const root = mkdtempSync(join(tmpdir(), "gootte-t04-root-"));
     const alpha = makeRepoProject(root, "alpha");
     const beta = makeRepoProject(root, "beta");
@@ -66,7 +66,7 @@ describe("fast-cold-start T04", () => {
       git(alpha, "add", "-A");
       git(alpha, "commit", "-q", "-m", "changed");
 
-      const result = revalidateSnapshot(dataDir, [root]);
+      const result = await revalidateSnapshot(dataDir, [root]);
       const after = JSON.parse(readFileSync(snapshotPath(dataDir), "utf8"));
       const alphaAfter = after.projects.find((p: { slug: string }) => p.slug === "alpha");
       const betaAfter = after.projects.find((p: { slug: string }) => p.slug === "beta");
@@ -83,19 +83,19 @@ describe("fast-cold-start T04", () => {
     }
   });
 
-  test("프로젝트 추가와 삭제는 projectsChanged로 판정한다", () => {
+  test("프로젝트 추가와 삭제는 projectsChanged로 판정한다", async () => {
     const root = mkdtempSync(join(tmpdir(), "gootte-t04-root-"));
     const alpha = makeRepoProject(root, "alpha");
     try {
       recordProjectScan(dataDir, project(alpha), readFeatures([alpha]));
       const beta = makeRepoProject(root, "beta");
 
-      const added = revalidateSnapshot(dataDir, [root]);
+      const added = await revalidateSnapshot(dataDir, [root]);
       expect(added.projectsChanged).toBe(true);
       expect(added.changedProjects).toContain("beta");
 
       rmSync(beta, { recursive: true, force: true });
-      const removed = revalidateSnapshot(dataDir, [root]);
+      const removed = await revalidateSnapshot(dataDir, [root]);
       expect(removed.projectsChanged).toBe(true);
       expect(JSON.parse(readFileSync(snapshotPath(dataDir), "utf8")).projects.map((p: { slug: string }) => p.slug)).toEqual(["alpha"]);
     } finally {

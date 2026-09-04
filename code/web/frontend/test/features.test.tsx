@@ -45,7 +45,6 @@ const DATA: FeaturesResponse = {
           unreadableBlockedBy: [],
           waitingOn: [],
           startable: true,
-          workedBy: [],
           needsCaptainEye: false,
         },
         {
@@ -60,7 +59,6 @@ const DATA: FeaturesResponse = {
           unreadableBlockedBy: [],
           waitingOn: [],
           startable: true,
-          workedBy: [],
           needsCaptainEye: false,
         },
         {
@@ -75,7 +73,6 @@ const DATA: FeaturesResponse = {
           unreadableBlockedBy: [],
           waitingOn: ["02"],
           startable: false,
-          workedBy: [],
           needsCaptainEye: false,
         },
         {
@@ -90,7 +87,6 @@ const DATA: FeaturesResponse = {
           unreadableBlockedBy: [],
           waitingOn: [],
           startable: true,
-          workedBy: [],
           needsCaptainEye: false,
         },
         {
@@ -106,7 +102,6 @@ const DATA: FeaturesResponse = {
           unreadableBlockedBy: [],
           waitingOn: [],
           startable: true,
-          workedBy: ["fm/alpha-oauth"],
           needsCaptainEye: false,
         },
       ],
@@ -176,7 +171,6 @@ function manyTickets(n: number): FeatureTicket[] {
     unreadableBlockedBy: [],
     waitingOn: [],
     startable: true,
-    workedBy: [],
     needsCaptainEye: false,
   }));
 }
@@ -267,7 +261,7 @@ describe("FeaturesView — 기능 카드는 기본 접힘, 눌러야 연다(티�
     const working = screen.getByText("OAuth 교환").closest("li")!;
     // 상태 배지 "처리중" + inProgress 텍스트 "처리중" 두 곳에 있음
     expect(within(working).getAllByText("처리중").length).toBeGreaterThan(0);
-    // 🔴 작업 가지 이름(workedBy)은 더 이상 행에 인라인으로 표시되지 않는다 — 정렬 틀어짐 방지.
+    // 🔴 작업 가지 이름은 행에 표시되지 않는다(read-path-redesign/T01 에서 값 자체가 삭제됐다).
     // 아무도 안 붙든 티켓에는 가지 이름이 안 붙는다.
     const idle = screen.getByText("로그인 화면").closest("li")!;
     expect(within(idle).queryByText("fm/alpha-oauth")).toBeNull();
@@ -300,7 +294,6 @@ describe("FeaturesView — 머리글 네 수는 항상 뜬다(티켓 01 §설계
               unreadableBlockedBy: [],
               waitingOn: [],
               startable: true,
-              workedBy: [],
               needsCaptainEye: false,
             },
           ],
@@ -409,7 +402,6 @@ const SEARCH_DATA: FeaturesResponse = {
           unreadableBlockedBy: [],
           waitingOn: [],
           startable: true,
-          workedBy: [],
           needsCaptainEye: false,
         },
       ],
@@ -443,7 +435,6 @@ const SEARCH_DATA: FeaturesResponse = {
           unreadableBlockedBy: [],
           waitingOn: [],
           startable: true,
-          workedBy: [],
           needsCaptainEye: false,
         },
       ],
@@ -689,7 +680,6 @@ describe("FeaturesView — 완료 영역은 최근 완료가 위(plan 탭과 같
       unreadableBlockedBy: [],
       waitingOn: [],
       startable: true,
-      workedBy: [],
       needsCaptainEye: false,
     };
   }

@@ -1,6 +1,8 @@
 import { join, sep } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { discoverProjects } from "./discover";
+import { extraWorktreeRoots } from "./treehouse";
 
 /** coarse 변경 신호(ADR-0004) — project = 그 프로젝트 재조회, projects = 목록 재조회. */
 export type Change = { kind: "project"; project: string } | { kind: "projects" };
@@ -75,15 +77,56 @@ export function watchProjects(
   // `docs/features` 를 감시한다 — 그래야 어느 사본의 문서가 바뀌어도 재조회가 나가고, 바뀐
   // 경로는 `projectOf` 가 같은 slug 로 접는다. 사본 하나만 보면 나머지 사본 변경이 조용히
   // 빠져 stale 뷰가 된다(INV-3).
+  /**
+   * 한 프로젝트가 실제로 문서를 갖는 자리 전부 — discover 사본 + **worktree**(read-path-redesign/T05).
+   * 🔴 예전에는 discover 사본만 봤다. 그래서 worktree 안에서 새로 만든 **커밋 안 된 티켓**은
+   * 어느 경로로도 안 잡혔다 — 감시는 그 폴더를 안 보고, 스탬프 비교는 untracked 를 일부러 뺐다
+   * (캡틴 확인 2026-09-04). 읽기(`readFeatures`)는 이미 worktree 를 합집합으로 읽고 있었으므로,
+   * 감시만 같은 목록을 보게 맞춘다.
+   */
+  const copyPathsOf = (p: { copies: string[] }): string[] => [...p.copies, ...extraWorktreeRoots(p.copies)];
+
   const contentPaths = (ps: typeof projects): string[] =>
-    ps.flatMap((p) => p.copies.map((c) => join(c, "docs", "features")));
+    ps.flatMap((p) => copyPathsOf(p).map((c) => join(c, "docs", "features")));
+
+  /**
+   * 커밋을 보는 자리(축 2, T05) — 사본마다 `HEAD` 와 `refs/`.
+   * 🔴 왜 필요한가: T01 이 미착지 표식을 버린 뒤에도 **커밋이 화면을 바꾸는 경로가 하나 남았다 —
+   * 갈라짐(`conflict`)** 이다. `resolveFile` 이 HEAD 조상 관계로 나중 판을 고르기 때문이다(T06 조사).
+   * 이 감시가 있어야 15초 주기 재검증기를 안전망으로 내릴 수 있다.
+   * worktree 는 `.git` 이 **파일**이고 그 안에 실제 gitdir 경로가 적혀 있다 — 그것을 따라간다.
+   */
+  const gitRefPaths = (ps: typeof projects): string[] => {
+    const out: string[] = [];
+    for (const p of ps) {
+      for (const c of copyPathsOf(p)) {
+        const dotGit = join(c, ".git");
+        let gitDir: string | null = null;
+        try {
+          if (!existsSync(dotGit)) continue;
+          if (statSync(dotGit).isDirectory()) gitDir = dotGit;
+          else {
+            // worktree: "gitdir: /절대/경로" 한 줄.
+            const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, "utf8"));
+            gitDir = m?.[1]?.trim() ?? null;
+          }
+        } catch {
+          gitDir = null;
+        }
+        if (!gitDir) continue;
+        out.push(join(gitDir, "HEAD"), join(gitDir, "refs"));
+      }
+    }
+    return out;
+  };
 
   const projectOf = (abs: string): string | null => {
     let best: { slug: string; len: number } | null = null;
+    // worktree 안의 경로도 그 프로젝트로 접혀야 한다(T05) — 후보에 worktree 를 함께 놓는다.
     // 🔴 같은 slug 의 사본이 여럿일 수 있다(T01). 대표 경로(`path`)뿐 아니라 **모든 사본**을
     // 후보로 놓고 최장 접두로 고른다 — 그래서 어느 사본 안의 경로를 주어도 같은 slug 로 접힌다.
     for (const p of projects) {
-      for (const copyPath of p.copies) {
+      for (const copyPath of copyPathsOf(p)) {
         if (
           (abs === copyPath || abs.startsWith(copyPath + sep)) &&
           (!best || copyPath.length > best.len)
@@ -119,6 +162,24 @@ export function watchProjects(
   content.on("all", (_ev, abs) => {
     const slug = projectOf(abs);
     if (slug) fire({ kind: "project", project: slug });
+  });
+
+  /**
+   * 축 2 — 커밋 감시(T05). `HEAD`·`refs/` 가 바뀌면 그 프로젝트를 다시 읽는다.
+   * 🔴 `.git` 은 다른 감시에서 `HEAVY` 로 걷어내지만 여기서는 **정확히 두 경로만** 콕 집어 건다 —
+   * `.git` 전체를 거는 것과 다르다(그건 무겁고, 소켓 같은 것을 끌어들여 백엔드를 죽인 전례가 있다).
+   */
+  const gitW: FSWatcher = chokidar.watch(gitRefPaths(projects), {
+    ignoreInitial: true,
+    ignored: (p) => never(p),
+  });
+  gitW.on("error", onWatchError("커밋"));
+  gitW.on("all", (_ev, abs) => {
+    // 어느 사본의 gitdir 인지는 경로로 못 접는다(worktree 의 gitdir 은 저장소 밖에 있을 수 있다).
+    // 커밋은 드문 사건이라 **프로젝트 전부**를 다시 보게 하는 것으로 충분하다 — 실제 재계산은
+    // T04 의 폴더 지문이 가른다(안 바뀐 폴더는 다시 안 읽힌다).
+    void abs;
+    for (const p of projects) fire({ kind: "project", project: p.slug });
   });
 
   // 목록 감시 — roots 얕게, 발견 표식(`AGENTS.md` · `docs/features/`) 이벤트만 재발견 트리거.
@@ -169,8 +230,10 @@ export function watchProjects(
     const changed = before.size !== after.size || [...after].some((p) => !before.has(p));
     if (!changed) return;
     content.unwatch(contentPaths(projects));
+    gitW.unwatch(gitRefPaths(projects));
     projects = next;
     content.add(contentPaths(projects));
+    gitW.add(gitRefPaths(projects));
     fire({ kind: "projects" });
   };
   const rootsW: FSWatcher = chokidar.watch(roots, {
@@ -189,7 +252,7 @@ export function watchProjects(
     async close() {
       for (const t of pending.values()) clearTimeout(t);
       if (rd) clearTimeout(rd);
-      await Promise.all([content.close(), rootsW.close()]);
+      await Promise.all([content.close(), rootsW.close(), gitW.close()]);
     },
   };
 }

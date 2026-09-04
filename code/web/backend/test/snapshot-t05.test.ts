@@ -47,7 +47,7 @@ function makeProj(slug: string): string {
 const scannedAt = (): string => JSON.parse(readFileSync(snapshotPath(dataDir), "utf8")).scannedAt;
 
 describe("snapshot HEAD 스탬프 게이팅 — HEAD 미변화 사본은 재스캔 안 함(T05 비용 억제)", () => {
-  test("사본 HEAD 가 안 바뀌고 작업트리도 깨끗하면 재검증해도 스냅샷이 갱신되지 않는다(캐시 히트 = 재스캔 안 함)", () => {
+  test("사본 HEAD 가 안 바뀌고 작업트리도 깨끗하면 재검증해도 스냅샷이 갱신되지 않는다(캐시 히트 = 재스캔 안 함)", async () => {
     const proj = makeProj("alpha");
     initRepo(proj);
     writeFileSync(join(proj, "docs", "features", "alpha", "spec.md"), "# alpha v1\n");
@@ -58,7 +58,7 @@ describe("snapshot HEAD 스탬프 게이팅 — HEAD 미변화 사본은 재스�
     const at0 = scannedAt();
 
     // HEAD 동일 → 재스캔 안 함 → scannedAt 그대로(= recordProjectScan 재호출 안 함)
-    const r2 = revalidateSnapshot(dataDir, [root]);
+    const r2 = await revalidateSnapshot(dataDir, [root]);
     expect(r2.changedProjects).toEqual([]);
     expect(scannedAt()).toBe(at0);
 
@@ -66,12 +66,12 @@ describe("snapshot HEAD 스탬프 게이팅 — HEAD 미변화 사본은 재스�
     // 티켓 파일만 편집하므로, HEAD 만 보면 Time: finished= 가 스냅샷에 반영되지 않아 완료/시작이
     // stale 로 남는다(INV-3, 실제 결함 2026-09-01). docs/features 아래 미커밋 변경은 캐시 히트가 아니다.
     writeFileSync(join(proj, "docs", "features", "alpha", "spec.md"), "# alpha v2 (uncommitted)\n");
-    const r3 = revalidateSnapshot(dataDir, [root]);
+    const r3 = await revalidateSnapshot(dataDir, [root]);
     expect(r3.changedProjects).toContain("alpha");
     expect(scannedAt()).not.toBe(at0); // 재스캔했으니 갱신됐다
   });
 
-  test("사본 HEAD 가 바뀌면(커밋) 재검증이 재스캔해서 스냅샷을 갱신한다(캐시 미스)", () => {
+  test("사본 HEAD 가 바뀌면(커밋) 재검증이 재스캔해서 스냅샷을 갱신한다(캐시 미스)", async () => {
     const proj = makeProj("alpha");
     initRepo(proj);
     commit(proj, "init");
@@ -81,7 +81,7 @@ describe("snapshot HEAD 스탬프 게이팅 — HEAD 미변화 사본은 재스�
     writeFileSync(join(proj, "docs", "features", "alpha", "spec.md"), "# alpha v2\n");
     commit(proj, "change"); // HEAD 변경
 
-    const r = revalidateSnapshot(dataDir, [root]);
+    const r = await revalidateSnapshot(dataDir, [root]);
     expect(r.changedProjects).toContain("alpha");
     expect(scannedAt()).not.toBe(at0); // 재스캔했으니 갱신됐다
   });

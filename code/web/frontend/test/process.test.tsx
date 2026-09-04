@@ -29,7 +29,6 @@ function feature(slug: string, tickets: TicketSpec[] = []): Feature {
       unreadableBlockedBy: [],
       waitingOn: [],
       startable: true,
-      workedBy: [],
       needsCaptainEye: false,
     })),
   };

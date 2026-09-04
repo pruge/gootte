@@ -58,17 +58,17 @@ function heldTickets(copy: ObservedCopy, known: ReadonlySet<string>): string[] {
   return out;
 }
 
-function markTicket(ticket: FeatureTicket, branches: readonly string[]): FeatureTicket {
-  // 끝나거나 취소된 티켓은 상태만 지키는 것으로 부족하다 — 붙들린 가지도 싣지 않는다.
-  // 값이 실려 있으면 줄이 그걸로 처리중을 그린다(사양 §설계 1).
+function markTicket(ticket: FeatureTicket): FeatureTicket {
+  // 끝나거나 취소된 티켓은 처리중이 되지 않는다.
   if (ticket.status === "done" || ticket.status === "dropped") return ticket;
   // 🔴 처리중은 **Time 기록(started=, 완료 없음)** 으로만 판정한다(ADR 0001 —
   // work-claims-its-ticket/02, 캡틴 2026-09-02). 브랜치가 티켓 파일을 건드렸다고 해서
   // 자동으로 처리중이 되지 않는다 — 한 worktree 가 여러 티켓 파일을 건드리면 전부 처리중이
   // 되어 "실제로 무엇을 작업하고 있는지" 를 못 본다(실제 결함: studio-function-authoring-ux/T02).
-  // 브랜치 관측은 처리중의 근거가 아니라 **누가 붙들고 있나(workedBy)** 만 실어준다.
+  // 🔴 가지 이름(`workedBy`)은 read-path-redesign/T01 에서 삭제됐다 — 화면에 붙는 호출부가
+  // 없는 유령 값이었다. 사본 관측이 남아서 하는 일은 미해소 구역(unknown·unreadable·unclaimed)뿐이다.
   if (!ticket.startedAt || ticket.finishedAt) return ticket;
-  return { ...ticket, status: "in_progress", workedBy: [...branches] };
+  return { ...ticket, status: "in_progress" };
 }
 
 /**
@@ -80,7 +80,7 @@ function markTicket(ticket: FeatureTicket, branches: readonly string[]): Feature
  *   으로 세어진다. 조용히 삼키면 화면이 "아무도 아무것도 안 하는 중" 이라고 거짓말한다.
  * - 🔴 **상태를 못 읽은 사본도 감추지 않는다** — `unreadable` 로 센다. 읽기 실패를 유휴로 접으면
  *   같은 거짓말이 되고, 그쪽은 `unknown` 과 달리 세어지지도 않아 더 조용히 사라진다.
- * - 한 티켓을 두 사본이 붙들어도 **티켓은 하나로 센다**. 두 브랜치는 `workedBy` 에 나란히 실린다.
+ * - 한 티켓을 두 사본이 붙들어도 **티켓은 하나로 센다**.
  * - 🔴 **문서가 `claimed` 라고 말하는데 붙든 사본이 없으면** 처리중으로 그리지 않고, 대신 `unclaimed`
  *   에 실어 감추지 않는다 — 지우다 만 흔적이지 진행 중이 아니다(work-claims-its-ticket/01 §D).
  * - 🔴 **반환하는 `features` 는 이미 정렬돼 있다**(`sortFeatures`, 티켓 03) — 처리중이 얹혀야
@@ -123,12 +123,12 @@ export function applyInProgress(
   let tickets = 0;
   const unclaimed: UnclaimedTicket[] = [];
   const marked = features.map((f) => {
-    // 두 관례를 같은 함수로 심는다 — 신관례 티켓도 처리중이 되고 workedBy 를 실린다.
+    // 두 관례를 같은 함수로 심는다 — 신관례 티켓도 같은 규칙으로 처리중이 된다.
     // 'claimed 인데 사본 없음' 판정은 옛 관례의 원문 상태에서만 걸린다(신관례 sourceStatus 는
     // 백로그 SoT 앞에서 늘 null 이다).
     const mark = (t: FeatureTicket): FeatureTicket => {
       const held = branchesByTicket.get(key(f.slug, t.slug)) ?? [];
-      const next = markTicket(t, held);
+      const next = markTicket(t);
       if (next.status === "in_progress") tickets += 1;
       // 🔴 unclaimed = claimed 라고 말하는데 **붙든 사본이 없다**(ADR 0001, 지우다 만 흔적).
       // 처리중은 Time 기록으로만 판정하므로, claimed + 사본 있음 + Time 없음 = 처리중도

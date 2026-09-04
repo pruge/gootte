@@ -57,7 +57,6 @@ export function feature(slug: string, tickets: readonly (string | TicketSpec)[] 
       unreadableBlockedBy: [],
       waitingOn,
       startable: waitingOn.length === 0,
-      workedBy: [],
       needsCaptainEye: spec.needsCaptainEye ?? false,
       ...(spec.newConvention ? ({ docConvention: "tickets", joinFailed: false, startedAt: undefined, finishedAt: undefined } as const) : {}),
       ...(spec.elapsed ? { elapsed: spec.elapsed } : {}),

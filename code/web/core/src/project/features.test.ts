@@ -557,7 +557,6 @@ describe("sortFeatures — 화면 순서(무리 → 처리중 → 폴더명, 티
     unreadableBlockedBy: [],
     waitingOn: [],
     startable: true,
-    workedBy: [],
     needsCaptainEye: false,
     ...over,
   });

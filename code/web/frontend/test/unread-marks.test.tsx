@@ -35,7 +35,6 @@ function ticket(overrides: { num: string; path: string; title: string; unread?: 
     unreadableBlockedBy: [],
     waitingOn: [],
     startable: true,
-    workedBy: [],
     needsCaptainEye: false,
     unread: overrides.unread,
   };

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { CopyScan, ObservedCopy } from "@gootte/core";
 import { commitTouchedFiles, currentBranch, revExists } from "./git";
 
@@ -54,6 +54,56 @@ export function claudeWorktreeRoots(projectPaths: readonly string[]): string[] {
  */
 export function defaultTreehouseRoot(): string {
   return join(homedir(), ".treehouse");
+}
+
+/**
+ * BB 에이전트 worktree 뿌리 기본값 — `~/.bb/worktrees`. env `GOOTTE_BB_WORKTREES` 로 덮어쓴다
+ * (`GOOTTE_ROOTS` 를 읽는 `effectiveProjectRoots` 와 같은 관례 — 기계마다 다를 수 있다).
+ */
+export function defaultBbWorktreeRoot(): string {
+  return process.env.GOOTTE_BB_WORKTREES?.trim() || join(homedir(), ".bb", "worktrees");
+}
+
+/**
+ * BB 에이전트가 스레드 작업용으로 만드는 worktree(`<뿌리>/<env_XXXX>/<프로젝트>/`) 전부.
+ * treehouse(`<풀>/<슬롯>/<프로젝트>`)·Claude Code(`<프로젝트>/.claude/worktrees/<이름>`)와
+ * **자리만 다르고 같은 git worktree** 다 — `.git` 이 파일이고 branch·커밋 이력이 있어 똑같이 관측된다.
+ *
+ * 프로젝트 이름은 사본 경로의 basename 으로 읽는다 — BB 는 환경 디렉토리 아래에 저장소 디렉토리명
+ * 그대로 체크아웃한다(실측: `~/.bb/worktrees/env_n8franv9qv/jinwooauto`). 그래서 호출부는
+ * `claudeWorktreeRoots` 와 **같은 인자**(사본 경로들)만 주면 된다.
+ *
+ * 존재하지 않는 뿌리는 건너뛴다 — BB 를 안 쓰는 기계에서는 빈 목록이다.
+ */
+export function bbWorktreeRoots(
+  projectPaths: readonly string[],
+  bbRoot: string = defaultBbWorktreeRoot(),
+): string[] {
+  if (!isDir(bbRoot)) return [];
+  const names = new Set(projectPaths.map((p) => basename(p)));
+  const out: string[] = [];
+  for (const envName of children(bbRoot)) {
+    const envDir = join(bbRoot, envName);
+    if (!isDir(envDir)) continue;
+    for (const name of names) {
+      const wt = join(envDir, name);
+      // 🔴 `.git` 존재까지 본다 — 환경 디렉토리 아래 같은 이름의 아무 폴더나 사본으로 세지 않는다.
+      if (isDir(wt) && existsSync(join(wt, ".git")) && !out.includes(wt)) out.push(wt);
+    }
+  }
+  return out;
+}
+
+/**
+ * 사본 경로들에 딸린 **모든 worktree** — Claude Code(`.claude/worktrees/`) + BB(`~/.bb/worktrees/`).
+ * 사본 목록을 만드는 자리(backend `withWorktrees`·스냅샷 기록)는 이 한 창구를 쓴다 — 새 종류가
+ * 늘 때 호출부를 다시 훑지 않게.
+ */
+export function extraWorktreeRoots(
+  projectPaths: readonly string[],
+  bbRoot?: string,
+): string[] {
+  return [...claudeWorktreeRoots(projectPaths), ...bbWorktreeRoots(projectPaths, bbRoot)];
 }
 
 /** 풀 디렉토리 이름 = `<프로젝트>-<6자리 hex>` (F6). 정규식 메타문자를 가진 슬러그도 안전하게. */
@@ -127,13 +177,43 @@ function touchedOnBranch(repo: string): string[] {
  * 그 아래 `.claude/worktrees/` 를 훑는다. Claude Code 가 만드는 worktree 는 git worktree 라
  * `.git` 이 파일이고, branch·커밋 이력이 있어 treehouse 사본과 똑같이 관측할 수 있다.
  * 그 슬러그는 `<프로젝트>/claude/<워크트리명>` — treehouse(`<풀>/<슬롯>`)와 겹치지 않게.
+ *
+ * 🔴 **BB 에이전트 worktree**(`~/.bb/worktrees/<env>/<프로젝트>`, 캡틴 지시 2026-09-04)도 같은
+ * 규칙으로 관측한다 — BB 스레드로 작업하면 여기 트리가 생기므로, 안 보면 그 작업이 "지금 누가
+ * 무엇을 붙들고 있나"에서 통째로 빠진다. 슬러그는 `<프로젝트>/bb/<env>`. 뿌리는 `bbRoot`
+ * 인자(없으면 `defaultBbWorktreeRoot()` = env `GOOTTE_BB_WORKTREES` 또는 `~/.bb/worktrees`).
  */
 export function scanWorkingCopies(
   root: string,
   project: string,
   projectPaths: readonly string[] = [],
+  bbRoot?: string,
 ): CopyScan {
   const copies: ObservedCopy[] = [];
+
+  /**
+   * 사본 하나를 같은 규칙으로 센다 — treehouse 슬롯도, Claude Code·BB worktree 도 여기를 지난다.
+   * 🔴 못 읽은 갈래를 **건너뛰지 않고 그대로 싣는다**(위 주석의 규율).
+   */
+  const observe = (slug: string, dir: string): void => {
+    const repo = repoIn(dir);
+    if (!repo) {
+      copies.push({ slug, path: dir, state: "no-repo", branch: "", touched: [] });
+      return;
+    }
+    const branch = currentBranch(repo); // null = git 이 답하지 않음, "" = detached
+    if (branch === null) {
+      copies.push({ slug, path: repo, state: "git-failed", branch: "", touched: [] });
+      return;
+    }
+    copies.push({
+      slug,
+      path: repo,
+      state: branch ? "working" : "idle",
+      branch,
+      touched: branch ? touchedOnBranch(repo) : [],
+    });
+  };
   if (!isDir(root)) {
     // treehouse 가 없어도 프로젝트 안 Claude Code worktree 는 관측할 수 있다(그래도 빈 결과가
     // 아니다 — rootExists 만 거짓). 이 작업 사본이 실제로 돌고 있으면 사라지면 안 된다(INV-4).
@@ -144,28 +224,9 @@ export function scanWorkingCopies(
       for (const slotName of children(join(root, poolName))) {
         const slot = join(root, poolName, slotName);
         if (!isDir(slot)) continue;
-        const slug = `${poolName}/${slotName}`;
-
-        // 🔴 아래 두 갈래는 **빠뜨리지 않고 못 읽었다고 센다.** 슬롯을 건너뛰면 사본 수에서도
-        //    사라져, 진짜로 돌고 있는 작업이 아무 데도 안 남는다(유휴로 접는 것보다 더 조용하다).
-        const repo = repoIn(slot);
-        if (!repo) {
-          copies.push({ slug, path: slot, state: "no-repo", branch: "", touched: [] });
-          continue;
-        }
-        const branch = currentBranch(repo); // null = git 이 답하지 않음, "" = detached
-        if (branch === null) {
-          copies.push({ slug, path: repo, state: "git-failed", branch: "", touched: [] });
-          continue;
-        }
-
-        copies.push({
-          slug,
-          path: repo,
-          state: branch ? "working" : "idle",
-          branch,
-          touched: branch ? touchedOnBranch(repo) : [],
-        });
+        // 🔴 못 읽은 갈래는 **빠뜨리지 않고 못 읽었다고 센다**(observe 안). 슬롯을 건너뛰면 사본
+        //    수에서도 사라져, 진짜로 돌고 있는 작업이 아무 데도 안 남는다(유휴로 접는 것보다 더 조용하다).
+        observe(`${poolName}/${slotName}`, slot);
       }
     }
   }
@@ -173,25 +234,14 @@ export function scanWorkingCopies(
   // Claude Code worktree(`.claude/worktrees/<name>`) — 프로젝트 사본 경로마다 훑는다.
   // `.git` 은 worktree 에선 파일이므로 repoIn 이 그 자리를 그대로 준다(treehouse 와 같은 판정).
   for (const wt of claudeWorktreeRoots(projectPaths)) {
-    const name = basename(wt);
-    const slug = `${project}/claude/${name}`;
-    const repo = repoIn(wt);
-    if (!repo) {
-      copies.push({ slug, path: wt, state: "no-repo", branch: "", touched: [] });
-      continue;
-    }
-    const branch = currentBranch(repo);
-    if (branch === null) {
-      copies.push({ slug, path: repo, state: "git-failed", branch: "", touched: [] });
-      continue;
-    }
-    copies.push({
-      slug,
-      path: repo,
-      state: branch ? "working" : "idle",
-      branch,
-      touched: branch ? touchedOnBranch(repo) : [],
-    });
+    observe(`${project}/claude/${basename(wt)}`, wt);
+  }
+
+  // BB 에이전트 worktree(`~/.bb/worktrees/<env>/<프로젝트>`) — 스레드로 작업할 때 여기 트리가 생긴다.
+  // 슬러그는 `<프로젝트>/bb/<env>` — treehouse(`<풀>/<슬롯>`)·claude(`<프로젝트>/claude/<이름>`)와
+  // 겹치지 않는 식별자여야 차단 목록에서 헷갈리지 않는다.
+  for (const wt of bbWorktreeRoots(projectPaths, bbRoot)) {
+    observe(`${project}/bb/${basename(dirname(wt))}`, wt);
   }
 
   return { root, rootExists: isDir(root), copies };

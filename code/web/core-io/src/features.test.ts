@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyBacklogStatus } from "@gootte/core";
-import { readFeatures, readFeatureDoc } from "./features";
+import { clearFeatureCache, readFeatures, readFeatureDoc } from "./features";
 
 let repo: string;
 
@@ -351,6 +351,30 @@ describe("readFeatures — 여러 사본 합집합 + 나중 판 (T02)", () => {
     expect(f?.conflict).toEqual([]);
   });
 
+  it("🔴 `.md` 아닌 파일도 갈라짐으로 잡힌다 — 본문을 안 읽어도 판정은 그대로다(read-path-redesign/T02)", () => {
+    // T02 는 목록 계산에서 `.md` 아닌 파일의 **본문**을 문자열로 올리지 않게 바꿨다. 그때
+    // 갈라짐 판정까지 같이 사라지면 회귀다 — 해시를 비교 토큰으로 쓰므로 판정은 남아야 한다.
+    const design = (dir: string, body: string): void => {
+      const d = join(dir, "docs", "features", "f", "design");
+      mkdirSync(d, { recursive: true });
+      writeFileSync(join(d, "x.html"), body);
+    };
+    initRepo(a);
+    feat(a, "f", "# f\n\nStatus: draft\n");
+    design(a, "<html>공통</html>\n");
+    commit(a, "a");
+    execFileSync("git", ["clone", "-q", a, b], { stdio: "ignore" });
+    // 두 사본이 같은 파일을 **서로 다르게** 고치고 각자 커밋 → 어느 쪽도 조상이 아니다(갈라짐).
+    design(a, "<html>A 쪽</html>\n");
+    commit(a, "a2");
+    design(b, "<html>B 쪽 다름</html>\n");
+    commit(b, "b2");
+    const [f] = readFeatures([a, b]);
+    expect(f?.conflict?.map((c) => c.path)).toContain("design/x.html");
+    // 트리에는 그대로 뜬다 — 본문을 안 읽는 것이 목록에서 지우는 것은 아니다.
+    expect(f?.docs.map((d) => d.name)).toContain("design");
+  });
+
   it("AC6 — 조상 관계가 어느 쪽도 아니면 고르지 않고 conflict 에 실린다(절차 4)", () => {
     initRepo(a);
     feat(a, "f", "# base\n\nStatus: draft\n");
@@ -403,7 +427,7 @@ describe("readFeatures — 여러 사본 합집합 + 나중 판 (T02)", () => {
 });
 
 // ── T04 — 미착지 표식 + 추적 제외 파일 제외 (실물 git 저장소, `.git/info/exclude` 실물 줄) ──
-describe("readFeatures — 미착지 표식 · 추적 제외 (T04)", () => {
+describe("readFeatures — 추적 제외 (T04, 미착지 표식은 read-path-redesign/T01 에서 삭제)", () => {
   let tmp: string;
   let a: string;
 
@@ -421,7 +445,7 @@ describe("readFeatures — 미착지 표식 · 추적 제외 (T04)", () => {
   };
 
   beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "gootte-unlanded-"));
+    tmp = mkdtempSync(join(tmpdir(), "gootte-ignored-"));
     a = join(tmp, "a");
     initRepo(a);
     repo = a; // 위 module-scope `spec`/`issue`/`doc` 헬퍼가 이 변수를 쓴다 — 이 describe 안에서는 a 를 가리키게 한다.
@@ -439,33 +463,15 @@ describe("readFeatures — 미착지 표식 · 추적 제외 (T04)", () => {
     expect(f?.docs.map((d) => d.name)).toEqual(["spec.md"]);
   });
 
-  it("AC2 — 추적 중이지만 커밋 안 된 문서에 미착지 표식이 붙는다", () => {
-    spec("f", "# f\n\nStatus: draft\n");
-    commit(a, "init");
-    writeFileSync(join(a, "docs", "features", "f", "spec.md"), "# f\n\nStatus: draft\n\n고침\n");
-    const [f] = readFeatures([a]);
-    const node = f?.docs.find((d) => d.name === "spec.md");
-    expect(node?.unlanded).toBe(true);
-  });
-
-  it("AC3 — 추적 안 된 새 문서도 트리에 뜨고 같은 표식이 붙는다", () => {
+  it("추적 안 된 새 문서도 트리에 그대로 뜬다(제외되지 않았다면)", () => {
     spec("f", "# f\n\nStatus: draft\n");
     commit(a, "init");
     doc("f", "wayfinder.md", "# Wayfinder\n");
     const [f] = readFeatures([a]);
-    const node = f?.docs.find((d) => d.name === "wayfinder.md");
-    expect(node?.unlanded).toBe(true);
+    expect(f?.docs.map((d) => d.name).sort()).toEqual(["spec.md", "wayfinder.md"]);
   });
 
-  it("AC4 — 착지 완료된 문서에는 표식이 없다(기존 화면 불변)", () => {
-    spec("f", "# f\n\nStatus: draft\n");
-    commit(a, "init");
-    const [f] = readFeatures([a]);
-    const node = f?.docs.find((d) => d.name === "spec.md");
-    expect(node?.unlanded).toBeUndefined();
-  });
-
-  it("🔴 추적 제외이면서 미착지인 파일은 제외가 이긴다(안 보인다)", () => {
+  it("🔴 추적 제외된 파일은 커밋 안 된 새 파일이어도 안 보인다", () => {
     spec("f", "# f\n\nStatus: draft\n");
     mkdirSync(join(a, ".git", "info"), { recursive: true });
     writeFileSync(join(a, ".git", "info", "exclude"), "docs/features/*/design/\n");
@@ -476,20 +482,10 @@ describe("readFeatures — 미착지 표식 · 추적 제외 (T04)", () => {
     expect(f?.docs.map((d) => d.name)).toEqual(["spec.md"]);
   });
 
-  it("티켓(issues/)에도 같은 표식이 실린다 — docs.tree 와 같은 판정을 옮겨 쓴다", () => {
-    spec("f", "# f\n\nStatus: draft\n");
-    commit(a, "init");
-    issue("f", "01-a.md", ticket("01 — a", "draft"));
-    const [f] = readFeatures([a]);
-    expect(f?.tickets[0]?.unlanded).toBe(true);
-  });
-
-  it("AC6 — git 이 답하지 않는 사본(plain 디렉토리)의 문서는 표식 없이 그대로 보인다", () => {
+  it("AC6 — git 이 답하지 않는 사본(plain 디렉토리)의 문서도 그대로 보인다", () => {
     const plain = join(tmp, "plain");
     spec2(plain, "f", "# plain\n\nStatus: draft\n");
     const [f] = readFeatures([plain]);
-    const node = f?.docs.find((d) => d.name === "spec.md");
-    expect(node?.unlanded).toBeUndefined();
     expect(f?.docs.map((d) => d.name)).toEqual(["spec.md"]);
   });
 });
@@ -575,5 +571,80 @@ describe("readFeatures — 여러 사본 Time: 정방향 병합 (T05)", () => {
     expect(t?.startedAt).toBe("2026-08-31T09:06:40+09:00"); // Time 은 병합된다
     expect(t?.status).toBe("dropped"); // 상태는 명시 Status 가 이긴다
     expect(joined(readFeatures([a, b]))?.status).toBe("dropped");
+  });
+});
+
+// ── read-path-redesign/T04 — 기능 폴더 단위 재계산 ──────────────────────────────
+describe("readFeatures — 기능 폴더 단위 캐시 (read-path-redesign/T04)", () => {
+  let tmp: string;
+  let repo: string;
+
+  const gitc = (...args: string[]): void => {
+    execFileSync("git", ["-C", repo, ...args], { stdio: "ignore" });
+  };
+  const feature = (slug: string, body: string): void => {
+    const d = join(repo, "docs", "features", slug);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, "spec.md"), body);
+  };
+
+  beforeEach(() => {
+    clearFeatureCache();
+    tmp = mkdtempSync(join(tmpdir(), "gootte-foldercache-"));
+    repo = join(tmp, "proj");
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-q", repo], { stdio: "ignore" });
+    for (const c of [["user.email", "c@e.com"], ["user.name", "c"], ["commit.gpgsign", "false"]])
+      execFileSync("git", ["-C", repo, "config", ...(c as string[])], { stdio: "ignore" });
+    feature("alpha", "# 알파\n\nStatus: draft\n");
+    feature("beta", "# 베타\n\nStatus: draft\n");
+    gitc("add", "-A");
+    gitc("commit", "-q", "-m", "i");
+  });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  const titles = (): Record<string, string> =>
+    Object.fromEntries(readFeatures([repo]).map((f) => [f.slug, f.title]));
+
+  it("AC1/AC3 — 한 폴더를 고치면 그 값이 바뀌고 나머지는 그대로다", () => {
+    expect(titles()).toEqual({ alpha: "알파", beta: "베타" });
+    feature("alpha", "# 알파 고침\n\nStatus: draft\n");
+    expect(titles()).toEqual({ alpha: "알파 고침", beta: "베타" });
+  });
+
+  it("AC2 — 아무것도 안 바뀌면 같은 결과를 그대로 낸다(재계산 없이)", () => {
+    const first = titles();
+    expect(titles()).toEqual(first);
+  });
+
+  it("🔴 새 기능 폴더가 생기면 잡힌다 — 캐시가 목록을 굳히지 않는다", () => {
+    expect(Object.keys(titles()).sort()).toEqual(["alpha", "beta"]);
+    feature("gamma", "# 감마\n\nStatus: draft\n");
+    expect(Object.keys(titles()).sort()).toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  it("🔴 폴더가 사라지면 목록에서 빠진다", () => {
+    rmSync(join(repo, "docs", "features", "beta"), { recursive: true });
+    expect(Object.keys(titles())).toEqual(["alpha"]);
+  });
+
+  it("🔴 사본이 늘면 그 폴더의 캐시가 무효가 된다(합집합이 굳지 않는다)", () => {
+    expect(Object.keys(titles()).sort()).toEqual(["alpha", "beta"]);
+    // 두 번째 사본에만 있는 기능이 합집합에 나타나야 한다.
+    const b = join(tmp, "b");
+    execFileSync("git", ["clone", "-q", repo, b], { stdio: "ignore" });
+    mkdirSync(join(b, "docs", "features", "delta"), { recursive: true });
+    writeFileSync(join(b, "docs", "features", "delta", "spec.md"), "# 델타\n\nStatus: draft\n");
+    expect(readFeatures([repo, b]).map((f) => f.slug).sort()).toEqual(["alpha", "beta", "delta"]);
+  });
+
+  it("🔴 커밋이 HEAD 를 바꾸면 캐시가 무효가 된다 — 갈라짐 판정이 굳지 않는다(T06 조사)", () => {
+    // 파일 내용은 그대로 두고 **커밋만** 만든다. mtime 지문은 그대로지만 HEAD 가 달라지므로
+    // 키가 바뀌어야 한다 — 안 그러면 `resolveFile` 의 조상 판정이 낡은 채로 굳는다.
+    const before = readFeatures([repo]).length;
+    writeFileSync(join(repo, "README.md"), "x\n"); // docs/features 밖 — 지문에 안 잡힌다
+    gitc("add", "-A");
+    gitc("commit", "-q", "-m", "unrelated");
+    expect(readFeatures([repo]).length).toBe(before); // 결과는 같되, 다시 계산된 결과여야 한다
   });
 });

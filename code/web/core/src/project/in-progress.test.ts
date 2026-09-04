@@ -15,7 +15,6 @@ const ticket = (num: string, slug: string, over: Partial<FeatureTicket> = {}): F
   unreadableBlockedBy: [],
   waitingOn: [],
   startable: true,
-  workedBy: [],
   needsCaptainEye: false,
   ...over,
 });
@@ -106,12 +105,11 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     );
 
     expect(find(features, "auth", "02-screen")?.status).toBe("pending");
-    expect(find(features, "auth", "02-screen")?.workedBy).toEqual([]);
     expect(find(features, "auth", "01-session")?.status).toBe("pending");
     expect(inProgress).toMatchObject({ copies: 1, working: 1, tickets: 0, unknown: [] });
   });
 
-  it("Time 기록(started=)이 있고 가지가 건드린 티켓이 처리중이 된다 — workedBy 에 가지가 실린다", () => {
+  it("Time 기록(started=)이 있고 가지가 건드린 티켓이 처리중이 된다", () => {
     const features = [
       feature("auth", [
         ticket("01", "01-session"),
@@ -124,7 +122,6 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     );
 
     expect(find(marked, "auth", "02-screen")?.status).toBe("in_progress");
-    expect(find(marked, "auth", "02-screen")?.workedBy).toEqual(["fm/x"]);
     expect(find(marked, "auth", "01-session")?.status).toBe("pending");
     expect(inProgress).toMatchObject({ copies: 1, working: 1, tickets: 1, unknown: [] });
   });
@@ -176,7 +173,6 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
 
     expect(inProgress.tickets).toBe(1); // 티켓 수 — 사본 수가 아니다
     expect(inProgress.working).toBe(2);
-    expect(find(marked, "auth", "02-screen")?.workedBy).toEqual(["fm/a", "fm/b"]);
   });
 
   it("끝난 일은 다시 처리중이 되지 않는다 — 상태는 그대로다", () => {
@@ -198,7 +194,6 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
       scan([copy("pool/1", "fm/a", ["docs/features/auth/issues/01-session.md"])]),
     );
 
-    expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual([]);
   });
 
   it("🔴 취소된 티켓도 같다 — 붙들린 가지를 싣지 않는다", () => {
@@ -209,7 +204,6 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     );
 
     expect(find(marked.features, "auth", "01-session")?.status).toBe("dropped");
-    expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual([]);
     expect(marked.inProgress.tickets).toBe(0);
   });
 
@@ -233,8 +227,6 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
       .filter((t) => t.status === "in_progress");
     expect(marked.inProgress.tickets).toBe(inProgressRows.length);
     expect(inProgressRows.map((t) => t.slug)).toEqual(["02-screen"]);
-    expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual([]);
-    expect(find(marked.features, "auth", "02-screen")?.workedBy).toEqual(["fm/b"]);
   });
 
   it("🔴 상태를 못 읽은 사본을 유휴로 접지 않는다 — 따로 세어 드러낸다", () => {
@@ -278,7 +270,6 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     // claimed(임자 있음)는 문서의 주장이고, 처리중은 Time 기록으로만 판정한다(ADR 0001).
     // 붙든 사본이 있으므로 임자 없는(unclaimed) 표시도 아니다 — 다만 처리중도 아니다.
     expect(find(marked.features, "auth", "01-session")?.status).toBe("pending");
-    expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual([]);
     expect(marked.inProgress.unclaimed).toEqual([]);
   });
 
@@ -294,7 +285,6 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     );
 
     expect(find(marked.features, "auth", "01-session")?.status).toBe("in_progress");
-    expect(find(marked.features, "auth", "01-session")?.workedBy).toEqual(["fm/a"]);
     expect(marked.inProgress.unclaimed).toEqual([]);
   });
 
@@ -333,14 +323,13 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
       unreadableBlockedBy: [],
       waitingOn: [],
       startable: true,
-      workedBy: [],
       needsCaptainEye: false,
       docConvention: "tickets",
       joinFailed: false,
       ...over,
     });
 
-    it("Time 기록(started=)이 있고 가지가 건드린 신관례 티켓이 처리중이 되고 workedBy 를 실는다", () => {
+    it("Time 기록(started=)이 있고 가지가 건드린 신관례 티켓도 처리중이 된다", () => {
       const f = feature("new-only", [], [
         newTicket("01", { startedAt: "2026-09-02T09:00:00Z" }),
         newTicket("02"),
@@ -351,7 +340,6 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
       );
       const t = marked.features[0]?.newTickets?.find((x) => x.slug === "T01");
       expect(t?.status).toBe("in_progress");
-      expect(t?.workedBy).toEqual(["fm/t"]);
       // 안 건드린 형제는 그대로고, 요약 계수에도 한 번만 센다.
       expect(marked.features[0]?.newTickets?.find((x) => x.slug === "T02")?.status).toBe("pending");
       expect(marked.inProgress.tickets).toBe(1);

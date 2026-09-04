@@ -51,7 +51,6 @@ function manyFeatures(n: number): Feature[] {
           unreadableBlockedBy: [],
           waitingOn: [],
           startable: true,
-          workedBy: [],
           needsCaptainEye: false,
         },
       ],

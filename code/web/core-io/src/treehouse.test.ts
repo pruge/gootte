@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyInProgress } from "@gootte/core";
 import { readFeatures } from "./features";
-import { scanWorkingCopies } from "./treehouse";
+import { bbWorktreeRoots, scanWorkingCopies } from "./treehouse";
 
 /**
  * 처리중 판정 — **이 저장소에 전례가 없는 판정**이라 이 파일이 그것을 처음 덮는다.
@@ -69,7 +69,7 @@ const startedTicketFile = (num: string, title: string) =>
 
 /**
  * 관리대상(main 프로젝트)의 티켓 파일에 `Time: started=` 를 얹는다 — applyInProgress 는
- * readFeatures([project]) 로 읽은 문서의 startedAt 으로 처리중을 판정한다(관측은 workedBy 만).
+ * readFeatures([project]) 로 읽은 문서의 startedAt 으로 처리중을 판정한다(관측은 미해소 구역만 낸다).
  */
 function startTicket(file: string, num: string, title: string): void {
   const path = join(project, "docs", "features", "auth", "issues", file);
@@ -91,10 +91,10 @@ function makeProject(): void {
 }
 
 /** 화면이 받는 것과 같은 계산 — 문서 read + 사본 관측 + 순수 계산. */
-function observe(scanRoot = root, projectPaths: string[] = []) {
+function observe(scanRoot = root, projectPaths: string[] = [], bbRoot?: string) {
   return applyInProgress(
     readFeatures([project]),
-    scanWorkingCopies(scanRoot, PROJECT, projectPaths),
+    scanWorkingCopies(scanRoot, PROJECT, projectPaths, bbRoot),
   );
 }
 const ticketOf = (features: ReturnType<typeof observe>["features"], slug: string) =>
@@ -119,7 +119,6 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
 
     const { features, inProgress } = observe();
     expect(ticketOf(features, "02-screen")?.status).toBe("in_progress");
-    expect(ticketOf(features, "02-screen")?.workedBy).toEqual(["fm/alpha-login-screen"]);
     expect(ticketOf(features, "01-session")?.status).toBe("pending");
     expect(inProgress).toMatchObject({ rootExists: true, copies: 1, working: 1, tickets: 1 });
     expect(inProgress.unknown).toEqual([]);
@@ -135,7 +134,6 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
 
     const { features, inProgress } = observe();
     expect(ticketOf(features, "02-screen")?.status).toBe("pending");
-    expect(ticketOf(features, "02-screen")?.workedBy).toEqual([]);
     expect(inProgress.tickets).toBe(0);
     // 작업중 사본은 여전히 보인다(INV-4) — 알려진 티켓을 건드렸으므로 미상도 아니다.
     expect(inProgress.working).toBe(1);
@@ -197,7 +195,6 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     const { features, inProgress } = observe();
     expect(inProgress.tickets).toBe(1); // 티켓 하나
     expect(inProgress.working).toBe(2); // 사본 둘 — 둘 다 보인다
-    expect(ticketOf(features, "02-screen")?.workedBy).toEqual(["fm/a", "fm/b"]);
   });
 
   it("🔴 저장소를 못 찾은 슬롯은 건너뛰지 않고 `못 읽음` 으로 센다", () => {
@@ -408,6 +405,100 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     // 그 worktree 의 작업이 티켓에 이어진다 — 처리중으로 표시된다(관측은 같은 규칙을 쓴다).
     const { features } = observe(root, [mainRepo]);
     expect(ticketOf(features, "02-screen")?.status).toBe("in_progress");
+  });
+
+  /**
+   * BB 에이전트 worktree — 스레드로 작업하면 `~/.bb/worktrees/<env>/<프로젝트>` 에 트리가 생긴다.
+   * treehouse·Claude Code 와 자리만 다르고 같은 git worktree 이므로 같은 규칙으로 관측돼야 한다.
+   */
+  function makeBbWorktree(envName: string, branch: string, work: Record<string, string>): {
+    bbRoot: string;
+    mainRepo: string;
+    wt: string;
+  } {
+    const mainRepo = join(tmp, "projects", PROJECT);
+    initRepo(mainRepo);
+    git(mainRepo, "checkout", "-q", "-b", "main");
+    commit(mainRepo, { "README.md": "base\n" }, "base");
+    const bbRoot = join(tmp, "bb-worktrees");
+    const wt = join(bbRoot, envName, PROJECT);
+    mkdirSync(dirname(wt), { recursive: true });
+    execFileSync("git", ["-C", mainRepo, "worktree", "add", "-q", "-b", branch, wt], {
+      stdio: "ignore",
+    });
+    commit(wt, work, "work");
+    return { bbRoot, mainRepo, wt };
+  }
+
+  it("🔴 BB 에이전트 worktree(~/.bb/worktrees/<env>/<프로젝트>)도 treehouse 와 같은 규칙으로 관측된다", () => {
+    const { bbRoot, mainRepo } = makeBbWorktree("env_n8franv9qv", "bb/t01-thr_9vbsnd5pgc", {
+      "docs/features/auth/issues/02-screen.md": startedTicketFile("02", "로그인 화면 v2"),
+    });
+    // 처리중은 관리대상(main) 문서의 startedAt 으로 판정한다(ADR 0001).
+    startTicket("02-screen.md", "02", "로그인 화면");
+
+    const scan = scanWorkingCopies(root, PROJECT, [mainRepo], bbRoot);
+    // 슬러그는 `<프로젝트>/bb/<env>` — treehouse(`<풀>/<슬롯>`)·claude(`<프로젝트>/claude/<이름>`)와
+    // 겹치지 않아야 차단 목록에서 헷갈리지 않는다.
+    expect(scan.copies.map((c) => c.slug)).toEqual([`${PROJECT}/bb/env_n8franv9qv`]);
+    expect(scan.copies[0]?.state).toBe("working");
+    expect(scan.copies[0]?.branch).toBe("bb/t01-thr_9vbsnd5pgc");
+
+    const { features, inProgress } = observe(root, [mainRepo], bbRoot);
+    expect(ticketOf(features, "02-screen")?.status).toBe("in_progress");
+    expect(inProgress.copies).toBe(1);
+    expect(inProgress.working).toBe(1);
+  });
+
+  it("🔴 BB worktree 와 Claude Code worktree 가 같이 있으면 둘 다 센다 — 한쪽이 다른 쪽을 가리지 않는다", () => {
+    const { bbRoot, mainRepo } = makeBbWorktree("env_aaa", "bb/t02-thr_x", {
+      "docs/features/auth/issues/02-screen.md": startedTicketFile("02", "로그인 화면 v2"),
+    });
+    const claudeWt = join(mainRepo, ".claude", "worktrees", "fm-x");
+    execFileSync("git", ["-C", mainRepo, "worktree", "add", "-q", "-b", "worktree-fm-x", claudeWt], {
+      stdio: "ignore",
+    });
+    commit(claudeWt, { "docs/features/auth/issues/01-session.md": startedTicketFile("01", "세션 발급 v2") }, "work");
+    startTicket("01-session.md", "01", "세션 발급");
+    startTicket("02-screen.md", "02", "로그인 화면");
+
+    const scan = scanWorkingCopies(root, PROJECT, [mainRepo], bbRoot);
+    expect(scan.copies.map((c) => c.slug).sort()).toEqual([
+      `${PROJECT}/bb/env_aaa`,
+      `${PROJECT}/claude/fm-x`,
+    ]);
+    const { features } = observe(root, [mainRepo], bbRoot);
+    expect(ticketOf(features, "01-session")?.status).toBe("in_progress");
+    expect(ticketOf(features, "02-screen")?.status).toBe("in_progress");
+  });
+
+  it("🔴 BB 뿌리에 다른 프로젝트만 있으면 이 프로젝트의 사본이 아니다", () => {
+    const mainRepo = join(tmp, "projects", PROJECT);
+    initRepo(mainRepo);
+    git(mainRepo, "checkout", "-q", "-b", "main");
+    commit(mainRepo, { "README.md": "base\n" }, "base");
+    const bbRoot = join(tmp, "bb-worktrees");
+    const other = join(bbRoot, "env_other", "beta");
+    initRepo(other);
+    commit(other, { "README.md": "base\n" }, "base");
+
+    expect(bbWorktreeRoots([mainRepo], bbRoot)).toEqual([]);
+    expect(scanWorkingCopies(root, PROJECT, [mainRepo], bbRoot).copies).toEqual([]);
+  });
+
+  it("BB 뿌리가 없어도 예외로 죽지 않는다 — BB 를 안 쓰는 기계는 빈 목록", () => {
+    expect(bbWorktreeRoots([join(tmp, "projects", PROJECT)], join(tmp, "없는-뿌리"))).toEqual([]);
+  });
+
+  it("🔴 env 디렉토리 아래 이름만 같고 저장소가 아닌 폴더는 사본으로 세지 않는다", () => {
+    const mainRepo = join(tmp, "projects", PROJECT);
+    initRepo(mainRepo);
+    git(mainRepo, "checkout", "-q", "-b", "main");
+    commit(mainRepo, { "README.md": "base\n" }, "base");
+    const bbRoot = join(tmp, "bb-worktrees");
+    mkdirSync(join(bbRoot, "env_zzz", PROJECT), { recursive: true });
+
+    expect(bbWorktreeRoots([mainRepo], bbRoot)).toEqual([]);
   });
 
   it("🔴 커밋 안 된 Time 기록(gootte start)도 처리중으로 잡힌다 — 커밋 없이 파일만 편집해도", () => {

@@ -63,8 +63,26 @@ export function commitTouchedFiles(repo: string, range: string): string[] {
 }
 
 /** 저장소인가 — `.git` 이 있으면 true, 아니면 false(저장소가 아닌 사본은 건너뛴다, T02). */
+/**
+ * 🔴 `isRepo` 는 프로세스 안에서 **경로당 한 번만** 묻는다(read-path-redesign/T06).
+ * 이 판정은 사본 구성이 바뀔 때만 변하는데, `headCommit` 이 매번 앞세워 부르는 바람에
+ * `readFeatures` 한 번에 `rev-parse --git-dir` 가 사본 수의 두 배씩 떴다(실측: 사본 3개에 6회).
+ * git 호출 하나가 ~80ms(dev, `tsx`)라 개수 자체가 비용이다 — spec §3 정정.
+ * 사본이 늘거나 줄면 `clearRepoCache()` 로 비운다.
+ */
+const repoCache = new Map<string, boolean>();
+
+/** 사본 구성이 바뀌었을 때 `isRepo` 기억을 비운다(read-path-redesign/T06). */
+export function clearRepoCache(): void {
+  repoCache.clear();
+}
+
 export function isRepo(repo: string): boolean {
-  return existsSync(join(repo, ".git")) && gitSafe(repo, ["rev-parse", "--git-dir"]) !== null;
+  const memo = repoCache.get(repo);
+  if (memo !== undefined) return memo;
+  const v = existsSync(join(repo, ".git")) && gitSafe(repo, ["rev-parse", "--git-dir"]) !== null;
+  repoCache.set(repo, v);
+  return v;
 }
 
 /** HEAD 가 가리키는 commit 해시. detached 도 해시로 답한다. 못 읽으면 null. */
@@ -82,6 +100,34 @@ export function hasUncommittedChange(repo: string, path: string): boolean | null
   const out = gitSafe(repo, ["status", "--porcelain", "--", path]);
   if (out === null) return null;
   return out.trim().length > 0;
+}
+
+/**
+ * `dir`(repo 루트 기준) 아래에서 **미커밋 변경이 있는 경로 전부** — `hasUncommittedChange` 를
+ * 파일마다 부르는 대신 **사본당 한 번**에 같은 답을 얻는다(read-path-redesign/T06).
+ * 못 읽으면 null(판정 불가 — 호출자가 `hasUncommittedChange` 와 똑같이 다뤄야 한다).
+ *
+ * 🔴 `--untracked-files=all` 이 필수다. 기본값(`normal`)은 추적 안 된 **디렉토리**를 `dir/` 한 줄로
+ * 접어 버려서, 파일 하나를 직접 묻던 `hasUncommittedChange` 와 답이 달라진다(그 파일이 목록에서
+ * 사라져 "커밋 상태" 로 오판된다). 두 함수의 답은 같아야 한다 — 그래야 배치가 대체가 된다.
+ */
+export function uncommittedPathsUnder(repo: string, dir: string): Set<string> | null {
+  // 🔴 `gitSafeRaw` 다 — `gitSafe` 는 **선두 공백을 지운다.** porcelain 의 " M path"(수정만 되고
+  // staged 안 된 상태)는 상태 코드 첫 칸이 공백이라, 트림되면 slice(3) 이 경로 첫 글자를 먹는다.
+  // 그러면 조회가 어긋나 "미커밋 변경 없음" 으로 오판된다(실제로 이 티켓에서 회귀로 잡혔다 —
+  // `features.test.ts` AC4. 같은 함정이 T04 에서도 한 번 있었다).
+  const out = gitSafeRaw(repo, ["status", "--porcelain", "--untracked-files=all", "--", dir]);
+  if (out === null) return null;
+  const set = new Set<string>();
+  for (const line of out.split("\n")) {
+    if (!line.trim()) continue;
+    // porcelain v1: `XY <path>` 또는 rename 의 `XY <from> -> <to>`. 선두 두 칸은 상태 코드다.
+    const rest = line.slice(3);
+    const path = rest.includes(" -> ") ? rest.split(" -> ").pop()!.trim() : rest.trim();
+    // 경로에 공백이 있으면 git 이 따옴표로 감싼다 — 그대로 두면 조회가 어긋난다.
+    set.add(path.startsWith('"') && path.endsWith('"') ? path.slice(1, -1) : path);
+  }
+  return set;
 }
 
 /**

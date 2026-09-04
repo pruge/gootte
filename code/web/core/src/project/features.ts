@@ -26,22 +26,6 @@ function numKey(num: string): number | null {
   return /^\d{1,3}$/.test(num) ? Number.parseInt(num, 10) : null;
 }
 
-/**
- * `docs.tree` 안에서 `path` 와 일치하는 노드의 `unlanded` 값을 찾는다(T04) — 판정 자리는
- * `FeatureDocNode.unlanded` 하나뿐이고, 티켓 목록은 여기서 그 값을 그대로 옮겨 싣는다.
- * 못 찾으면(트리에 아직 없는 경우 등) undefined — 표식을 지어내지 않는다(INV-4).
- */
-function unlandedAt(tree: readonly FeatureDocNode[], path: string): boolean | undefined {
-  for (const node of tree) {
-    if (node.path === path) return node.unlanded;
-    if (node.kind === "dir") {
-      const found = unlandedAt(node.children ?? [], path);
-      if (found !== undefined) return found;
-    }
-  }
-  return undefined;
-}
-
 /** 번호 오름차순, 번호 없는 파일은 뒤로(그다음 slug). */
 function byNum(a: { num: string; slug: string }, b: { num: string; slug: string }): number {
   const [x, y] = [numKey(a.num), numKey(b.num)];
@@ -61,12 +45,10 @@ function toNewTicket(
   doc: NewTicketDoc,
   doneNums: ReadonlySet<number>,
   crossIndex: CrossFeatureIndex,
-  tree: readonly FeatureDocNode[],
 ): FeatureTicket {
   // 옛 관례와 **같은 계산**을 거친다(T01) — `## Depends on` 은 같은 개념의 다른 표기일 뿐이다(F2).
   // 임자는 여기 없다(상태의 SoT 가 문서/리졸버/백로그라 claimed 도 문서에 없다).
   const waiting = waitingOn(doc.blockedBy, doneNums, crossIndex);
-  const unlanded = unlandedAt(tree, doc.path);
   return {
     num: doc.num,
     slug: doc.slug,
@@ -80,7 +62,6 @@ function toNewTicket(
     unreadableBlockedBy: doc.unreadableBlockedBy,
     waitingOn: waiting,
     startable: waiting.length === 0,
-    workedBy: [],
     needsCaptainEye: false,
     docConvention: "tickets",
     joinFailed: false,
@@ -89,7 +70,6 @@ function toNewTicket(
     startedAt: doc.startedAt ?? undefined,
     finishedAt: doc.finishedAt ?? undefined,
     pauses: doc.pauses.map((p) => ({ pausedAt: p.pausedAt, resumedAt: p.resumedAt })),
-    ...(unlanded !== undefined ? { unlanded } : {}),
   };
 }
 
@@ -178,13 +158,11 @@ function toTicket(
   doc: TicketDoc,
   doneNums: ReadonlySet<number>,
   crossIndex: CrossFeatureIndex,
-  tree: readonly FeatureDocNode[],
 ): FeatureTicket {
   const waiting = waitingOn(doc.blockedBy, doneNums, crossIndex);
   // 임자 있음 = 문서가 claimed 라고 말한다. 처리중을 만들지는 않는다(그건 applyInProgress 의 몫) —
   // 여기서는 착수 가능 판정에서만 뺀다(work-claims-its-ticket/01 §C).
   const claimed = doc.sourceStatus === "claimed";
-  const unlanded = unlandedAt(tree, doc.path);
   return {
     num: doc.num,
     slug: doc.slug,
@@ -200,9 +178,7 @@ function toTicket(
     // 착수 가능 = 선행이 모두 풀렸다 + 임자가 없다. 판정하는 자리는 여기 하나뿐이다.
     startable: waiting.length === 0 && !claimed,
     // 문서만으로는 언제나 빈 값 — 처리중은 격리 사본 관측이 얹는다(`applyInProgress`).
-    workedBy: [],
     needsCaptainEye: doc.needsCaptainEye,
-    ...(unlanded !== undefined ? { unlanded } : {}),
     // T04 — 구관례(`issues/`) 티켓도 gootte 가 기록한 `Time:` 줄에서 착수·완료 시각을 얹는다.
     // 완료(done) 출처는 여전히 문서 `Status:` 줄(D2) — 이 시각은 표시(elapsed)만 한다.
     startedAt: doc.startedAt ?? undefined,
@@ -235,11 +211,11 @@ export function buildFeature(docs: FeatureDocs, crossIndex?: CrossFeatureIndex):
     status: docs.spec?.status ?? "pending",
     sourceStatus: docs.spec?.sourceStatus ?? null,
     statusKnown: docs.spec?.statusKnown ?? false,
-    tickets: [...docs.tickets].sort(byNum).map((t) => toTicket(t, doneNums, index, docs.tree)),
+    tickets: [...docs.tickets].sort(byNum).map((t) => toTicket(t, doneNums, index)),
     docs: docs.tree,
     newTickets: [...(docs.newTickets ?? [])]
       .sort(byNum)
-      .map((t) => toNewTicket(t, doneNums, index, docs.tree)),
+      .map((t) => toNewTicket(t, doneNums, index)),
     conflict: docs.conflict ?? [],
   };
 }

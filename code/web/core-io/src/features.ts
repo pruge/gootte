@@ -1,15 +1,15 @@
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
 import type { Feature, FeatureConflict, FeatureDocNode, TodoStatus } from "@gootte/contract";
 import { buildFeatures, parseFeatureSpec, parseNewTicket, parseTicket, parseTimeLine, type FeatureDocs, type TimeLine, type TimePause } from "@gootte/core";
 import {
   checkIgnored,
-  hasUncommittedChange,
+  uncommittedPathsUnder,
   headCommit,
   isAncestor as gitIsAncestor,
   isRepo,
   revExists,
-  unlandedPaths,
 } from "./git";
 
 /**
@@ -50,16 +50,35 @@ function read(p: string): string | null {
  * 기능 폴더 안의 모든 파일을 상대 경로(`issues/01-a.md` 등) → 내용 으로 읽는다.
  * dotfile 은 건너뛴다(INV-4 — 숨김 파일은 문서가 아니다).
  */
-function walkSlug(dir: string, rel: string, into: Map<string, string>): void {
+function walkSlug(dir: string, rel: string, into: Map<string, string>, digests: Map<string, string>): void {
   for (const name of entries(dir)) {
     if (name.startsWith(".")) continue;
     const abs = join(dir, name);
     const relPath = rel ? `${rel}/${name}` : name;
-    if (isDir(abs)) walkSlug(abs, relPath, into);
-    else {
+    if (isDir(abs)) walkSlug(abs, relPath, into, digests);
+    else if (/\.md$/i.test(name)) {
       const content = read(abs);
       if (content !== null) into.set(relPath, content);
+    } else {
+      // 🔴 `.md` 가 아닌 파일은 **본문을 문자열로 올리지 않는다**(read-path-redesign/T02) —
+      // 파싱하는 것은 `.md` 뿐이고(`parseFeatureSpec`·`parseTicket`·`parseNewTicket`), 트리에는
+      // 이름만 필요하다. 실측: 사본 3개 기준 205ms → 60ms, 문자열 12.4MB → 5.5MB.
+      //
+      // 🔴 그래도 **읽기는 한다** — 갈라짐(`conflict`) 판정이 이 파일들에도 걸리기 때문이다
+      // (실측 확인 2026-09-04: `design/x.html` 이 사본마다 다르면 지금도 갈라짐으로 잡힌다).
+      // 내용 대신 **해시**를 비교 토큰으로 싣는다 — 판정은 그대로고 문자열만 안 남는다.
+      const digest = fileDigest(abs);
+      if (digest !== null) digests.set(relPath, digest);
     }
+  }
+}
+
+/** `.md` 아닌 파일의 비교 토큰 — 바이트를 읽되 문자열로 남기지 않는다(T02). 못 읽으면 null. */
+function fileDigest(abs: string): string | null {
+  try {
+    return createHash("sha1").update(readFileSync(abs)).digest("hex");
+  } catch {
+    return null;
   }
 }
 
@@ -106,26 +125,17 @@ function filterIgnored(nodes: readonly FeatureDocNode[], isIgnored: (path: strin
 }
 
 /**
- * 미착지(추적 안 됨 또는 커밋 안 된 변경) 노드에 표식을 얹는다(AC2·AC3, T04). `isUnlanded` 가
- * null 이면(git 이 못 답함) 아무 표식도 얹지 않는다(AC6) — 호출자는 그 경우를 아예 부르지 않는다.
+ * 사본 하나의 git 질의 결과 — 기능 폴더 전체 경로를 모아 한 번에 물은 값(T06).
+ * 🔴 미착지(`unlandedPaths`)는 read-path-redesign/T01 에서 빠졌다 — 화면에 붙는 호출부가 없는
+ * 유령 값이었고, 그것 하나 때문에 사본마다 `git status` 를 돌았다.
  */
-function markUnlanded(nodes: readonly FeatureDocNode[], isUnlanded: (path: string) => boolean): FeatureDocNode[] {
-  return nodes.map((node) => {
-    const marked = isUnlanded(node.path) ? { ...node, unlanded: true } : node;
-    return node.kind === "dir" ? { ...marked, children: markUnlanded(node.children ?? [], isUnlanded) } : marked;
-  });
-}
-
-/** 사본 하나의 git 질의 결과 — 기능 폴더 전체 경로를 모아 한 번에 물은 값(T06). */
 interface CopyGitBatch {
   /** `check-ignore` 결과(무시된 경로 집합) — git 이 못 답하면 null. */
   ignored: Set<string> | null;
-  /** `unlandedPaths` 결과(미착지 경로 집합, repo 루트 기준) — git 이 못 답하면 null. */
-  unlanded: Set<string> | null;
 }
 
 /**
- * 기능 폴더 트리에 추적 제외 필터와 미착지 표식을 얹는다(T04). `batch` 가 null 이면(저장소가
+ * 기능 폴더 트리에 추적 제외 필터를 얹는다(T04). `batch.ignored` 가 null 이면(저장소가
  * 아니거나 git 이 못 답함) 원본 트리를 그대로 돌려준다 — 판정 불가와 "문제 없음" 을 섞지 않는다(AC6).
  * git 질의는 호출측(readFeatures)이 **사본당 한 번** 미리 구해 `batch` 로 넘긴다(T06) — 폴더마다
  * spawn 하던 것을 없앤다. 두 집합 모두 경로는 `toFull`(`docs/features/<slug>/<node>`) 형식이다.
@@ -134,11 +144,8 @@ function annotateDocTree(slug: string, tree: FeatureDocNode[], batch: CopyGitBat
   const gitRelBase = join("docs", "features", slug);
   const toFull = (path: string): string => join(gitRelBase, path);
 
-  let annotated = tree;
-  if (batch.ignored) annotated = filterIgnored(annotated, (p) => batch.ignored!.has(toFull(p)));
-  if (batch.unlanded) annotated = markUnlanded(annotated, (p) => batch.unlanded!.has(toFull(p)));
-
-  return annotated;
+  if (!batch.ignored) return tree;
+  return filterIgnored(tree, (p) => batch.ignored!.has(toFull(p)));
 }
 
 /**
@@ -169,7 +176,9 @@ interface CopySlug {
   copy: string;
   index: number; // `copies`(유효 사본) 배열에서의 위치
   slug: string;
-  files: Map<string, string>; // 상대 경로 → 내용
+  files: Map<string, string>; // 상대 경로 → 내용. 🔴 `.md` **만** 담는다(T02).
+  /** 상대 경로 → sha1 — `.md` 아닌 파일의 갈라짐 비교 토큰(T02). 본문은 안 남긴다. */
+  digests: Map<string, string>;
   tree: FeatureDocNode[];
 }
 
@@ -179,8 +188,11 @@ interface CopySlug {
  */
 class CopyResolver {
   private readonly heads = new Map<string, string | null>();
-  private readonly uncommittedCache = new Map<string, boolean | null>();
+  /** 사본 → `docs/features` 아래 미커밋 경로 집합. `null` = git 이 못 답함. 아직 안 물었으면 키가 없다. */
+  private readonly dirtyByCopy = new Map<string, Set<string> | null>();
   private readonly ancestorCache = new Map<string, boolean | null>();
+  /** `${copy}\u0000${sha}` → 그 사본이 그 커밋을 갖고 있나(read-path-redesign/T06). */
+  private readonly hasRevCache = new Map<string, boolean>();
 
   constructor(private readonly copies: string[]) {}
 
@@ -193,12 +205,27 @@ class CopyResolver {
     return v;
   }
 
+  /**
+   * 🔴 파일마다 `git status` 를 부르지 않는다(read-path-redesign/T06) — 그 사본을 **처음 물을 때**
+   * `docs/features` 아래 미커밋 경로를 한 번에 받아 두고 이후엔 집합 조회로 답한다.
+   * 게으르게 부르므로 **다를 파일이 하나도 없으면 git 을 아예 안 부른다**(내용이 같으면
+   * `resolveFile` 이 여기까지 오지 않는다). 실측: 사본 3개에 11회 → 3회.
+   */
   uncommitted(copy: string, gitRelPath: string): boolean | null {
-    const key = `${copy} ${gitRelPath}`;
-    let v = this.uncommittedCache.get(key);
+    if (!this.dirtyByCopy.has(copy)) {
+      this.dirtyByCopy.set(copy, uncommittedPathsUnder(copy, join("docs", "features")));
+    }
+    const dirty = this.dirtyByCopy.get(copy)!;
+    return dirty === null ? null : dirty.has(gitRelPath);
+  }
+
+  /** 그 사본이 이 커밋을 갖고 있나 — 같은 (사본, 커밋)을 두 번 묻지 않는다(T06). */
+  private hasRev(copy: string, sha: string): boolean {
+    const key = `${copy}\u0000${sha}`;
+    let v = this.hasRevCache.get(key);
     if (v === undefined) {
-      v = hasUncommittedChange(copy, gitRelPath);
-      this.uncommittedCache.set(key, v);
+      v = revExists(copy, sha);
+      this.hasRevCache.set(key, v);
     }
     return v;
   }
@@ -217,7 +244,7 @@ class CopyResolver {
       return null;
     }
     // 두 commit 을 모두 가진 저장소에서만 merge-base 가 답한다 — 사본들이 객체를 공유하는 clone.
-    const repo = this.copies.find((c) => revExists(c, ha) && revExists(c, hb)) ?? null;
+    const repo = this.copies.find((c) => this.hasRev(c, ha) && this.hasRev(c, hb)) ?? null;
     if (!repo) {
       this.ancestorCache.set(key, null);
       return null;
@@ -362,6 +389,9 @@ function cmpTime(a: string, b: string): number {
 function mergeSlug(parts: CopySlug[], slug: string, copies: string[], resolver: CopyResolver): FeatureDocs {
   const allPaths = new Set<string>();
   for (const p of parts) for (const k of p.files.keys()) allPaths.add(k);
+  // 🔴 `.md` 아닌 파일도 갈라짐 판정을 받는다(T02) — 내용 대신 해시가 비교 토큰이다.
+  const digestPaths = new Set<string>();
+  for (const p of parts) for (const k of p.digests.keys()) digestPaths.add(k);
 
   const contentByPath = new Map<string, string>();
   // 🔴 T05 — `Time:` 줄 정방향 병합을 위해 경로별로 **모든 사본**의 내용을 보관한다(`resolveFile`이
@@ -376,6 +406,16 @@ function mergeSlug(parts: CopySlug[], slug: string, copies: string[], resolver: 
     const res = resolveFile(participants, gitRelPath, copies, resolver);
     contentByPath.set(path, res.content);
     participantsByPath.set(path, participants);
+    if (res.conflict) conflicts.push({ path, copies: res.conflictCopies });
+  }
+
+  // `.md` 아닌 파일 — 같은 절차를 해시로 돌린다. 고른 "내용"(= 해시)은 버린다: 아무도 안 읽는다
+  // (`contentByPath` 는 spec.md · issues/*.md · tickets/T*.md 만 조회한다).
+  for (const path of digestPaths) {
+    const participants = parts
+      .filter((p) => p.digests.has(path))
+      .map((p) => ({ copy: p.copy, index: p.index, content: p.digests.get(path)! }));
+    const res = resolveFile(participants, join("docs", "features", slug, path), copies, resolver);
     if (res.conflict) conflicts.push({ path, copies: res.conflictCopies });
   }
 
@@ -448,6 +488,49 @@ export function readFeatureDoc(
  * 🔴 **정렬돼 있지 않다** — 화면 순서(무리 → 처리중 → 폴더명, 티켓 03)는 처리중이 얹힌 뒤에야
  * 정해진다. 정렬된 목록이 필요하면 `applyInProgress` 를 거친 결과를 쓴다.
  */
+// ── read-path-redesign/T04 — 기능 폴더 단위 파생물 캐시 ──────────────────────────────
+//
+// 🔴 예전에는 문서 **한 장**이 바뀌어도 기능 61개 × 사본 3개를 통째로 다시 읽었다(spec §4 원인 B).
+// 이제 계산 단위는 **기능 폴더 하나**다. 바뀐 폴더만 다시 읽고 나머지는 지난 결과를 그대로 쓴다.
+//
+// 🔴 stale 을 새로 만들지 않는다(INV-3) — 캐시 키를 **디스크와 git 의 현재 상태에서 파생**시켰다.
+// 그래서 "무효화를 깜빡한 경로" 라는 게 존재할 수 없다. 키에 들어가는 것:
+//   1. 유효 사본 목록과 각 사본의 HEAD — `resolveFile` 이 조상 관계로 나중 판을 고르므로
+//      **커밋이 결과를 바꾼다**(T06 조사에서 확인). HEAD 를 키에 넣지 않으면 갈라짐이 굳는다.
+//   2. 그 폴더 안 모든 파일의 (경로 · mtime · 크기) — 내용을 안 읽고 얻는 지문이다.
+// 사본이 늘거나 줄어도 1 이 달라져 자동으로 무효가 된다.
+
+interface FolderCacheEntry {
+  key: string;
+  docs: FeatureDocs;
+}
+const folderCache = new Map<string, FolderCacheEntry>();
+
+/** 기능 폴더 캐시를 통째로 비운다 — 테스트와 명시적 무효화용. */
+export function clearFeatureCache(): void {
+  folderCache.clear();
+}
+
+/**
+ * 폴더 지문 — 내용을 읽지 않고 (경로 · mtimeMs · 크기)만 모은다. dotfile 은 `walkSlug` 와
+ * 같은 규칙으로 건너뛴다(그래야 지문과 실제로 읽는 것이 어긋나지 않는다).
+ */
+function folderFingerprint(dir: string, rel: string, out: string[]): void {
+  for (const name of entries(dir)) {
+    if (name.startsWith(".")) continue;
+    const abs = join(dir, name);
+    const relPath = rel ? `${rel}/${name}` : name;
+    let st;
+    try {
+      st = statSync(abs);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) folderFingerprint(abs, relPath, out);
+    else out.push(`${relPath}:${st.mtimeMs}:${st.size}`);
+  }
+}
+
 export function readFeatures(copies: string[]): Feature[] {
   const dirs = copies.filter(isDir);
   if (dirs.length === 0) return [];
@@ -458,7 +541,12 @@ export function readFeatures(copies: string[]): Feature[] {
   const valid = repos.length > 0 ? repos : dirs;
   const resolver = new CopyResolver(valid);
 
-  const bySlug = new Map<string, CopySlug[]>();
+  // 1) 사본별 HEAD — 캐시 키의 git 축. 사본당 한 번(T06 의 `CopyResolver` 기억을 그대로 쓴다).
+  const copiesKey = valid.map((c) => `${c}@${resolver.head(c) ?? ""}`).join("\u0000");
+
+  // 2) 폴더 지문 — **내용을 읽지 않고** 어느 폴더가 다시 계산돼야 하는지부터 가른다.
+  const slugFingerprints = new Map<string, string[]>(); // slug → 사본별 지문 조각
+  const slugDirs = new Map<string, { copy: string; index: number; dir: string }[]>();
   valid.forEach((copy, index) => {
     const base = join(copy, "docs", "features");
     if (!isDir(base)) return;
@@ -466,48 +554,89 @@ export function readFeatures(copies: string[]): Feature[] {
       if (name.startsWith(".")) continue;
       const dir = join(base, name);
       if (!isDir(dir)) continue;
-      const files = new Map<string, string>();
-      walkSlug(dir, "", files);
-      // 트리만 먼저 만들고, git 질의는 사본당 한 번 묶어 나중에 얹는다(T06).
-      const tree = buildDocTree(dir, "");
-      const entry: CopySlug = { copy, index, slug: name, files, tree };
-      const arr = bySlug.get(name) ?? [];
-      arr.push(entry);
-      bySlug.set(name, arr);
+      const fp: string[] = [];
+      folderFingerprint(dir, "", fp);
+      fp.sort();
+      const parts = slugFingerprints.get(name) ?? [];
+      parts.push(`${copy}|${fp.join(",")}`);
+      slugFingerprints.set(name, parts);
+      const dirs2 = slugDirs.get(name) ?? [];
+      dirs2.push({ copy, index, dir });
+      slugDirs.set(name, dirs2);
     }
   });
 
-  // T06: 사본당 git 하위프로세스를 한 번씩만 — 모든 기능 폴더의 경로를 모아 check-ignore · status
-  // 를 일괄 호출한다. 폴더마다 spawn 하던 2×(기능수) 회를 사본수 회로 줄인다(티켓 실측 참고).
-  // git 이 못 답하는 사본(저장소 아님)은 두 결과 모두 null 이 되어 트리가 그대로 남는다(AC6).
-  const batchByCopy = new Map<string, CopyGitBatch>();
-  for (const copy of valid) {
-    const allPaths: string[] = [];
-    for (const arr of bySlug.values()) {
-      for (const cs of arr) {
-        if (cs.copy !== copy) continue;
-        for (const node of collectPaths(cs.tree)) {
-          allPaths.push(join("docs", "features", cs.slug, node));
-        }
+  // 3) 캐시 조회 — 키가 같으면 그 폴더는 **한 글자도 다시 읽지 않는다**.
+  //
+  // 🔴 Map 의 열쇠에 **사본 목록**을 넣는다 — 다른 프로젝트가 같은 기능 slug 를 가질 수 있고,
+  // slug 만으로 열쇠를 삼으면 두 프로젝트가 서로의 칸을 계속 밀어낸다(둘 다 영원히 miss).
+  // 반대로 HEAD·지문은 **값 쪽 `key`** 에만 둔다 — 커밋할 때마다 새 칸이 생겨 Map 이 무한히
+  // 자라지 않게, 같은 칸을 덮어쓰게 하려고.
+  const mapKeyOf = (slug: string): string => `${valid.join("\u0000")}\u0001${slug}`;
+  const keyOf = (slug: string): string => `${copiesKey}\u0001${(slugFingerprints.get(slug) ?? []).join("\u0002")}`;
+  const bySlugDocs = new Map<string, FeatureDocs>();
+  const stale: string[] = [];
+  for (const slug of slugDirs.keys()) {
+    const hit = folderCache.get(mapKeyOf(slug));
+    if (hit && hit.key === keyOf(slug)) bySlugDocs.set(slug, hit.docs);
+    else stale.push(slug);
+  }
+
+  if (stale.length > 0) {
+    // 4) 바뀐 폴더만 내용을 읽는다.
+    const bySlug = new Map<string, CopySlug[]>();
+    for (const slug of stale) {
+      for (const { copy, index, dir } of slugDirs.get(slug) ?? []) {
+        const files = new Map<string, string>();
+        // `.md` 는 본문, 그 외는 해시만(T02) — 갈라짐 비교 토큰으로 쓰인다.
+        const digests = new Map<string, string>();
+        walkSlug(dir, "", files, digests);
+        // 트리만 먼저 만들고, git 질의는 사본당 한 번 묶어 나중에 얹는다(T06).
+        const tree = buildDocTree(dir, "");
+        const arr = bySlug.get(slug) ?? [];
+        arr.push({ copy, index, slug, files, digests, tree });
+        bySlug.set(slug, arr);
       }
     }
-    batchByCopy.set(copy, {
-      ignored: checkIgnored(copy, allPaths),
-      unlanded: unlandedPaths(copy, join("docs", "features")),
-    });
-  }
 
-  // 각 사본의 배치 결과를 그 사본의 모든 기능 트리에 얹는다.
-  for (const arr of bySlug.values()) {
-    for (const cs of arr) {
-      const batch = batchByCopy.get(cs.copy)!;
-      cs.tree = annotateDocTree(cs.slug, cs.tree, batch);
+    // 5) T06: 사본당 git 하위프로세스를 한 번씩만 — **다시 읽는 폴더의 경로만** 모아 일괄 호출한다.
+    // git 이 못 답하는 사본(저장소 아님)은 결과가 null 이 되어 트리가 그대로 남는다(AC6).
+    const batchByCopy = new Map<string, CopyGitBatch>();
+    for (const copy of valid) {
+      const allPaths: string[] = [];
+      for (const arr of bySlug.values()) {
+        for (const cs of arr) {
+          if (cs.copy !== copy) continue;
+          for (const node of collectPaths(cs.tree)) {
+            allPaths.push(join("docs", "features", cs.slug, node));
+          }
+        }
+      }
+      // 🔴 그 사본에서 다시 읽는 폴더가 없으면 git 을 아예 안 부른다 — 폴더 단위의 요점이다.
+      batchByCopy.set(copy, { ignored: allPaths.length === 0 ? null : checkIgnored(copy, allPaths) });
+    }
+
+    for (const arr of bySlug.values()) {
+      for (const cs of arr) {
+        const batch = batchByCopy.get(cs.copy)!;
+        cs.tree = annotateDocTree(cs.slug, cs.tree, batch);
+      }
+    }
+
+    for (const [slug, parts] of bySlug) {
+      const merged = mergeSlug(parts, slug, valid, resolver);
+      folderCache.set(mapKeyOf(slug), { key: keyOf(slug), docs: merged });
+      bySlugDocs.set(slug, merged);
     }
   }
 
+  // 🔴 결과 순서는 **폴더를 훑은 순서 그대로**다 — 캐시 적중 여부가 목록 순서를 바꾸면
+  // 화면이 이유 없이 흔들린다(정렬은 여전히 `applyInProgress` 뒤에 정해진다).
   const docs: FeatureDocs[] = [];
-  for (const [slug, parts] of bySlug) {
-    docs.push(mergeSlug(parts, slug, valid, resolver));
+  for (const slug of slugDirs.keys()) {
+    const d = bySlugDocs.get(slug);
+    if (d) docs.push(d);
   }
+
   return buildFeatures(docs);
 }

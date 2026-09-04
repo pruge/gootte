@@ -27,6 +27,20 @@ const alphaLike = (overrides: Partial<Project> = {}): Project => ({
   ...overrides,
 });
 
+/**
+ * 🔴 read-path-redesign/T03 — `/api/projects` 는 사이드바 배지(`openFeatures`)를 **요청 자리에서
+ * 세지 않는다.** 아는 값만 즉시 내고 나머지는 백그라운드로 채운 뒤 `projects` 를 방송한다.
+ * 그래서 배지·스냅샷을 보는 테스트는 **채워질 때까지 기다렸다가** 본다 — 기대값을 낮추는 것이
+ * 아니라, 값이 도착하는 시점이 달라진 것을 그대로 반영한다.
+ */
+async function waitUntil(cond: () => boolean, tries = 200): Promise<void> {
+  for (let i = 0; i < tries; i++) {
+    if (cond()) return;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error("waitUntil: 조건이 끝내 참이 되지 않았다");
+}
+
 describe("snapshot 저장소 (fast-cold-start T03)", () => {
   test("기록한 스캔을 같은 사본 구성으로 읽는다 — 내용은 readFeatures 결과 그대로", () => {
     const proj = alphaLike();
@@ -104,7 +118,8 @@ describe("라우트가 스냅샷에서 서빙한다 (재부팅 시나리오)", (
     writeFileSync(join(root, "alpha/docs/features/auth-login/spec.md"), "# auth-login\n\n## Goal\n\n로그인.\n");
 
     const app1 = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
-    await app1.request("/api/projects"); // 스캔 → 영구 기록
+    await app1.request("/api/projects"); // 배지 채우기를 예약한다(T03 — 스캔은 백그라운드)
+    await waitUntil(() => snapshotFeatures(dataDir, "alpha", [join(root, "alpha")]) !== null);
     expect(snapshotFeatures(dataDir, "alpha", [join(root, "alpha")])).not.toBeNull();
 
     rmSync(join(root, "alpha/docs/features/auth-login"), { recursive: true }); // 문서 소멸
@@ -122,7 +137,9 @@ describe("라우트가 스냅샷에서 서빙한다 (재부팅 시나리오)", (
     const app = createApp({ roots: [FIXTURES], treehouse: NO_TREEHOUSE, dataDir });
     const body = ProjectsResponse.parse(await (await app.request("/api/projects")).json());
     expect(body.projects.map((p) => p.slug)).toContain("alpha");
-    expect(snapshotFeatures(dataDir, "alpha", [join(FIXTURES, "alpha")])).not.toBeNull(); // 곧장 영구 기록됐다
+    // T03 — 스캔은 배지 채우기와 함께 백그라운드로 간다. 기록되는 사실은 그대로다.
+    await waitUntil(() => snapshotFeatures(dataDir, "alpha", [join(FIXTURES, "alpha")]) !== null);
+    expect(snapshotFeatures(dataDir, "alpha", [join(FIXTURES, "alpha")])).not.toBeNull();
   });
 });
 

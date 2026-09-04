@@ -15,7 +15,6 @@ function ticket(path: string): FeatureTicket {
     unreadableBlockedBy: [],
     waitingOn: [],
     startable: true,
-    workedBy: [],
     needsCaptainEye: false,
   };
 }

@@ -78,9 +78,6 @@ export const FeatureTicket = z.object({
   // 착수 가능 = waitingOn 이 비었고 + 임자(claimed)가 없다 — 계산이지 파일에 적힌 값이 아니다(INV-1).
   // 판정하는 자리는 여기 하나뿐이다 — 머리글 집계와 줄 표시가 이 값을 그대로 센다(같은 결함을 반복하지 않는다).
   startable: z.boolean(),
-  // 이 티켓을 지금 붙들고 있는 격리 사본의 브랜치 이름(verbatim). 관측 파생이라 파일에 없다.
-  // 한 티켓을 두 사본이 붙들면 원소 둘 — 그래도 티켓은 하나로 센다.
-  workedBy: z.array(z.string()).default([]),
   // 티켓 문서에 `## 캡틴 확인` 절이 있는가 — 절 존재만으로 정한다(INV-4, development-order/15 ②).
   // "— 없음" 접미(캡틴이 이미 필요 없다고 결정하신 절)는 필요로 세지 않는다.
   needsCaptainEye: z.boolean(),
@@ -103,10 +100,6 @@ export const FeatureTicket = z.object({
   // ADR-0002(pause) — 일시중단 구간(ISO 8601 쌍). `gootte pause`/`resume` 이 기록하고,
   // `elapsedPhrase` 가 걸린 시간에서 뺀다. 미재개 구간은 resumedAt 이 null(아직 멈춤).
   pauses: z.array(z.object({ pausedAt: z.string(), resumedAt: z.string().nullable() })).optional(),
-  // T04 — 이 티켓 파일이 아직 착지하지 않았는가(추적 안 됨 또는 커밋 안 된 변경) — `docs.tree`
-  // 안의 같은 경로 노드에서 그대로 옮겨 싣는다(판정 자리는 `FeatureDocNode.unlanded` 하나뿐).
-  // git 이 못 답한 사본은 이 값이 아예 없다(표식 없이 그대로 보여준다).
-  unlanded: z.boolean().optional(),
   // T04 — 백로그 조인 실패 여부. 신관례(`tickets/`) 티켓만 해당 — 조인 실패 시 배지 파생에서 null 을 내기 위해 쓴다.
   // 구관례(`issues/`) 티켓은 백로그 조인을 쓰지 않으므로 항상 false/undefined.
   joinFailed: z.boolean().optional(),
@@ -123,10 +116,9 @@ export interface FeatureDocNode {
   name: string; // 파일/폴더명
   path: string; // 기능 폴더 기준 상대 경로("adr/0001-x.md") — 문서 읽기 API 의 `path` 로 그대로 쓴다
   children?: FeatureDocNode[]; // kind: "dir" 일 때만
-  // T04 — 아직 착지하지 않았는가(추적 안 됨 또는 커밋 안 된 변경). git 이 답하지 못한 사본은
-  // 이 값이 아예 없다(표식 없이 그대로 보여준다, 캡틴 결정 Q4 — 출처는 싣지 않는다).
-  // 🔴 추적 제외이면서 미착지인 파일은 트리에서 아예 빠진다 — 제외가 이긴다(그 파일에는 이 값이 없다).
-  unlanded?: boolean;
+  // 🔴 미착지 표식(`unlanded`)은 read-path-redesign/T01 에서 삭제됐다 — 값을 만드는 코드도
+  // 계약 필드도 배지 컴포넌트도 온전했는데 **화면에 붙는 호출부가 없었다**(유령 값). 사본마다
+  // `git status` 를 돌던 비용만 매 요청 냈다. 되살리려면 화면 자리를 먼저 정하고 새 결정으로 판단한다.
 }
 export const FeatureDocNode: z.ZodType<FeatureDocNode> = z.lazy(() =>
   z.object({
@@ -134,7 +126,6 @@ export const FeatureDocNode: z.ZodType<FeatureDocNode> = z.lazy(() =>
     name: z.string(),
     path: z.string(),
     children: z.array(FeatureDocNode).optional(),
-    unlanded: z.boolean().optional(),
   }),
 );
 

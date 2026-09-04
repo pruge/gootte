@@ -41,7 +41,6 @@ function feature(slug: string, ticketStatus: "done" | "pending"): Feature {
         unreadableBlockedBy: [],
         waitingOn: [],
         startable: true,
-        workedBy: [],
         needsCaptainEye: false,
       },
     ],
@@ -549,7 +548,6 @@ function featureWithTickets(slug: string, paths: string[]): Feature {
       unreadableBlockedBy: [],
       waitingOn: [],
       startable: true,
-      workedBy: [],
       needsCaptainEye: false,
     })),
   };

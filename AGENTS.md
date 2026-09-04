@@ -136,7 +136,11 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 `discover` 와 backend 가 어디를 뒤질지는 env `GOOTTE_ROOTS`(콜론 구분, 기본
 `~/Documents/ai2/projects`)가 정한다. **"지금 누가 무엇을 붙들고 있나"** 를 관측할 격리 사본 뿌리는 env
 `GOOTTE_TREEHOUSE`(기본 `~/.treehouse`) 다 — 기계마다 다르니 경로를 코드에 못 박지 않는다.
-둘 다 `code/web/backend/src/app.ts` 가 SoT. 계획(INV-5) 저장 자리는 env `GOOTTE_DATA_DIR`(기본
+격리 사본은 그 뿌리 말고 **worktree 두 종류**도 같이 관측된다: Claude Code 의
+`<프로젝트>/.claude/worktrees/<이름>` 과 **BB 에이전트 스레드**의 `<뿌리>/<env_XXXX>/<프로젝트>`
+(env `GOOTTE_BB_WORKTREES`, 기본 `~/.bb/worktrees`). 셋 다 `core-io/src/treehouse.ts` 가 SoT이고
+슬러그로 갈린다(`<풀>/<슬롯>` · `<프로젝트>/claude/<이름>` · `<프로젝트>/bb/<env>`).
+env 는 `code/web/backend/src/app.ts` 가 SoT. 계획(INV-5) 저장 자리는 env `GOOTTE_DATA_DIR`(기본
 `~/.gootte`) — `code/web/cli/src/main.ts` 가 SoT.
 
 🔴 **`GOOTTE_DATA_DIR` 은 포트처럼 격리되지 않는다 — 값을 안 세우면 격리 사본도 캡틴의 `~/.gootte` 에

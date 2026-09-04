@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { Feature, type Feature as FeatureT, type Project } from "@gootte/contract";
 import type { CopyScan } from "@gootte/core";
 import { z } from "zod";
-import { discoverProjects, headCommit, readFeatures, claudeWorktreeRoots, hasTrackedUncommittedChange } from "@gootte/core-io";
+import { discoverProjects, headCommit, extraWorktreeRoots, hasTrackedUncommittedChange } from "@gootte/core-io";
+import { sharedFeaturesCompute } from "./features-compute";
 
 /**
  * discover + readFeatures 스캔 결과의 **영구 스냅샷** (fast-cold-start T03, adr/0001).
@@ -120,12 +121,13 @@ export function recordProjectScan(dataDir: string, proj: Project, features: Feat
  * 단일 프로젝트 스냅샷 갱신(T05) — slug 로 해당 프로젝트만 재계산해 메모리·디스크에 반영한다.
  * 다른 프로젝트는 건드리지 않는다(증분 write-through).
  */
-export function updateProjectSnapshot(dataDir: string, slug: string, roots: readonly string[]): void {
+export async function updateProjectSnapshot(dataDir: string, slug: string, roots: readonly string[]): Promise<void> {
   const projects = discoverProjects([...roots]);
   const project = projects.find((p) => p.slug === slug);
   if (!project) return;
   const copies = projectCopiesWithWorktrees(project.copies);
-  const features = readFeatures(copies);
+  // 🔴 워커에서 계산한다(T07 후속) — 감시 이벤트가 몰려도 메인 루프를 잡지 않는다.
+  const features = await sharedFeaturesCompute().run(copies);
   recordProjectScan(dataDir, { ...project, copies }, features);
 }
 
@@ -286,8 +288,9 @@ export function createProjectUpdateScheduler(opts: {
         slug,
         setTimeout(() => {
           pending.delete(slug);
-          updateProjectSnapshot(opts.dataDir, slug, opts.roots());
-          opts.broadcast({ kind: "project", project: slug });
+          void updateProjectSnapshot(opts.dataDir, slug, opts.roots()).then(() => {
+            opts.broadcast({ kind: "project", project: slug });
+          });
         }, debounceMs),
       );
     },
@@ -302,9 +305,12 @@ export function createProjectUpdateScheduler(opts: {
 const sameCopies = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((copy, i) => copy === b[i]);
 
-/** discover copies + Claude Code worktree 루트 — 스냅샷 기록·갱신 판정이 늘 이 목록을 본다. */
+/**
+ * discover copies + worktree 루트(Claude Code `.claude/worktrees/` · BB `~/.bb/worktrees/`) —
+ * 스냅샷 기록·갱신 판정이 늘 이 목록을 본다.
+ */
 function projectCopiesWithWorktrees(copies: readonly string[]): string[] {
-  return [...copies, ...claudeWorktreeRoots(copies)];
+  return [...copies, ...extraWorktreeRoots(copies)];
 }
 
 const sameStamps = (
@@ -332,10 +338,10 @@ const sameStamps = (
  * 변경이 없으면 파일을 건드리지 않는다. 새/변경 프로젝트만 readFeatures 로 다시 계산하고,
  * 계산이 끝난 뒤 recordProjectScan 이 현재 HEAD 를 새 스탬프로 기록한다.
  */
-export function revalidateSnapshot(
+export async function revalidateSnapshot(
   dataDir: string,
   roots: readonly string[],
-): SnapshotRevalidationResult {
+): Promise<SnapshotRevalidationResult> {
   if (!loadDoc(dataDir)) return { changedProjects: [], projectsChanged: false };
 
   const currentProjects = discoverProjects([...roots]);
@@ -357,7 +363,8 @@ export function revalidateSnapshot(
     const previous = savedBySlug.get(project.slug);
     const copies = projectCopiesWithWorktrees(project.copies);
     if (!previous || !sameCopies(previous.copies, copies) || !sameStamps(previous.stamps, copies)) {
-      const features = readFeatures(copies);
+      // 🔴 부팅 재검증도 워커에서 — 여기가 인라인이라 부팅 직후 문서 API 가 1,296ms 막혔다(T08 실측).
+      const features = await sharedFeaturesCompute().run(copies);
       recordProjectScan(dataDir, { ...project, copies }, features);
       changedProjects.push(project.slug);
       if (!previous) projectsChanged = true;

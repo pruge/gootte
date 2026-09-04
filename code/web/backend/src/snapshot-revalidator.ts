@@ -21,18 +21,22 @@ export function createSnapshotRevalidator(opts: SnapshotRevalidatorOptions): Sna
   let timer: ReturnType<typeof setInterval> | null = null;
   let running = false;
 
+  // 🔴 비동기다(read-path-redesign/T07 후속) — 재검증 계산은 워커에서 돈다. 여기서 동기로
+  // 돌던 시절, 부팅 직후 이 스윕이 메인 루프를 잡아 **문서 API 가 1,296ms 막혔다**(T08 실측).
   const run = (): void => {
     if (running) return;
     running = true;
-    try {
-      const result = revalidateSnapshot(opts.dataDir, opts.roots());
-      if (result.projectsChanged) opts.onChange({ kind: "projects" });
-      for (const slug of result.changedProjects) {
-        if (!result.projectsChanged) opts.onChange({ kind: "project", project: slug });
+    void (async () => {
+      try {
+        const result = await revalidateSnapshot(opts.dataDir, opts.roots());
+        if (result.projectsChanged) opts.onChange({ kind: "projects" });
+        for (const slug of result.changedProjects) {
+          if (!result.projectsChanged) opts.onChange({ kind: "project", project: slug });
+        }
+      } finally {
+        running = false;
       }
-    } finally {
-      running = false;
-    }
+    })();
   };
 
   const setFallbackPolling = (active: boolean): void => {
