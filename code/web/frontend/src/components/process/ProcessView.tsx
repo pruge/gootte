@@ -16,10 +16,17 @@ import { Loading, ErrorMsg } from "../common/states";
 import { MoveDialog } from "../plan/MoveDialog";
 import { FeatureDocsButton } from "../features/FeatureDocsButton";
 import { changesBoard, storedArea, type BoardAreaId } from "../plan/areas";
+import { useResizableSplit } from "../../hooks/useResizableSplit";
+import { WaitingList } from "./WaitingList";
 
 interface ProcessViewProps {
   project: string;
 }
+
+// 아래 칸(대기)의 높이 — plan 탭 손잡이와 **다른 키**를 쓴다(둘의 자리는 서로 남남이다).
+const WAITING_HEIGHT_KEY = "gootte-process-waiting-h";
+const WAITING_DEFAULT_HEIGHT = 200; // 첫 방문 — 대기 카드 서너 줄
+const WAITING_MIN_HEIGHT = 72; // 완전히 접히면 다시 늘릴 손잡이를 잃는다
 
 /** 남은(open) 티켓 수 — 완료·폐기 제외. 두 관례(구 issues/ · 신 tickets/)를 합쳐 센다(INV-1). */
 function openCount(f: Feature): number {
@@ -44,11 +51,19 @@ export function ProcessView({ project }: ProcessViewProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [ticketDoc, setTicketDoc] = useState<{ feature: string; path: string } | null>(null);
   const [moveDialog, setMoveDialog] = useState<string | null>(null);
+  // 위(작업 대상)·아래(대기)를 가르는 손잡이 — 아래 칸 높이만 여기서 정하고 위 칸은 `flex-1` 이
+  // 나머지를 흡수한다. plan 탭(`PlanView`)과 **같은 훅**이다(새 분할 구현을 만들지 않는다).
+  const split = useResizableSplit(WAITING_HEIGHT_KEY, {
+    defaultHeight: WAITING_DEFAULT_HEIGHT,
+    min: WAITING_MIN_HEIGHT,
+  });
 
   if (isError && !data) return <ErrorMsg error={error} />;
   if (!data) return <Loading label="순서를 읽는 중…" />;
 
   const features = data.active.map((c) => c.feature);
+  // 🔴 대기 목록도 서버가 이미 계산해 보낸 것이다(INV-1) — 새 조회를 만들지 않는다.
+  const waiting = data.waiting.map((c) => c.feature);
   const current = features.find((f) => f.slug === selected) ?? features[0] ?? null;
 
   // 🔴 판의 다섯 칸 — 카드가 어느 칸에 담겨 있는가가 곧 그 카드의 자리다(contract, `PlanCard` 는
@@ -67,59 +82,106 @@ export function ProcessView({ project }: ProcessViewProps) {
 
   return (
     <div className="flex h-full min-h-0">
-      {/* 왼쪽 컬럼(1) — feature 목록 */}
-      <aside className="w-1/3 shrink-0 overflow-y-auto border-r border-border pr-2">
-        <h2 className="mono px-2 pt-1 pb-2 text-sm font-semibold tracking-[0.15em] text-muted">
-          FEATURES
-        </h2>
-        {features.length === 0 ? (
-          <p className="px-2 text-sm text-muted">작업 대상에 올라온 것이 없다</p>
-        ) : (
-          <ul className="flex flex-col gap-0.5">
-            {features.map((f) => (
-              <li key={f.slug}>
-                <button
-                  type="button"
-                  onClick={() => setSelected(f.slug)}
-                  aria-current={current?.slug === f.slug ? "true" : undefined}
-                  className={`flex w-full items-baseline gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
-                    current?.slug === f.slug
-                      ? "bg-accent/12 font-semibold text-fg"
-                      : "text-muted hover:bg-surface-2 hover:text-fg"
-                  } focus-visible:outline-2 focus-visible:outline-accent`}
-                >
-                  <span className="min-w-0 flex-1 truncate">{f.slug}</span>
-                  {/* 🔴 처리중 티켓이 있으면 파란 원점 — 배경색 말고도 붙들 것이 있다(INV-C2).
-                      `allTickets` 로 두 관례(구 issues/ · 신 tickets/)를 합쳐, status 가 in_progress 인
-                      티켓이 하나라도 있으면 점을 찍는다. 판정 자리는 서버(`applyInProgress`) 하나다.
-                      숫자(남은 티켓 수) 앞에 둔다 — 캡틴 지시(2026-09-02). */}
-                  {allTickets(f).some((t) => t.status === "in_progress") && (
-                    <span
-                      role="status"
-                      aria-label={`${f.slug} 처리중 티켓 있음`}
-                      title="처리중 티켓 있음"
-                      className="h-2 w-2 shrink-0 rounded-full bg-active"
-                    />
-                  )}
-                  {/* 🔴 남은(open) 티켓 수 — 완료·폐기 제외. `allTickets` 로 두 관례를 합쳐 센다(INV-1,
-                      서버가 준 값만 셀 뿐 다시 판정하지 않는다). 0 이어도 칸이 사라지지 않는다. */}
-                  <span
-                    title="남은 티켓 수"
-                    className={`mono shrink-0 rounded-full px-1.5 text-xs font-medium tabular-nums ${
-                      openCount(f) > 0 ? "bg-accent/15 text-accent" : "bg-surface-2 text-muted"
-                    }`}
+      {/* 왼쪽 컬럼(1) — 위: 작업 대상 feature 목록 / 아래: 대기 목록 */}
+      <aside
+        ref={split.containerRef}
+        className="flex w-1/3 min-h-0 shrink-0 flex-col border-r border-border pr-2"
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <h2 className="mono px-2 pt-1 pb-2 text-sm font-semibold tracking-[0.15em] text-muted">
+            FEATURES
+          </h2>
+          {features.length === 0 ? (
+            <p className="px-2 text-sm text-muted">작업 대상에 올라온 것이 없다</p>
+          ) : (
+            <ul className="flex flex-col gap-0.5">
+              {features.map((f) => (
+                <li key={f.slug}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(f.slug)}
+                    aria-current={current?.slug === f.slug ? "true" : undefined}
+                    className={`flex w-full items-baseline gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
+                      current?.slug === f.slug
+                        ? "bg-accent/12 font-semibold text-fg"
+                        : "text-muted hover:bg-surface-2 hover:text-fg"
+                    } focus-visible:outline-2 focus-visible:outline-accent`}
                   >
-                    {openCount(f)}
-                  </span>
-                  {f.hasUnreadTicket === true && (
-                    <span className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg">
-                      안 읽음
+                    <span className="min-w-0 flex-1 truncate">{f.slug}</span>
+                    {/* 🔴 처리중 티켓이 있으면 파란 원점 — 배경색 말고도 붙들 것이 있다(INV-C2).
+                        `allTickets` 로 두 관례(구 issues/ · 신 tickets/)를 합쳐, status 가 in_progress 인
+                        티켓이 하나라도 있으면 점을 찍는다. 판정 자리는 서버(`applyInProgress`) 하나다.
+                        숫자(남은 티켓 수) 앞에 둔다 — 캡틴 지시(2026-09-02). */}
+                    {allTickets(f).some((t) => t.status === "in_progress") && (
+                      <span
+                        role="status"
+                        aria-label={`${f.slug} 처리중 티켓 있음`}
+                        title="처리중 티켓 있음"
+                        className="h-2 w-2 shrink-0 rounded-full bg-active"
+                      />
+                    )}
+                    {/* 🔴 남은(open) 티켓 수 — 완료·폐기 제외. `allTickets` 로 두 관례를 합쳐 센다(INV-1,
+                        서버가 준 값만 셀 뿐 다시 판정하지 않는다). 0 이어도 칸이 사라지지 않는다. */}
+                    <span
+                      title="남은 티켓 수"
+                      className={`mono shrink-0 rounded-full px-1.5 text-xs font-medium tabular-nums ${
+                        openCount(f) > 0 ? "bg-accent/15 text-accent" : "bg-surface-2 text-muted"
+                      }`}
+                    >
+                      {openCount(f)}
                     </span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
+                    {f.hasUnreadTicket === true && (
+                      <span className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg">
+                        안 읽음
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* ── 아래: 대기 목록. 🔴 대기가 0 이면 손잡이도 상자도 만들지 않고 한 줄로만 말한다 —
+            빈 상자가 위 칸의 자리를 먹지 않게(T01 회귀 가드). ── */}
+        {waiting.length === 0 ? (
+          <p className="mono shrink-0 border-t border-border px-2 py-2 text-sm text-muted">
+            WAITING — 대기 중인 기능이 없다
+          </p>
+        ) : (
+          <>
+            {/* 손잡이 — 끌면 아래 칸 높이가 바뀌고 위 칸이 나머지를 먹는다. 화살표 키·Home·End 로도
+                조절된다(plan 탭과 같은 훅·같은 조작). */}
+            <div
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="작업 대상과 대기 목록의 경계 — 끌거나 화살표 키로 크기를 조절합니다"
+              aria-valuenow={Math.round(split.height)}
+              aria-valuemin={split.min}
+              aria-valuemax={split.max !== undefined ? Math.round(split.max) : undefined}
+              tabIndex={0}
+              onPointerDown={split.onPointerDown}
+              onPointerMove={split.onPointerMove}
+              onPointerUp={split.onPointerUp}
+              onKeyDown={split.onKeyDown}
+              className="group flex shrink-0 cursor-row-resize touch-none items-center justify-center py-2 focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <div className="h-1 w-10 rounded-full bg-border transition-colors group-hover:bg-accent/60" />
+            </div>
+            <section
+              aria-labelledby="process-waiting-heading"
+              className="shrink-0 overflow-y-auto border-t border-border"
+              style={{ height: split.height }}
+            >
+              <h2
+                id="process-waiting-heading"
+                className="mono px-2 pt-2 pb-2 text-sm font-semibold tracking-[0.15em] text-muted"
+              >
+                WAITING
+              </h2>
+              <WaitingList features={waiting} />
+            </section>
+          </>
         )}
       </aside>
 

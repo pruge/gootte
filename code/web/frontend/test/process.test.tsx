@@ -285,3 +285,52 @@ describe("ProcessView — 2컬럼(1:2) 읽기 화면(process-two-column/T01)", (
     expect(within(drawer).getByRole("heading", { name: "01 — 세션 발급" })).toBeInTheDocument();
   });
 });
+
+describe("ProcessView — 왼쪽 아래 대기 목록(a-waiting-card-is-one-drag-away/T01)", () => {
+  it("왼쪽 아래 칸에 대기 칸의 feature 가 전부 선다 — 작업 대상과 한 <aside> 안이다", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(feature("a", [["01", "가"]]))],
+      waiting: [card(feature("w1")), card(feature("w2"))],
+    });
+    const aside = screen.getByText("FEATURES").closest("aside") as HTMLElement;
+    const waiting = within(aside).getByRole("region", { name: "WAITING" });
+    expect(within(waiting).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(waiting).getByText("w1")).toBeInTheDocument();
+    expect(within(waiting).getByText("w2")).toBeInTheDocument();
+  });
+
+  it("대기 카드 제목은 plan 탭과 같은 규칙으로 이름을 뗀 설명문구다", () => {
+    renderProcess({ ...EMPTY_BOARD, waiting: [card(feature("w1"))] });
+    const waiting = screen.getByRole("region", { name: "WAITING" });
+    // feature() 의 title 은 "w1 — 제목" — 이름이 겹쳐 붙은 앞부분만 뗀다.
+    expect(within(waiting).getByText("제목")).toBeInTheDocument();
+    expect(within(waiting).queryByText("w1 — 제목")).toBeNull();
+  });
+
+  it("경계에 크기 조절 손잡이가 있다 — 화살표 키로도 조절된다", () => {
+    renderProcess({ ...EMPTY_BOARD, waiting: [card(feature("w1"))] });
+    const handle = screen.getByRole("separator", { name: /경계/ });
+    const before = Number(handle.getAttribute("aria-valuenow"));
+    fireEvent.keyDown(handle, { key: "ArrowUp" });
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBeGreaterThan(before);
+  });
+
+  it("🔴 대기가 0 개면 빈 상자 대신 한 줄로 그 사실을 말한다 — 손잡이도 만들지 않는다", () => {
+    renderProcess({ ...EMPTY_BOARD, active: [card(feature("a", [["01", "가"]]))] });
+    expect(screen.getByText(/대기 중인 기능이 없다/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "WAITING" })).toBeNull();
+    expect(screen.queryByRole("separator", { name: /경계/ })).toBeNull();
+  });
+
+  it("대기 목록이 생겨도 작업 대상 목록의 선택은 그대로 동작한다", () => {
+    renderProcess({
+      ...EMPTY_BOARD,
+      active: [card(feature("a", [["01", "가 티켓"]])), card(feature("b", [["02", "나 티켓"]]))],
+      waiting: [card(feature("w1"))],
+    });
+    const aside = screen.getByText("FEATURES").closest("aside") as HTMLElement;
+    fireEvent.click(within(aside).getByRole("button", { name: /^b/ }));
+    expect(screen.getByText("나 티켓")).toBeInTheDocument();
+  });
+});
