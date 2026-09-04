@@ -1,5 +1,19 @@
 # Triage labels — 정규 `Status:` 아홉 값
 
+> ## 🔴 먼저 — 이 어휘가 어디에 걸리는가 (2026-09-04)
+>
+> | 무엇 | `Status:` 를 쓰나 |
+> |---|---|
+> | `spec.md` (기능 명세) | ✅ **그렇다.** 아래 아홉 값이 그대로 걸린다 |
+> | 옛 관례 티켓 `issues/<NN>-*.md` | ✅ 그렇다 — 완료의 SoT 가 `Status: resolved (날짜)` 다 |
+> | **지금 관례 티켓 `tickets/T<NN>.md`** | 🔴 **아니다 — 손으로 쓰지 않는다.** 완료는 `gootte` 가 적는 `Time:` 줄의 `finished=` 가 정한다 |
+>
+> 신관례 티켓에서 `Status:` 줄이 나오는 경우는 **`gootte drop` 이 쓴 `wontfix (날짜)`** 하나뿐이다.
+> (2026-09-04 실측: 신관례 67장 중 `Status:` 를 가진 것은 8장이고 전부 신관례 전환 이전에 손으로
+> 적힌 `resolved` 다 — 남겨 두되 새로 쓰지 않는다.)
+>
+> 자세한 것은 [`issue-tracker.md`](issue-tracker.md) §완료는 gootte 가 적는다.
+
 스킬들은 다섯 개의 정규 triage 역할로 말한다. 거기에 이 저장소가 실제로 필요로 하는 넷
 (`draft` · `blocked` · `claimed` · `resolved`)을 더해 **아홉 개를 정규 `Status:` 값**으로 삼는다.
 자매 저장소(jinwooauto)와 같은 아홉 값이다 — 저장소를 오가는 작업자가 어휘를 다시 배우지 않게 한다.
@@ -12,7 +26,7 @@
 | `ready-for-agent` | mattpocock/skills | 완전히 명세됨, AFK 에이전트가 집어갈 수 있음 |
 | `ready-for-human` | mattpocock/skills | 사람의 구현이 필요 |
 | `blocked` | 저장소 추가 | 착수 가능했지만 외부 요인으로 대기 — 아래 "`blocked` vs `Blocked by:`" 참고 |
-| `claimed` | 저장소 추가(자매 저장소의 조사용 티켓과 같은 이름) | 누군가 이 티켓을 집어갔다(임자 있음). 이 값 자체로는 화면을 처리중으로 만들지 않는다 — 아래 "시작 전이 규칙" 참고 |
+| `claimed` | 저장소 추가(자매 저장소의 조사용 티켓과 같은 이름) | 누군가 이 티켓을 집어갔다(임자 있음). 이 값 자체로는 화면을 처리중으로 만들지 않는다 — 아래 "시작 전이 규칙" 참고. 🔴 **신관례 티켓에서는 `gootte start` 의 `started=` 가 이 자리를 대신한다** |
 | `resolved` | 저장소 추가 | 완료. **`(YYYY-MM-DD HH:MM)` 완료 시각까지 반드시 동반**(§서식). `done` 은 동의어 오용 — 새로 쓰지 않는다 |
 | `wontfix` | mattpocock/skills | 처리하지 않음 |
 

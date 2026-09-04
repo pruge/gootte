@@ -216,8 +216,10 @@ env 는 `code/web/backend/src/app.ts` 가 SoT. 계획(INV-5) 저장 자리는 en
 서로 "나를 우선하라" 고 말해서, 안 읽으면 세션마다 다른 것을 고른다. 사용자가 하나를 지목하면
 그 지시가 우선한다.
 
-작업 표면은 **`docs/features/<기능>/`** (`spec.md` + `issues/NN-*.md` + `adr/`) 다.
-별도 원장은 없다 — 상태는 티켓의 `Status:` 줄이, 순서는 `Blocked by:` 줄이 소유한다.
+작업 표면은 **`docs/features/<기능>/`** (`spec.md` + **`tickets/T<NN>.md`** + `adr/`) 다.
+🔴 **새 티켓은 `tickets/T<NN>.md` 로 쓴다** — 옛 `issues/<NN>-*.md` 는 읽히기만 하고 새로 만들지 않는다.
+별도 원장은 없다 — **완료는 `gootte` 가 적는 `Time:` 줄(`finished=`)이**, 순서는 `Blocked by:` 줄이
+소유한다. 🔴 `Time:`·`Status:` 를 손으로 쓰지 않는다([`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)).
 
 ## 운영 규칙
 
