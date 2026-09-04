@@ -167,3 +167,39 @@ describe("DocDrawer — 열린 문서는 URL 에 실린다(F8, 티켓 01 §설�
     expect(document.activeElement).toBe(trigger);
   });
 });
+
+/**
+ * 🔴 T04 회귀 — 안 읽음 표시를 그리는 화면이 **둘**인데 보는 캐시가 다르다.
+ * features 탭은 `features`, steps 탭은 `plan`(`usePlanBoard`)이다. 문서를 열고 `features` 만
+ * 무효화하던 시절엔 steps 에서 티켓을 읽어도 그 자리의 `안 읽음` 이 안 지워졌고, 카드를 다른
+ * 칸으로 옮겨야 비로소 풀렸다(캡틴 확인 2026-09-04).
+ */
+describe("문서를 열면 안 읽음을 그리는 캐시가 **둘 다** 무효화된다 (T04)", () => {
+  it("features 와 plan 을 함께 무효화한다 — 한쪽만 하면 steps 탭이 낡은 채로 남는다", async () => {
+    vi.spyOn(api, "fetchFeatureDoc").mockResolvedValue({
+      path: "tickets/T01.md",
+      content: "# T01 — x\n",
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidated: unknown[][] = [];
+    const original = qc.invalidateQueries.bind(qc);
+    vi.spyOn(qc, "invalidateQueries").mockImplementation(((filters?: {
+      queryKey?: readonly unknown[];
+    }) => {
+      if (filters?.queryKey) invalidated.push([...filters.queryKey]);
+      return original(filters as never);
+    }) as typeof qc.invalidateQueries);
+
+    render(
+      <QueryClientProvider client={qc}>
+        <DocDrawer project="alpha" featureSlug="f" path="tickets/T01.md" onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(invalidated.length).toBeGreaterThan(0));
+    await waitFor(() => {
+      expect(invalidated).toContainEqual([...qk.features("alpha")]);
+      expect(invalidated).toContainEqual([...qk.plan("alpha")]);
+    });
+  });
+});

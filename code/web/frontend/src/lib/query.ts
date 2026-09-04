@@ -278,8 +278,14 @@ export function useRecordTime(project: string) {
  * 드로어에 연 기능 문서 본문 — 셋 다 있어야 fetch(카드 트리에서 문서를 눌렀을 때만).
  *
  * 🔴 서버가 이 요청을 받으면(티켓이면) 읽음으로 적는다(unread-tickets-show-themselves/01) —
- * 그래서 여기서 `features` 캐시를 무효화한다. 화면이 안 읽음 표시를 직접 지우지 않는다 —
+ * 그래서 여기서 캐시를 무효화한다. 화면이 안 읽음 표시를 직접 지우지 않는다 —
  * 서버가 다시 계산한 값을 다시 받아 그리는 것으로 충분하다(INV-1).
+ *
+ * 🔴 **`plan` 과 `features` 를 둘 다 무효화한다.** 안 읽음 표시를 그리는 화면이 둘인데 보는
+ * 캐시가 다르다 — features 탭은 `features`, **steps 탭은 `plan`**(`usePlanBoard`)이다.
+ * `features` 만 무효화하던 시절엔 steps 에서 티켓을 읽어도 그 자리의 `안 읽음` 이 안 지워졌고,
+ * 카드를 다른 칸으로 옮겨야(=`usePlanMove` 가 응답을 `plan` 에 앉혀야) 비로소 풀렸다
+ * (캡틴 확인 2026-09-04, T04). 위 `useRecordTime` 이 둘 다 무효화하는 것과 같은 이유다.
  */
 export function useFeatureDoc(
   project: string | null,
@@ -292,6 +298,7 @@ export function useFeatureDoc(
     queryFn: async () => {
       const doc = await fetchFeatureDoc(project as string, feature as string, path as string);
       qc.invalidateQueries({ queryKey: qk.features(project as string) });
+      qc.invalidateQueries({ queryKey: qk.plan(project as string) });
       return doc;
     },
     enabled: project !== null && feature !== null && path !== null,
