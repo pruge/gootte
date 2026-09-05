@@ -354,7 +354,23 @@ export function watchProjects(
   });
   wtW.on("error", onWatchError("워크트리"));
   let wtd: ReturnType<typeof setTimeout> | null = null;
-  wtW.on("all", () => {
+  wtW.on("all", (_ev, abs) => {
+    // 새 worktree 생성 감지 → 그 worktree의 docs/features를 content watcher에 즉시 추가
+    // (gootte start Time 기록을 놓치지 않기 위해 rebindCopies 기다리지 않음)
+    const slug = projectOf(abs);
+    if (slug) {
+      const project = projects.find((p) => p.slug === slug);
+      if (project) {
+        const wtRoots = extraWorktreeRoots(project.copies);
+        const newPaths = wtRoots.map((wt) => join(wt, "docs", "features"));
+        const toAdd = newPaths.filter((p) => !curContent.get(slug)?.includes(p));
+        if (toAdd.length) {
+          content.add(toAdd);
+          curContent.set(slug, [...(curContent.get(slug) ?? []), ...toAdd]);
+        }
+      }
+    }
+    // 감시 경로 재바인딩은 기존대로 debounce
     if (wtd) clearTimeout(wtd);
     wtd = setTimeout(rebindCopies, debounceMs);
   });
