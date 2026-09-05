@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { IconNote, IconSearch, IconTrash, IconDeviceFloppy, IconCircleCheck, IconCircle } from "@tabler/icons-react";
+import { IconNote, IconSearch, IconTrash, IconDeviceFloppy, IconCircleCheck, IconCircle, IconCopy } from "@tabler/icons-react";
 import type { Memo } from "@gootte/contract";
 import { useMemos, useCreateMemo, useUpdateMemo, useDeleteMemo } from "../../lib/query";
 import { Loading, ErrorMsg, Empty } from "../common/states";
@@ -203,10 +203,26 @@ function MemoNote({
   // 저장 후 편집 상태를 저장된 내용으로 갱신
   const [savedContent, setSavedContent] = useState(memo.content);
   const dirty = editing !== savedContent;
+  const [copied, setCopied] = useState(false);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const copyBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleSave = () => {
     onSave(editing);
     setSavedContent(editing);
+  };
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(editing);
+    if (copyBtnRef.current) {
+      const rect = copyBtnRef.current.getBoundingClientRect();
+      setTooltipPos({ x: rect.left + rect.width / 2, y: rect.top });
+    }
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+      setTooltipPos(null);
+    }, 1500);
   };
 
   const time = memo.createdAt;
@@ -215,7 +231,7 @@ function MemoNote({
 
   return (
     <div
-      className={`overflow-hidden rounded-lg border shadow-sm ${
+      className={`relative overflow-hidden rounded-lg border shadow-sm ${
         memo.done
           ? "border-border bg-surface-2/60 dark:border-border dark:bg-surface-2/40"
           : "border-border bg-surface-2 dark:border-border dark:bg-surface"
@@ -225,7 +241,7 @@ function MemoNote({
         <span className="mono shrink-0 text-xs text-amber-800 dark:text-muted">
           {date} {clock}
         </span>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1 relative">
           <button
             type="button"
             onClick={() => onToggleDone(!memo.done)}
@@ -249,6 +265,28 @@ function MemoNote({
           >
             <IconDeviceFloppy size={14} stroke={1.75} />
           </button>
+          <button
+            ref={copyBtnRef}
+            type="button"
+            onClick={handleCopy}
+            aria-label="복사"
+            title="복사"
+            className={iconBtn}
+          >
+            <IconCopy size={14} stroke={1.75} />
+          </button>
+          {copied && tooltipPos && (
+            <span
+              className="fixed z-50 whitespace-nowrap rounded bg-fg/90 px-2 py-0.5 text-[10px] font-medium text-bg shadow-lg animate-fade-in pointer-events-none"
+              style={{
+                left: tooltipPos.x,
+                top: tooltipPos.y - 28,
+                transform: "translateX(-50%)",
+              }}
+            >
+              Copied
+            </span>
+          )}
           <button
             type="button"
             onClick={onDelete}
