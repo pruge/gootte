@@ -25,6 +25,7 @@ export function MemoView({ project }: { project: string }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [newContent, setNewContent] = useState("");
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "done" | "undone">("all");
   const newInputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -52,11 +53,12 @@ export function MemoView({ project }: { project: string }) {
   const sortedDates = [...byDate.keys()].sort((a, b) => b.localeCompare(a));
 
   const q = query.trim().toLowerCase();
-  // 검색어(메모 내용) + 선택한 날짜 로 필터링 — 둘 다 있으면 교집합
+  // 검색어(메모 내용) + 선택한 날짜 + 완료 필터로 필터링
   const filteredMemos = memos.filter((m) => {
     const dateOk = !selectedDate || m.createdAt.slice(0, 10) === selectedDate;
     const textOk = !q || m.content.toLowerCase().includes(q);
-    return dateOk && textOk;
+    const filterOk = filter === "all" || (filter === "done" ? m.done : !m.done);
+    return dateOk && textOk && filterOk;
   });
   // filteredMemos 를 최신순(createdAt 내림차순)으로 정렬
   const sortedMemos = [...filteredMemos].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -94,6 +96,18 @@ export function MemoView({ project }: { project: string }) {
             aria-label="메모 검색"
             className="w-full rounded-md border border-border bg-surface-2/40 py-1.5 pr-2.5 pl-8 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none"
           />
+        </div>
+        <div className="mb-2 px-2">
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as "all" | "done" | "undone")}
+            aria-label="완료 상태 필터"
+            className="w-full rounded-md border border-border bg-surface-2/40 py-1.5 pr-2.5 pl-2.5 text-sm text-fg focus:border-accent focus:outline-none"
+          >
+            <option value="all">전체</option>
+            <option value="done">완료</option>
+            <option value="undone">미완료</option>
+          </select>
         </div>
         <ul className="flex flex-col gap-0.5">
           <li>
