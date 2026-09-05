@@ -95,14 +95,14 @@ export function MemoView({ project }: { project: string }) {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="메모 검색…"
               aria-label="메모 검색"
-              className="w-full rounded-md border border-border bg-surface-2/40 py-1.5 pr-2.5 pl-8 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none"
+              className="w-full h-8 rounded-md border border-border bg-surface-2/40 pr-2.5 pl-8 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none"
             />
           </div>
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as "all" | "done" | "undone")}
             aria-label="완료 상태 필터"
-            className="shrink-0 w-auto min-w-[8rem] rounded-md border border-border bg-surface-2/40 py-1.5 pr-2.5 pl-2.5 text-sm text-fg focus:border-accent focus:outline-none"
+            className="shrink-0 w-auto h-8 rounded-md border border-border bg-surface-2/40 px-2 text-sm text-fg focus:border-accent focus:outline-none appearance-none"
           >
             <option value="all">전체</option>
             <option value="done">완료</option>
