@@ -82,27 +82,27 @@ export function MemoView({ project }: { project: string }) {
         <h2 className="mono px-2 pt-1 pb-2 text-sm font-semibold tracking-[0.15em] text-muted">
           MEMOS
         </h2>
-        <div className="relative mb-2 px-2">
-          <IconSearch
-            size={14}
-            stroke={1.75}
-            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted"
-          />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="메모 검색…"
-            aria-label="메모 검색"
-            className="w-full rounded-md border border-border bg-surface-2/40 py-1.5 pr-2.5 pl-8 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none"
-          />
-        </div>
-        <div className="mb-2 px-2">
+        <div className="flex items-center gap-2 mb-2 px-2">
+          <div className="relative flex-1 min-w-0">
+            <IconSearch
+              size={14}
+              stroke={1.75}
+              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted"
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="메모 검색…"
+              aria-label="메모 검색"
+              className="w-full rounded-md border border-border bg-surface-2/40 py-1.5 pr-2.5 pl-8 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none"
+            />
+          </div>
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as "all" | "done" | "undone")}
             aria-label="완료 상태 필터"
-            className="w-full rounded-md border border-border bg-surface-2/40 py-1.5 pr-2.5 pl-2.5 text-sm text-fg focus:border-accent focus:outline-none"
+            className="shrink-0 w-auto min-w-[8rem] rounded-md border border-border bg-surface-2/40 py-1.5 pr-2.5 pl-2.5 text-sm text-fg focus:border-accent focus:outline-none"
           >
             <option value="all">전체</option>
             <option value="done">완료</option>
