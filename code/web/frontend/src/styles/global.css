@@ -22,6 +22,8 @@
   --color-unread-fg: var(--unread-fg);
   --color-inprogress: var(--inprogress);
   --color-inprogress-strong: var(--inprogress-strong);
+  --color-paused: var(--paused);
+  --color-paused-strong: var(--paused-strong);
   --color-search-mark: var(--search-mark);
   --color-search-mark-fg: var(--search-mark-fg);
   /* 완료 메모의 취소선 — 라이트에서 선명한 레드, 다크에서 코럴(둘 다 밝은 배경 위 또렷) */
