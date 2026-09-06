@@ -247,3 +247,31 @@ export function nextText(
     .map((t) => `${t.feature}/${t.ticket}\t${t.title}${t.needsCaptainEye ? " 👁" : ""}`)
     .join("\n");
 }
+
+/**
+ * `feature state <프로젝트> <기능>` — 기능의 모든 티켓을 상태와 함께 출력.
+ * 영역(작업 대상/대기/예약/폐기/완료) 관계없이 모든 티켓 표시.
+ */
+export function featureStateText(
+  argv: readonly string[],
+  dataDir = defaultPlanDataDir(),
+  cwd: string = process.cwd(),
+): string {
+  rejectFlags(argv);
+  const [project, featureSlug] = argv;
+  if (!project || !featureSlug) throw new CliError("usage: gootte feature state <프로젝트> <기능>");
+  const path = requireProjectPath(project, cwd);
+  const features = withBacklogStatus(project, dataDir, readFeatures(path));
+  const f = features.find((x) => x.slug === featureSlug);
+  if (!f) throw new CliError(`기능 없음: ${featureSlug}`);
+  const tickets = allTickets(f);
+  if (tickets.length === 0) return "(티켓 없음)";
+  return tickets
+    .map((t) => {
+      const statusLabel = t.status === "in_progress" && t.pauses?.some((p) => p.resumedAt === null)
+        ? "일시중단"
+        : t.status;
+      return `${t.slug}\t${statusLabel}\t${t.title}`;
+    })
+    .join("\n");
+}

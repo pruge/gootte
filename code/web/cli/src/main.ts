@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { defaultPlanDataDir, defaultProjectRoots } from "@gootte/core-io";
 import { CliError } from "./args";
-import { boardText, dbMigrateText, discoverText, nextText, stepClearText, stepText } from "./commands";
+import { boardText, dbMigrateText, discoverText, featureStateText, nextText, stepClearText, stepText } from "./commands";
 
 /** 계획 저장 자리 — env `GOOTTE_DATA_DIR` 로 덮어쓴다(기계마다 다를 수 있다, `GOOTTE_ROOTS`·`GOOTTE_TREEHOUSE` 와 같은 관례). */
 function planDataDir(): string {
@@ -17,6 +17,7 @@ function usage(): number {
       "  step        <프로젝트> <기능>/<티켓> <N>  — 단계를 매긴다",
       "  step --clear <프로젝트> <기능>/<티켓>      — 단계를 뗀다",
       "  board       <프로젝트>  — 다섯 칸 현황을 읽는다(읽기 전용)",
+      "  feature state <프로젝트> <기능>  — 기능의 모든 티켓 상태를 본다",
       "  next        <프로젝트>  — 작업 대상의 표시 1단계 티켓만 말한다",
       "",
     ].join("\n"),
@@ -55,6 +56,14 @@ function run(argv: string[]): number {
       case "next":
         process.stdout.write(nextText(rest, planDataDir()) + "\n");
         return 0;
+      case "feature": {
+        const [sub, ...more] = rest;
+        if (sub === "state") {
+          process.stdout.write(featureStateText(more, planDataDir()) + "\n");
+          return 0;
+        }
+        return usage();
+      }
       default:
         return usage();
     }
