@@ -34,6 +34,13 @@ usage() {
   echo "      gootte resume [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte end    [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte drop   [--at <TIME>] <feature-slug> <ticket>" >&2
+  echo "      gootte discover [roots...]            — firstmate 프로젝트 발견" >&2
+  echo "      gootte db migrate                     — 계획 DB 스키마 갱신" >&2
+  echo "      gootte step <프로젝트> <기능>/<티켓> <N> — 단계를 매긴다" >&2
+  echo "      gootte step --clear <프로젝트> <기능>/<티켓> — 단계를 뗀다" >&2
+  echo "      gootte board <프로젝트>                — 다섯 칸 현황(읽기 전용)" >&2
+  echo "      gootte feature state <프로젝트> <기능> — 기능의 모든 티켓 상태" >&2
+  echo "      gootte next <프로젝트>                 — 작업 대상 1단계 티켓" >&2
   echo "  TIME: 비우면 지금 / ISO8601 / 상대시간(예 1h30m, 90m, 2h, 1d)" >&2
   echo "  --update: 이미 시작된 티켓의 started= 를 묻지 않고 바로 갱신(start 전용)" >&2
   exit 1
@@ -564,22 +571,36 @@ main() {
       *) pos+=("$1"); shift ;;
     esac
   done
-  [ "${#pos[@]}" -ge 2 ] || usage
+  [ "${#pos[@]}" -ge 1 ] || usage
   local subcmd="${pos[0]}"
+  
+  # 시간 기록 명령은 bash에서 직접 처리
   case "$subcmd" in
-    start|cancel|pause|resume|end)
-      [ "${#pos[@]}" -eq 3 ] || usage
+    start|cancel|pause|resume|end|drop)
+      # 기존 로직 실행
+      [ "${#pos[@]}" -ge 2 ] || usage
       case "$subcmd" in
         start)  cmd_start  "$at" "$update" "${pos[1]}" "${pos[2]}" ;;
         cancel) cmd_cancel "${pos[1]}" "${pos[2]}" ;;
         pause)  cmd_pause  "$at" "${pos[1]}" "${pos[2]}" ;;
         resume) cmd_resume "$at" "${pos[1]}" "${pos[2]}" ;;
         end)    cmd_end    "$at" "${pos[1]}" "${pos[2]}" ;;
-      esac ;;
-    drop)
-      [ "${#pos[@]}" -le 3 ] || usage
-      cmd_drop "$at" "${pos[1]}" "${pos[2]:-}" ;;
-    *) usage ;;
+        drop)
+          [ "${#pos[@]}" -le 3 ] || usage
+          cmd_drop "$at" "${pos[1]}" "${pos[2]:-}" ;;
+      esac
+      ;;
+    *)
+      # 그 외 명령은 TypeScript CLI로 위임 (git 루트에서 tsx 실행)
+      local root
+      root="$(resolve_root)"
+      if [ -f "$root/code/web/cli/src/main.ts" ]; then
+        GOOTTE_ROOTS="${GOOTTE_ROOTS:-$root/..}" npx --yes tsx "$root/code/web/cli/src/main.ts" "${pos[@]}"
+      else
+        echo "gootte: 알 수 없는 명령: $subcmd" >&2
+        usage
+      fi
+      ;;
   esac
 }
 
