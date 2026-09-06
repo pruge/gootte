@@ -535,11 +535,12 @@ function boxGlyph(t: FeatureTicket): string {
 }
 
 function rowTone(t: FeatureTicket): string {
-  return t.unread === true
-    ? "bg-unread hover:bg-unread-strong"
-    : t.status === "in_progress"
-      ? "bg-inprogress hover:bg-inprogress-strong"
-      : "hover:bg-surface-2";
+  const pausedNow = t.pauses?.some((p) => p.resumedAt === null) === true;
+  if (t.unread === true) return "bg-unread hover:bg-unread-strong";
+  if (pausedNow) return "bg-paused hover:bg-paused-strong";
+  return t.status === "in_progress"
+    ? "bg-inprogress hover:bg-inprogress-strong"
+    : "hover:bg-surface-2";
 }
 
 function TicketLine({
@@ -594,7 +595,7 @@ function TicketLine({
           )}
           {ticket.status === "in_progress" && (
             <span role="status" className="col-start-5 mono shrink-0 text-sm font-medium text-active">
-              처리중
+              {pausedNow ? "일시중단" : "처리중"}
             </span>
           )}
         </button>
