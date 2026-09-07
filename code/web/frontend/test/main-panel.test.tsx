@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ReactElement } from "react";
 import type { Tab } from "../src/hooks/useUrlState";
 import { MainPanel } from "../src/components/main/MainPanel";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // 자식 뷰는 모의한다 — 이 테스트는 셸(토글·타이틀·배치)만 검증(T01).
 vi.mock("../src/components/settings/SettingsView", () => ({
@@ -29,6 +30,14 @@ vi.mock("../src/components/memo/MemoView", () => ({
  */
 function renderMain(project: string | null = "jinwooauto", initialSettingsOpen = false) {
   const onSettingsOpenChange = vi.fn();
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        gcTime: 0,
+      },
+    },
+  });
   function Harness({ project: p }: { project: string | null }) {
     const [open, setOpen] = useState(initialSettingsOpen);
     const [tab, setTab] = useState<Tab>("features");
@@ -37,15 +46,17 @@ function renderMain(project: string | null = "jinwooauto", initialSettingsOpen =
       setOpen(next);
     };
     return (
-      <MainPanel
-        project={p}
-        tab={tab}
-        onTab={setTab}
-        view={null}
-        onView={() => {}}
-        settingsOpen={open}
-        onSettingsOpenChange={change}
-      />
+      <QueryClientProvider client={queryClient}>
+        <MainPanel
+          project={p}
+          tab={tab}
+          onTab={setTab}
+          view={null}
+          onView={() => {}}
+          settingsOpen={open}
+          onSettingsOpenChange={change}
+        />
+      </QueryClientProvider>
     );
   }
   const view = render(<Harness project={project} />);
@@ -96,19 +107,29 @@ describe("MainPanel settings toggle (T01)", () => {
     expect(screen.getByTestId("settings-view")).toBeInTheDocument();
   });
 
-  it("설정 열린 채 프로젝트를 바꾸면(사이드바 클릭) 설정이 닫히고 그 프로젝트 뷰를 보여준다", () => {
+it("설정 열린 채 프로젝트를 바꾸면(사이드바 클릭) 설정이 닫히고 그 프로젝트 뷰를 보여준다", () => {
     // App 이 handleSelectProject 로 settingsOpen=false 를 먼저 부른 뒤 project 를 바꾼다.
-    // MainPanel 은 그 prop 변경을 그대로 그릴 뿐이다 — "닫는 행위" 의 주체는 App.
+    // MainPanel 은 그 prop 변경만을 그대로 그릴 뿐이다 — "닫는 행위" 의 주체는 App.
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          gcTime: 0,
+        },
+      },
+    });
     render(
-      <MainPanel
-        project="gootte"
-        tab="features"
-        onTab={() => {}}
-        view={null}
-        onView={() => {}}
-        settingsOpen={false}
-        onSettingsOpenChange={() => {}}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MainPanel
+          project="gootte"
+          tab="features"
+          onTab={() => {}}
+          view={null}
+          onView={() => {}}
+          settingsOpen={false}
+          onSettingsOpenChange={() => {}}
+        />
+      </QueryClientProvider>
     );
     expect(screen.getByRole("heading", { name: "gootte" })).toBeInTheDocument();
     expect(screen.getByTestId("features-view")).toBeInTheDocument();
@@ -130,16 +151,26 @@ describe("MainPanel settings toggle (T01)", () => {
   });
 
   it("memo 탭이면 MemoView 가 렌더된다 — memo-pad 는 프로젝트별 고유 키로 붙는다", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          gcTime: 0,
+        },
+      },
+    });
     render(
-      <MainPanel
-        project="jinwooauto"
-        tab="memo"
-        onTab={() => {}}
-        view={null}
-        onView={() => {}}
-        settingsOpen={false}
-        onSettingsOpenChange={() => {}}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MainPanel
+          project="jinwooauto"
+          tab="memo"
+          onTab={() => {}}
+          view={null}
+          onView={() => {}}
+          settingsOpen={false}
+          onSettingsOpenChange={() => {}}
+        />
+      </QueryClientProvider>
     );
     expect(screen.getByTestId("memo-view")).toBeInTheDocument();
     expect(screen.queryByTestId("features-view")).not.toBeInTheDocument();

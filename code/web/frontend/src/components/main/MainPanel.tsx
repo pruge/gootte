@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { IconSettings, IconTelescope } from "@tabler/icons-react";
+import { useEffect, useState } from "react";
+import { IconSettings, IconTelescope, IconRefresh } from "@tabler/icons-react";
 import type { Tab } from "../../hooks/useUrlState";
 import { MemoView } from "../memo/MemoView";
 import { FeaturesView } from "../features/FeaturesView";
@@ -7,6 +7,8 @@ import { PlanView } from "../plan/PlanView";
 import { ProcessView } from "../process/ProcessView";
 import { SettingsView } from "../settings/SettingsView";
 import { Tabs } from "./Tabs";
+import { useQueryClient } from "@tanstack/react-query";
+import { refreshBackend } from "../../lib/api";
 
 interface MainPanelProps {
   project: string | null;
@@ -29,6 +31,20 @@ export function MainPanel({
   onSettingsOpenChange,
 }: MainPanelProps) {
   const headerTitle = settingsOpen ? "Settings" : project;
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshBackend();
+      await qc.invalidateQueries();
+    } catch {
+      // 실패해도 조용히 — 다음 요청이 다시 시도한다
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // ESC — 설정이 열려 있으면 닫는다
   useEffect(() => {
@@ -53,6 +69,18 @@ export function MainPanel({
         )}
         <div className="flex shrink-0 items-center gap-3">
           {project && !settingsOpen && <Tabs tab={tab} onTab={onTab} />}
+          {project && !settingsOpen && (
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              aria-label="작업 트리 다시 읽기"
+              title="작업 트리 다시 읽기 (새 worktree·기능 폴더 감지)"
+              className="rounded-md p-1.5 transition-colors focus-visible:outline-2 focus-visible:outline-accent text-muted hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <IconRefresh size={18} stroke={1.75} className={refreshing ? "animate-spin" : ""} />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onSettingsOpenChange(!settingsOpen)}

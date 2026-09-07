@@ -17,7 +17,7 @@ function usage(): number {
       "  step        <프로젝트> <기능>/<티켓> <N>  — 단계를 매긴다",
       "  step --clear <프로젝트> <기능>/<티켓>      — 단계를 뗀다",
       "  board       <프로젝트>  — 다섯 칸 현황을 읽는다(읽기 전용)",
-      "  feature state <프로젝트> <기능>  — 기능의 모든 티켓 상태를 본다",
+      "  status      <프로젝트> <기능>  — 기능의 모든 티켓 상태",
       "  next        <프로젝트>  — 작업 대상의 표시 1단계 티켓만 말한다",
       "",
     ].join("\n"),
@@ -63,6 +63,10 @@ function run(argv: string[]): number {
           return 0;
         }
         return usage();
+      }
+      case "status": {
+        process.stdout.write(featureStateText(rest, planDataDir()) + "\n");
+        return 0;
       }
       default:
         return usage();
