@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** IO 층 — git CLI 위임. 전부 읽기 전용(INV-2). */
@@ -20,6 +20,40 @@ function gitSafe(repo: string, args: string[]): string | null {
 }
 
 /**
+ * 디렉토리 또는 그 바로 아래 서브디렉토리에 `.git`이 있는지 확인하고, 실제 git 저장소 경로를 반환.
+ * 상위 디렉토리 탐색 안 함. 슬롯 구조(slot/project) 지원.
+ */
+export function findGitRepo(dir: string): string | null {
+  // 1. 해당 디렉토리에 .git 파일/디렉토리가 있는지 확인
+  try {
+    const gitPath = join(dir, ".git");
+    const stat = statSync(gitPath);
+    if (stat.isFile() || stat.isDirectory()) return dir;
+  } catch {
+    // ignore
+  }
+  // 2. 슬롯 구조(slot/project)를 위해 즉시 하위 디렉토리 한 단계만 확인
+  try {
+    for (const name of readdirSync(dir)) {
+      const subPath = join(dir, name);
+      const stat = statSync(subPath);
+      if (stat.isDirectory()) {
+        const gitPath = join(subPath, ".git");
+        try {
+          const subStat = statSync(gitPath);
+          if (subStat.isFile() || subStat.isDirectory()) return subPath;
+        } catch {
+          // ignore
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/**
  * `gitSafe` 와 같지만 **선두 공백을 지우지 않는다** — porcelain 출력의 첫 줄(예: " M path")은
  * 상태 코드 두 칸(`XY`)이 공백으로 시작할 수 있어, 전체 트림이 그 칸을 먹어 파싱이 밀린다
  * (실측 결함, T04). 끝의 개행만 없앤다.
@@ -37,12 +71,16 @@ function gitSafeRaw(repo: string, args: string[]): string | null {
 
 /**
  * HEAD 가 올라가 있는 브랜치. **detached HEAD 면 빈 문자열**, git 이 답하지 못하면 **null**.
+ * 🔴 디렉토리가 유효한 git 저장소(또는 worktree)인지 먼저 확인 — 상위 디렉토리 탐색 방지.
+ * 🔴 슬롯 구조(slot/project) 지원: 슬롯 바로 아래 프로젝트 디렉토리를 자동 탐색.
  *
  * 🔴 실패를 빈 문자열로 접지 않는다. 접으면 "읽지 못했다" 가 "유휴다" 로 둔갑해
  * 실제로 돌고 있는 작업이 화면에서 조용히 사라진다 — 호출자가 그 둘을 구분해 다뤄야 한다.
  */
 export function currentBranch(repo: string): string | null {
-  return gitSafe(repo, ["branch", "--show-current"]);
+  const gitRepo = findGitRepo(repo);
+  if (!gitRepo) return null;
+  return gitSafe(gitRepo, ["branch", "--show-current"]);
 }
 
 /** 그 ref 가 이 저장소에서 해소되는가. */

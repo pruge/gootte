@@ -3,7 +3,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { CopyScan, ObservedCopy } from "@gootte/core";
-import { commitTouchedFiles, currentBranch, revExists } from "./git";
+import { commitTouchedFiles, currentBranch, revExists, findGitRepo } from "./git";
 
 /**
  * 격리 작업 사본 관측 — "지금 누가 무엇을 붙들고 있나"의 **입력**을 모은다.
@@ -164,7 +164,7 @@ const BASE_REFS = ["origin/main", "origin/master", "main", "master"];
  * 기준 가지를 못 찾으면 **빈 목록**이다 — 전체 이력을 훑어 아무 티켓에나 갖다 붙이지 않는다.
  * 못 잇는 것은 미상으로 남긴다(INV-4).
  */
-function touchedOnBranch(repo: string): string[] {
+export function touchedOnBranch(repo: string): string[] {
   const base = BASE_REFS.find((ref) => revExists(repo, ref));
   const committed: string[] = base ? commitTouchedFiles(repo, `${base}..HEAD`) : [];
   // 🔴 커밋 안 된(working tree) 변경도 포함한다 — `gootte start`(커밋 없음, 파일만 편집)로
@@ -222,24 +222,25 @@ export function scanWorkingCopies(
   /**
    * 사본 하나를 같은 규칙으로 센다 — treehouse 슬롯도, Claude Code·BB worktree 도 여기를 지난다.
    * 🔴 못 읽은 갈래를 **건너뛰지 않고 그대로 싣는다**(위 주석의 규율).
+   * 🔴 `git branch --show-current` 하나로 판정: 성공=유효 저장소, 실패=읽기 실패.
    */
   const observe = (slug: string, dir: string): void => {
-    const repo = repoIn(dir);
-    if (!repo) {
+    const gitRepo = findGitRepo(dir);
+    if (!gitRepo) {
       copies.push({ slug, path: dir, state: "no-repo", branch: "", touched: [] });
       return;
     }
-    const branch = currentBranch(repo); // null = git 이 답하지 않음, "" = detached
+    const branch = currentBranch(gitRepo);
     if (branch === null) {
-      copies.push({ slug, path: repo, state: "git-failed", branch: "", touched: [] });
+      copies.push({ slug, path: gitRepo, state: "git-failed", branch: "", touched: [] });
       return;
     }
     copies.push({
       slug,
-      path: repo,
+      path: gitRepo,
       state: branch ? "working" : "idle",
       branch,
-      touched: branch ? touchedOnBranch(repo) : [],
+      touched: branch ? touchedOnBranch(gitRepo) : [],
     });
   };
   if (!isDir(root)) {
