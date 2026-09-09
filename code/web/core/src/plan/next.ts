@@ -4,7 +4,7 @@ import type { StepRow } from "./move";
 import { computeDisplaySteps } from "./step";
 
 /** `next` 한 줄 — 표시 기준 1단계 티켓 하나. */
-export interface NextTicket {
+interface NextTicket {
   feature: string;
   ticket: string;
   title: string;

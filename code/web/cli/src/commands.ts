@@ -1,16 +1,18 @@
 import { allTickets, applyBacklogStatus, computeDisplaySteps, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
-import { type Feature } from "@gootte/contract";
+import { type Feature, AREA_LABEL, ALL_AREAS, type BoardAreaId, type TodoStatus } from "@gootte/contract";
+import { basename, dirname, resolve } from "node:path";
 import {
   clearStep,
   defaultPlanDataDir,
   discoverProjects,
   effectiveProjectRoots,
+  isFirstmateProject,
   migratePlanDb,
   readBacklogTasks,
   readFeatures,
+  readFeaturesWithTime,
   readPlacements,
   readPlacementsWithAutoClose,
-  readSettings,
   readSteps,
   writeStep,
 } from "@gootte/core-io";
@@ -53,12 +55,67 @@ export function dbMigrateText(dataDir = defaultPlanDataDir()): string {
   return lines.join("\n");
 }
 
-/** 프로젝트 slug → 그 프로젝트의 **모든 사본 경로**(T01 묶음). `readFeatures` 가 합집합으로 읽는다. */
+/**
+ * 프로젝트 slug → 그 프로젝트의 **모든 사본 경로**(T01 묶음). `readFeatures` 가 합집합으로 읽는다. */
 function requireProjectPath(project: string, cwd: string): string[] {
+  return requireProject(project, cwd).copies;
+}
+
+/**
+ * cwd → 프로젝트 slug 유추 — 조상을 올라가 **발견 표식**(AGENTS.md + docs/features, 캡틴 지시
+ * 2026-09-09: "project 명을 주입하는 것이 없어야 한다")으로 자기 프로젝트를 찾는다.
+ * 🔴 discover 목록 대신 **직접 표식 검사**로 올라간다 — cwd 가 깊어도(code/web 등) 뿌리를 찾는다.
+ * 프로젝트 안 어디서 실행해도 같은 답. 못 찾으면 null.
+ */
+function slugFromCwd(cwd: string): string | null {
+  let cur = resolve(cwd);
+  for (let guard = 0; guard < 32; guard++) {
+    if (isFirstmateProject(cur)) return basename(cur);
+    const parent = dirname(cur);
+    if (parent === cur) return null;
+    cur = parent;
+  }
+  return null;
+}
+
+/** `<프로젝트>` 인자 해소 — 생략하면 cwd 유추(캡틴 지시 2026-09-09). 있으면 기존대로. */
+export function resolveProjectArg(argv: readonly string[], cwd: string, usage: string): string {
+  const [explicit] = argv;
+  if (explicit) return explicit;
+  const inferred = slugFromCwd(cwd);
+  if (inferred) return inferred;
+  throw new CliError(`${usage}\n(프로젝트 안에서 실행하면 인자를 생략할 수 있다)`);
+}
+
+/**
+ * 프로젝트 slug → 사본 목록 + 대표 경로. 대표 경로(`path`)는 시간·상태 레코드를
+ * 읽는 자리다(time-records-to-state-store D4 — 레코드는 메인 프로젝트에만 있다).
+ */
+/** 프로젝트 해소 공용 — discover + 조상 폴백(캡틴 지시 2026-09-09). migrate-time 도 쓴다. */
+export function requireProject(project: string, cwd: string): { copies: string[]; path: string } {
   const found = discoverProjects([cwd, ...effectiveProjectRoots()]);
   const p = found.find((x) => x.slug === project);
-  if (!p) throw new CliError(`프로젝트 없음: ${project}`);
-  return p.copies;
+  if (p) return { copies: p.copies, path: p.path };
+  // 🔴 cwd 가 프로젝트 **안**이면(예: code/web) 조상을 올려 발견 표식으로 찾는다 —
+  // discover 의 depth 스캔은 조상을 안 보므로(캡틴 지시 2026-09-09: 인자 생략 지원).
+  let cur = resolve(cwd);
+  for (let guard = 0; guard < 32; guard++) {
+    if (isFirstmateProject(cur) && basename(cur) === project) {
+      const q = discoverProjects([cur]).find((x) => x.slug === project);
+      if (q) return { copies: q.copies, path: q.path };
+      return { copies: [cur], path: cur };
+    }
+    const parent = dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  throw new CliError(`프로젝트 없음: ${project}`);
+}
+
+/** 문서 읽기 + 레코드 조인 — CLI 의 읽기 명령이 모두 지나는 한 길(T03). */
+function readProjectFeatures(project: string, cwd: string): { path: string; copies: string[]; features: Feature[] } {
+  const { copies, path } = requireProject(project, cwd);
+  return { path, copies, features: readFeaturesWithTime(copies, path) };
 }
 
 /** `--why` 를 비롯해 이 명령 셋은 어떤 플래그도 받지 않는다(spec §`--why` 를 받지 않는다). */
@@ -133,16 +190,6 @@ export function stepClearText(
   return `${feature}/${ticket} — 단계를 뗐다`;
 }
 
-type AreaId = keyof BoardAreas;
-
-const AREA_ORDER: readonly AreaId[] = ["active", "waiting", "reserved", "discarded", "done"];
-const AREA_LABEL: Record<AreaId, string> = {
-  active: "작업 대상",
-  waiting: "대기",
-  reserved: "예약",
-  discarded: "폐기",
-  done: "완료",
-};
 
 /**
  * 백로그 상태 조인을 얹은 기능 목록 — 화면(backend `withBacklogStatus`)과 **같은 판정 자리**
@@ -157,13 +204,7 @@ const AREA_LABEL: Record<AreaId, string> = {
  * 못 읽는 것도 **조인만 꺼진다** — 계획 DB 의 고장을 board/next 전체의 죽음으로 전파하지 않는다.
  */
 function withBacklogStatus(project: string, dataDir: string, features: Feature[]): Feature[] {
-  let home: string | null;
-  try {
-    home = readSettings(dataDir).firstmateHome;
-  } catch {
-    return features;
-  }
-  return applyBacklogStatus(features, readBacklogTasks(home), project);
+  return applyBacklogStatus(features, readBacklogTasks(undefined), project);
 }
 
 /**
@@ -187,23 +228,17 @@ export function boardText(
   rejectFlags(argv);
   const [project] = argv;
   if (!project) throw new CliError("usage: gootte board <프로젝트>");
-  const path = requireProjectPath(project, cwd);
-  const features = withBacklogStatus(project, dataDir, readFeatures(path));
+  const { features } = readProjectFeatures(project, cwd);
   const placements = readPlacementsWithAutoClose(dataDir, project, features);
   const areas = splitIntoAreas(features, placements);
   const displaySteps = computeDisplaySteps(features, placements, readSteps(dataDir, project));
 
   const lines: string[] = [];
-  for (const id of AREA_ORDER) {
+  for (const id of ALL_AREAS) {
     const cards = areas[id];
     lines.push(`## ${AREA_LABEL[id]} (${cards.length})`);
     for (const card of cards) {
       lines.push(`- ${card.feature.slug}`);
-      // T03 — 갈라진 사본은 조용히 고르지 않고 화면이 말한다. CLI 도 같은 사실을 한 줄로 낸다
-      // (the-terminal-agrees-with-the-screen 의 규율) — 어느 칸의 카드든 감추지 않는다.
-      for (const c of card.feature.conflict ?? []) {
-        lines.push(`    ! 갈라짐: ${c.path} (${c.copies.join(", ")})`);
-      }
       if (id !== "active") continue;
       for (const t of allTickets(card.feature)) {
         const step = displaySteps[card.feature.slug]?.[t.slug];
@@ -235,8 +270,7 @@ export function nextText(
   rejectFlags(argv);
   const [project] = argv;
   if (!project) throw new CliError("usage: gootte next <프로젝트>");
-  const path = requireProjectPath(project, cwd);
-  const features = withBacklogStatus(project, dataDir, readFeatures(path));
+  const { features } = readProjectFeatures(project, cwd);
   const placements = readPlacementsWithAutoClose(dataDir, project, features);
   const steps = readSteps(dataDir, project);
   const tickets = computeNext(features, placements, steps);
@@ -260,8 +294,7 @@ export function featureStateText(
   rejectFlags(argv);
   const [project, featureSlug] = argv;
   if (!project || !featureSlug) throw new CliError("usage: gootte feature state <프로젝트> <기능>");
-  const path = requireProjectPath(project, cwd);
-  const features = withBacklogStatus(project, dataDir, readFeatures(path));
+  const { features } = readProjectFeatures(project, cwd);
   const f = features.find((x) => x.slug === featureSlug);
   if (!f) throw new CliError(`기능 없음: ${featureSlug}`);
   const tickets = allTickets(f);
@@ -274,4 +307,37 @@ export function featureStateText(
       return `${t.slug}\t${statusLabel}\t${t.title}`;
     })
     .join("\n");
+}
+
+/**
+ * 프로젝트 전체에서 상태로 걸러낸 티켓 목록(캡틴 지시 2026-09-09) — 처리중(`working`)과
+ * 대기(`pending`). 줄 서식은 캡틴이 정한 그대로 `<기능-slug>\\t<티켓>` 이다.
+ *
+ * 🔴 판정은 화면과 **같은 자리**를 지난다 — 레코드 조인(`readProjectFeatures`) + 백로그 조인
+ * (`withBacklogStatus`) 뒤의 `ticket.status` 만 본다. 여기서 상태를 다시 추정하지 않는다(INV-4).
+ */
+function filteredTicketsText(
+  argv: readonly string[],
+  statuses: readonly TodoStatus[],
+  cmd: string,
+  dataDir = defaultPlanDataDir(),
+  cwd: string = process.cwd(),
+): string {
+  rejectFlags(argv);
+  const project = resolveProjectArg(argv, cwd, `usage: gootte ${cmd} [프로젝트]`);
+  const { features } = readProjectFeatures(project, cwd);
+  const joined = withBacklogStatus(project, dataDir, features);
+  const rows = joined
+    .flatMap((f) => allTickets(f).filter((t) => statuses.includes(t.status)).map((t) => `${f.slug}\t${t.slug}`));
+  return rows.length > 0 ? rows.join("\n") : "(해당 티켓 없음)";
+}
+
+/** 처리중 티켓 목록 — `gootte working [프로젝트]`. 프로젝트 안에서 실행하면 인자 생략. */
+export function workingText(argv: readonly string[], dataDir = defaultPlanDataDir(), cwd: string = process.cwd()): string {
+  return filteredTicketsText(argv, ["in_progress"], "working", dataDir, cwd);
+}
+
+/** 대기 티켓 목록 — `gootte pending [프로젝트]`. 프로젝트 안에서 실행하면 인자 생략. */
+export function pendingText(argv: readonly string[], dataDir = defaultPlanDataDir(), cwd: string = process.cwd()): string {
+  return filteredTicketsText(argv, ["pending"], "pending", dataDir, cwd);
 }

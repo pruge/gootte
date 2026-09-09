@@ -27,7 +27,6 @@ const feature = (slug: string, tickets: FeatureTicket[], newTickets?: FeatureTic
   statusKnown: true,
   tickets,
   docs: [],
-  conflict: [],
   ...(newTickets ? { newTickets } : {}),
 });
 
@@ -106,7 +105,7 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
 
     expect(find(features, "auth", "02-screen")?.status).toBe("pending");
     expect(find(features, "auth", "01-session")?.status).toBe("pending");
-    expect(inProgress).toMatchObject({ copies: 1, working: 1, tickets: 0, unknown: [] });
+    expect(inProgress).toMatchObject({ copies: 1, working: 1, tickets: 0 });
   });
 
   it("Time 기록(started=)이 있고 가지가 건드린 티켓이 처리중이 된다", () => {
@@ -123,7 +122,7 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
 
     expect(find(marked, "auth", "02-screen")?.status).toBe("in_progress");
     expect(find(marked, "auth", "01-session")?.status).toBe("pending");
-    expect(inProgress).toMatchObject({ copies: 1, working: 1, tickets: 1, unknown: [] });
+    expect(inProgress).toMatchObject({ copies: 1, working: 1, tickets: 1 });
   });
 
   it("유휴 사본(detached)은 아무 티켓도 처리중으로 만들지 않는다", () => {
@@ -133,29 +132,19 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     );
 
     expect(features.flatMap((f) => f.tickets).every((t) => t.status === "pending")).toBe(true);
-    expect(inProgress).toMatchObject({ copies: 1, working: 0, tickets: 0, unknown: [] });
+    expect(inProgress).toMatchObject({ copies: 1, working: 0, tickets: 0 });
   });
 
-  it("🔴 티켓을 못 밝힌 작업중 사본은 사라지지 않고 미상으로 세어진다", () => {
-    const { features, inProgress } = applyInProgress(
+  it("🔴 작업중 사본은 작업중 수로만 센다 — 옛 unknown(티켓 미상) 분류는 git 제거로 삭제됐다", () => {
+    // git 제거(time-records)로 touched 가 항상 빈 배열 — 사본↔티켓 연결 근거 소멸.
+    // 연결 불능을 "미상" 으로 세던 옛 분류는 모든 작업 사본을 미상으로 오분류했다(캡틴 지시 2026-09-09).
+    const { inProgress } = applyInProgress(
       FEATURES,
       scan([copy("pool/1", "fm/mystery", ["code/web/core/src/index.ts"])]),
     );
 
-    expect(features.flatMap((f) => f.tickets).every((t) => t.status === "pending")).toBe(true);
-    expect(inProgress.tickets).toBe(0);
     expect(inProgress.working).toBe(1); // 작업중이라는 사실 자체는 남는다
-    expect(inProgress.unknown).toEqual([
-      { slug: "pool/1", branch: "fm/mystery", path: "/tmp/pool/1" },
-    ]);
-  });
-
-  it("목록에 없는 티켓 파일을 건드린 작업도 미상이다 — 화면에 없는 것에 표시를 붙일 수 없다", () => {
-    const { inProgress } = applyInProgress(
-      FEATURES,
-      scan([copy("pool/1", "fm/gone", ["docs/features/auth/issues/99-deleted.md"])]),
-    );
-    expect(inProgress.unknown.map((u) => u.branch)).toEqual(["fm/gone"]);
+    expect(inProgress).not.toHaveProperty("unknown");
   });
 
   it("한 티켓을 두 사본이 붙들어도 티켓은 한 번만 센다", () => {
@@ -184,16 +173,6 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
 
     expect(find(marked.features, "auth", "01-session")?.status).toBe("done");
     expect(marked.inProgress.tickets).toBe(0);
-    expect(marked.inProgress.unknown).toEqual([]); // 이어졌으므로 미상이 아니다
-  });
-
-  it("🔴 끝난 티켓의 파일을 그 가지의 커밋이 건드려도 붙들린 가지를 싣지 않는다", () => {
-    const features = [feature("auth", [ticket("01", "01-session", { status: "done" })])];
-    const marked = applyInProgress(
-      features,
-      scan([copy("pool/1", "fm/a", ["docs/features/auth/issues/01-session.md"])]),
-    );
-
   });
 
   it("🔴 취소된 티켓도 같다 — 붙들린 가지를 싣지 않는다", () => {
@@ -235,17 +214,16 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
       scan([broken("pool/1", "git-failed"), broken("pool/2", "no-repo"), copy("pool/3", "")]),
     );
 
-    // 유휴로 접으면 `working` 도 `unknown` 도 아닌 곳으로 사라져 아무 데도 안 남는다.
+    // 유휴로 접으면 "아무도 안 붙들었다" 는 거짓말이 된다 — 못 읽었다는 사실 그대로 센다.
     expect(inProgress.unreadable).toEqual([
       { slug: "pool/1", path: "/tmp/pool/1", reason: "git-failed" },
       { slug: "pool/2", path: "/tmp/pool/2", reason: "no-repo" },
     ]);
     expect(inProgress.copies).toBe(3); // 못 읽은 것까지 사본 수에 든다
     expect(inProgress.working).toBe(0); // 작업중이라고 단정하지도 않는다
-    expect(inProgress.unknown).toEqual([]);
   });
 
-  it("🔴 claimed 인데 붙든 사본이 없으면 처리중이 아니고, 임자 없는 표시로 세어진다", () => {
+  it("🔴 claimed 인데 Time 기록이 없으면 처리중이 아니다 — 임자의 증거는 Time 기록(ADR 0001)", () => {
     const features = [
       feature("auth", [ticket("01", "01-session", { sourceStatus: "claimed" })]),
     ];
@@ -253,27 +231,9 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
 
     expect(find(marked.features, "auth", "01-session")?.status).toBe("pending");
     expect(marked.inProgress.tickets).toBe(0);
-    expect(marked.inProgress.unclaimed).toEqual([
-      { feature: "auth", ticket: "01-session", title: "01-session" },
-    ]);
   });
 
-  it("claimed 인데 살아 있는 사본이 붙들고 있어도 Time 기록이 없으면 처리중이 아니다 — 임자 없는 표시도 아니다", () => {
-    const features = [
-      feature("auth", [ticket("01", "01-session", { sourceStatus: "claimed" })]),
-    ];
-    const marked = applyInProgress(
-      features,
-      scan([copy("pool/1", "fm/a", ["docs/features/auth/issues/01-session.md"])]),
-    );
-
-    // claimed(임자 있음)는 문서의 주장이고, 처리중은 Time 기록으로만 판정한다(ADR 0001).
-    // 붙든 사본이 있으므로 임자 없는(unclaimed) 표시도 아니다 — 다만 처리중도 아니다.
-    expect(find(marked.features, "auth", "01-session")?.status).toBe("pending");
-    expect(marked.inProgress.unclaimed).toEqual([]);
-  });
-
-  it("claimed 이고 Time 기록이 있고 사본이 붙들고 있으면 처리중이다", () => {
+  it("claimed 이고 Time 기록이 있으면 처리중이다", () => {
     const features = [
       feature("auth", [
         ticket("01", "01-session", { sourceStatus: "claimed", startedAt: "2026-09-02T09:00:00Z" }),
@@ -285,10 +245,9 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     );
 
     expect(find(marked.features, "auth", "01-session")?.status).toBe("in_progress");
-    expect(marked.inProgress.unclaimed).toEqual([]);
   });
 
-  it("resolved 인데 사본이 붙들고 있어도 완료다 — 임자 없는 표시가 아니다", () => {
+  it("resolved 인데 사본이 붙들고 있어도 완료다", () => {
     const features = [
       feature("auth", [ticket("01", "01-session", { status: "done", sourceStatus: "resolved" })]),
     ];
@@ -298,7 +257,6 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
     );
 
     expect(find(marked.features, "auth", "01-session")?.status).toBe("done");
-    expect(marked.inProgress.unclaimed).toEqual([]);
   });
 
   it("입력을 고치지 않는다 — 파생물은 새 객체다(INV-1)", () => {
@@ -343,16 +301,14 @@ describe("applyInProgress — 붙들려 있는 티켓 계산", () => {
       // 안 건드린 형제는 그대로고, 요약 계수에도 한 번만 센다.
       expect(marked.features[0]?.newTickets?.find((x) => x.slug === "T02")?.status).toBe("pending");
       expect(marked.inProgress.tickets).toBe(1);
-      expect(marked.inProgress.unknown).toEqual([]);
     });
 
-    it("옛 관례만 보던 시절의 모습 — 신관례 작업은 미상으로 세어졌다(지금은 아니다)", () => {
+    it("작업중 사본은 working 수로 센다 — unknown 분류 없음(git 제거)", () => {
       const f = feature("new-only", [], [newTicket("01")]);
       const marked = applyInProgress(
         [f],
         scan([copy("pool/3", "fm/u", ["docs/features/new-only/tickets/T01.md", "code/web/src/a.ts"])]),
       );
-      expect(marked.inProgress.unknown).toEqual([]);
       expect(marked.inProgress.working).toBe(1);
     });
   });

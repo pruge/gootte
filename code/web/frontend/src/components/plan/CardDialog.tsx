@@ -1,10 +1,9 @@
 import { useEffect, useRef } from "react";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
-import type { FeatureConflict, FeatureTicket, PlanCard } from "@gootte/contract";
+import type { FeatureTicket, PlanCard } from "@gootte/contract";
 import { allTickets } from "@gootte/core";
 import { closedDisplayAt, ticketBoxState, UNRANKED_STEP } from "@gootte/core/plan";
 import { dateOnly } from "../../lib/dateOnly";
-import { ConflictBadge } from "../features/ConflictBadge";
 import { useHoverTip } from "../HoverTip";
 import { featureDescription } from "./cardTitle";
 
@@ -61,12 +60,10 @@ interface CardDialogProps {
 function CardTicketRow({
   t,
   step,
-  conflict,
   onOpenTicket,
 }: {
   t: FeatureTicket;
   step: number | undefined;
-  conflict: FeatureConflict | undefined;
   onOpenTicket: (path: string) => void;
 }) {
   const box = ticketBoxState(t);
@@ -117,7 +114,6 @@ function CardTicketRow({
             안 읽음
           </span>
         )}
-        {conflict && <ConflictBadge conflicts={[conflict]} />}
         {inProgress && (
           // 색 말고도 붙들 것이 있다(INV-C2) — 처리중은 배경과 이 글자로만 말한다,
           // 테두리는 얹지 않는다(캡틴 지시 2026-08-13: "처리중 보더를 제거해봐").
@@ -163,7 +159,6 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
   const tickets = allTickets(feature);
   const orderedTickets = orderByStep(tickets, steps);
   // T03 — 갈라진 파일 경로 → 그 사실. 대화상자도 같은 화법을 쓴다(화면·CLI 가 같은 사실을 말한다).
-  const conflictByPath = new Map<string, FeatureConflict>((feature.conflict ?? []).map((c) => [c.path, c]));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -204,7 +199,6 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
               <span>티켓 {tickets.length}</span>
               {closedDisplay && <span>완료 {dateOnly(closedDisplay)}</span>}
               {/* T03 — 이 기능이 갈라졌으면 대화상자도 조용히 넘기지 않는다(ADR-0001). */}
-              <ConflictBadge conflicts={feature.conflict ?? []} />
             </p>
           </div>
           <button
@@ -229,7 +223,6 @@ export function CardDialog({ card, closed = false, onClose, onOpenTicket }: Card
                   key={t.slug}
                   t={t}
                   step={steps[t.slug]}
-                  conflict={conflictByPath.get(t.path)}
                   onOpenTicket={onOpenTicket}
                 />
               ))}

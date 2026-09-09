@@ -1,9 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { CopyScan, ObservedCopy } from "@gootte/core";
-import { commitTouchedFiles, currentBranch, revExists, findGitRepo } from "./git";
 
 /**
  * 격리 작업 사본 관측 — "지금 누가 무엇을 붙들고 있나"의 **입력**을 모은다.
@@ -35,7 +33,7 @@ function children(dir: string): string[] {
  * worktree 는 git worktree 라 `.git` 이 파일이고 저장소로 관측·문서로 읽을 수 있다.
  * 존재하지 않는 루트는 건너뛴다 — worktree 가 없으면 빈 목록.
  */
-export function claudeWorktreeRoots(projectPaths: readonly string[]): string[] {
+function claudeWorktreeRoots(projectPaths: readonly string[]): string[] {
   const out: string[] = [];
   for (const projectPath of projectPaths) {
     const wtRoot = join(projectPath, ".claude", "worktrees");
@@ -154,46 +152,13 @@ function repoIn(slot: string): string | null {
 
 // 기준 가지 후보 — 이 중 첫 번째로 해소되는 것이 "작업 이전"의 지점이다.
 // remote 를 먼저 본다 — "올라갔다"는 remote 가 정하는 사실이다(사양 §설계 2).
-// remote 가 없는 저장소는 로컬로 떨어진다. fetch 는 하지 않는다(INV-2) — origin 이 뒤처진 경우는
-// 알고 남기는 구멍이다.
-const BASE_REFS = ["origin/main", "origin/master", "main", "master"];
 
 /**
- * 이 가지의 커밋이 건드린 경로 + **커밋 안 된 working tree 변경**(`gootte start`/`end` 는
- * 커밋하지 않으므로, Time 기록 직후부터 그 작업이 "누가 무엇을 붙들고 있나"에 잡혀야 한다).
- * 기준 가지를 못 찾으면 **빈 목록**이다 — 전체 이력을 훑어 아무 티켓에나 갖다 붙이지 않는다.
- * 못 잇는 것은 미상으로 남긴다(INV-4).
+ * 🔴 T01 — git 제거. 작업 중인 티켓 판정은 `Time: started=` 로만 한다(ADR-0001).
+ * touched 파일 목록은 빈 배열 — 처리중 판정에 git 상태를 쓰지 않는다.
  */
-export function touchedOnBranch(repo: string): string[] {
-  const base = BASE_REFS.find((ref) => revExists(repo, ref));
-  const committed: string[] = base ? commitTouchedFiles(repo, `${base}..HEAD`) : [];
-  // 🔴 커밋 안 된(working tree) 변경도 포함한다 — `gootte start`(커밋 없음, 파일만 편집)로
-  // Time 을 기록한 직후부터 그 티켓을 처리중으로 잡아야 한다. 기준 가지가 없어 committed 가
-  // 빈 목록이더라도 uncommitted 변경은 그대로 실린다.
-  let uncommitted: string[] = [];
-  try {
-    // 🔴 전체를 trim 하지 않는다 — porcelain 첫 줄(" M path")의 선두 공백이 상태 코드 칸이라
-    // trim 이 그 칸을 먹으면 경로 파싱이 한 칸 밀린다(실측 결함, git.ts `gitSafeRaw` 와 같은 이유).
-    const out = execFileSync("git", ["-C", repo, "status", "--porcelain", "--untracked-files=all"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).replace(/\n+$/, "");
-    if (out) {
-      uncommitted = out.split("\n")
-        .filter((l) => !l.startsWith("??")) // 🔴 untracked(??) 는 세지 않는다 — 새 파일 존재는 "지금 붙들고
-        // 있음"의 증거가 아니다(실제 결함 2026-09-01: 커밋 안 된 T03.md 가 처리중으로 오판됐다).
-        // `gootte start/end` 는 **tracked** 티켓 파일의 Time 줄을 수정하므로(` M`) 그 변경은 그대로 잡힌다.
-        // untracked 티켓의 처리중 여부는 Time 줄(started=)이 정한다 — git 상태가 아니라 문서가 SoT(INV-1).
-        .map((l) => {
-          const p = l.includes(" -> ") ? l.split(" -> ").pop()!.trim() : l.slice(3).trim();
-          return p;
-        })
-        .filter(Boolean);
-    }
-  } catch {
-    // git 이 답하지 않으면 uncommitted 변경 없음으로 간주한다
-  }
-  return [...new Set([...committed, ...uncommitted])];
+export function touchedOnBranch(_repo: string): string[] {
+  return [];
 }
 
 /**
@@ -220,28 +185,15 @@ export function scanWorkingCopies(
   const copies: ObservedCopy[] = [];
 
   /**
-   * 사본 하나를 같은 규칙으로 센다 — treehouse 슬롯도, Claude Code·BB worktree 도 여기를 지난다.
-   * 🔴 못 읽은 갈래를 **건너뛰지 않고 그대로 싣는다**(위 주석의 규율).
-   * 🔴 `git branch --show-current` 하나로 판정: 성공=유효 저장소, 실패=읽기 실패.
+   * 🔴 T01 — git 제거. worktree 존재 여부만 판정(D4). 브랜치 이름·git 호출 전부 삭제.
+   * 디렉토리가 있으면 "working", 없으면 "no-repo".
    */
   const observe = (slug: string, dir: string): void => {
-    const gitRepo = findGitRepo(dir);
-    if (!gitRepo) {
+    if (!isDir(dir)) {
       copies.push({ slug, path: dir, state: "no-repo", branch: "", touched: [] });
       return;
     }
-    const branch = currentBranch(gitRepo);
-    if (branch === null) {
-      copies.push({ slug, path: gitRepo, state: "git-failed", branch: "", touched: [] });
-      return;
-    }
-    copies.push({
-      slug,
-      path: gitRepo,
-      state: branch ? "working" : "idle",
-      branch,
-      touched: branch ? touchedOnBranch(gitRepo) : [],
-    });
+    copies.push({ slug, path: dir, state: "working", branch: "", touched: [] });
   };
   if (!isDir(root)) {
     // treehouse 가 없어도 프로젝트 안 Claude Code worktree 는 관측할 수 있다(그래도 빈 결과가

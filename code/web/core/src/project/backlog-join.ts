@@ -132,14 +132,14 @@ function joinTicket(
   * - 🔴 **구관례(`issues/`)는 여기서 다루지 않는다** — 티켓 목록이 비으면 null 이고 호출자는
  *   기능을 그대로 둔다. 그쪽 배지는 문서 줄 verbatim 이고 문서가 SoT 이므로 지금이 옳다(D2).
  */
-export interface FeatureHeaderBadge {
+interface FeatureHeaderBadge {
   status: TodoStatus;
   sourceStatus: string;
   statusKnown: true;
 }
 
 /** 신관례 티켓 무리 → 머리글 배지. 구관례(빈 목록)·조인 실패는 null — 배지를 띄우지 않는다. */
-export function deriveHeaderBadge(tickets: readonly FeatureTicket[]): FeatureHeaderBadge | null {
+function deriveHeaderBadge(tickets: readonly FeatureTicket[]): FeatureHeaderBadge | null {
   if (tickets.length === 0) return null; // 구관례 — 문서가 SoT, 지금 그대로(D2)
   if (tickets.some((t) => t.status === "in_progress"))
     return { status: "in_progress", sourceStatus: "처리중", statusKnown: true };

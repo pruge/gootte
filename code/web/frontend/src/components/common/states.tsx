@@ -19,17 +19,3 @@ export function ErrorMsg({ error }: { error: unknown }) {
 export function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-base text-muted">{children}</p>;
 }
-
-/** 이니셔티브 상태 칩 — active/now 계열만 accent, 나머지 muted. semantic 색(장식 아님). */
-export function StatusChip({ status }: { status: string }) {
-  const hot = status === "active" || status === "in_progress";
-  return (
-    <span
-      className={`mono rounded px-1.5 py-0.5 text-sm ${
-        hot ? "bg-accent/15 text-accent" : "bg-surface-2 text-muted"
-      }`}
-    >
-      {status}
-    </span>
-  );
-}

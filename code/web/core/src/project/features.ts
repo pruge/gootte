@@ -1,4 +1,4 @@
-import type { Feature, FeatureConflict, FeatureDocNode, FeatureTicket, TodoStatus } from "@gootte/contract";
+import type { Feature, FeatureDocNode, FeatureTicket, TodoStatus } from "@gootte/contract";
 import { parseCrossFeatureRef, type FeatureSpecDoc, type NewTicketDoc, type TicketDoc } from "../parse/feature";
 
 /**
@@ -14,8 +14,6 @@ export interface FeatureDocs {
   tree: FeatureDocNode[];
   /** `tickets/T<NN>.md` 신관례(T04) — 상태는 없다(백로그 조인이 나중에 얹는다). 없으면 빈 배열. */
   newTickets?: NewTicketDoc[];
-  /** T02 — 갈라진 파일 목록(어느 쪽도 나중 판이 아닌 파일). 없으면 빈 배열. */
-  conflict?: FeatureConflict[];
 }
 
 /**
@@ -74,7 +72,7 @@ function toNewTicket(
 }
 
 /** 기능 하나의 번호 현황 — 다른 기능의 티켓을 가리키는 선행을 풀 때 함께 쓰인다. */
-export interface FeatureNums {
+interface FeatureNums {
   /** 그 기능에 실재하는 티켓 번호 전부(있다/없다 판정용). */
   readonly all: ReadonlySet<number>;
   /** 그중 완료(`done`)인 것(해제 판정용). */
@@ -216,7 +214,6 @@ export function buildFeature(docs: FeatureDocs, crossIndex?: CrossFeatureIndex):
     newTickets: [...(docs.newTickets ?? [])]
       .sort(byNum)
       .map((t) => toNewTicket(t, doneNums, index)),
-    conflict: docs.conflict ?? [],
   };
 }
 

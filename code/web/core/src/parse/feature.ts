@@ -11,7 +11,7 @@ type Status = FirstmateStatus;
 export const FIRSTMATE_STATUSES: readonly Status[] = FirstmateStatus.options;
 
 /** `**Status:** <값>` 한 줄에서 읽어낸 것. 값을 못 알아봐도 원문은 버리지 않는다. */
-export interface StatusLine {
+interface StatusLine {
   /** 원문 verbatim(값 토큰만). `Status:` 줄이 아예 없으면 null. */
   raw: string | null;
   /** 아홉 값 중 하나면 그 값, 아니면 null. */
@@ -21,6 +21,11 @@ export interface StatusLine {
    * 시각이 없으면 날짜만 담긴다 — 지어내지 않는다. 다른 상태의 괄호 날짜는 읽지 않는다.
    */
   completedAt: string | null;
+  /**
+   * `Status:` 뒤 줄 전체 원문 — time-records-to-state-store T06 이 레코드 `statusRaw` 로
+   * 옮길 때 쓴다(값 토큰만 담는 `raw` 와 달리 괄호 날짜·사유까지 보존.INV-4 verbatim).
+   */
+  rest: string | null;
 }
 
 // `**Status:** x` 와 `Status: x` 둘 다 — spec.md 는 굵게 없이 쓰기도 한다.
@@ -45,13 +50,13 @@ export function parseStatusLine(content: string): StatusLine {
   // 🔴 구조(표시 줄)는 펜스 밖에서만 읽는다 — 예시로 인용한 `**Status:** resolved` 가 진짜 상태가
   // 되면 안 된다(parseBlockedByLine·dependsSectionBody 와 같은 규율, 실제 결함 2026-08).
   const rest = STATUS_LINE.exec(withoutFencedCode(content))?.[1]?.trim();
-  if (!rest) return { raw: null, value: null, completedAt: null };
+  if (!rest) return { raw: null, value: null, completedAt: null, rest: null };
   // 값 토큰 = 공백·여는 괄호 앞까지. 알 수 없는 문자열도 그대로 잡아 원문에 싣는다.
   const raw = /^[^\s(]+/.exec(rest)?.[0] ?? rest;
   const value = isStatus(raw) ? raw : null;
   // 완료일은 완료 상태에만 붙는다 — `ready-for-agent (2026-08-09)` 의 날짜는 완료일이 아니다.
   const completedAt = value === "resolved" ? (DATE.exec(rest)?.[1] ?? null) : null;
-  return { raw, value, completedAt };
+  return { raw, value, completedAt, rest };
 }
 
 /**
@@ -90,7 +95,7 @@ function isNoDeps(text: string): boolean {
 }
 
 /** `parseBlockedByLine` 의 결과 — 읽어낸 선행과, 못 읽어낸 산문을 함께 싣는다. */
-export interface BlockedByParse {
+interface BlockedByParse {
   /** 선행 번호(또는 번호로 해소되지 않는 산문 그대로) — 착수 가능 판정이 기다리는 값. */
   blockedBy: string[];
   /**
@@ -221,7 +226,7 @@ const CAPTAIN_EYE_NEEDED = /^필요(?:[\p{S}\p{P}\s]|$)/u;
 const CAPTAIN_EYE_DONE = /^완료(?:[\p{S}\p{P}\s]|$)/u;
 
 /** `**캡틴 확인:**` 표시 줄에서 읽어낸 것. 값을 못 알아봐도 원문은 버리지 않는다. */
-export interface CaptainEyeLine {
+interface CaptainEyeLine {
   /** 원문 verbatim(값 토큰만, `—` 뒤 자유 문구는 안 싣는다). 줄이 아예 없으면 null. */
   raw: string | null;
   /** 알아본 값이면 그 값, 못 알아봤거나 줄이 없으면 null. */
@@ -325,6 +330,20 @@ export function parseTicket(fileName: string, content: string): TicketDoc {
     finishedAt,
     pauses,
   };
+}
+
+/**
+ * Time 줄(또는 레코드)에서 상태를 다시 파생한다 — 신관례의 파생 규칙
+ * (`parseNewTicket` 내부 로직의 승격, time-records-to-state-store T02).
+ * 완료 시각이 있으면 done(그 시각이 completedAt), 착수만 있으면 in_progress, 없으면 pending.
+ */
+export function deriveStatusFromTime(
+  startedAt: string | null,
+  finishedAt: string | null,
+): { status: TodoStatus; completedAt: string | null } {
+  if (finishedAt) return { status: "done", completedAt: finishedAt };
+  if (startedAt) return { status: "in_progress", completedAt: null };
+  return { status: "pending", completedAt: null };
 }
 
 /** `spec.md` 한 장 → 기능 표제·상태. 같은 여덟 값 어휘를 쓴다. */

@@ -257,8 +257,9 @@ describe("startWatchers", () => {
 
     test("data/ 없는 홈으로 재묶으면 폴백이 유지되고, data/ 가 생긴 뒤의 재묶음에서 회복한다", async () => {
       // watchBacklog 은 <home>/data/ 가 없으면 **생성 중 동기로** onError 를 울린다. 재묶음이
-      // 그 방금 표시를 덮어 버리면 폴백 폴러가 이르게 내려 조용한 stale(INV-3)이 된다 —
-      // 설정 저장(server.ts 와 같은 배선) → 재묶음 → 최종 방송 상태를 실제 fs 로 잰다.
+      // 그 방금 표시를 덮어 버리면 폴백 폴러가 이르게 내려 조용한 stale(INV-3)이 된다.
+      // git-removal/T10 이후 firstmateHome 은 설정 칸이 아니다 — 백로그 재묶음은
+      // `rebindBacklog`(still-alive API)를 직접 본다.
       root = mkdtempSync(join(tmpdir(), "gootte-watchers-"));
       dataDir = mkdtempSync(join(tmpdir(), "gootte-watchers-db-"));
       home = mkdtempSync(join(tmpdir(), "gootte-watchers-home-")); // 일부러 data/ 를 만들지 않는다
@@ -272,26 +273,13 @@ describe("startWatchers", () => {
       });
       expect(events).toEqual([{ kind: "watch-fallback", active: true }]);
 
-      const app = createApp({
-        roots: [root],
-        treehouse: NO_TREEHOUSE,
-        dataDir,
-        onFirstmateHomeChange: (h) => void watchers?.rebindBacklog(h),
-      });
-      const put = () =>
-        app.request("/api/settings", {
-          method: "PUT",
-          body: JSON.stringify({ firstmateHome: home }),
-          headers: { "content-type": "application/json" },
-        });
-
-      expect((await put()).status).toBe(200);
+      await watchers.rebindBacklog(home); // data/ 가 아직 없다 — 동기 실패가 도로 표시된다
       await sleep(100); // 재묶음의 마이크로태스크 뒤처리가 모두 흐른 뒤의 최종 상태를 본다
       // 동기 실패 위에 시작 뒤 해제가 얹히면 여기서 spurious active:false 가 찍힌다.
       expect(events).toEqual([{ kind: "watch-fallback", active: true }]);
 
       mkdirSync(join(home, "data"), { recursive: true }); // 감시 가능해졌다 — 같은 길로 회복하는가
-      expect((await put()).status).toBe(200);
+      await watchers.rebindBacklog(home);
       await sleep(100);
       expect(events).toEqual([
         { kind: "watch-fallback", active: true },

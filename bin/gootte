@@ -27,6 +27,28 @@
 
 set -euo pipefail
 
+# 🔴 이 스크립트가 사는 **저장소 루트** — 전역 심링크(npm link 등)로 불려도 심링크를 풀어 찾는다
+# (실제 결함 2026-09-09: 전역 gootte 로 위임하면 BASH_SOURCE 의 dirname/.. 가 node prefix 로
+# 잡혀 ERR_MODULE_NOT_FOUND). macOS readlink 는 -f 가 없으므로 루프로 튼다. 세 위임 지점이
+# 이 한 값을 쓴다(단일 소스).
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  TARGET="$(readlink "$SELF")"
+  case "$TARGET" in
+    /*) SELF="$TARGET" ;;
+    *) SELF="$(cd "$(dirname "$SELF")" && pwd)/$TARGET" ;;
+  esac
+done
+GOOTTE_HOME="$(cd "$(dirname "$SELF")/.." && pwd)"
+# 🔴 GOOTTE_HOME 자신이 gootte 저장소의 **worktree** 면(그 안의 bin/gootte 는 실파일) node_modules·
+# 미커밋 코드가 없다 — .git gitdir 에서 메인 gootte 저장소로 승격한다. cwd 가 *다른* 프로젝트의
+# worktree 일 때는 건드리지 않는다(도구 코드는 어디까지나 도구 저장소 것 — 실측 버그 2026-09-09:
+# 대상 프로젝트 메인의 main.ts 를 찾아 ERR_MODULE_NOT_FOUND).
+if grep -q '^gitdir: ' "$GOOTTE_HOME/.git" 2>/dev/null; then
+  MAIN_OF_TOOL="$(sed -n 's|^gitdir: \(.*\)/\.git/worktrees/.*|\1|p' "$GOOTTE_HOME/.git" | head -1)"
+  [ -n "$MAIN_OF_TOOL" ] && GOOTTE_HOME="$MAIN_OF_TOOL"
+fi
+
 usage() {
   echo "사용법: gootte start  [--at <TIME>] [--update] <feature-slug> <ticket>" >&2
   echo "      gootte cancel [--at <TIME>] <feature-slug> <ticket>" >&2
@@ -34,9 +56,15 @@ usage() {
   echo "      gootte resume [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte end    [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte drop   [--at <TIME>] <feature-slug> <ticket>" >&2
-  echo "      gootte state  <feature-slug>           — 기능의 모든 티켓 상태" >&2
+  echo "      gootte status <feature-slug>           — 기능의 모든 티켓 상태(프로젝트 안에서. state 도 별칭)" >&2
+  echo "      gootte working <project-slug>          — 처리중인 티켓 목록(기능 + 티켓)" >&2
+  echo "      gootte pending <project-slug>          — 아직 대기중인 티켓 목록(기능 + 티켓)" >&2
+  echo "      gootte migrate [--dry-run] <project-slug> — 티켓 시간·상태 기록을 state.json v2 로 이관" >&2
   echo "  TIME: 비우면 지금 / ISO8601 / 상대시간(예 1h30m, 90m, 2h, 1d)" >&2
   echo "  --update: 이미 시작된 티켓의 started= 를 묻지 않고 바로 갱신(start 전용)" >&2
+  echo "" >&2
+  echo "기록 위치(time-records-to-state-store): state.json v2 프로젝트는 레코드로," >&2
+  echo "기록 흔적이 있는 옛 프로젝트는 MD Time:/Status: 줄로 간다(새 프로젝트는 자동 v2)." >&2
   echo "" >&2
   echo "그 외 명령(discover/db/step/board/next 등)은:" >&2
   echo "  pnpm gootte <command> ..." >&2
@@ -250,15 +278,23 @@ cmd_start() {
     fi
     local tmp
     tmp="$(mktemp)"
-    # started=<이전> → started=<새 값> — 그 뒤 토큰(paused 등)은 그대로 둔다.
-    awk -v n="$existing_line_no" -v iso="$iso" '
-      NR == n {
-        sub(/started=[^ ]+/, "started=" iso)
-        print
-        next
-      }
-      { print }
-    ' "$file" > "$tmp"
+    if printf '%s' "$existing_line" | grep -q 'started='; then
+      # started=<이전> → started=<새 값> — 그 뒤 토큰(paused 등)은 그대로 둔다.
+      awk -v n="$existing_line_no" -v iso="$iso" '
+        NR == n {
+          sub(/started=[^ ]+/, "started=" iso)
+          print
+          next
+        }
+        { print }
+      ' "$file" > "$tmp"
+    else
+      # 🔴 Time: 줄은 있으나 started= 가 없는 경우 — 줄 끝에 삽입.
+      awk -v n="$existing_line_no" -v iso="$iso" '
+        NR == n { print $0 " started=" iso; next }
+        { print }
+      ' "$file" > "$tmp"
+    fi
     mv "$tmp" "$file"
     echo "gootte: $file 의 started= 를 $iso 로 변경함"
     return
@@ -283,6 +319,83 @@ cmd_start() {
   mv "$tmp" "$file"
 
   echo "gootte: $file 에 $time_label started=$iso 기록됨"
+  sync_main_state
+}
+
+# T12/T04 — 사본(worktree)에서 기록하면 메인 프로젝트의 state.json 배지를 갱신한다.
+#
+# 🔴 start 만이 아니라 **모든 기록 명령** 뒤에 호출한다 — end 로 티켓이 끝나도 메인 배지가
+# 안 줄면 stale 뷰다(INV-3, 캡틴 결함 신고 2026-09-04 와 같은 계열).
+# 🔴 배지 판정은 **티켓 기준**이다 — core `countOpenFeatures`("done 도 dropped 도 아닌
+# 티켓이 하나라도 있는 기능 수", 티켓 0개 기능은 미집계)와 같은 술어. 예전의 spec.md
+# `Status:` 기준은 (1) 티켓 기준 판정과 불일치했고 (2) 원문 어휘(resolved/wontfix)가 아닌
+# 사상 값(done/dropped)을 찾아 항상 pending 으로 세는 이중 결함이었다(2026-09-09 수정).
+# 파생 캐시 근사다 — 정밀 판정은 백엔드가 다음 읽기에서 다시 한다.
+sync_main_state() {
+  local config_file=".gootte/config.json"
+  [ -f "$config_file" ] || return 0
+  command -v python3 &>/dev/null || return 0
+  local main_project
+  main_project="$(python3 -c "import json; print(json.load(open('$config_file')).get('mainProject',''))" 2>/dev/null || true)"
+  [ -n "$main_project" ] && [ -d "$main_project" ] || return 0
+  python3 - "$main_project" <<'PYEOF' 2>/dev/null || true
+import json, os, re, sys
+from datetime import datetime
+
+main = sys.argv[1]
+features_dir = os.path.join(main, 'docs', 'features')
+if not os.path.isdir(features_dir):
+    sys.exit(0)
+
+TIME_RE = re.compile(r'^[ \t]*(?:\*\*)?Time:(?:\*\*)?[ \t]*(.*)$', re.M)
+STATUS_RE = re.compile(r'^[ \t]*(?:\*\*)?Status:(?:\*\*)?[ \t]*(.*)$', re.M)
+TICKET_NEW = re.compile(r'^T\d+\.md$', re.I)
+
+def open_work(text):
+    """이 티켓에 남은 일이 있는가 — done 도 dropped 도 아니면 참(해석은 원문 어휘 기준)."""
+    m = STATUS_RE.search(text)
+    if m:
+        raw = re.split(r'[\s(]', m.group(1).strip(), 1)[0]
+        if raw == 'resolved':   # → done
+            return False
+        if raw == 'wontfix':    # → dropped
+            return False
+        return True             # 알 수 없는 원문도 pending 쪽 — 남은 일 있다
+    t = TIME_RE.search(text)
+    if t:
+        return 'finished=' not in t.group(1)  # started 만 있으면 진행 중 = 남은 일
+    return True                 # Status: 도 Time: 도 없으면 미시작
+
+open_features = []
+for slug in sorted(os.listdir(features_dir)):
+    feat_dir = os.path.join(features_dir, slug)
+    if not os.path.isdir(feat_dir):
+        continue
+    files = []
+    issues_dir = os.path.join(feat_dir, 'issues')
+    if os.path.isdir(issues_dir):
+        files += [os.path.join(issues_dir, f) for f in sorted(os.listdir(issues_dir)) if f.endswith('.md')]
+    tickets_dir = os.path.join(feat_dir, 'tickets')
+    if os.path.isdir(tickets_dir):
+        files += [os.path.join(tickets_dir, f) for f in sorted(os.listdir(tickets_dir)) if TICKET_NEW.match(f)]
+    # 🔴 티켓 0개인 기능은 "남은 일 있음" 이 아니다 — 착수할 것이 없다(countOpenFeatures 동일).
+    if files and any(open_work(open(p, encoding='utf-8').read()) for p in files):
+        open_features.append({'slug': slug})
+
+state = {
+    'version': 1,
+    'updatedAt': datetime.now().isoformat(),
+    'openFeatures': open_features,
+}
+state_dir = os.path.join(main, '.gootte')
+os.makedirs(state_dir, exist_ok=True)
+state_file = os.path.join(state_dir, 'state.json')
+tmp = state_file + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(state, f, indent=2)
+    f.write('\n')
+os.rename(tmp, state_file)
+PYEOF
 }
 
 # gootte cancel <feature-slug> <ticket> — Time: 줄을 통째로 삭제(시작 취소).
@@ -324,6 +437,7 @@ cmd_cancel() {
   mv "$tmp" "$file"
 
   echo "gootte: $file 의 Time: 줄이 삭제됨(시작 취소)"
+  sync_main_state
 }
 
 # 공통: Time 줄을 찾고 시작 상태 검증 — `cmd_pause`/`cmd_resume`/`cmd_end` 가 쓴다.
@@ -368,6 +482,7 @@ append_time_token() {
   ' "$file" > "$tmp"
   mv "$tmp" "$file"
   echo "gootte: $file 에 $key=$iso 기록됨"
+  sync_main_state
 }
 
 cmd_pause() {
@@ -468,6 +583,7 @@ cmd_end() {
   fi
 
   echo "gootte: $file 에 finished=$iso 기록됨"
+  sync_main_state
 }
 
 # 한 티켓 파일 하나를 폐기 — Status: 줄을 `wontfix (<날짜>)` 로 갱신(문서가 SoT, gootte 는 dropped 로 읽음).
@@ -548,6 +664,7 @@ cmd_drop() {
     done < <(list_feature_tickets "$root" "$feature_slug")
     echo "gootte: $feature_slug 기능의 티켓 $count 개를 폐기 처리함"
   fi
+  sync_main_state
 }
 
 main() {
@@ -570,10 +687,43 @@ main() {
   done
   [ "${#pos[@]}" -ge 1 ] || usage
   local subcmd="${pos[0]}"
-  
+
+  # 시간 기록 모드 판정(time-records-to-state-store, 캡틴 결정 2026-09-09: 새 프로젝트 자동 v2).
+  # 🔴 위임하는 경우:
+  #   1) cwd 의 state.json 이 version 2 — 이미 레코드 권위 모드다.
+  #   2) **티켓 파일에 gootte 기록 흔적이 하나도 없는 새 프로젝트** — 처음부터 레코드 모드로
+  #      시작한다(MD `Time:` 줄을 아예 만들지 않는다).
+  # 옛 프로젝트(기록 흔적이 있는 티켓이 하나라도)는 MD 모드를 유지한다 — 그쪽 기록의 이관은
+  # `gootte migrate <프로젝트>` 이다. 흔적 판정은 티켓 파일(tickets/·issues/)만 본다 —
+  # spec.md 의 기능 수준 `Status:` 는 MD SoT 로 남으므로 흔적이 아니다.
+  case "$subcmd" in
+    start|pause|resume|end|cancel|drop)
+      # 🔴 모드 판정은 **메인 프로젝트** 기준이다(D4 — 레코드는 메인 state.json 에 산다).
+      # cwd 가 worktree 면 .git gitdir 에서 메인을 찾는다 — 그렇지 않으면 worktree 워커의
+      # 기록이 worktree state.json 부재로 MD 모드로 새어 v2 대시보드에서 안 보인다(실측 버그).
+      local main_root="$PWD"
+      if grep -q '^gitdir: .*/\.git/worktrees/' .git 2>/dev/null; then
+        main_root="$(sed -n 's|^gitdir: \(.*\)/\.git/worktrees/.*|\1|p' .git | head -1)"
+      fi
+      local main_state="$main_root/.gootte/state.json"
+      local delegate=0
+      if [ -f "$main_state" ] && grep -Eq '"version":[[:space:]]*2' "$main_state" 2>/dev/null; then
+        delegate=1
+      elif [ ! -f "$main_state" ] && [ -z "$(grep -rlE '^[[:space:]]*(\*\*)?(Time|Status):' "$main_root/docs/features/"*/tickets "$main_root/docs/features/"*/issues 2>/dev/null)" ]; then
+        delegate=1 # 기록 흔적 없는 새 프로젝트 — 레코드 모드로 자동 시작
+      fi
+      if [ "$delegate" = "1" ] && command -v npx &>/dev/null; then
+        # 🔴 TS 진입은 **GOOTTE_HOME**(심링크·gootte worktree 가 해소된 도구 저장소)의 코드다.
+        local -a ts_args=(time "$subcmd" "${pos[@]:1}")
+        [ -n "$at" ] && ts_args+=(--at "$at")
+        exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" "${ts_args[@]}"
+      fi
+      ;;
+  esac
+
   # 시간 기록 명령은 bash에서 직접 처리
   case "$subcmd" in
-    start|cancel|pause|resume|end|drop|status)
+    start|cancel|pause|resume|end|drop|status|state)
       # 기존 로직 실행
       [ "${#pos[@]}" -ge 2 ] || usage
       case "$subcmd" in
@@ -585,18 +735,32 @@ main() {
         drop)
           [ "${#pos[@]}" -le 3 ] || usage
           cmd_drop "$at" "${pos[1]}" "${pos[2]:-}" ;;
-        status)
+        status|state)
           [ "${#pos[@]}" -eq 2 ] || usage
+          # 🔴 TS 경로는 cwd 프로젝트가 아니라 **이 스크립트의 저장소**(GOOTTE_HOME)다 —
+          # 다른 프로젝트(jinwooauto 등)의 cwd 에서 불러도 main.ts 를 찾게(전역 심링크 포함).
           local root
           root="$(resolve_root)"
-          if [ -f "$root/code/web/cli/src/main.ts" ]; then
-            GOOTTE_ROOTS="${GOOTTE_ROOTS:-$root/..}" npx --yes tsx "$root/code/web/cli/src/main.ts" status "$(basename "$root")" "${pos[1]}"
-          else
-            echo "gootte: TypeScript CLI를 찾을 수 없습니다" >&2
-            exit 1
-          fi
+          GOOTTE_ROOTS="${GOOTTE_ROOTS:-$(dirname "$root")}" \
+            npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" status "$(basename "$root")" "${pos[1]}"
           ;;
       esac
+      ;;
+    migrate|migrate-time)
+      # 티켓 기록 이관(time-records-to-state-store/T06, 캡틴 지시: gootte migrate <프로젝트>).
+      [ "${#pos[@]}" -ge 2 ] || usage
+      exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" migrate "${pos[@]:1}"
+      ;;
+    working|pending)
+      # 처리중·대기 티켓 목록(캡틴 지시 2026-09-09) — TS CLI 위임. status 와 같은 읽기 경로.
+      # 🔴 <프로젝트> 생략 가능(캡틴 지시 2026-09-09) — cwd 조상에서 프로젝트를 유추한다(TS 몫).
+      local root
+      root="$(resolve_root)"
+      if [ -n "${pos[1]:-}" ]; then
+        GOOTTE_ROOTS="${GOOTTE_ROOTS:-$(dirname "$root")}" exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" "$subcmd" "${pos[1]}"
+      else
+        exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" "$subcmd"
+      fi
       ;;
     *)
       # 그 외 명령은 pnpm gootte 로만 접근 — bin 에서 처리하지 않음

@@ -7,7 +7,7 @@ import { createProjectUpdateScheduler } from "./snapshot";
 import { createSnapshotRevalidator } from "./snapshot-revalidator";
 import { startWatchers, type Watchers } from "./watchers";
 import type { ChangeEvent } from "@gootte/contract";
-import { readSettings, resolveWatchRoots } from "@gootte/core-io";
+import { readSettings, resolveProjects } from "@gootte/core-io";
 
 /** 로컬 dev/prod 엔트리. PORT env 가 포트를 정한다(기본값은 prod `start` 몫). */
 // dev 포트의 SoT 는 code/web/.ports.* 이고 scripts/dev-backend.sh 가 그 값을 PORT 로 넣어준다 —
@@ -29,23 +29,17 @@ const savedSettings = (() => {
     return null;
   }
 })();
-/** 부팅 시점의 firstmate 홈 — 문서 감시기·백로그 감시기 둘 다의 시작 뿌리. 미설정이면 감시 없음. */
-const savedFirstmateHome = savedSettings?.firstmateHome ?? null;
 /**
- * 지금 감시해야 할 뿌리 — 명시 `watchRoots` 가 있으면 그것이 권위, 없으면 firstmate 홈에서 파생,
- * 그래도 없으면 env·플랫폼 기본값(`roots`). `resolveWatchRoots` 가 그 판별 하나를 갖는다
- * (per-folder-watch-roots). 감시기는 이 함수가 내놓는 뿌리로 문서를 본다.
+ * 지금 감시해야 할 프로젝트 뿌리 — 명시 `projects` 가 있으면 그것이 권위, 없으면 env·플랫폼
+ * 기본값(`roots`). `resolveProjects` 가 그 판별 하나를 갖는다(D6). 감시기는 이 함수가
+ * 내놓는 뿌리로 문서를 본다.
  */
-const currentWatchRoots = (): string[] => resolveWatchRoots(dataDir, roots);
+const currentWatchRoots = (): string[] => resolveProjects(dataDir, roots);
 
 const hub = createLiveHub();
 // T05: 프로젝트 단위 증분 갱신 — 변경 신호를 debounce 로 뭉쳐 재계산하고, **계산이 끝난 뒤** 같은
 // `project` 이벤트를 다시 밀어 실시간 갱신 공백(변경 직후 즉시 방송된 refetch 가 낡은 스냅샷을 본 틈)을
 // 메운다. 완료/시작 여부 판정은 이 신호가 아니라 문서의 `Time:` 줄이 정한다(T04/ADR-0001).
-/** 배지 무효화 창구 — `createApp` 이 달아 둔다(read-path-redesign, 캡틴 신고 2026-09-04). */
-const invalidateBadge = (slug?: string): void => {
-  (app as typeof app & { invalidateOpenCount?: (s?: string) => void }).invalidateOpenCount?.(slug);
-};
 
 const scheduleProjectUpdate = createProjectUpdateScheduler({
   dataDir,
@@ -56,7 +50,6 @@ const scheduleProjectUpdate = createProjectUpdateScheduler({
   // (`featuresFor` 는 stale-while-revalidate 다, adr/0001). 이 두 번째 무효화가 없으면 그
   // 낡은 값이 그대로 굳는다 — 캡틴이 본 "남은 기능 0인데 배지 1" 이 정확히 이것이다.
   broadcast: (ev) => {
-    invalidateBadge(ev.project);
     hub.broadcast(ev);
   },
 }).schedule;
@@ -65,10 +58,6 @@ const snapshotRevalidator = createSnapshotRevalidator({
   roots: () => currentWatchRoots(),
   onChange: (event) => {
     if (event.kind === "projects") clearDiscoverCache();
-    // 🔴 재검증이 "이 프로젝트가 바뀌었다" 고 말하는 순간에도 배지를 버린다 — 부팅 직후
-    // 낡은 스냅샷에서 센 값이 그대로 굳는 것을 막는 자리다(실제 결함 2026-09-04).
-    if (event.kind === "project") invalidateBadge(event.project);
-    else invalidateBadge();
     hub.broadcast(event);
   },
 });
@@ -81,16 +70,9 @@ let watchFallbackActive = false;
 const app = createApp({
   roots,
   dataDir,
-  // PUT /api/settings 가 firstmate 홈을 바꾸면 문서 감시기와 백로그 감시기를 **둘 다** 새
-  // 홈에서 파생된 값으로 다시 묶는다 — 일반화된 재구성 프레임워크가 아니라 있던 startWatchers
-  // 위의 배선이다(T02 문서 · T03 백로그 · T05 로 한 통보에서 둘 다 재묶임).
-  onFirstmateHomeChange: (firstmateHome) => {
-    void watchers.rebind(currentWatchRoots());
-    void watchers.rebindBacklog(firstmateHome);
-  },
-  // per-folder-watch-roots — 명시 감시 뿌리가 바뀌면 문서 감시기를 새 목록으로 다시 묶는다.
-  onWatchRootsChange: (nextRoots) => {
-    void watchers.rebind(nextRoots);
+  // PUT /api/settings 가 projects 를 바꾸면 문서 감시기를 새 프로젝트 목록으로 다시 묶는다(D6).
+  onProjectsChange: (nextProjects) => {
+    void watchers.rebind(nextProjects);
   },
   // T07: 처리중 관측 갱신이 끝나면 같은 `project` 이벤트로 프론트에 swap 을 알린다.
   broadcast: hub.broadcast,
@@ -122,7 +104,6 @@ let watchers: Watchers;
   const w = startWatchers({
     roots: currentWatchRoots(),
     dataDir,
-    firstmateHome: savedFirstmateHome,
     onChange: (c: ChangeEvent) => {
       if (c.kind === "watch-fallback") {
         watchFallbackActive = c.active;
@@ -130,14 +111,10 @@ let watchers: Watchers;
       // 🔴 15초 재검증기는 **감시가 못 붙을 때만** 도는 안전망이다(read-path-redesign/T05).
       //
       // 예전에는 항상 켰다 — "커밋은 작업트리 파일을 안 바꾸니 감시 이벤트가 안 떨어진다" 는
-      // 이유였고 그 자체는 맞았다. 이제 그 구멍은 **축 2(커밋 감시: `.git/HEAD`·`refs`)** 가 막는다.
-      // 항상 켜 두면 누가 worktree 에서 작업하는 동안 `sameStamps` 가 매번 거짓이 되어
-      // **15초마다 프로젝트 전체 재계산**이 돌았다(spec §4) — 이 대시보드가 제일 쓸모 있는 순간에.
+      // 이유였고 그 자체는 맞았다. 이제 그 구멍은 축 1(문서 감시)이 worktree 문서까지 보며
+      // 막는다(git-removal/T04 로 커밋 감시는 삭제). 항상 켜 두면 감시가 살아 있는 동안에도
+      // **15초마다 프로젝트 전체 재계산**이 돈다 — 이 대시보드가 제일 쓸모 있는 순간에.
       snapshotRevalidator.setFallbackPolling(watchFallbackActive);
-      // 사이드바 배지(`openFeatures`)를 같은 신호로 버린다. 🔴 이건 **첫 번째** 무효화이고,
-      // 스냅샷 갱신이 끝난 뒤의 두 번째 무효화는 위 `scheduleProjectUpdate` 의 broadcast 가 한다.
-      if (c.kind === "project") invalidateBadge(c.project);
-      else if (c.kind === "projects") invalidateBadge();
       // T05: 변경된 프로젝트만 갱신 — 전체 flush 대신 증분 반영
       if (c.kind === "project") {
         scheduleProjectUpdate(c.project);
@@ -148,8 +125,8 @@ let watchers: Watchers;
   });
   watchers = w;
 }
-// 🔴 부팅 시에는 켜지 않는다(T05) — 감시가 붙으면 축 1(문서)·축 2(커밋)가 다 덮는다.
-// 감시가 못 붙는 환경이면 `watch-fallback` 신호가 와서 위 onChange 가 켠다.
+// 🔴 부팅 시에는 켜지 않는다(T05) — 감시가 붙으면 문서 감시(축 1)가 다 덮는다(git-removal/T04 로
+// 커밋 감시는 없다). 감시가 못 붙는 환경이면 `watch-fallback` 신호가 와서 위 onChange 가 켠다.
 
 const server = serve({ fetch: app.fetch, port }, (info) => {
   process.stdout.write(`gootte backend → http://localhost:${info.port}\n`);
@@ -157,7 +134,7 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
   process.stdout.write(`  live: WS /api/live · watcher on(문서·계획·백로그)\n`);
 });
 injectWebSocket(server);
-// 첫 요청은 스냅샷으로 즉시 서빙한 뒤 다음 이벤트 루프에서 HEAD 재검증을 시작한다(T04).
+// 부팅 사본 구성 재검증(HEAD 비교는 없다 — sameCopies 만, git-removal/T03).
 setImmediate(snapshotRevalidator.run);
 
 const shutdown = (): void => {

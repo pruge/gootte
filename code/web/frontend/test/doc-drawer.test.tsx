@@ -113,9 +113,7 @@ const FEATURES_DATA: FeaturesResponse = {
     copies: 0,
     working: 0,
     tickets: 0,
-    unknown: [],
     unreadable: [],
-    unclaimed: [],
   },
   features: [
     {

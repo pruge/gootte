@@ -1,28 +1,8 @@
-import type { PlanArea, PlanBoardResponse, PlanCard, PlanMoveRequest } from "@gootte/contract";
+import type { PlanArea, PlanBoardResponse, PlanCard, PlanMoveRequest, BoardAreaId } from "@gootte/contract";
+import { AREA_LABEL, ALL_AREAS } from "@gootte/contract";
 
-/**
- * 판의 다섯 칸.
- * 🔴 id 는 응답의 칸 이름과 **같은 문자열**이다 — 화면이 자기만의 이름을 따로 두면 그 사전이
- * 서버와 갈라진다(spec §판정 자리는 하나뿐).
- */
-export type BoardAreaId = Exclude<keyof PlanBoardResponse, "project">;
-
-export const AREA_LABEL: Record<BoardAreaId, string> = {
-  waiting: "대기",
-  active: "작업 대상",
-  reserved: "예약",
-  discarded: "폐기",
-  done: "완료",
-};
-
-/** 캡틴이 보내는 순서대로 — 위의 작업 대상 하나, 아래 네 탭(캡틴 그림). */
-export const ALL_AREAS: readonly BoardAreaId[] = [
-  "active",
-  "waiting",
-  "reserved",
-  "discarded",
-  "done",
-];
+export type { BoardAreaId };
+export { AREA_LABEL, ALL_AREAS };
 
 /**
  * 화면의 칸 이름 → 저장되는 자리 값.

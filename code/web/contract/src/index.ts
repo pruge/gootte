@@ -129,15 +129,6 @@ export const FeatureDocNode: z.ZodType<FeatureDocNode> = z.lazy(() =>
   }),
 );
 
-/** `docs/features/<기능>/` 한 폴더 = spec 1장 + 티켓 N장 + 문서 트리. */
-export const FeatureConflict = z.object({
-  // 기능 폴더 기준 상대 경로("spec.md" · "issues/01-a.md") — 어느 파일이 갈라졌나.
-  path: z.string(),
-  // 그 파일을 둘 이상 가진 사본의 절대 경로들 — 어느 사본들이 안 맞나(T03 가 말한다).
-  copies: z.array(z.string()),
-});
-export type FeatureConflict = z.infer<typeof FeatureConflict>;
-
 export const Feature = z.object({
   slug: z.string(), // 폴더명
   title: z.string(), // spec.md 표제(없으면 slug)
@@ -157,30 +148,26 @@ export const Feature = z.object({
   // T04 — `tickets/T<NN>.md` 신관례 티켓(INV-4: 실재하는 파일만). 예전 `issues/` 관례와는 별도
   // 목록이다 — 상태 SoT 가 문서(issues)냐 백로그(tickets)냐가 갈리므로 계산 경로를 섞지 않는다.
   newTickets: z.array(FeatureTicket).optional(),
-  // T02 — 같은 파일이 여러 사본에 있어 어느 쪽도 나중 판이라 말할 수 없는 경우(T02 §Decisions
-  // 4단계 마지막 갈래). 🔴 빈 배열이면 "갈라지지 않았다" 다. `readFeatures`·`buildFeature` 가
-  // 항상 채운다(INV-1 매 read) — 화면이 "갈라졌다" 고 거짓말하지 않게. T03 이 이걸 화면에 말한다.
-  // 파생물이라 저장하지 않는다. 선택적(opt-out 아님) — 수동으로 만든 픽스처는 생략해도 된다.
-  conflict: z.array(FeatureConflict).optional(),
 });
 export type Feature = z.infer<typeof Feature>;
 
 /**
- * 작업중이지만 티켓에 잇지 못한 격리 사본 하나 — **감추지 않는다**.
- * 조용히 빠뜨리면 화면이 "아무도 아무것도 안 하는 중" 이라고 거짓말하고,
- * 캡틴은 이미 진행 중인 일을 다시 배정한다.
+ * 카드 한 장을 **펼쳐 보는 대화상자**용이 아닌, 기능 목록 위의 처리중 요약 —
+ * "지금 누가 무엇을 붙들고 있나"의 계산 결과.
+ *
+ * 🔴 옛 `unknown`(티켓 미상 · 작업중)·`unclaimed`(임자 없이 남은 표시) 분류는 **git 제거와
+ * 함께 삭제됐다**(time-records-to-state-store, 캡틴 지시 2026-09-09) — 그 둘의 근거는
+ * "커밋이 어느 티켓 파일을 건드렸나" 였는데, git 하위프로세스 제거(T01)로 사본↔티켓 연결의
+ * 관측 수단이 소멸했다. 임자의 유일한 증거는 이제 **Time 기록**이다(ADR 0001) — 티켓 쪽
+ * `in_progress` 로 표시되고, 작업 사본은 `copies`·`working` 수로만 센다.
+ * `unreadable` 은 남는다 — 사본 디렉토리는 있지만 상태를 말할 수 없는 경우의 "감추지 않는다"
+ * 보증이고, 미래 관측 상태를 위한 통로다(현재 관측기에서는 발화하지 않는다).
  */
-export const UnmappedWork = z.object({
-  slug: z.string(), // `<풀>/<슬롯>` — 사람이 찾아갈 수 있는 식별자
-  branch: z.string(), // 작업 브랜치 이름 verbatim (요약·추론 없음, INV-4)
-  path: z.string(), // 사본 경로
-});
-export type UnmappedWork = z.infer<typeof UnmappedWork>;
 
 /**
  * 상태를 **읽지 못한** 사본 — 유휴인지 작업중인지 말할 수 없다.
  * 🔴 이것을 유휴로 접어 넣지 않는다. 읽기 실패를 "아무도 안 붙들었다" 로 바꾸는 순간
- * `unknown` 을 감추는 것과 똑같은 거짓말이 된다. 모른다는 사실 그대로 센다.
+ * 거짓말이 된다. 모른다는 사실 그대로 센다.
  */
 export const UnreadableCopy = z.object({
   slug: z.string(),
@@ -188,20 +175,6 @@ export const UnreadableCopy = z.object({
   reason: z.enum(["no-repo", "git-failed"]), // 저장소를 못 찾음 / git 이 답하지 않음
 });
 export type UnreadableCopy = z.infer<typeof UnreadableCopy>;
-
-/**
- * 문서는 `claimed` 라고 말하는데 지금 그 티켓을 붙들고 있는 살아 있는 사본이 없는 티켓 —
- * **지우다 만 흔적.** 정상 경로에서는 안 생긴다(임자 표시는 작업자 가지에만 있고 끝나면 `resolved`
- * 로 덮인다) — 머지됐는데 완료로 안 바뀐 경우에만 남는다. `unknown`·`unreadable` 과 같은 원리로
- * 감추지 않는다(work-claims-its-ticket/01 §D). 처리중으로도 그리지 않는다 — 임자가 있다는 주장과
- * 실제로 돌고 있다는 사실은 다른 것이다.
- */
-export const UnclaimedTicket = z.object({
-  feature: z.string(), // 기능 slug
-  ticket: z.string(), // 티켓 slug("01-claimed-means-taken")
-  title: z.string(),
-});
-export type UnclaimedTicket = z.infer<typeof UnclaimedTicket>;
 
 /**
  * "지금 누가 무엇을 붙들고 있나" — 격리 사본 관측 파생.
@@ -213,11 +186,45 @@ export const InProgressSummary = z.object({
   copies: z.number().int().nonnegative(), // 이 프로젝트의 사본 수 — 못 읽은 것까지 전부
   working: z.number().int().nonnegative(), // 그중 작업 가지에 올라가 있음이 **확인된** 수
   tickets: z.number().int().nonnegative(), // 처리중으로 계산된 **티켓** 수 — 사본 수가 아니다(중복 제거)
-  unknown: z.array(UnmappedWork).default([]), // 🔴 작업중인데 티켓 미상
   unreadable: z.array(UnreadableCopy).default([]), // 🔴 상태를 못 읽은 사본 — 유휴로 접지 않는다
-  unclaimed: z.array(UnclaimedTicket).default([]), // 🔴 claimed 인데 붙든 사본이 없는 티켓 — 감추지 않는다
 });
 export type InProgressSummary = z.infer<typeof InProgressSummary>;
+
+// ── 티켓 시간·상태 레코드 (time-records-to-state-store T01) ──────────────
+/**
+ * 티켓 하나의 시간·상태 기록 — `<프로젝트>/.gootte/state.json` v2 `tickets` 맵의 값.
+ *
+ * 🔴 **SoT가 MD 줄에서 여기로 옮겨진 값이다**(time-records-to-state-store D1, 캡틴 승인
+ * 2026-09-09). INV-1(파생물만 저장)의 예외는 INV-5가 갖는다: `gootte start/end`가
+ * 기록한 시각은 write-time 캡처라 원본(MD)을 지운 뒤에는 다시 읽어 낼 수 없는 값이다 —
+ * 그래서 저장할 자격이 있다. 기능·티켓 본문(제목·Blocked by·spec)의 SoT는 여전히 MD다.
+ *
+ * 🔴 `statusRaw`는 옛 MD `Status:` 줄과 **동일한 verbatim 원문**이다("resolved (2026-09-09)").
+ * 해석(여덟 값→다섯 값·완료일)은 읽기 경로 몫(INV-4 릴레이 — 저장 계층이 해석하지 않는다).
+ */
+export const TicketTimeRecord = z.object({
+  startedAt: z.string().nullable(), // 착수 시각. null = 미시작
+  finishedAt: z.string().nullable(), // 완료 시각. null = 진행 중/미시작
+  // 일시중단 구간(ADR-0002) — `FeatureTicket.pauses`와 같은 형태. 미재개 구간은 resumedAt null.
+  pauses: z.array(z.object({ pausedAt: z.string(), resumedAt: z.string().nullable() })).default([]),
+  // 구관례·신관례 공통 — 옛 `Status:` 줄의 verbatim 원문. 줄이 없었으면 null.
+  statusRaw: z.string().nullable().default(null),
+});
+export type TicketTimeRecord = z.infer<typeof TicketTimeRecord>;
+
+/**
+ * state.json v2 — 티켓 시간·상태 기록의 저장소.
+ * v1(배지 파생 캐시 `openFeatures`)과의 관계: `openFeatures`는 여전히 파생물이고,
+ * `tickets`가 SoT다. 갱신은 **read-modify-write** — 파생 갱신이 레코드를 지우지 않게.
+ * 키는 `<기능 슬러그>/<티켓 슬러그>`("time-records-to-state-store/T01").
+ */
+export const ProjectStateV2 = z.object({
+  version: z.literal(2),
+  updatedAt: z.string(),
+  openFeatures: z.array(Feature).default([]), // 파생 캐시(배지) — v1과 같은 성격
+  tickets: z.record(z.string(), TicketTimeRecord).default({}),
+});
+export type ProjectStateV2 = z.infer<typeof ProjectStateV2>;
 
 // ── API envelope (backend 생산 · frontend 소비 = cross-boundary seam) ──────
 // 2a web-dashboard. HTTP 경계를 넘는 공유 응답 타입 — backend/frontend 재선언 금지(단일 SoT).
@@ -287,19 +294,11 @@ export type ChangeEvent = z.infer<typeof ChangeEvent>;
  * 🔴 값이 없다는 것은 `null` 로 표현한다 — unset 과 빈 문자열은 다른 상태다. null 이면 소비처는
  * 기존 기본값(env·플랫폼 기본)으로 떨어진다.
  *
- * 🔴 저장 파일에 남아 있는 옛 `watchRoot` 칸은 무시한다 — 읽지도 쓰지도 않는다(spec §Data and
- * migration). zod 가 알 수 없는 키를 조용히 버리므로 마이그레이션이 따로 필요 없다.
- *
- * 🔴 `watchRoots` — 사용자가 **명시적으로** 감시에 올린 projects 폴더 목록(per-folder-watch-roots).
- * firstmate 구조에 종속되지 않게 한 칸화한 것이다: 설정창에서 폴더를 하나씩 추가하고, 목록에서
- * 빼면 그 폴더(와 그 사본)는 더 이상 감시되지 않는다. JSON 에 이 키가 **없으면**(최초·마이그레이션
- * 전) 아래 파생 규칙(`resolveWatchRoots`)이 firstmate 홈에서 뿌리를 만들어 내며, 키가 **있으면**
- * (빈 배열 포함) 그것이 권위다 — 빈 배열은 "아무것도 감시하지 않음" 이다. 저장값은 어디에도
- * 적혀 있지 않고 사람만 아는 것이라 INV-5 가 허락하는 칸이다.
+ * 🔴 저장 파일에 남아 있는 옛 `firstmateHome`·`watchRoot` 칸은 무시한다 — 읽지도 쓰지도 않는다.
+ * zod 가 알 수 없는 키를 조용히 버리므로 마이그레이션이 따로 필요 없다.
  */
 export const Settings = z.object({
-  firstmateHome: z.string().nullable().default(null), // firstmate 홈 — 백로그 조인(T04)의 입력. 감시 뿌리 파생은 watchRoots 가 대체
-  watchRoots: z.array(z.string()).default([]), // 명시 감시 폴더 목록(per-folder-watch-roots)
+  projects: z.array(z.string()).default([]), // 명시 감시 프로젝트 목록(D6)
   // 🔴 차단한 작업 가지 식별자(`<풀>/<슬롯>`) 목록 — gootte 자기 저장소의 **사용자 결정**이다
   // (INV-5: 어디 문서에도 없고 사람만 아는 "이 복사본은 더 보지 않겠다"는 표). 트리하우스를
   // 건드리지 않고(read-only 관측, INV-2) read-time 필터로만 화면에서 숨긴다. 빈 배열 = 차단 없음.
@@ -314,13 +313,10 @@ export type Settings = z.infer<typeof Settings>;
  * 존재 여부는 경고 표시용이고 저장하지 않는다 — 저장했다면 stale 뷰(INV-3 위반)가 된다.
  */
 export const SettingsResponse = Settings.extend({
-  firstmateHomeExists: z.boolean(),
-  // 호스트 실측 기반 추천 경로(placeholder 용) — 저장값이 아니다(INV-1). 후보가 없으면 null.
-  firstmateHomeSuggestion: z.string().nullable().default(null),
-  // 🔴 실제로 감시되는 뿌리 — 요청마다 다시 계산(INV-3, 파생물). 키 부재 시 firstmate 홈에서
-  // 파생되고, 그래도 없으면 env·플랫폼 기본값으로 떨어진다(`resolveWatchRoots`). 화면이 이 값으로
-  // 명시 목록 편집기를 미리 채운다(per-folder-watch-roots).
-  effectiveWatchRoots: z.array(z.string()),
+  // 🔴 실제로 감시되는 프로젝트 — 요청마다 다시 계산(INV-3, 파생물). 키 부재 시
+  // `resolveProjects` 가 env·플랫폼 기본값으로 떨어진다. 화면이 이 값으로 명시 목록
+  // 편집기를 미리 채운다.
+  effectiveProjects: z.array(z.string()),
 });
 export type SettingsResponse = z.infer<typeof SettingsResponse>;
 
@@ -329,10 +325,9 @@ export type SettingsResponse = z.infer<typeof SettingsResponse>;
  * 서버가 절대 경로로 정규화하고(`~` 전개 포함), 상대 경로는 400 으로 거절한다.
  */
 export const SettingsUpdateRequest = z.object({
-  firstmateHome: z.string().min(1).nullable().optional(),
-  // 명시 감시 폴더 목록. `undefined` = 그대로, `null` = 지움(unset → 파생 규칙으로 되돌아감),
+  // 명시 감시 프로젝트 목록. `undefined` = 그대로, `null` = 지움(unset → 파생 규칙으로 되돌아감),
   // `[]` = 아무것도 감시하지 않음(명시). 각 항목은 절대 경로여야 한다(상대 경로는 400).
-  watchRoots: z.array(z.string().min(1)).nullable().optional(),
+  projects: z.array(z.string().min(1)).nullable().optional(),
   // 차단한 작업 가지 식별자 목록 — 화면에서 숨길 복사본. `undefined` = 그대로, `[]` = 모두 해제.
   // 경로가 아니라 `<풀>/<슬롯>` 식별자라 경로 정규화는 하지 않는다. 두 항목 Put 이 섞여 와도
   // 누락 없이 그대로 저장된다(부분 갱신).
@@ -453,6 +448,31 @@ export const PlanBoardResponse = z.object({
   done: z.array(PlanCard).default([]),
 });
 export type PlanBoardResponse = z.infer<typeof PlanBoardResponse>;
+
+// ── 판 다섯 칸 — 프론트·CLI 공용 ──────────────────────────
+/**
+ * 판의 다섯 칸 id — `PlanBoardResponse` 의 `project` 를 제외한 키.
+ * 프론트(`areas.ts`)와 CLI(`commands.ts`)가 같은 값을 쓴다.
+ */
+export type BoardAreaId = Exclude<keyof PlanBoardResponse, "project">;
+
+/** 칸 id → 화면에 보이는 한글 라벨. */
+export const AREA_LABEL: Record<BoardAreaId, string> = {
+  waiting: "대기",
+  active: "작업 대상",
+  reserved: "예약",
+  discarded: "폐기",
+  done: "완료",
+};
+
+/** 캡틴이 보내는 순서대로 — 위의 작업 대상 하나, 아래 네 탭. */
+export const ALL_AREAS: readonly BoardAreaId[] = [
+  "active",
+  "waiting",
+  "reserved",
+  "discarded",
+  "done",
+];
 
 /**
  * 카드를 옮긴다(plan-board/03) — **캡틴의 손이 유일한 입구**다.

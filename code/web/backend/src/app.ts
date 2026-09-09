@@ -1,7 +1,6 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync, readdirSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
+
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -12,15 +11,8 @@ import {
   PlanBoardResponse,
   PlanMoveRequest,
   StepMoveRequest,
-  SettingsResponse,
-  SettingsUpdateRequest,
-  MemosResponse,
-  Memo,
-  MemoWriteRequest,
-  MemoDeleteResponse,
   type ApiError,
   type Feature,
-  type Settings,
 } from "@gootte/contract";
 import {
   applyBacklogStatus,
@@ -28,7 +20,7 @@ import {
   applyInProgress,
   applyReadState,
   computeDisplaySteps,
-  countOpenFeatures,
+  isTicketDoc,
   placeStep,
   planMove,
   splitIntoAreas,
@@ -49,20 +41,15 @@ import {
   scanWorkingCopies,
   extraWorktreeRoots,
   defaultBbWorktreeRoot,
-  currentBranch,
   defaultPlanDataDir,
   defaultTreehouseRoot,
   readSettings,
-  writeSettings,
-  normalizeDirPath,
   dirExists,
-  suggestFirstmateHome,
   effectiveProjectRoots,
-  resolveWatchRoots,
-  readMemos,
-  appendMemo,
-  updateMemo,
-  deleteMemo,
+  resolveProjects,
+  readState,
+  recalcProjectState,
+  joinTimeRecords,
 } from "@gootte/core-io";
 import type { CopyScan } from "@gootte/core";
 import { getProjects, getProjectsPayload, resolveSlug, clearDiscoverCache, clearPayloadCache } from "./discover-cache";
@@ -76,21 +63,12 @@ import {
   clearSnapshot,
   clearInProgressMemory,
 } from "./snapshot";
+import { createMemoRoutes } from "./routes/memo";
+import { createTimeRoutes } from "./routes/time";
+import { createSettingsRoutes } from "./routes/settings";
 
 /**
- * 읽음 기록 대상 문서인가 — **티켓뿐이다**(캡틴 결정 ②). 경로 모양만 본다(INV-4, 문서를 다시 안 읽는다).
- * - 구관례: `issues/` 안의 문서(기존 동작 유지)
- * - 신관례: `tickets/T<NN>.md` — 모양 규칙의 SoT 는 `core-io/src/features.ts` 의 `/^t\\d+\\.md$/i` 다.
- *   두 자리가 어긋나면 "열어도 안 풀리는 초록" 또는 "티켓도 아닌데 남는 기록" 이 생기므로 같은 뜻을 유지한다.
- *   `tickets/README.md` 같은 안내문은 티켓이 아니므로 기록 대상도 아니다.
- */
-function isTicketDoc(path: string): boolean {
-  if (path.startsWith("issues/")) return true;
-  if (!path.startsWith("tickets/")) return false;
-  return /^t\d+\.md$/i.test(path.slice("tickets/".length));
-}
-
-/** env `GOOTTE_ROOTS`(콜론 구분) → discover 루트. 기본 `~/Documents/ai2/projects`. */
+ * env `GOOTTE_ROOTS`(콜론 구분) → discover 루트. 기본 `~/Documents/ai2/projects`. */
 export function defaultRoots(): string[] {
   // 🔴 파싱 규칙은 core-io `effectiveProjectRoots` 하나뿐이다(T02) — cli 가 같은 함수를 쓴다.
   return effectiveProjectRoots();
@@ -131,22 +109,10 @@ export interface AppOptions {
   /** 완료 칸에 찍을 시각 (테스트 주입). 없으면 `nowStamp()`. */
   now?: () => string;
   /**
-   * firstmate 홈 설정이 바뀐 뒤의 통보(tauri-desktop-app T03, one-setting-finds-every-copy T05
-   * 로 확장) — 문서 감시기와 백로그 감시기를 **둘 다** 새 홈에서 파생된 뿌리로 다시 묶는 데
-   * 쓴다(INV-3: 감시기도 설정값을 따라간다). 값은 저장 뒤 다시 읽은 것.
+   * 명시 감시 프로젝트(`projects`)가 바뀐 뒤의 통보(D6) — 문서 감시기를
+   * 새 프로젝트 목록으로 다시 묶는다. 값은 저장 뒤 다시 계산한 실제 프로젝트(`resolveProjects`).
    */
-  onFirstmateHomeChange?: (firstmateHome: string | null) => void;
-  /**
-   * 명시 감시 뿌리(`watchRoots`)가 바뀐 뒤의 통보(per-folder-watch-roots) — 문서 감시기를
-   * 새 뿌리 목록으로 다시 묶는다. 백로그는 firstmate 홈에 종속되므로 여기선 건드리지 않는다.
-   * 값은 저장 뒤 다시 계산한 실제 뿌리(`resolveWatchRoots`).
-   */
-  onWatchRootsChange?: (roots: string[]) => void;
-  /**
-   * firstmate 홈 placeholder 추천 후보 (테스트 주입). 없으면 `suggestFirstmateHome` 기본 후보
-   * (실제 host 경로) — 테스트는 실제 host 를 보지 않도록 임시 디렉토리를 주입한다.
-   */
-  firstmateHomeSuggestionCandidates?: string[];
+  onProjectsChange?: (projects: string[]) => void;
   /**
    * 처리중 관측 갱신이 끝났을 때 알릴 방송(T07, swap). `inProgressFor` 가 디스크 스냅샷을 갱신하고
    * 내용이 바뀌었을 때만 호출한다 — 프론트가 같은 `project` 이벤트로 다시 요청해 교체한다.
@@ -184,31 +150,18 @@ export function createApp(options: AppOptions = {}): Hono {
   const app = new Hono();
 
   /**
-   * 지금 이 요청이 볼 discover 루트 — 명시 `watchRoots` 가 있으면 그것이 권위고, 없으면 firstmate
-   * 홈에서 파생(`deriveWatchRoots`), 그래도 없으면 env·플랫폼 기본값(`fallbackRoots`)으로
-   * 떨어진다(per-folder-watch-roots, `resolveWatchRoots`). 🔴 생성 시 한 번 얼려 두지 않고
-   * **요청마다 다시 읽는다**(INV-3) — 설정을 바꾸면 다음 요청부터 곧장 새 루트가 보여야 하고,
-   * 재시작 없이 적용된다는 것이 그래서 참이 된다. 파일 read 하나라 매 요청에 감당 가능하다.
+   * 지금 이 요청이 볼 discover 뿌리 — 명시 `projects` 가 있으면 그것이 권위고, 없으면
+   * env·플랫폼 기본값(`fallbackRoots`)으로 떨어진다(D6, `resolveProjects`). 🔴 생성 시 한 번
+   * 얼려 두지 않고 **요청마다 다시 읽는다**(INV-3) — 설정을 바꾸면 다음 요청부터 곧장 새 뿌리가
+   * 보여야 하고, 재시작 없이 적용된다는 것이 그래서 참이 된다. 파일 read 하나라 매 요청에 감당 가능하다.
    */
   const effectiveRoots = (): string[] => {
     try {
-      return resolveWatchRoots(dataDir, fallbackRoots);
+      return resolveProjects(dataDir, fallbackRoots);
     } catch {
-      // 설정 파일을 못 읽는 것은 기본값으로 떨어질 이유가 아니라 알릴 사실이다 — 아래
-      // /api/settings 가 같은 자리를 읽으며 큰 소리로 낸다. 여기선 서비스 연속성을 택한다.
       return fallbackRoots;
     }
   };
-
-  /** 설정 + 응답 시점에 다시 본 존재 여부(INV-3 — 존재는 저장하지 않는다). */
-  const settingsWithExists = (s: Settings): SettingsResponse => ({
-    ...s,
-    firstmateHomeExists: dirExists(s.firstmateHome),
-    firstmateHomeSuggestion: options.firstmateHomeSuggestionCandidates
-      ? suggestFirstmateHome(options.firstmateHomeSuggestionCandidates)
-      : suggestFirstmateHome(),
-    effectiveWatchRoots: effectiveRoots(),
-  });
 
   /**
    * `readFeatures` 의 스냅샷 우선 버전(fast-cold-start T03/T07). 스냅샷에 **같은 slug** 기록이
@@ -237,15 +190,18 @@ export function createApp(options: AppOptions = {}): Hono {
     if (savedCopies && savedCopies.length === all.length && savedCopies.every((c, i) => c === all[i])) {
       const hit = snapshotFeatures(dataDir, slug, all);
       // 🔴 새 기능 폴더 감지 — 사본 구성이 같아도 `docs/features/` 아래에 **새 폴더**(untracked 로
-      // 아직 커밋 안 된 기능 포함)가 생기면 스냅샷은 낡았다(INV-3). `sameStamps` 는 untracked 를
+      // 아직 커밋 안 된 기능 포함)가 생기면 스냅샷은 낡았다(INV-3). `snapshotNeedsRefresh` 는 사본 구성만을
       // 보지 않으므로(15초 재스캔 지연 방지) 여기서 디스크 폴더 목록과 스냅샷 feature slug 를
       // 견줘, 다르면 스냅샷을 우회하고 다시 읽는다(실제 결함 2026-09-01: slider-widget-operator
       // worktree 에 spec.md 만 있는 command-field-authoring 폴더가 감지되지 않았다).
-      if (hit && sameFeatureFolders(hit, all)) return hit;
+      if (hit && sameFeatureFolders(hit, all)) return joinTimeRecords(hit, path);
     }
     const features = await compute.run(all);
     recordProjectScan(dataDir, { slug, path, copies: [...all] }, features);
-    return features;
+    // 🔴 시간·상태 레코드 조인(time-records-to-state-store/T03) — 스냅샷 히트·재계산 어느
+    // 길이든 **서빙 직전에** 지난다. 조인을 스냅샷 저장 전에 하지 않는 이유는 레코드가 바뀌어도
+    // 스냅샷 무효화 없이 다음 읽기가 곧 새 값을 보게 하기 위해서다(INV-3 — 캐시에 굳지 않는다).
+    return joinTimeRecords(features, path);
   };
 
   /**
@@ -377,7 +333,7 @@ export function createApp(options: AppOptions = {}): Hono {
    * 흡수한다 — 조인 실패는 상태 미표시로만 드러난다(`/api/features/:slug` 와 같은 원칙).
    */
   const withBacklogStatus = (project: string, features: Feature[]): Feature[] =>
-    applyBacklogStatus(features, readBacklogTasks(readSettings(dataDir).firstmateHome), project);
+    applyBacklogStatus(features, readBacklogTasks(undefined), project);
 
   /**
    * 판 하나를 그린다 — **판을 보는 모든 길이 이 한 자리를 지난다**(GET 도, 옮긴 뒤의 응답도).
@@ -405,77 +361,12 @@ export function createApp(options: AppOptions = {}): Hono {
     };
   };
 
-  // ── 설정 (tauri-desktop-app T02) ────────────────────────────
-  // GET /api/settings → SettingsResponse — 저장된 두 경로 + 응답 때 다시 본 존재 여부(INV-3).
-  app.get("/api/settings", (c) => {
-    try {
-      return c.json(SettingsResponse.parse(settingsWithExists(readSettings(dataDir))));
-    } catch (err) {
-      return c.json({ error: planError(err) } satisfies ApiError, 500);
-    }
-  });
-
-  // PUT /api/settings → SettingsResponse — 사용자가 정한 값이 설정 저장소에 닿는 유일한 입구.
-  // 🔴 존재하지 않는 경로도 **거절하지 않고 저장한다** — 저장 시점에 폴더가 아직 없을 수 있고,
-  // 경고 표시는 응답의 `*Exists` 를 본다(화면 몫). 거절하는 것은 절대 경로가 아닌 입력뿐이다.
-  app.put("/api/settings", zValidator("json", SettingsUpdateRequest), (c) => {
-    const update = c.req.valid("json");
-    const normalized: {
-      firstmateHome?: string | null;
-      watchRoots?: string[] | null;
-      blockedCopies?: string[];
-      autoClose?: boolean;
-    } = {};
-    for (const key of ["firstmateHome"] as const) {
-      const raw = update[key];
-      if (raw === undefined) continue;
-      if (raw === null) {
-        normalized[key] = null;
-        continue;
-      }
-      try {
-        normalized[key] = normalizeDirPath(raw);
-      } catch (err) {
-        return c.json({ error: planError(err) } satisfies ApiError, 400);
-      }
-    }
-    if (update.watchRoots !== undefined) {
-      if (update.watchRoots === null) {
-        normalized.watchRoots = null; // unset → 파생 규칙으로 되돌아감
-      } else {
-        try {
-          // 각 항목을 절대 경로로 정규화 — 상대 경로는 거절(400). 빈 배열은 "아무것도 안 보기".
-          normalized.watchRoots = update.watchRoots.map((p) => normalizeDirPath(p));
-        } catch (err) {
-          return c.json({ error: planError(err) } satisfies ApiError, 400);
-        }
-      }
-    }
-    // 차단 목록은 경로가 아니라 `<풀>/<슬롯>` 식별자라 정규화하지 않고 그대로 둔다.
-    if (update.blockedCopies !== undefined) normalized.blockedCopies = update.blockedCopies;
-    // 자동 완료 — boolean 하나라 정규화할 것이 없다.
-    if (update.autoClose !== undefined) normalized.autoClose = update.autoClose;
-    try {
-      writeSettings(dataDir, normalized);
-      // firstmate 홈이 실제로 바뀌었다면 감시기에도 알린다 — 요청 경로(effectiveRoots) 만
-      // 새 값이고 감시기가 낡은 뿌리를 보고 있으면 live 갱신이 어긋난다(INV-3). 문서 감시기와
-      // 백로그 감시기 둘 다 이 하나의 통보로 다시 묶인다(server.ts 배선).
-      if (update.firstmateHome !== undefined)
-        options.onFirstmateHomeChange?.(readSettings(dataDir).firstmateHome);
-      // 명시 감시 뿌리가 바뀌었으면 문서 감시기를 새 뿌리로 다시 묶는다(per-folder-watch-roots).
-      if (update.watchRoots !== undefined)
-        options.onWatchRootsChange?.(effectiveRoots());
-    } catch (err) {
-      return c.json({ error: planError(err) } satisfies ApiError, 500);
-    }
-    // 저장된 값을 다시 읽어 답한다 — 방금 쓴 값으로 응답을 조립하면 그것이 곧 파일의 2차 사본이다
-    // (/move 와 같은 규율, INV-1·INV-3).
-    try {
-      return c.json(SettingsResponse.parse(settingsWithExists(readSettings(dataDir))));
-    } catch (err) {
-      return c.json({ error: planError(err) } satisfies ApiError, 500);
-    }
-  });
+  // ── 설정 — settings.ts 로 분리 ──
+  app.route("/", createSettingsRoutes({
+    dataDir,
+    effectiveRoots,
+    onProjectsChange: options.onProjectsChange,
+  }));
 
   // POST /api/refresh — 캐시·스냅샷을 통째로 비운다. 새 worktree 나 새 기능 폴더가 생겼는데
   // 감지가 안 될 때(스냅샷이 낡았을 때) 사용자가 손으로 밀어 넣는 길(캡틴 지시 2026-08-31).
@@ -503,114 +394,33 @@ export function createApp(options: AppOptions = {}): Hono {
    * 그동안 **문서 클릭이 그 뒤에 줄을 섰다**(spec §4). 첫 화면이 반드시 부르는 라우트라
    * 증상이 "앱 켜고 처음" 에 몰렸다.
    *
-   * 이제 라우트는 **아는 값만 즉시** 내고, 모르는 것은 백그라운드로 채운 뒤 `projects` 를 방송한다.
-   * 세지 않은 프로젝트는 배지를 **비워 둔다**(계약이 `optional`, 화면이 undefined 를 감춘다) —
-   * 🔴 0 으로 채우면 "다 끝났다" 는 거짓말이 된다(INV-U1 과 같은 규율).
-   *
-   * `salt` = `firstmateHome`. 백로그 원천이 바뀌면 세어 둔 값은 남의 값이다(payloadCache 와 같은 이유).
+   * 이제 배지는 state.json에서 즉시 읽는다(T06). 백그라운드 카운팅은 불필요.
    */
-  interface OpenCount {
-    salt: string;
-    /** 센 값. `null` = 세다 실패했다(배지를 감춘다 — 0 으로 거짓말하지 않는다). */
-    count: number | null;
-    /** 다시 세야 한다 — 그동안 **옛 값은 계속 내준다**(아래 참고). */
-    stale: boolean;
-  }
-  const openCountBySlug = new Map<string, OpenCount>();
-  let fillingCounts = false;
 
-  const rememberOpenCount = (slug: string, features: Feature[]): void => {
-    openCountBySlug.set(slug, {
-      salt: readSettings(dataDir).firstmateHome ?? "",
-      count: countOpenFeatures(features),
-      stale: false,
-    });
-  };
-
-  /**
-   * 🔴 그 프로젝트가 바뀌면 세어 둔 배지를 버린다(실제 결함 2026-09-04, 캡틴 신고).
-   *
-   * T03 이 배지를 캐시하면서 **무효화 경로를 안 만들었다.** `scheduleCountFill` 은 값이 없는
-   * 칸만 채우므로, 한 번 세어진 배지는 문서가 아무리 바뀌어도 그대로 굳었다 — 그 프로젝트를
-   * 직접 열어야만(`/api/features/:slug` 가 다시 세면서) 고쳐졌다. 캡틴 화면에서 gootte 가
-   * **남은 기능이 0인데 배지가 1** 로 남은 것이 그것이다(INV-3 stale 뷰 금지 위반).
-   *
-   * 값이 **낡은 스냅샷에서 계산될 수 있다는 것 자체는 설계다**(stale-while-revalidate, adr/0001) —
-   * 문제는 그 값이 갱신 신호를 안 받은 것이었다. 그래서 무효화를 **문서 변경과 같은 신호**에 건다.
-   *
-   * 🔴 **지우지 않고 "다시 세라" 고 표시만 한다**(캡틴 지시 2026-09-04). 지우면 다시 셀 때까지
-   * 배지가 사라져 화면이 숫자 → 스피너 → 숫자로 **깜빡인다.** 다시 세는 동안 옛 값을 계속
-   * 내주는 것이 이 저장소가 고른 방식이고(adr/0001), 갱신이 끝나면 곧바로 교체된다.
-   */
-  const invalidateOpenCount = (slug?: string): void => {
-    const mark = (k: string): void => {
-      const hit = openCountBySlug.get(k);
-      if (hit) openCountBySlug.set(k, { ...hit, stale: true });
-    };
-    if (slug === undefined) for (const k of [...openCountBySlug.keys()]) mark(k);
-    else mark(slug);
-    clearPayloadCache();
-  };
-
-  /** 지금 내줄 값 — 다시 세는 중(stale)이어도 **옛 값을 그대로** 내준다(깜빡임 방지). */
-  const openCountOf = (slug: string): number | null | undefined => {
-    const hit = openCountBySlug.get(slug);
-    return hit && hit.salt === (readSettings(dataDir).firstmateHome ?? "") ? hit.count : undefined;
-  };
-
-  /** 다시 세야 하는가 — 값이 없거나, salt 가 다르거나, 변경 신호를 받아 stale 이 됐다. */
-  const needsCount = (slug: string): boolean => {
-    const hit = openCountBySlug.get(slug);
-    return !hit || hit.salt !== (readSettings(dataDir).firstmateHome ?? "") || hit.stale;
-  };
-
-  /**
-   * 아직 안 센 프로젝트를 **한 번에 하나씩** 뒤에서 센다. 하나 끝날 때마다 페이로드 캐시만
-   * 비우고 `projects` 를 방송해 화면이 채워지게 한다.
-   * 🔴 이것도 같은 이벤트 루프에서 돈다 — 요청이 기다리지 않게 됐을 뿐 루프가 안 막히는 것은
-   * 아니다. 그 분리는 T07(워커)의 몫이다. 여기서 그렇게 적어 두는 것이 정직하다.
-   */
-  const scheduleCountFill = (): void => {
-    if (fillingCounts) return;
-    fillingCounts = true;
-    const step = async (): Promise<void> => {
-      const next = getProjects(effectiveRoots()).find((p) => needsCount(p.slug));
-      if (!next) {
-        fillingCounts = false;
-        return;
-      }
-      try {
-        const backlog = readBacklogTasks(readSettings(dataDir).firstmateHome);
-        rememberOpenCount(next.slug, applyBacklogStatus(await featuresFor(next.slug, next.copies, next.path), backlog, next.slug));
-      } catch {
-        // 못 세면 그 프로젝트는 배지 없이 남는다 — 판을 죽이지 않는다(INV-U1).
-        // 🔴 `stale: false` 로 둔다 — 안 그러면 계속 실패하는 프로젝트를 끝없이 다시 센다.
-        // 다음 변경 신호가 오면 그때 다시 시도한다.
-        openCountBySlug.set(next.slug, { salt: readSettings(dataDir).firstmateHome ?? "", count: null, stale: false });
-      }
-      clearPayloadCache();
-      broadcast?.({ kind: "projects" });
-      setTimeout(() => void step(), 0); // 다음 하나 — 사이를 벌려 그동안 들어온 요청이 먼저 답하게 한다.
-    };
-    setTimeout(() => void step(), 0);
+  /** 지금 내줄 값 — state.json에서 읽는다. 🔴 0 도 싣는다(캡틴 지시 2026-09-09): 배지가
+   * 아예 안 그려지면 "다 끝났는지, 아직 못 센 것인지" 알 수 없다. 0(다 끝남)과
+   * undefined(state.json 없음 = 아직 안 열어본 프로젝트)는 다른 값이다. */
+  const openCountOf = (slug: string): number | undefined => {
+    try {
+      const proj = resolveSlug(effectiveRoots(), slug);
+      if (!proj) return undefined;
+      if (!existsSync(join(proj.path, ".gootte", "state.json"))) return undefined;
+      return readState(proj.path).openFeatures.length;
+    } catch {
+      return undefined;
+    }
   };
 
   app.get("/api/projects", (c) => {
-    // 🔴 배지(`openFeatures`)는 **세어 둔 것만** 싣는다(T03). 세는 규칙 자체는 그대로다 —
-    // 백로그 조인을 거친 `countOpenFeatures`(features·plan 탭과 같은 판정 자리). 조인 없이 세면
-    // 신관례 티켓이 전부 pending 으로 보여 끝난 기능까지 "남은 일 있음" 이 된다(실측 2026-08-25).
     const projects = getProjectsPayload(
       effectiveRoots(),
       () =>
         getProjects(effectiveRoots()).map((p) => {
           const count = openCountOf(p.slug);
-          // `undefined` = 아직 안 셌다 · `null` = 세다 실패했다. 둘 다 배지를 비운다
-          // (0 으로 거짓말하지 않는다). 다시 세는 중이면 **옛 값이 그대로 실린다**.
-          return count === undefined || count === null ? p : { ...p, openFeatures: count };
+          return count === undefined ? p : { ...p, openFeatures: count };
         }),
-      readSettings(dataDir).firstmateHome ?? "",
+      "",
     );
-    scheduleCountFill();
     return c.json(ProjectsResponse.parse({ projects }));
   });
 
@@ -646,12 +456,12 @@ export function createApp(options: AppOptions = {}): Hono {
     // 홈 미설정·백로그 없음은 readBacklogTasks 가 빈 목록으로 흡수 — 조인 실패는 상태 미표시로만 드러난다.
     const withBacklog = {
       ...observed,
-      features: applyBacklogStatus(observed.features, readBacklogTasks(readSettings(dataDir).firstmateHome), project),
+      features: applyBacklogStatus(observed.features, readBacklogTasks(undefined), project),
     };
     // 🔴 선택된 프로젝트의 배지는 여기서 공짜로 정확해진다(T03) — 이 라우트가 이미 같은 계산을
     // 했으므로, 그 결과를 그대로 사이드바 배지로 기억한다. 화면이 고른 프로젝트가 곧 이 라우트를
     // 부르는 프로젝트라, 서버가 "선택" 이라는 세션 상태를 갖지 않아도 같은 효과가 난다.
-    rememberOpenCount(proj.slug, withBacklog.features);
+    recalcProjectState(proj.path, withBacklog.features);
     clearPayloadCache();
     return c.json(FeaturesResponse.parse({ project, ...withBacklog }));
   });
@@ -817,160 +627,27 @@ export function createApp(options: AppOptions = {}): Hono {
     },
   );
 
-  /** `bin/gootte` CLI 절대 경로 — 이 파일에서 ../.. 으로 코드 루트를 찾아 bin/ 으로. */
-  const gootteBin = join(resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".."), "bin", "gootte");
+  // ── 시간 기록 — time.ts 로 분리 ──
+  app.route("/", createTimeRoutes({
+    resolveSlug,
+    effectiveRoots,
+    withWorktrees,
+    bbWorktrees,
+    dataDir,
+    broadcast,
+  }));
 
-  /**
-   * 그 사본에 티켓 파일이 실재하는가 — 신관례(`tickets/T<NN>.md`)와 구관례(`issues/<NN>-*.md`)
-   * 둘 다 본다. `pickTimeTarget` 이 기록 대상을 고를 때, 그 사본에서 CLI 가 실제로 파일을 찾을 수
-   * 있는지를 확인하기 위해 쓴다 — 파일이 없는 사본을 고르면 `gootte start` 가 "티켓 파일을 찾을 수
-   * 없습니다" 로 죽는다(실제 결함 2026-09-01: fsm-coordination-docs worktree 에는 live-state-display
-   * 가 없는데 시작 버튼이 그쪽을 골랐다).
-   */
-  const hasTicketFile = (copy: string, feature: string, ticket: string): boolean => {
-    const num = ticket.replace(/^T/i, "");
-    if (existsSync(join(copy, "docs", "features", feature, "tickets", `T${num}.md`))) return true;
-    const issuesDir = join(copy, "docs", "features", feature, "issues");
-    if (!existsSync(issuesDir)) return false;
-    return readdirSync(issuesDir).some((f) => f.startsWith(num) && f.endsWith(".md"));
-  };
-
-  /**
-   * ADR-0002: 대상 사본 선택 — 버튼으로 시간 기록할 때 어느 사본의 티켓 문서를 수정할지 정한다.
-   * - `start` 이외: `started=` 가 이미 있는 사본 우선. 없으면 대표.
-   * - `start`: working worktree 우선, 없으면 대표(copies[0]).
-   */
-  const pickTimeTarget = (proj: { copies: readonly string[]; path: string }, feature: string, ticket: string, action: string): string => {
-    const allCopies = withWorktrees(proj.copies);
-    if (action === "start") {
-      // ADR-0002 §1 — 새 start 는 working 상태인 worktree 사본 우선(지금 그 일을 붙들고 있는
-      // 사본에 이어 기록). 🔴 그 worktree 에 그 티켓 파일이 **실재할 때만** 고른다 — 파일이 없는
-      // worktree(다른 기능 전용)를 고르면 CLI 가 파일을 못 찾아 죽는다(실제 결함 2026-09-01).
-      // working worktree 여럿 중 티켓이 있는 것을, 없으면 아무 worktree 나, 그래도 없으면 대표.
-      const worktrees = extraWorktreeRoots(proj.copies, bbWorktrees);
-      const workingWithTicket = worktrees.find((c) => currentBranch(c) && hasTicketFile(c, feature, ticket));
-      if (workingWithTicket) return workingWithTicket;
-      const withTicket = allCopies.find((c) => hasTicketFile(c, feature, ticket));
-      if (withTicket) return withTicket;
-      return proj.path;
-    }
-    for (const copy of allCopies) {
-      // 신관례(tickets/T<NN>.md): 프론트가 보내는 t.num 은 "01" 꼴이므로 T<NN>.md 로 시도
-      const newTicketFile = join(copy, "docs", "features", feature, "tickets", `T${ticket.replace(/^T/i, "")}.md`);
-      if (existsSync(newTicketFile) && readFileSync(newTicketFile, "utf8").includes("started=")) return copy;
-      // 구관례(issues/<NN>-*.md)
-      const num = ticket.replace(/^T/i, "");
-      const issuesDir = join(copy, "docs", "features", feature, "issues");
-      if (existsSync(issuesDir)) {
-        for (const f of readdirSync(issuesDir)) {
-          if (f.startsWith(num) && f.endsWith(".md") && readFileSync(join(issuesDir, f), "utf8").includes("started=")) return copy;
-        }
-      }
-    }
-    return proj.path;
-  };
-
-  const TimeAction = z.object({ feature: z.string().min(1), ticket: z.string().min(1), action: z.enum(["start", "pause", "resume", "end"]) });
-
-  app.post("/api/projects/:slug/time", zValidator("param", slugParam), zValidator("json", TimeAction), (c) => {
-    const { slug } = c.req.valid("param");
-    const { feature, ticket, action } = c.req.valid("json");
-    const proj = resolveSlug(effectiveRoots(), slug);
-    if (!proj) return c.json(notFound(slug), 404);
-    try {
-      const target = pickTimeTarget(proj, feature, ticket, action);
-      execFileSync(gootteBin, [action, feature, ticket], { cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-      // 🔴 CLI 가 티켓 파일(관리대상)에 Time 을 기록했으므로 **이 프로젝트만** 다시 읽어 스냅샷을
-      // 갱신한다 — 스냅샷이 낡은 finished= 없는 상태를 그대로 서빙하면 완료/시작이 화면에 늦게
-      // 보인다(INV-3 stale 뷰). 🔴 `clearSnapshot()`(전체 무효화) 은 쓰지 않는다 — 한 프로젝트의
-      // 기록이 다른 프로젝트까지 전부 재스캔하게 만들면 문서 읽기 시간이 재발한다(실제 결함
-      // 2026-09-01). worktree 의 미커밋 변경도 `sameStamps` 의 git status 검사가 15초 내에
-      // 백그라운드로 잡으므로, 여기서는 당장 보여야 할 이 프로젝트만 고친다.
-      const all = withWorktrees(proj.copies);
-      recordProjectScan(dataDir, { slug, path: proj.path, copies: [...all] }, readFeatures([...all]));
-      broadcast?.({ kind: "project", project: slug });
-      return c.json({ ok: true });
-    } catch (err) {
-      return c.json({ error: `시간 기록 실패: ${err instanceof Error ? err.message : String(err)}` } satisfies ApiError, 500);
-    }
-  });
-
-  // ── 메모 (memo-pad) — gootte 자기 저장소 CRUD ──────────
-  // 관리대상(INV-2)이 아니라 `GOOTTE_DATA_DIR`/memos/<project>.json 에만 쓴다. 사람만 아는
-  // 캡틴의 생각(INV-5)이라 저장할 자격이 있고, 화면이 이 API 로 추가·수정·삭제한다.
-  // 🔴 시각은 요청마다의 `now()`(ISO 8601 UTC)로 찍는다 — `nowStamp`(판 완료용)와 다르다.
-
-  // GET /api/memos/:slug → MemosResponse
-  app.get("/api/memos/:slug", zValidator("param", slugParam), (c) => {
-    const { slug } = c.req.valid("param");
-    const proj = resolveSlug(effectiveRoots(), slug);
-    if (!proj) return c.json(notFound(slug), 404);
-    try {
-      return c.json(MemosResponse.parse({ project: slug, memos: readMemos(dataDir, slug) }));
-    } catch (err) {
-      return c.json({ error: planError(err) } satisfies ApiError, 500);
-    }
-  });
-
-  // POST /api/memos/:slug → Memo (새 메모 한 장 — 작성 순서대로 목록 뒤에 붙는다)
-  app.post("/api/memos/:slug", zValidator("param", slugParam), zValidator("json", MemoWriteRequest), (c) => {
-    const { slug } = c.req.valid("param");
-    const body = c.req.valid("json");
-    const proj = resolveSlug(effectiveRoots(), slug);
-    if (!proj) return c.json(notFound(slug), 404);
-    try {
-      const memo = appendMemo(dataDir, slug, body, now());
-      return c.json(Memo.parse(memo));
-    } catch (err) {
-      return c.json({ error: planError(err) } satisfies ApiError, 500);
-    }
-  });
-
-  // PUT /api/memos/:slug/:id → Memo (한 장 고치기 — 내용만 바꾸고 수정 시각을 고친다)
-  app.put(
-    "/api/memos/:slug/:id",
-    zValidator("param", slugParam.extend({ id: z.string().min(1) })),
-    zValidator("json", MemoWriteRequest),
-    (c) => {
-      const { slug, id } = c.req.valid("param");
-      const body = c.req.valid("json");
-      const proj = resolveSlug(effectiveRoots(), slug);
-      if (!proj) return c.json(notFound(slug), 404);
-      try {
-        const memo = updateMemo(dataDir, slug, id, body, now());
-        if (!memo) return c.json({ error: `메모 없음: ${id}` } satisfies ApiError, 404);
-        return c.json(Memo.parse(memo));
-      } catch (err) {
-        return c.json({ error: planError(err) } satisfies ApiError, 500);
-      }
-    },
-  );
-
-  // DELETE /api/memos/:slug/:id → MemoDeleteResponse
-  app.delete(
-    "/api/memos/:slug/:id",
-    zValidator("param", slugParam.extend({ id: z.string().min(1) })),
-    (c) => {
-      const { slug, id } = c.req.valid("param");
-      const proj = resolveSlug(effectiveRoots(), slug);
-      if (!proj) return c.json(notFound(slug), 404);
-      try {
-        if (!deleteMemo(dataDir, slug, id)) {
-          return c.json({ error: `메모 없음: ${id}` } satisfies ApiError, 404);
-        }
-        return c.json(MemoDeleteResponse.parse({ ok: true }));
-      } catch (err) {
-        return c.json({ error: planError(err) } satisfies ApiError, 500);
-      }
-    },
-  );
+  // ── 메모 (memo-pad) — memo.ts 로 분리 ──
+  app.route("/", createMemoRoutes({
+    resolveSlug,
+    effectiveRoots,
+    dataDir,
+    now,
+  }));
 
   // 🔴 워커를 세션 종료 때 정리할 수 있게 앱에 달아 둔다(T07) — 붙잡은 스레드를 놓지 않으면
   // 프로세스가 안 끝난다. 서버(`server.ts`)의 shutdown 이 이걸 부른다.
   (app as Hono & { closeCompute?: () => Promise<void> }).closeCompute = () => compute.close();
-  // 🔴 감시·재검증이 "이 프로젝트가 바뀌었다" 고 말할 때 배지도 같이 버리게 노출한다.
-  // 이것을 안 부르는 경로가 있으면 그 프로젝트의 배지는 다시 굳는다(위 `invalidateOpenCount` 참고).
-  (app as Hono & { invalidateOpenCount?: (slug?: string) => void }).invalidateOpenCount = invalidateOpenCount;
   return app;
 }
 

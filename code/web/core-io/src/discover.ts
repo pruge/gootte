@@ -92,14 +92,23 @@ export function discoverProjects(roots: string[]): Project[] {
   for (const root of roots) {
     if (!isDir(root)) continue;
     check(root);
+    // worktree 루트면 depth 4까지 스캔(T11), 아니면 기존 depth 2.
+    const isWorktreeRoot = root.includes(".claude/worktrees") || root.includes(".bb/worktrees");
+    const maxDepth = isWorktreeRoot ? 4 : 2;
+    const scanDir = (dir: string, depth: number): void => {
+      if (depth >= maxDepth) return;
+      for (const child of children(dir)) {
+        const childDir = join(dir, child);
+        if (!isDir(childDir)) continue;
+        check(childDir);
+        scanDir(childDir, depth + 1);
+      }
+    };
     for (const l1 of children(root)) {
       const d1 = join(root, l1);
       if (!isDir(d1)) continue;
       check(d1);
-      for (const l2 of children(d1)) {
-        const d2 = join(d1, l2);
-        if (isDir(d2)) check(d2);
-      }
+      scanDir(d1, 1);
     }
   }
   return [...bySlug.values()].map((v) => ({ slug: basename(v.path), path: v.path, copies: v.copies }));

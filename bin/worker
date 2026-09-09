@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+# worker — herdr 기반 티켓 워커 오케스트레이션 CLI (gootte 프로젝트용).
+#
+# opencode(mimo-v2.5-free, high)를 워커로 사용한다.
+# 오케스트레이터(캡틴/메인 세션)가 티켓 하나를 워커에게 넘길 때:
+#   worktree 생성 → 포트 배정 → dev 환경 세팅 → gootte 시간기록 →
+#   opencode agent 기동 → 브리핑 전송 → 추가 메시지/중지/상태확인/종료.
+#
+# 🔴 자기 프로젝트를 orchestrate 한다 — 실행한 세션의 현재 repo(cwd 의 git repo)를 스스로 파악해
+#    그 repo 의 worktree·docs·포트로만 작업한다.
+#
+# 설치: repo 의 bin/ 에서 `npm link` (전역 심링크 → 편집 즉시 적용).
+#
+# 요구: HERDR_ENV=1(이 세션이 herdr pane 안), herdr·gootte·jq·pnpm·git PATH.
+#
+# 서브커맨드:
+#   worker spawn <slug> <ticket> [--read a,b] [--msg "..."] [--order "..."] [--base REF]
+#                                 [--model M] [--dry-run]
+#   worker send   <name> "<message>"
+#   worker stop   <name>
+#   worker status [<name>]
+#   worker end    <slug> <ticket> <name> [--remove-worktree]
+#   worker list
+#   worker help
+#
+# 🔴 완료 규율: gootte end·병합·완료판정은 오케스트레이터가 검증(verify+diff 재실행) 후.
+#    워커는 Time/Status 를 손으로 안 쓴다(gootte 전용).
+#
+# 🔴 워커 수명은 판단이다 — 무조건 살리지도, 무조건 닫지도 마라.
+#    · 사용자 요구로 재검증·수정될 가능성이 크면 → 살려두고 `worker send` 로 이어 시킨다.
+#    · 끝났거나, 남은 손질이 작으면 → end.
+#
+set -euo pipefail
+
+log()  { printf '[worker] %s\n' "$*"; }
+err()  { printf '[worker] ❌ %s\n' "$*" >&2; }
+die()  { err "$*"; exit 1; }
+
+# --- 공통: 요구 바이너리 / 환경 ------------------------------------------------
+require_env() {
+  [ "${HERDR_ENV:-}" = 1 ] || die "HERDR_ENV != 1 — herdr pane 안에서 실행해야 한다."
+  command -v herdr >/dev/null || die "herdr 없음"
+  command -v jq    >/dev/null || die "jq 없음"
+  command -v gootte>/dev/null || die "gootte 없음"
+  command -v opencode >/dev/null || die "opencode 없음"
+}
+
+# main 체크아웃 루트
+main_root() {
+  local common_dir
+  command -v git >/dev/null || die "git 없음"
+  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" \
+    || die "git repo 안에서 실행해야 한다."
+  case "$common_dir" in /*) : ;; *) common_dir="$(pwd)/$common_dir" ;; esac
+  common_dir="$(cd "$common_dir" && pwd -P)"
+  dirname "$common_dir"
+}
+
+# 자기 workspace 파악
+resolve_ws() {
+  local mr="$1"
+  if [ -n "${HERDR_WORKSPACE_ID:-}" ]; then printf '%s' "$HERDR_WORKSPACE_ID"; return 0; fi
+  herdr worktree list 2>/dev/null | jq -r --arg r "$mr" \
+    '.result.worktrees[]? | select(.repo_root==$r and ((.is_linked_worktree // false)|not)) | .open_workspace_id // empty' \
+    2>/dev/null | head -1
+}
+
+# 티켓 정규화: T03 / 3 / 03 → T03
+norm_ticket() {
+  local t="${1#T}"; t="${t#t}"
+  [[ "$t" =~ ^[0-9]+$ ]] || die "티켓 형식: T03 / 3 / 03 (받은 값: $1)"
+  printf 'T%02d' "$((10#$t))"
+}
+
+# herdr agent 이름: [a-z][a-z0-9_-]{0,31}
+worker_name() {
+  local tk; tk="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+  local s;  s="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '-')"
+  local room=$(( 32 - 3 - ${#tk} ))
+  s="${s:0:$room}"
+  local raw="w-${s}-${tk}"
+  [[ "$raw" =~ ^[a-z] ]] || raw="w${raw:0:31}"
+  printf '%s' "$raw"
+}
+
+# --- 포트 배정: frontend=5302+4n(짝수) / backend=8802+10n -----
+port_in_use() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+alloc_ports() {
+  local mr; mr="$(main_root)"
+  local used_be=" 8802 " used_fe=" 5302 "
+  local f
+  for f in "$mr"/.claude/worktrees/*/code/web/.ports.worktree; do
+    [ -f "$f" ] || continue
+    used_be+=" $(grep -oE 'BACKEND_PORT=[0-9]+' "$f" | cut -d= -f2) "
+    used_fe+=" $(grep -oE 'FRONTEND_PORT=[0-9]+' "$f" | cut -d= -f2) "
+  done
+  local n be fe
+  for n in $(seq 1 60); do
+    be=$((8802 + 10*n)); fe=$((5302 + 4*n))
+    [[ "$used_be" == *" $be "* ]] && continue
+    [[ "$used_fe" == *" $fe "* ]] && continue
+    port_in_use "$be" && continue
+    port_in_use "$fe" && continue
+    port_in_use "$((fe+1))" && continue
+    printf '%s %s' "$be" "$fe"; return 0
+  done
+  die "빈 포트 쌍을 못 찾음(n=1..60)"
+}
+
+# --- spawn --------------------------------------------------------------------
+cmd_spawn() {
+  local slug="" ticket="" read_docs="" msg="" order="" base="main"
+  local model='opencode/mimo-v2.5-free' dry=0
+  slug="${1:?slug}"; shift; ticket="${1:?ticket}"; shift
+  while [ $# -gt 0 ]; do case "$1" in
+    --read)   read_docs="$2"; shift 2;;
+    --msg)    msg="$2"; shift 2;;
+    --order)  order="$2"; shift 2;;
+    --base)   base="$2"; shift 2;;
+    --model)  model="$2"; shift 2;;
+    --dry-run) dry=1; shift;;
+    *) die "알 수 없는 옵션: $1";;
+  esac; done
+
+  local mr; mr="$(main_root)"
+  ticket="$(norm_ticket "$ticket")"
+  local feat="$mr/docs/features/$slug"
+  local ticket_file="$feat/tickets/$ticket.md"
+  [ -d "$feat" ]        || die "feature 없음: $feat"
+  [ -f "$ticket_file" ] || die "티켓 없음: $ticket_file"
+
+  local name branch wt_path orch_pane
+  name="$(worker_name "$slug" "$ticket")"
+  branch="${slug}-${ticket}"
+  wt_path="$mr/.claude/worktrees/${slug}-${ticket}"
+  orch_pane="${HERDR_PANE_ID:-}"
+  [ -n "$orch_pane" ] || err "HERDR_PANE_ID 없음 — 워커 push 보고 통로 비활성(수동 폴링 필요)"
+
+  local ports be fe
+  ports="$(alloc_ports)"; be="${ports% *}"; fe="${ports#* }"
+
+  # 브리핑 조립
+  local verify_cmd="pnpm run verify"
+  local brief; brief="$(cat <<EOF
+너는 '${slug}' 티켓 ${ticket} 담당 워커다. 이 worktree(브랜치 ${branch}, 포트 backend=${be}/frontend=${fe}/studio=$((fe+1)))에서만 작업한다.
+
+먼저 읽어라(순서):
+1. AGENTS.md 의 아키텍처 불변식(INV-1~5) — 특히 이 티켓 Locked decisions 가 가리키는 것
+2. docs/features/${slug}/spec.md
+3. docs/features/${slug}/tickets/${ticket}.md
+$( [ -d "$feat/adr" ] && echo "4. docs/features/${slug}/adr/ (관련 ADR)" )
+$( [ -n "$read_docs" ] && echo "추가로 읽어라: ${read_docs//,/, }" )
+$( [ -n "$order" ] && printf '\n지켜야 할 순서:\n%s\n' "$order" )
+$( [ -n "$msg" ] && printf '\n오케스트레이터 추가 지시:\n%s\n' "$msg" )
+
+--- 티켓 ${ticket} (그대로) ---
+$(cat "$ticket_file")
+--- 티켓 끝 ---
+
+완료 규율:
+- 🔴 **착수 첫 동작 — gootte start 보장**: 이 티켓 파일에 \`**Time:** started=\` 줄이 있는지 확인하라. 없으면(오케스트레이터 spawn 이 놓친 경우) **네가 즉시** \`gootte start --update ${slug} ${ticket}\` 를 실행한다(worktree 루트에서). 있으면 그대로 두라(재실행 불필요). 🔴 그 외에는 Time/Status 줄을 손으로 쓰지 마라(gootte 전용).
+- 코드는 TDD, 테스트 동반. 끝나면 '${verify_cmd}'(또는 티켓 Verification 이 지정한 것) green 을 **스스로** 확인한다.
+- 완료 판정·병합·gootte end 는 오케스트레이터가 한다(네 보고만으로 끝나지 않는다).
+- 막히거나 아키텍처/불변식 판단이 필요하면 강행 말고 멈춘다.
+
+🔴 보고 통로 — 반드시 지켜라(오케스트레이터가 이걸로 검증·병합을 시작한다):
+- 작업을 **끝냈거나(done)** / **막혔거나(blocked)** / **판단이 필요하면(question)**, idle 로 조용히 끝내지 말고 아래 명령으로 오케스트레이터 pane(${orch_pane:-<미지정>})에 **직접 push 보고**하라:
+    herdr agent prompt ${orch_pane:-<orch-pane>} "[${name}] done: <한 줄 요약>"
+  (막힘=done→blocked, 질문=done→question 로 바꿔 쓰고 무엇이 필요한지 한 줄.)
+- 이 push 가 유일한 완료 신호다. 보고 없이 멈추면 오케스트레이터가 못 알아챈다.
+EOF
+)"
+
+  if [ "$dry" = 1 ]; then
+    log "DRY-RUN"
+    log "  name=$name branch=$branch base=$base"
+    log "  worktree=$wt_path"
+    log "  ports: backend=$be frontend=$fe studio=$((fe+1))"
+    log "  model=$model"
+    printf -- '--- 브리핑 ---\n%s\n--- 끝 ---\n' "$brief"
+    return 0
+  fi
+
+  log "worktree 생성: $branch → $wt_path (base $base)"
+  local wt_json pane ws
+  ws="$(resolve_ws "$mr")"
+  local ws_arg=()
+  if [ -n "$ws" ]; then ws_arg=(--workspace "$ws"); else err "workspace 자동파악 실패 — herdr 자동해소로 폴백."; fi
+  wt_json="$(herdr worktree create --path "$wt_path" --branch "$branch" --base "$base" "${ws_arg[@]}" --label "$slug $ticket" --no-focus 2>&1)" \
+    || die "herdr worktree create 실패: $wt_json"
+  pane="$(printf '%s' "$wt_json" | jq -r '.result.root_pane.pane_id // .result.pane.pane_id // empty' 2>/dev/null || true)"
+  [ -n "$pane" ] || die "root pane id 파싱 실패. herdr 응답: $wt_json"
+  log "pane=$pane"
+
+  log "포트 기록: code/web/.ports.worktree"
+  printf 'BACKEND_PORT=%s\nFRONTEND_PORT=%s\n' "$be" "$fe" > "$wt_path/code/web/.ports.worktree"
+
+  log "bootstrap + install + db migrate"
+  ( cd "$wt_path" && pnpm worktree:bootstrap && pnpm install && pnpm db migrate ) || die "bootstrap/install/migrate 실패"
+
+  log "gootte start"
+  ( cd "$wt_path" && gootte start --update "$slug" "$ticket" ) || err "gootte start 경고 — 워커 fallback 이 보장한다"
+
+  log "herdr agent 기동: $name (opencode, $model)"
+  herdr agent start "$name" --kind opencode --pane "$pane" \
+    || die "herdr agent start 실패"
+
+  log "브리핑 전송"
+  herdr agent prompt "$name" "$brief" || die "agent prompt 실패"
+
+  log "✅ spawn 완료 — name=$name  worktree=$wt_path  ports be=$be/fe=$fe"
+  log "   추가지시: worker send $name \"...\" · 상태: worker status $name · 종료: worker end $slug $ticket $name"
+}
+
+# --- send / stop / status / end / list ----------------------------------------
+cmd_send()   { herdr agent prompt "${1:?name}" "${2:?message}"; }
+cmd_stop()   { herdr agent send-keys "${1:?name}" esc; log "인터럽트(esc) 전송: $1"; }
+cmd_status() {
+  if [ $# -ge 1 ]; then herdr agent get "$1"; else herdr agent list; fi
+}
+cmd_end() {
+  local slug="${1:?slug}" ticket; ticket="$(norm_ticket "${2:?ticket}")"; local name="${3:?name}"; shift 3
+  local remove=0; [ "${1:-}" = "--remove-worktree" ] && remove=1
+  local mr; mr="$(main_root)"; local wt_path="$mr/.claude/worktrees/${slug}-${ticket}"
+  [ -d "$wt_path" ] || die "worktree 없음: $wt_path"
+  log "gootte end (검증 green 전제)"
+  ( cd "$wt_path" && gootte end "$slug" "$ticket" ) || err "gootte end 경고"
+  if [ "$remove" = 1 ]; then
+    log "herdr worktree remove"
+    local ws; ws="$(herdr agent get "$name" 2>/dev/null | jq -r '.result.agent.workspace_id // empty' 2>/dev/null || true)"
+    if [ -z "$ws" ] || [ "$ws" = "null" ]; then
+      ws="$(herdr worktree list 2>/dev/null | jq -r --arg p "$wt_path" '.result.worktrees[]? | select(.path==$p) | .open_workspace_id // empty' 2>/dev/null || true)"
+    fi
+    if [ -n "$ws" ] && [ "$ws" != "null" ]; then
+      herdr worktree remove --workspace "$ws" --force >/dev/null 2>&1 && log "worktree 제거(ws=$ws)" || err "worktree remove 실패(ws=$ws)"
+      git -C "$mr" worktree prune 2>/dev/null || true
+    else
+      err "워커 에이전트에서 workspace id 못 찾음 — 수동 제거 필요(herdr worktree list)"
+    fi
+  fi
+  log "✅ end: $name ($slug $ticket)"
+}
+cmd_list() { herdr agent list; }
+
+# --- dispatch -----------------------------------------------------------------
+usage() { sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; }
+main() {
+  local sub="${1:-}"; [ $# -gt 0 ] && shift || true
+  case "$sub" in
+    spawn)  require_env; cmd_spawn  "$@";;
+    send)   require_env; cmd_send   "$@";;
+    stop)   require_env; cmd_stop   "$@";;
+    status) require_env; cmd_status "$@";;
+    end)    require_env; cmd_end    "$@";;
+    list)   require_env; cmd_list   "$@";;
+    ""|-h|--help|help) usage;;
+    *) err "알 수 없는 서브커맨드: $sub"; usage; exit 2;;
+  esac
+}
+main "$@"

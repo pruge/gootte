@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Feature, type Feature as FeatureT, type Project } from "@gootte/contract";
 import type { CopyScan } from "@gootte/core";
 import { z } from "zod";
-import { discoverProjects, headCommit, extraWorktreeRoots, hasTrackedUncommittedChange } from "@gootte/core-io";
+import { discoverProjects, extraWorktreeRoots } from "@gootte/core-io";
 import { sharedFeaturesCompute } from "./features-compute";
 
 /**
@@ -14,23 +14,17 @@ import { sharedFeaturesCompute } from "./features-compute";
  * 저장 자리는 gootte 자기 데이터 디렉터리(`GOOTTE_DATA_DIR`) 안이므로 관리대상에는 한 글자도
  * 쓰지 않는다(INV-2). 내용은 계산 결과의 verbatim 직렬화뿐 — 요약·추론은 없다(INV-4).
  *
- * 흐름: 스캔 미스 시 `recordProjectScan` 이 스탬프(headCommit@기록시점)와 함께 저장하고,
+ * 흐름: 스캔 미스 시 `recordProjectScan` 이 사본 구성과 함께 저장하고,
  * 다음 부팅부터 `snapshotFeatures` 가 저장된 프로젝트를 디스크에서 곧바로 내준다(slug 만 있으면 —
- * HEAD 비교·부팅 직후 재검증은 T04, 감시 중 증분 반영은 T05 의 몫 — 이 모듈은 저장소일 뿐.
+ * 부팅 직후 재검증은 T04, 감시 중 증분 반영은 T05 의 몫 — 이 모듈은 저장소일 뿐.
  */
 
 const SNAPSHOT_FILE = "discover-snapshot.json";
-
-const Stamp = z.object({
-  repo: z.string(), // 사본 경로
-  head: z.string().nullable(), // 기록 시점 headCommit — 사본이 repo 가 아니면 null
-});
 
 const SnapshotProject = z.object({
   slug: z.string(),
   path: z.string(),
   copies: z.array(z.string()),
-  stamps: z.array(Stamp),
   features: z.array(Feature),
 });
 
@@ -101,8 +95,7 @@ export function snapshotCopiesFor(dataDir: string, slug: string): string[] | nul
  */
 export function recordProjectScan(dataDir: string, proj: Project, features: FeatureT[]): void {
   const prev = loadDoc(dataDir);
-  const stamps = proj.copies.map((repo) => ({ repo, head: headCommit(repo) }));
-  const row = { slug: proj.slug, path: proj.path, copies: proj.copies, stamps, features };
+  const row = { slug: proj.slug, path: proj.path, copies: proj.copies, features };
   const others = (prev?.projects ?? []).filter((p) => p.slug !== proj.slug);
   const doc: SnapshotDocT = {
     version: 1,
@@ -148,34 +141,14 @@ export function clearSnapshotMemory(): void {
   memo.clear();
 }
 
-export interface SnapshotStampInfo {
-  slug: string;
-  copies: string[];
-  stamps: { repo: string; head: string | null }[];
-}
-
-/** 디스크 스냅샷에 기록된 stamps 및 copies 사본 구성을 반환한다. */
-export function readSnapshotStamps(dataDir: string): SnapshotStampInfo[] | null {
-  const doc = loadDoc(dataDir);
-  if (!doc) return null;
-  return doc.projects.map((p) => ({
-    slug: p.slug,
-    copies: p.copies,
-    stamps: p.stamps,
-  }));
-}
-
 /**
- * 저장된 스냵샷이 현재 사본 구성/HEAD 와 달라 **갱신이 필요한가**(T07). `featuresFor` 가 저장값을
+ * 저장된 스냅샷이 현재 사본 구성과 달라 **갱신이 필요한가**(T07). `featuresFor` 가 저장값을
  * 바로 서빙한 뒤 이걸로 백그라운드 갱신 여부를 판정한다. slug 가 없으면 true(스캔 필요).
- * 🔴 판정만 한다 — git 위치 스탬프(`headCommit`)를 읽으므로 핫 서빙 경로가 아니라 갱신 트리거
- * 자리에서만 쓴다(매 요청 호출하면 git 하위프로세스 비용이 되살아난다).
  */
 export function snapshotNeedsRefresh(dataDir: string, slug: string, copies: readonly string[]): boolean {
   const p = loadDoc(dataDir)?.projects.find((x) => x.slug === slug);
   if (!p) return true;
-  if (!sameCopies(p.copies, copies)) return true;
-  return !sameStamps(p.stamps, copies);
+  return !sameCopies(p.copies, copies);
 }
 
 /**
@@ -269,9 +242,8 @@ export interface SnapshotRevalidationResult {
  *
  * 변경 직후 즉시 밀린 첫 방송은 아직 낡은 스냅샷을 본 틈을 이 두 번째 방송이 메운다(실시간 갱신
  * 공백 제거, 캡틴 실측 2026-08-29). 한 프로젝트의 연속 변경은 debounce 로 하나의 재계산으로 뭉친다.
- * 🔴 갱신 신호일 뿐 — 완료/시작 여부 판정은 이 스케줄러가 아니라 문서의 `Time:` 줄이 정한다(T04/ADR-0001).
- * 변경 감지용 git HEAD 스탬프 게이팅은 그대로 재사용한다(`sameStamps`/`recordProjectScan`) — 새 캐시를
- * 발명하지 않는다(성능 잠금). */
+  * 🔴 갱신 신호일 뿐 — 완료/시작 여부 판정은 이 스케줄러가 아니라 문서의 `Time:` 줄이 정한다(T04/ADR-0001).
+  * 변경 감지용 사본 구성 비교는 `snapshotNeedsRefresh`/`recordProjectScan` 으로 충분하다. */
 export function createProjectUpdateScheduler(opts: {
   dataDir: string;
   roots: () => string[];
@@ -313,47 +285,26 @@ function projectCopiesWithWorktrees(copies: readonly string[]): string[] {
   return [...copies, ...extraWorktreeRoots(copies)];
 }
 
-const sameStamps = (
-  saved: SnapshotStampInfo["stamps"],
-  currentCopies: readonly string[],
-): boolean => {
-  if (saved.length !== currentCopies.length) return false;
-  return currentCopies.every((repo, i) => {
-    if (saved[i]?.repo !== repo) return false;
-    if (saved[i]?.head !== headCommit(repo)) return false;
-    // 🔴 `gootte start/end/pause/resume` 은 커밋 없이 티켓 파일만 편집한다(파일만 수정) —
-    // HEAD 가 같아도 `docs/features/` 아래가 바뀌었으면 스냅샷은 낡았다(INV-3). Time: finished=
-    // 기록 직후에도 완료/시작이 화면에 반영되게 git status 로 미커밋 변경을 잡아 재스캔을 일으킨다.
-    // (실제 결함 2026-09-01: `gootte end` 후 재시작해도 처리중으로 보였다 — HEAD 비교만 하던 탓.)
-    // 🔴 untracked(`??`)는 제외한다 — 새 기능 폴더가 미커밋 상태인 프로젝트는 항상 그 파일이
-    // 남아 15초마다 재스캔이 도는 지연이 재발한다(실제 결함 2026-09-01). untracked 의 처리중 여부는
-    // Time 줄이 정하고, tracked 수정(` M`)만이 스냅샷 staleness 의 증거다.
-    if (hasTrackedUncommittedChange(repo, "docs/features") === true) return false;
-    return true;
-  });
-};
-
 /**
- * 부팅 직후 현재 discover/HEAD 와 영구 스냅샷을 대조한다(T04).
+ * 부팅 직후 현재 discover 와 영구 스냅샷을 대조한다(T04).
  * 변경이 없으면 파일을 건드리지 않는다. 새/변경 프로젝트만 readFeatures 로 다시 계산하고,
- * 계산이 끝난 뒤 recordProjectScan 이 현재 HEAD 를 새 스탬프로 기록한다.
+ * 계산이 끝난 뒤 recordProjectScan 이 현재 사본을 기록한다.
  */
 export async function revalidateSnapshot(
   dataDir: string,
   roots: readonly string[],
 ): Promise<SnapshotRevalidationResult> {
-  if (!loadDoc(dataDir)) return { changedProjects: [], projectsChanged: false };
+  const doc = loadDoc(dataDir);
+  if (!doc) return { changedProjects: [], projectsChanged: false };
 
   const currentProjects = discoverProjects([...roots]);
-  const saved = readSnapshotStamps(dataDir) ?? [];
-  const currentBySlug = new Map(currentProjects.map((project) => [project.slug, project]));
-  const savedBySlug = new Map(saved.map((project) => [project.slug, project]));
+  const savedBySlug = new Map(doc.projects.map((p) => [p.slug, p]));
 
   let projectsChanged = false;
   const changedProjects: string[] = [];
 
-  for (const savedProject of saved) {
-    if (!currentBySlug.has(savedProject.slug)) {
+  for (const savedProject of doc.projects) {
+    if (!currentProjects.some((p) => p.slug === savedProject.slug)) {
       removeProjectScan(dataDir, savedProject.slug);
       projectsChanged = true;
     }
@@ -362,8 +313,7 @@ export async function revalidateSnapshot(
   for (const project of currentProjects) {
     const previous = savedBySlug.get(project.slug);
     const copies = projectCopiesWithWorktrees(project.copies);
-    if (!previous || !sameCopies(previous.copies, copies) || !sameStamps(previous.stamps, copies)) {
-      // 🔴 부팅 재검증도 워커에서 — 여기가 인라인이라 부팅 직후 문서 API 가 1,296ms 막혔다(T08 실측).
+    if (!previous || !sameCopies(previous.copies, copies)) {
       const features = await sharedFeaturesCompute().run(copies);
       recordProjectScan(dataDir, { ...project, copies }, features);
       changedProjects.push(project.slug);

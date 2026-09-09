@@ -7,7 +7,7 @@
  */
 
 /** 티켓 파일 한 장을 가리키는 참조 — 기능 폴더 + 파일 basename(= `FeatureTicket.slug`). */
-export interface TicketPathRef {
+interface TicketPathRef {
   feature: string;
   /** 파일 basename(확장자 제거) — `FeatureTicket.slug` 와 같은 값이다. */
   slug: string;
@@ -43,4 +43,14 @@ export function parseTicketPath(path: string): TicketPathRef | null {
   // file 에는 확장자가 이미 없다(정규식이 .md 를 밖에서 소비한다).
   if (dir.toLowerCase() === "tickets" && !/^t\d+$/i.test(file)) return null;
   return { feature, slug: file, num: /^[Tt]?(\d{1,3})/.exec(file)?.[1] ?? "" };
+}
+
+/**
+ * 상대경로가 티켓 문서인지 판별한다.
+ * @param path docs/features/<slug>/ 하위의 상대경로 (예: "issues/01-foo.md" 또는 "tickets/T01.md")
+ */
+export function isTicketDoc(path: string): boolean {
+  if (path.startsWith("issues/")) return /^issues\/[^/]+\.md$/i.test(path);
+  if (!path.startsWith("tickets/")) return false;
+  return /^tickets\/t\d+\.md$/i.test(path);
 }

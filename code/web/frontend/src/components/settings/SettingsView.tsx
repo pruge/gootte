@@ -5,21 +5,19 @@ import {
   IconCheck,
   IconEye,
   IconEyeOff,
-  IconFolder,
   IconFolderOpen,
   IconHome,
+  IconX,
   IconMoon,
-  IconPlus,
   IconRefresh,
   IconSearch,
-  IconTrash,
 } from "@tabler/icons-react";
 import { useBlockedCopies, useSaveSettings, useSettings } from "../../lib/query";
 import { refreshBackend } from "../../lib/api";
 import { isTauri, pickFolder } from "../../lib/tauri";
 import { ThemeToggle } from "../../theme/ThemeToggle";
 
-type CategoryId = "general" | "watch" | "hidden" | "theme";
+type CategoryId = "general" | "hidden" | "theme";
 
 const CATEGORIES: {
   id: CategoryId;
@@ -27,14 +25,12 @@ const CATEGORIES: {
   icon: typeof IconHome;
 }[] = [
   { id: "general", label: "일반", icon: IconHome },
-  { id: "watch", label: "감시", icon: IconFolder },
   { id: "hidden", label: "숨김", icon: IconEyeOff },
   { id: "theme", label: "테마", icon: IconMoon },
 ];
 
 const CATEGORY_LABEL: Record<CategoryId, string> = {
   general: "일반",
-  watch: "감시",
   hidden: "숨김",
   theme: "테마",
 };
@@ -45,82 +41,70 @@ export function SettingsView() {
   const block = useBlockedCopies();
   const [category, setCategory] = useState<CategoryId>("general");
   const [query, setQuery] = useState("");
-  const [firstmateHome, setFirstmateHome] = useState("");
-  const [watchRoots, setWatchRoots] = useState<string[]>([]);
+  const [projects, setProjects] = useState<string[]>([]);
+  
   const [autoClose, setAutoClose] = useState(true);
   const [newRoot, setNewRoot] = useState("");
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [pickErrorFirstmateHome, setPickErrorFirstmateHome] = useState<string | null>(null);
-  const [pickErrorWatchRoots, setPickErrorWatchRoots] = useState<string | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
+  
   /** 시드 완료 — 다음 렌더에서 true, 그 후부터 자동저장 활성화 */
   const [seeded, setSeeded] = useState(false);
 
   useEffect(() => {
     if (seeded || !data) return;
-    setFirstmateHome(data.firstmateHome ?? "");
-    setWatchRoots(data.effectiveWatchRoots ?? []);
+    setProjects(data.projects ?? data.effectiveProjects ?? []);
     setAutoClose(data.autoClose);
     setSeeded(true);
   }, [seeded, data]);
 
   useEffect(() => {
     if (!save.isSuccess || !save.data) return;
-    setFirstmateHome(save.data.firstmateHome ?? "");
-    setWatchRoots(save.data.effectiveWatchRoots ?? []);
+    setProjects(save.data.projects ?? save.data.effectiveProjects ?? []);
     setAutoClose(save.data.autoClose);
   }, [save.isSuccess, save.data]);
 
   const dirty =
-    firstmateHome !== (data?.firstmateHome ?? "") ||
-    watchRoots.join("\u0000") !== (data?.effectiveWatchRoots ?? []).join("\u0000") ||
-    autoClose !== (data?.autoClose ?? true);
+    projects.join("\u0000") !== (data?.effectiveProjects ?? []).join("\u0000") || autoClose !== (data?.autoClose ?? true);
 
   // 자동 저장 — 변경 시 500ms 뒤 저장, 저장 버튼 없음(VSCode 스타일)
   useEffect(() => {
     if (!seeded || !data || !dirty || save.isPending) return;
     const t = setTimeout(() => {
-      const trimToNull = (v: string) => {
-        const c = v.trim();
-        return c === "" ? null : c;
-      };
       save.mutate(
-        { firstmateHome: trimToNull(firstmateHome), watchRoots, autoClose },
+        { projects, autoClose },
         { onSuccess: () => setSavedAt(Date.now()) },
       );
     }, 500);
     return () => clearTimeout(t);
-  }, [seeded, firstmateHome, watchRoots, autoClose, dirty, data]);
+  }, [seeded, projects, autoClose, dirty, data]);
 
-  const firstmateHomeWarning =
-    data && data.firstmateHome !== null && !data.firstmateHomeExists
-      ? `이 경로가 없거나 폴더가 아닙니다: ${data.firstmateHome}`
-      : pickErrorFirstmateHome;
+  const projectWarning = pickError;
 
-  const addRootPath = (raw: string) => {
+  const addProjectPath = (raw: string) => {
     const t = raw.trim();
-    if (t === "" || watchRoots.includes(t)) return;
-    setWatchRoots((prev) => [...prev, t]);
+    if (t === "" || projects.includes(t)) return;
+    setProjects((prev) => [...prev, t]);
   };
-  const addRoot = () => {
-    addRootPath(newRoot);
+  const addProject = () => {
+    addProjectPath(newRoot);
     setNewRoot("");
   };
-  const pickWatchRoot = () => {
-    setPickErrorWatchRoots(null);
+  const pickProject = () => {
+    setPickError(null);
     pickFolder()
       .then((p) => {
         if (p !== null) {
-          addRootPath(p);
-          setNewRoot("");
+          setNewRoot(p); // 고른 값을 입력 칸에 앉힌다 — 추가는 사용자의 몫(실수로 넣는 일을 막는다)
         }
       })
       .catch((e: unknown) => {
-        setPickErrorWatchRoots(
+        setPickError(
           `폴더 선택 실패: ${e instanceof Error ? e.message : String(e)}`,
         );
       });
   };
-  const removeRoot = (root: string) => setWatchRoots((prev) => prev.filter((r) => r !== root));
+  const removeProject = (root: string) => setProjects((prev) => prev.filter((r) => r !== root));
 
   const unblock = (slug: string) => {
     const current = data?.blockedCopies ?? [];
@@ -217,8 +201,7 @@ export function SettingsView() {
         <h2 className="text-2xl font-bold tracking-tight">{CATEGORY_LABEL[activeCategory]}</h2>
         <p className="mt-1 mb-5 text-sm text-muted">
           {activeCategory === "general" &&
-            "백로그 조인에 쓰는 firstmate 홈 위치를 정합니다."}
-          {activeCategory === "watch" && "gootte 가 살펴볼 projects 폴더 뿌리를 하나씩 추가합니다."}
+            "감시할 프로젝트 뿌리 · 자동 완료 · 캐시 다시 읽기를 여기서 관리합니다."}
           {activeCategory === "hidden" &&
             "기능 탭에서 숨긴 작업 가지(트리하우스 복사본)를 관리합니다."}
           {activeCategory === "theme" && "화면 테마를 system · dark · light 중 고릅니다."}
@@ -226,41 +209,57 @@ export function SettingsView() {
 
         {activeCategory === "general" && (
           <SettingRow
-            title="firstmate 홈 경로"
-            hint="신관례(tickets/T<NN>.md) 티켓 상태의 단일 출처인 백로그 조인에만 씁니다. 감시 뿌리와는 무관합니다 — 비워 두면 백로그 조인이 꺼집니다."
+            title="감시 프로젝트"
+            hint="gootte 가 살펴볼 프로젝트 뿌리를 하나씩 추가합니다. 목록에서 빼면 그 폴더(와 그 사본)는 더 이상 감시되지 않고, 비워 두면 기본값(env·플랫폼)으로 떨어집니다."
           >
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={firstmateHome}
-                onChange={(e) => setFirstmateHome(e.target.value)}
-                spellCheck={false}
-                placeholder={data?.firstmateHomeSuggestion ?? "/절대/경로"}
-                aria-label="firstmate 홈 경로"
-                className="mono min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm outline-none placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-accent"
-              />
-              {isTauri() && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newRoot}
+                  onChange={(e) => setNewRoot(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addProject();
+                  }}
+                  spellCheck={false}
+                  placeholder="/절대/경로"
+                  aria-label="새 프로젝트 경로"
+                  className="mono min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm outline-none placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-accent"
+                />
+                {isTauri() && (
+                  <button
+                    type="button"
+                    onClick={pickProject}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-muted hover:bg-surface-2 hover:text-fg"
+                  >
+                    <IconFolderOpen size={16} stroke={1.75} /> 찾아보기…
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => {
-                    setPickErrorFirstmateHome(null);
-                    pickFolder()
-                      .then((p) => {
-                        if (p !== null) setFirstmateHome(p);
-                      })
-                      .catch((e: unknown) => {
-                        setPickErrorFirstmateHome(
-                          `폴더 선택 실패: ${e instanceof Error ? e.message : String(e)}`,
-                        );
-                      });
-                  }}
-                  className="mono inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-accent hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+                  onClick={addProject}
+                  className="shrink-0 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-muted hover:bg-surface-2 hover:text-fg"
                 >
-                  <IconFolderOpen size={16} stroke={1.75} /> 찾아보기…
+                  추가
                 </button>
-              )}
+              </div>
+              {projectWarning && <Warning text={projectWarning} />}
+              <ul className="flex flex-col gap-1">
+                {projects.map((root) => (
+                  <li key={root} className="flex items-center gap-2">
+                    <span className="mono min-w-0 flex-1 truncate text-sm">{root}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeProject(root)}
+                      aria-label={`${root} 프로젝트 제거`}
+                      className="shrink-0 rounded p-1 text-muted transition-colors hover:text-drop focus-visible:outline-2 focus-visible:outline-accent"
+                    >
+                      <IconX size={14} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
-            {firstmateHomeWarning && <Warning text={firstmateHomeWarning} />}
           </SettingRow>
         )}
 
@@ -313,66 +312,6 @@ export function SettingsView() {
                 </span>
               )}
             </div>
-          </SettingRow>
-        )}
-
-        {activeCategory === "watch" && (
-          <SettingRow
-            title={`감시 폴더 목록 (${watchRoots.length})`}
-            hint="목록에서 빼면 그 폴더(와 그 사본)는 더 이상 감시되지 않습니다. 비워 두면 아무것도 감시하지 않습니다."
-          >
-            <ul className="flex flex-col gap-3">
-              {watchRoots.map((root) => (
-                <li key={root} className="flex items-center gap-2">
-                  <span className="mono min-w-0 flex-1 truncate rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm">
-                    {root}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="감시 목록에서 제거"
-                    onClick={() => removeRoot(root)}
-                    className="shrink-0 rounded p-1.5 text-muted transition-colors hover:bg-surface-2 hover:text-drop focus-visible:outline-2 focus-visible:outline-accent"
-                  >
-                    <IconTrash size={16} stroke={1.75} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                type="text"
-                value={newRoot}
-                onChange={(e) => setNewRoot(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addRoot();
-                  }
-                }}
-                spellCheck={false}
-                placeholder="/절대/경로/projects"
-                aria-label="감시 폴더 추가 경로"
-                className="mono min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm outline-none placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-accent"
-              />
-              {isTauri() && (
-                <button
-                  type="button"
-                  onClick={pickWatchRoot}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-accent hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-                >
-                  <IconFolderOpen size={16} stroke={1.75} /> 찾아보기…
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={addRoot}
-                disabled={newRoot.trim() === ""}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-accent hover:text-fg focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <IconPlus size={16} stroke={1.75} /> 추가
-              </button>
-            </div>
-            {pickErrorWatchRoots && <Warning text={pickErrorWatchRoots} />}
           </SettingRow>
         )}
 

@@ -6,8 +6,7 @@ import {
   IconLock,
   IconProgress,
 } from "@tabler/icons-react";
-import type { FeatureConflict, FeatureTicket } from "@gootte/contract";
-import { ConflictBadge } from "./ConflictBadge";
+import type { FeatureTicket } from "@gootte/contract";
 import { TICKET_LIST_DEPTH, treeIndentStyle } from "../../lib/tree-indent";
 import { triggerKey } from "./docTrigger";
 import type { OpenDocFn } from "./FeatureTree";
@@ -146,15 +145,12 @@ export function TicketRow({
   featureSlug,
   onOpenDoc,
   query = "",
-  conflict,
 }: {
   ticket: FeatureTicket;
   featureSlug: string;
   onOpenDoc: OpenDocFn;
   /** 검색어 — 이 티켓이 검색으로 걸렸다면 걸린 자리를 노란 칩으로 보여준다. */
   query?: string;
-  /** T03 — 이 티켓 파일이 갈라졌으면 그 사실(어느 사본들인지). 없으면 갈라지지 않았다. */
-  conflict?: FeatureConflict;
 }) {
   const stage = stageOf(ticket);
   const unread = ticket.unread === true;
@@ -190,8 +186,6 @@ export function TicketRow({
             안 읽음
           </span>
         )}
-
-        {conflict && <ConflictBadge conflicts={[conflict]} />}
 
         {/* 신/구관례 공통: 계산된 상태(ticket.status)를 통합 라벨로 배지 표시.
             - 구관례도 sourceStatus(원문) 대신 계산된 상태를 보여줘 열이 통일된다.

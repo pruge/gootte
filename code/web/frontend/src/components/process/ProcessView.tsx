@@ -16,22 +16,12 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import {
-  IconArrowMoveRight,
-  IconFlag,
-  IconPlayerPause,
-  IconPlayerPlay,
-  IconPlayerTrackNext,
-} from "@tabler/icons-react";
 import { allTickets } from "@gootte/core";
-import type { Feature, FeatureTicket } from "@gootte/contract";
-import { useHoverTip } from "../HoverTip";
+import type { Feature } from "@gootte/contract";
 import { usePlanBoard, usePlanMove, useRecordTime } from "../../lib/query";
-import { featureDescription } from "../plan/cardTitle";
 import { DocDrawer } from "../features/DocDrawer";
 import { Loading, ErrorMsg } from "../common/states";
 import { MoveDialog } from "../plan/MoveDialog";
-import { FeatureDocsButton } from "../features/FeatureDocsButton";
 import {
   AREA_DROP_ID,
   AREA_LABEL,
@@ -44,6 +34,8 @@ import {
 import { useResizableSplit } from "../../hooks/useResizableSplit";
 import { WaitingCard, WaitingList } from "./WaitingList";
 import { openCount } from "./openCount";
+import { TicketLine } from "./TicketLine";
+import { FeatureHeading } from "./FeatureHeading";
 
 interface ProcessViewProps {
   project: string;
@@ -472,183 +464,3 @@ export function ProcessView({ project }: ProcessViewProps) {
   );
 }
 
-/** 오른쪽 컬럼 머리 — 기능 이름 + 설명문구 두 줄(plan 탭 카드 머리와 같은 자리).
- * plan 탭 카드 머리의 곁다리 세 가지(티켓 수 · spec.md 읽기 · 이동)를 그대로 실는다(캡틴 지시):
- * 캡틴이 steps 탭에 머문 채로 "이 기능이 무슨 문서인지" 와 "이 기능을 어디로 보낼지"를 정할 수 있다. */
-function FeatureHeading({
-  feature,
-  onOpenDoc,
-  onRequestMove,
-}: {
-  feature: Feature;
-  onOpenDoc: (slug: string, path: string) => void;
-  onRequestMove: (slug: string) => void;
-}) {
-  const description = featureDescription(feature.title, feature.slug);
-  // 🔴 issues/(구관례)와 tickets/(신관례, T04) 를 합친다 — 안 그러면 tickets/ 만 쓰는 기능은
-  // "티켓 0" 을 보여준다(`FeatureCard` 와 같은 결함, 2026-08-25).
-  const ticketCount = allTickets(feature).length;
-  return (
-    <div className="flex flex-col gap-y-0.5 border-b border-border px-2 pb-2">
-      <div className="flex flex-wrap items-center gap-x-2">
-        <span
-          className={`mono min-w-0 text-sm ${
-            description ? "text-muted" : "font-medium tracking-tight"
-          }`}
-        >
-          {feature.slug}
-        </span>
-        {feature.hasUnreadTicket === true && (
-          <span
-            role="status"
-            className="mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
-          >
-            안 읽음
-          </span>
-        )}
-        <span className="mono shrink-0 text-sm tabular-nums text-muted">티켓 {ticketCount}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-0.5">
-          <FeatureDocsButton feature={feature} onOpen={(path) => onOpenDoc(feature.slug, path)} />
-          <button
-            type="button"
-            onClick={() => onRequestMove(feature.slug)}
-            aria-label={`${feature.slug} 다른 칸으로 보내기`}
-            title="어느 칸으로 보낼지 고른다"
-            className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-          >
-            <IconArrowMoveRight size={17} stroke={1.6} />
-          </button>
-        </span>
-      </div>
-      {description && (
-        <span className="break-words text-sm font-medium tracking-tight">{description}</span>
-      )}
-    </div>
-  );
-}
-
-/** 상자 글리프 — `[x]`/`[-]`/`[ ]` 는 문서 상태에서 이미 계산된 `ticket.status` 로 그린다. */
-function boxGlyph(t: FeatureTicket): string {
-  if (t.status === "done") return "[x]";
-  if (t.status === "dropped") return "[-]";
-  return "[ ]";
-}
-
-function rowTone(t: FeatureTicket): string {
-  const pausedNow = t.pauses?.some((p) => p.resumedAt === null) === true;
-  if (t.unread === true) return "bg-unread hover:bg-unread-strong";
-  if (pausedNow) return "bg-paused hover:bg-paused-strong";
-  return t.status === "in_progress"
-    ? "bg-inprogress hover:bg-inprogress-strong"
-    : "hover:bg-surface-2";
-}
-
-function TicketLine({
-  feature,
-  ticket,
-  onOpen,
-  onTimeAction,
-}: {
-  feature: Feature;
-  ticket: FeatureTicket;
-  onOpen: () => void;
-  onTimeAction: (action: "start" | "pause" | "resume" | "end") => void;
-}) {
-  const closed = ticket.status === "done" || ticket.status === "dropped";
-  // T02 — 걸린 시간 어림 문구를 툴팁으로. 없으면 툴팁 자체를 띄우지 않는다(INV-4).
-  const { triggerProps, tip } = useHoverTip(ticket.elapsed ?? null);
-  // ADR-0002(pause) — 버튼 상태는 티켓 문서의 Time 줄에서 결정한다(서버가 이미 읽어 보낸 값).
-  //   미시작: startedAt 없음 → start 버튼
-  //   진행 중: startedAt 있고, 재개 안 된 paused 가 없음 → pause + end
-  //   일시중단: 재개 안 된 paused 가 있음 → resume + end
-  //   완료: finishedAt 있음 → 버튼 없음
-  const pausedNow = ticket.pauses?.some((p) => p.resumedAt === null) === true;
-  const showStart = !ticket.startedAt;
-  const showPauseResume = !!ticket.startedAt && !ticket.finishedAt;
-  const showEnd = !!ticket.startedAt && !ticket.finishedAt;
-
-  const iconBtn =
-    "inline-flex items-center justify-center rounded p-1 text-muted transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent";
-  return (
-    <li>
-      <div className={`flex w-full items-stretch ${rowTone(ticket)}`}>
-        <button
-          type="button"
-          {...triggerProps}
-          onClick={onOpen}
-          className="grid min-w-0 flex-1 grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] items-baseline gap-x-2.5 px-3 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-        >
-          <span className={`col-start-1 mono shrink-0 text-sm ${closed ? "text-accent" : "text-muted"}`}>
-            {boxGlyph(ticket)}
-          </span>
-          <span className="col-start-2 mono shrink-0 text-sm tabular-nums text-muted">
-            {ticket.num || "—"}
-          </span>
-          <span className="col-start-3 min-w-0 truncate text-sm">{ticket.title}</span>
-          {ticket.unread === true && (
-            <span
-              role="status"
-              className="col-start-4 mono shrink-0 rounded bg-unread-strong px-1.5 py-0.5 text-sm font-medium text-unread-fg"
-            >
-              안 읽음
-            </span>
-          )}
-          {ticket.status === "in_progress" && (
-            <span role="status" className="col-start-5 mono shrink-0 text-sm font-medium text-active">
-              {pausedNow ? "일시중단" : "처리중"}
-            </span>
-          )}
-        </button>
-        {!closed && (
-          <span className="flex shrink-0 items-center gap-0.5 pr-1.5">
-            {showStart && (
-              <button
-                type="button"
-                onClick={() => onTimeAction("start")}
-                aria-label={`${feature.slug} ${ticket.num} 시작`}
-                title="시작"
-                className={iconBtn}
-              >
-                <IconPlayerPlay size={14} stroke={1.75} />
-              </button>
-            )}
-            {showPauseResume &&
-              (pausedNow ? (
-                <button
-                  type="button"
-                  onClick={() => onTimeAction("resume")}
-                  aria-label={`${feature.slug} ${ticket.num} 재개`}
-                  title="재개"
-                  className={iconBtn}
-                >
-                  <IconPlayerTrackNext size={14} stroke={1.75} />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onTimeAction("pause")}
-                  aria-label={`${feature.slug} ${ticket.num} 일시중단`}
-                  title="일시중단"
-                  className={iconBtn}
-                >
-                  <IconPlayerPause size={14} stroke={1.75} />
-                </button>
-              ))}
-            {showEnd && (
-              <button
-                type="button"
-                onClick={() => onTimeAction("end")}
-                aria-label={`${feature.slug} ${ticket.num} 완료`}
-                title="완료"
-                className={iconBtn}
-              >
-                <IconFlag size={14} stroke={1.75} />
-              </button>
-            )}
-          </span>
-        )}
-      </div>
-      {tip}
-    </li>
-  );
-}

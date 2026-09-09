@@ -96,7 +96,7 @@ function open(dataDir: string): DatabaseSyncType {
   return db;
 }
 
-export interface SchemaMigrationResult {
+interface SchemaMigrationResult {
   addedColumns: string[];
   droppedColumns: string[];
 }
@@ -168,7 +168,7 @@ export function readPlacements(dataDir: string, project: string): Placement[] {
  * 한 프로젝트의 단계 행 전부 — 05 가 읽어 쓸 자리이고, 지금은 03 의 쓰기가 실제로 닿았는지
  * 테스트가 확인하는 데 쓴다.
  */
-export interface StoredStep {
+interface StoredStep {
   feature: string;
   ticket: string;
   step: number;

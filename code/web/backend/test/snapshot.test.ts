@@ -6,7 +6,7 @@ import { FeaturesResponse, ProjectsResponse, type Feature, type Project } from "
 import { readFeatures } from "@gootte/core-io";
 import type { CopyScan } from "@gootte/core";
 import { createApp } from "../src/app";
-import { clearDiscoverCache, clearDiscoverCacheMemory } from "../src/discover-cache";
+import { clearDiscoverCache } from "../src/discover-cache";
 import { clearSnapshot, clearInProgressMemory, recordInProgress, recordProjectScan, snapshotFeatures, snapshotInProgress, snapshotNeedsRefresh, snapshotPath } from "../src/snapshot";
 
 // 🔴 이 저장소 자신의 docs/ 를 픽스처로 쓰지 않는다 — 임시 디렉토리에 합성한다(verify gate 규율).
@@ -52,15 +52,7 @@ describe("snapshot 저장소 (fast-cold-start T03)", () => {
     expect(hit).toEqual(features); // verbatim — 가공 없다(INV-4)
   });
 
-  test("스탬프가 사본 경로와 headCommit 와 함께 디스크에 남는다", () => {
-    const proj = alphaLike();
-    recordProjectScan(dataDir, proj, readFeatures(proj.copies));
 
-    const doc = JSON.parse(readFileSync(snapshotPath(dataDir), "utf8"));
-    expect(doc.version).toBe(1);
-    expect(doc.projects).toHaveLength(1);
-    expect(doc.projects[0].stamps).toEqual([{ repo: proj.copies[0], head: null }]); // fixture 는 repo 가 아니라 null
-  });
 
   test("사본 구성이 달라져도 slug 가 있으면 저장값을 바로 준다(stale-while-validate, T07)", () => {
     const proj = alphaLike();
@@ -118,12 +110,12 @@ describe("라우트가 스냅샷에서 서빙한다 (재부팅 시나리오)", (
     writeFileSync(join(root, "alpha/docs/features/auth-login/spec.md"), "# auth-login\n\n## Goal\n\n로그인.\n");
 
     const app1 = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
-    await app1.request("/api/projects"); // 배지 채우기를 예약한다(T03 — 스캔은 백그라운드)
-    await waitUntil(() => snapshotFeatures(dataDir, "alpha", [join(root, "alpha")]) !== null);
+    // featuresFor 는 /api/features/:slug 에서만 기록된다 — 스냅샷을 채운다
+    await app1.request("/api/features/alpha");
     expect(snapshotFeatures(dataDir, "alpha", [join(root, "alpha")])).not.toBeNull();
 
     rmSync(join(root, "alpha/docs/features/auth-login"), { recursive: true }); // 문서 소멸
-    clearDiscoverCacheMemory(); // 재부팅: 메모리 비움(감시 신호 없이 낡은 기록이 못 남게 하는 같은 규율)
+    clearDiscoverCache(); // 재부팅: 메모리 비움(감시 신호 없이 낡은 기록이 못 남게 하는 같은 규율)
 
     const app2 = createApp({ roots, treehouse: NO_TREEHOUSE, dataDir });
     const body = FeaturesResponse.parse(await (await app2.request("/api/features/alpha")).json());
@@ -135,10 +127,10 @@ describe("라우트가 스냅샷에서 서빙한다 (재부팅 시나리오)", (
 
   test("스냅샷 없는 첫 실행은 스캔해서 답하고 그 자리에서 기록한다", async () => {
     const app = createApp({ roots: [FIXTURES], treehouse: NO_TREEHOUSE, dataDir });
-    const body = ProjectsResponse.parse(await (await app.request("/api/projects")).json());
-    expect(body.projects.map((p) => p.slug)).toContain("alpha");
-    // T03 — 스캔은 배지 채우기와 함께 백그라운드로 간다. 기록되는 사실은 그대로다.
-    await waitUntil(() => snapshotFeatures(dataDir, "alpha", [join(FIXTURES, "alpha")]) !== null);
+    // git-removal T06 이후 배지는 state.json 에서 읽는다 — 스냅샷을 기록하는 읽기 길은
+    // `/api/features/:slug` 하나다(INV-1, 기록은 파생물 재생성뿐).
+    const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
+    expect(body.features).not.toHaveLength(0);
     expect(snapshotFeatures(dataDir, "alpha", [join(FIXTURES, "alpha")])).not.toBeNull();
   });
 });

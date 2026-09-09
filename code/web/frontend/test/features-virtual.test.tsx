@@ -23,9 +23,7 @@ const NO_WORK: FeaturesResponse["inProgress"] = {
   copies: 0,
   working: 0,
   tickets: 0,
-  unknown: [],
   unreadable: [],
-  unclaimed: [],
 };
 
 function manyFeatures(n: number): Feature[] {

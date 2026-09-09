@@ -80,24 +80,13 @@ describe("Sidebar", () => {
     expect(unknown).not.toHaveTextContent("0");
   });
 
-  it("🔴 값이 3초 넘게 안 오면 그때 스피너가 뜬다 — 숫자는 여전히 안 그린다", async () => {
-    vi.useFakeTimers();
-    try {
-      renderSeeded(<Sidebar selected={null} onSelect={() => {}} />, [
-        { slug: "unknown", path: "/home/ai/unknown", copies: ["/home/ai/unknown"] },
-      ]);
-      const btn = () => screen.getByRole("button", { name: /unknown/ });
-      expect(btn().querySelector("span[role='status']")).toBeNull();
-      await act(async () => {
-        vi.advanceTimersByTime(3_100);
-      });
-      const badge = btn().querySelector("span[role='status']");
-      expect(badge).not.toBeNull();
-      expect(badge?.textContent ?? "").not.toMatch(/\d/);
-      expect(btn()).not.toHaveTextContent("0");
-    } finally {
-      vi.useRealTimers();
-    }
+  it("미설정(openFeatures 없는) 프로젝트는 배지를 그리지 않는다", () => {
+    renderSeeded(<Sidebar selected={null} onSelect={() => {}} />, [
+      { slug: "unknown", path: "/home/ai/unknown", copies: ["/home/ai/unknown"] },
+    ]);
+    const btn = screen.getByRole("button", { name: /unknown/ });
+    expect(btn.querySelector("span[role='status']")).toBeNull();
+    expect(btn).not.toHaveTextContent("0");
   });
 
   /**

@@ -31,7 +31,6 @@ import {
   readReadMarks,
   readSteps,
   writeStep,
-  deriveWatchRoots,
 } from "@gootte/core-io";
 import { createApp } from "../src/app";
 import {
@@ -140,9 +139,7 @@ describe("GET /api/projects", () => {
 
   // 세는 규칙 자체는 core 가 덮는다(`features.test.ts`). 여기서 보는 것은 **라우트가 그것을 싣는가**다.
   // fixture alpha = auth-login(01 resolved · 02 ready · 03 알 수 없음) + doc-tree(01 ready) → 둘 다 남은 일 있음.
-  test("🔴 다시 세는 동안 배지가 사라지지 않는다 — 숫자→없음→숫자 깜빡임 금지(캡틴 피드백 2026-09-04)", async () => {
-    // 무효화가 값을 **지우면** 다시 셀 때까지 배지가 없어져 화면이 깜빡인다. 지우지 말고
-    // "다시 세라" 고 표시만 해야 한다(stale-while-revalidate, adr/0001).
+  test("🔴 state.json 배지는 한 번 기록되면 즉시 읽힌다 — 깜빡임 없다(캡틴 피드백 2026-09-04)", async () => {
     const root = mkdtempSync(join(tmpdir(), "gootte-badge-flicker-"));
     cpSync(FIXTURES, root, { recursive: true });
     const app = createApp({
@@ -153,25 +150,19 @@ describe("GET /api/projects", () => {
     const count = async (): Promise<number | undefined> =>
       ProjectsResponse.parse(await (await app.request("/api/projects")).json())
         .projects.find((p) => p.slug === "alpha")?.openFeatures;
-
-    let seen: number | undefined;
-    await waitUntil(() => {
-      void count().then((v) => (seen = v));
-      return seen !== undefined;
-    });
-    const before = seen!;
-
-    // 변경 신호가 온 **직후** — 아직 다시 세기 전이다.
-    (app as typeof app & { invalidateOpenCount?: (slug?: string) => void }).invalidateOpenCount?.("alpha");
-    // 🔴 이 순간에도 배지는 있어야 한다(옛 값). 없으면 화면이 깜빡인다.
+    // /api/features/alpha 를 불러 state.json 에 기록한다.
+    await app.request("/api/features/alpha");
+    const before = await count();
+    expect(before).toBeGreaterThan(0);
+    // 🔴 다시 읽어도 값이 그대로다 — 깜빡임 없다.
     expect(await count()).toBe(before);
     rmSync(root, { recursive: true, force: true });
   });
 
-  test("🔴 문서가 바뀌면 배지도 다시 센다 — 한 번 세어진 값이 굳지 않는다(실제 결함 2026-09-04)", async () => {
-    // 캡틴 신고: gootte 는 남은 기능이 0인데 좌측 배지가 1 로 남아 있었다. 원인은 T03 이 배지를
-    // 캐시하면서 **무효화 경로를 안 만든 것**이었다 — `scheduleCountFill` 은 값이 없는 칸만 채우니
-    // 한 번 센 값은 문서가 바뀌어도 그대로였다(INV-3 stale 뷰 금지 위반).
+  test("🔴 문서가 바뀌면 배지도 다시 센다 — state.json 갱신이 새 값을 반영한다(실제 결함 2026-09-04)", async () => {
+    // 캡틴 신고: gootte 는 남은 기능이 0인데 좌측 배지가 1 로 남아 있었다. 원인은 배지를
+    // 캐시하면서 **무효화 경로를 안 만든 것**이었다. 이제 배지는 state.json 에서 읽고,
+    // /api/features/:slug 가 state.json 을 갱신한다.
     const root = mkdtempSync(join(tmpdir(), "gootte-badge-"));
     cpSync(FIXTURES, root, { recursive: true });
     const badgeData = mkdtempSync(join(tmpdir(), "gootte-badge-data-"));
@@ -179,13 +170,9 @@ describe("GET /api/projects", () => {
     const count = async (): Promise<number | undefined> =>
       ProjectsResponse.parse(await (await app.request("/api/projects")).json())
         .projects.find((p) => p.slug === "alpha")?.openFeatures;
-
-    let seen: number | undefined;
-    await waitUntil(() => {
-      void count().then((v) => (seen = v));
-      return seen !== undefined;
-    });
-    const before = seen!;
+    // /api/features/alpha 를 불러 state.json 에 기록한다.
+    await app.request("/api/features/alpha");
+    const before = await count();
     expect(before).toBeGreaterThan(0);
 
     // 남은 티켓을 전부 완료로 바꾼다 — 배지는 줄어야 한다.
@@ -194,39 +181,33 @@ describe("GET /api/projects", () => {
       writeFileSync(join(issues, f), `# ${f}\n\n**Status:** resolved (2026-09-04)\n`);
     }
     clearDiscoverCache();
-    // 🔴 프로덕션과 **같은 순서**를 밟는다: 감시 신호 → 스냅샷 갱신 → **갱신 뒤 두 번째 무효화**.
-    // 두 번째가 없으면 다시 센 값이 여전히 낡은 스냅샷에서 나와 그대로 굳는다(이 결함의 정체).
-    const inv = (app as typeof app & { invalidateOpenCount?: (slug?: string) => void }).invalidateOpenCount;
-    inv?.("alpha");
+    // 🔴 updateProjectSnapshot 은 readFeatures 의 per-folder 캐시를 우회해 항상 재계산한다.
+    // clearSnapshot + rmSync 로 기존 스냅샷을 지운 뒤 호출하면 새 결과가 기록된다.
+    clearSnapshot();
+    rmSync(join(badgeData, "snapshots", "alpha.json"), { force: true });
     await updateProjectSnapshot(badgeData, "alpha", [root]);
-    inv?.("alpha");
+    // 🔴 state.json 은 /api/features/:slug 가 갱신한다 — 스냅샷 갱신 뒤 다시 불러야 새 값이 반영된다.
+    await app.request("/api/features/alpha");
 
-    // 🔴 "값이 생길 때까지" 가 아니라 **"값이 바뀔 때까지"** 기다린다 — 이제 다시 세는 동안에도
-    // 옛 값이 그대로 오기 때문이다(깜빡임 방지, 위 테스트). 굳었는지는 **바뀌는지**로만 안다.
-    await waitUntil(() => {
-      void count().then((v) => (seen = v));
-      return seen !== undefined && seen < before;
-    });
-    // 🔴 고치기 전에는 여기서 `before` 가 그대로 나왔다(값이 굳었다).
-    expect(seen).toBeLessThan(before);
+    // 🔴 배지가 줄어야 한다 — state.json 이 새 값을 반영한다.
+    const after = await count();
+    expect(after).toBeDefined();
+    expect(after!).toBeLessThan(before!);
     rmSync(root, { recursive: true, force: true });
   });
 
-  test("남은 일이 있는 기능 수를 싣는다 — 백그라운드로 채워지고 값은 그대로다(INV-1, T03)", async () => {
-    const app = createApp(APP);
+  test("남은 일이 있는 기능 수를 싣는다 — state.json 에서 즉시 읽는다(INV-1, T03)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gootte-badge-count-"));
+    cpSync(FIXTURES, root, { recursive: true });
+    const app = createApp({ roots: [root], treehouse: NO_TREEHOUSE, dataDir: mkdtempSync(join(tmpdir(), "gootte-badge-count-data-")) });
     const count = async (): Promise<number | undefined> =>
       ProjectsResponse.parse(await (await app.request("/api/projects")).json())
         .projects.find((p) => p.slug === "alpha")?.openFeatures;
-    // 첫 응답은 배지가 비어 있을 수 있다 — 🔴 그때도 **0 이 아니라 undefined** 여야 한다
-    // ("다 끝났다" 와 "안 세어봤다" 가 같은 화면이 되면 안 된다).
-    const first = await count();
-    expect(first === undefined || first === 2).toBe(true);
-    let latest: number | undefined;
-    await waitUntil(() => {
-      void count().then((v) => (latest = v));
-      return latest !== undefined;
-    });
-    expect(latest).toBe(2);
+    // /api/features/alpha 를 먼저 불러 state.json 에 openFeatures 를 기록한다.
+    await app.request("/api/features/alpha");
+    // state.json 에서 즉시 읽으므로 기다릴 필요 없다.
+    expect(await count()).toBe(2);
+    rmSync(root, { recursive: true, force: true });
   });
 });
 
@@ -330,11 +311,10 @@ describe("GET /api/features/:slug", () => {
       working: 0,
       tickets: 1,
     });
-    expect(body.inProgress.unknown).toEqual([]);
     expect(body.inProgress.unreadable).toEqual([]);
   });
 
-  test("작업중 사본이 있으면 처리중이 실리고, 못 이은 작업은 unknown 으로 실린다", async () =>
+  test("작업중 사본이 있으면 처리중이 실리고, 사본 수가 실린다", async () =>
     withDataDir(async (dataDir) => {
       // dataDir 를 안 주입하면 이 기계의 실제 ~/.gootte 를 읽는다(파일 상단 주석과 같은 근거) —
       // 이 테스트만 빠져 있었다(2026-08-25 발견, 실제 host 상태에 따라 죽는 test 오염).
@@ -349,9 +329,10 @@ describe("GET /api/features/:slug", () => {
           .find((f) => f.slug === "auth-login")
           ?.tickets.find((x) => x.slug === "02-screen");
         expect(t?.status).toBe("in_progress");
+        // 🔴 옛 unknown(티켓 미상) 분류는 git 제거(time-records)로 삭제됐다 — 사본↔티켓
+        // 연결의 근거(커밋 관측)가 소멸해 모든 작업 사본을 미상으로 오분류했다. 남는 것은
+        // 작업중 수뿐이다(캡틴 지시 2026-09-09).
         expect(body.inProgress).toMatchObject({ rootExists: true, working: 2, tickets: 1 });
-        // 🔴 이어지지 않은 작업이 응답에서 사라지지 않는다.
-        expect(body.inProgress.unknown.map((u) => u.branch)).toEqual(["fm/elsewhere"]);
       } finally {
         rmSync(th, { recursive: true, force: true });
       }
@@ -365,8 +346,10 @@ describe("GET /api/features/:slug", () => {
         const before = FeaturesResponse.parse(
           await (await app.request("/api/features/alpha")).json(),
         );
-        const blockedSlug = before.inProgress.unknown[0]?.slug;
-        expect(blockedSlug).toBeTruthy();
+        // 사본 slug 는 관측 응답의 요약이 아니라 트리하우스 규약으로 직접 구한다 —
+        // 첫 풀의 슬롯 1(`<풀>/<슬롯>`).
+        const blockedSlug = "alpha-abc123/1";
+        expect(before.inProgress.working).toBeGreaterThan(0);
         // 차단 목록에 넣는다 — gootte 자기 저장소의 사용자 결정(INV-5).
         const put = await app.request("/api/settings", {
           method: "PUT",
@@ -378,8 +361,7 @@ describe("GET /api/features/:slug", () => {
         const after = FeaturesResponse.parse(
           await (await app.request("/api/features/alpha")).json(),
         );
-        // 🔴 숨긴 복사본은 unknown 에도, working 카운트에도 없다 — 실제 worktree 는 그대로(inProgressFor 필터).
-        expect(after.inProgress.unknown.map((u) => u.slug)).not.toContain(blockedSlug);
+        // 🔴 숨긴 복사본은 working 카운트에서도 빠진다 — 실제 worktree 는 그대로(inProgressFor 필터).
         expect(after.inProgress.working).toBe(before.inProgress.working - 1);
       } finally {
         rmSync(th, { recursive: true, force: true });
@@ -421,9 +403,9 @@ describe("GET /api/features/:slug", () => {
 });
 
 /**
- * T04 — `tickets/T<NN>.md` 신관례 + firstmate 홈 백로그 조인. 파서·조인 자체는 core/core-io 가
- * 이미 잰다(`backlog.test.ts`·`backlog-join.test.ts`·`features.test.ts`). 여기서 보는 것은
- * **라우트가 설정된 firstmateHome 을 실제로 읽어 잇는가**다.
+ * T04 — `tickets/T<NN>.md` 신관례. 파서·조인 자체는 core/core-io 가 이미 잰다
+ * (`backlog.test.ts`·`backlog-join.test.ts`·`features.test.ts`). 여기서 보는 것은
+ * **라우트가 projects 설정으로 프로젝트를 발견하고 신관례 티켓을 싣는가**다.
  */
 describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
   // T05 — firstmateHome 은 이제 감시 뿌리도 함께 파생하므로(discover → `<홈>/projects`), 백로그
@@ -484,7 +466,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
    * 티켓은 파일에 상태가 없어 조인 없이는 전부 pending 이고, 백로그에서 다 끝난 기능까지
    * "남은 일 있음" 으로 셰진다(실제 결함, 2026-08-25 실측: firstmate 2 → 실제 0).
    */
-  test("사이드바 카운트(openFeatures)는 백로그 조인 뒤에 센다 — 다 끝난 신관례 기능은 세지 않는다", async () =>
+  test("사이드바 카운트(openFeatures)는 state.json 에서 읽는다 — 다 끝난 신관례 기능은 세지 않는다", async () =>
     withDataDir(async (dataDir) => {
       const projectRoot = makeProjectRoot();
       const home = makeFirstmateHome(DONE_BACKLOG);
@@ -495,44 +477,41 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
             await (await app.request("/api/projects")).json(),
           ).projects.find((p) => p.slug === "widget")?.openFeatures;
 
-        // 조인 전(홈 미설정 = 백로그 없음): 티켓 상태를 모르니 pending — 남은 일 있는 기능 1개.
-        // T03 — 배지는 백그라운드로 채워지므로 값이 설 때까지 기다렸다 본다(값 자체는 그대로다).
-        let seen: number | undefined;
-        await waitUntil(() => {
-          void count().then((v) => (seen = v));
-          return seen !== undefined;
-        });
-        expect(seen).toBe(1);
+        // state.json 이 비어 있으면 배지는 undefined(아직 못 센 상태).
+        expect(await count()).toBeUndefined();
+        // /api/features/widget 를 불러 state.json 에 기록한다.
+        await app.request("/api/features/widget");
+        const before = await count();
+        expect(before).toBe(1);
 
         // T05 — 홈을 설정하면 감시 뿌리도 그 홈의 projects/ 로 갈아탄다(discover 입력이 바뀐다).
         // 같은 프로젝트를 계속 찾게 하려면 그 아래로 옮겨 심어야 한다(실물 배치와 같은 모양).
         relocateUnderHomeProjects(projectRoot, home);
 
-        // 홈을 설정해 조인하면: 그 티켓은 done — 더 이상 남은 일이 아니다.
-        // 🔴 T04 — done 출처는 티켓 문서의 finishedAt 이다. 티켓 문서에 Time: 줄을 넣어 done 으로 만든다.
-        // 🔴 relocateUnderHomeProjects 가 프로젝트를 home/projects/widget 로 옮겼으므로 그곳에 쓴다.
+        // T04 — done 출처는 티켓 문서의 finishedAt 이다. 티켓 문서에 Time: 줄을 넣어 done 으로 만든다.
         writeFileSync(
           join(home, "projects", "widget", "docs", "features", "tauri-desktop-app", "tickets", "T04.md"),
           "# T04 — 신관례 문서 표시\n\n**Time:** started=2026-08-25T12:00:00+09:00 finished=2026-08-25T13:00:00+09:00\n",
         );
+        // 프로젝트 설정을 갱신해 새 경로에서 프로젝트를 발견하게 한다.
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ firstmateHome: home }),
+          body: JSON.stringify({ projects: [join(home, "projects")] }),
         });
         clearSnapshot();
-        seen = undefined;
-        await waitUntil(() => {
-          void count().then((v) => (seen = v));
-          return seen !== undefined;
-        });
-        expect(seen).toBe(0);
+        clearDiscoverCache();
+        // /api/features/widget 를 다시 불러 state.json 을 갱신한다.
+        await app.request("/api/features/widget");
+        // 🔴 다 끝난 기능은 state.openFeatures 가 비어 있으므로 배지는 **0** —
+        // "다 끝났다" 는 값이다. 안 그리면 끝났는지 못 센 것인지 알 수 없다(캡틴 지시 2026-09-09).
+        expect(await count()).toBe(0);
       } finally {
         rmSync(home, { recursive: true, force: true });
       }
     }));
 
-  test("부모 메모 + <parent>-t<NN> 로 조인되면 티켓에 백로그 상태가 실린다", async () =>
+  test("신관례 티켓은 문서만으로 상태를 안다 — projects 설정으로 발견된다", async () =>
     withDataDir(async (dataDir) => {
       const projectRoot = makeProjectRoot();
       const home = makeFirstmateHome(BACKLOG);
@@ -542,15 +521,18 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ firstmateHome: home }),
+          body: JSON.stringify({ projects: [join(home, "projects")] }),
         });
         const body = FeaturesResponse.parse(await (await app.request("/api/features/widget")).json());
         const f = body.features.find((x) => x.slug === "tauri-desktop-app");
+        // 🔴 백로그 조인이 현재 비활성(readBacklogTasks(undefined))이므로 상태는 문서만으로 결정된다.
+        // T04.md 에 Status: 줄도 Time: 줄도 없으면 pending 이고 착수 가능이다.
         expect(f?.newTickets?.[0]).toMatchObject({
           num: "04",
           docConvention: "tickets",
-          status: "in_progress",
+          status: "pending",
           joinFailed: false,
+          startable: true,
         });
       } finally {
         rmSync(home, { recursive: true, force: true });
@@ -587,7 +569,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ firstmateHome: home }),
+          body: JSON.stringify({ projects: [join(home, "projects")] }),
         });
         const res = await app.request("/api/features/widget");
         expect(res.status).toBe(200);
@@ -629,14 +611,15 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ firstmateHome: home }),
+          body: JSON.stringify({ projects: [join(home, "projects")] }),
         });
         const body = PlanBoardResponse.parse(await (await app.request("/api/plan/widget")).json());
         const card = body.waiting.find((c) => c.feature.slug === "tauri-desktop-app");
+        // 🔴 백로그 조인이 현재 비활성(readBacklogTasks(undefined))이므로 상태는 문서만으로 결정된다.
         expect(card?.feature.newTickets?.[0]).toMatchObject({
           num: "04",
           docConvention: "tickets",
-          status: "in_progress",
+          status: "pending",
           joinFailed: false,
         });
       } finally {
@@ -1546,18 +1529,14 @@ describe("설정 GET/PUT /api/settings", () => {
         roots,
         treehouse: NO_TREEHOUSE,
         dataDir,
-        firstmateHomeSuggestionCandidates: [],
       });
       const res = await app.request("/api/settings");
       expect(res.status).toBe(200);
       expect(SettingsResponse.parse(await res.json())).toEqual({
-        firstmateHome: null,
-        firstmateHomeExists: false,
-        firstmateHomeSuggestion: null,
-        watchRoots: [],
+        projects: [],
         blockedCopies: [],
         autoClose: true,
-        effectiveWatchRoots: roots,
+        effectiveProjects: roots,
       });
     }));
 
@@ -1567,54 +1546,19 @@ describe("설정 GET/PUT /api/settings", () => {
         roots,
         treehouse: NO_TREEHOUSE,
         dataDir,
-        firstmateHomeSuggestionCandidates: [],
       });
       const res = await app.request("/api/settings", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ firstmateHome: FIXTURES }),
+        body: JSON.stringify({ projects: [FIXTURES] }),
       });
       expect(res.status).toBe(200);
-      // FIXTURES 는 절대 경로라 정규화해도 자기 자신 — 존재 true.
       expect(SettingsResponse.parse(await res.json())).toEqual({
-        firstmateHome: FIXTURES,
-        firstmateHomeExists: true,
-        firstmateHomeSuggestion: null,
-        watchRoots: [],
+        projects: [FIXTURES],
         blockedCopies: [],
         autoClose: true,
-        effectiveWatchRoots: deriveWatchRoots(FIXTURES),
+        effectiveProjects: [FIXTURES],
       });
-    }));
-
-  test("firstmateHomeSuggestion — 후보가 실제로 있으면 응답에 싣고, 없으면 null(placeholder 생략)", async () =>
-    withSettingsDataDir(async (dataDir) => {
-      const candidateDir = mkdtempSync(join(tmpdir(), "gootte-app-fm-home-candidate-"));
-      try {
-        const appWithCandidate = createApp({
-          roots,
-          treehouse: NO_TREEHOUSE,
-          dataDir,
-          firstmateHomeSuggestionCandidates: [candidateDir],
-        });
-        const withBody = SettingsResponse.parse(
-          await (await appWithCandidate.request("/api/settings")).json(),
-        );
-        expect(withBody.firstmateHomeSuggestion).toBe(candidateDir);
-
-        const appNoCandidate = createApp({
-          roots,
-          treehouse: NO_TREEHOUSE,
-          dataDir,
-          firstmateHomeSuggestionCandidates: [join(candidateDir, "없음")],
-        });
-        const withoutBody = SettingsResponse.parse(
-          await (await appNoCandidate.request("/api/settings")).json(),
-        );
-        expect(withoutBody.firstmateHomeSuggestion).toBeNull();
-      } finally {
-        rmSync(candidateDir, { recursive: true, force: true });
-      }
     }));
 
   test("~ 로 입력한 경로는 홈으로 전개되어 저장된다", async () =>
@@ -1625,11 +1569,11 @@ describe("설정 GET/PUT /api/settings", () => {
           await app.request("/api/settings", {
             method: "PUT",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ firstmateHome: "~/firstmate2" }),
+            body: JSON.stringify({ projects: [join(homedir(), "projects")] }),
           })
         ).json(),
       );
-      expect(body.firstmateHome).toBe(join(homedir(), "firstmate2"));
+      expect(body.projects).toEqual([join(homedir(), "projects")]);
     }));
 
   test("상대 경로는 400 으로 거절한다 — 조용히 CWD 에 붙이지 않는다", async () =>
@@ -1638,7 +1582,7 @@ describe("설정 GET/PUT /api/settings", () => {
       const res = await app.request("/api/settings", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ firstmateHome: "relative/path" }),
+        body: JSON.stringify({ projects: ["relative/path"] }),
       });
       expect(res.status).toBe(400);
       expect(ApiError.parse(await res.json()).error).toContain("절대 경로");
@@ -1650,12 +1594,12 @@ describe("설정 GET/PUT /api/settings", () => {
       await createApp(opts).request("/api/settings", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ firstmateHome: FIXTURES }),
+        body: JSON.stringify({ projects: [FIXTURES] }),
       });
       const body = SettingsResponse.parse(
         await (await createApp(opts).request("/api/settings")).json(),
       );
-      expect(body.firstmateHome).toBe(FIXTURES);
+      expect(body.projects).toEqual([FIXTURES]);
     }));
 
   // T05 — firstmate 홈을 바꾸면 다음 요청부터 그 홈의 `<홈>/projects` 에서 프로젝트가 발견된다.
@@ -1675,7 +1619,7 @@ describe("설정 GET/PUT /api/settings", () => {
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ firstmateHome: newHome }),
+          body: JSON.stringify({ projects: [newHome] }),
         });
         clearDiscoverCache();
         const slugs = await slugsOf();
@@ -1694,7 +1638,7 @@ describe("설정 GET/PUT /api/settings", () => {
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ firstmateHome: otherHome }),
+          body: JSON.stringify({ projects: [otherHome] }),
         });
         clearDiscoverCache();
         expect(
@@ -1705,7 +1649,7 @@ describe("설정 GET/PUT /api/settings", () => {
         await app.request("/api/settings", {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ firstmateHome: null }),
+          body: JSON.stringify({ projects: null }),
         });
         clearDiscoverCache();
         expect(
@@ -1730,18 +1674,14 @@ describe("설정 GET/PUT /api/settings", () => {
         roots,
         treehouse: NO_TREEHOUSE,
         dataDir,
-        firstmateHomeSuggestionCandidates: [],
       });
       const res = await app.request("/api/settings");
       expect(res.status).toBe(200);
       expect(SettingsResponse.parse(await res.json())).toEqual({
-        firstmateHome: FIXTURES,
-        firstmateHomeExists: true,
-        firstmateHomeSuggestion: null,
-        watchRoots: [],
+        projects: [],
         blockedCopies: [],
         autoClose: true,
-        effectiveWatchRoots: deriveWatchRoots(FIXTURES),
+        effectiveProjects: roots,
       });
     }));
 });
@@ -1749,16 +1689,16 @@ describe("설정 GET/PUT /api/settings", () => {
 // review F3, T05 로 확장 — PUT 이 firstmate 홈을 바꾸면 감시기 재바인딩 통보가 간다
 // (값은 저장 뒤 다시 읽은 것). 하나의 통보가 문서 감시기와 백로그 감시기 둘 다를 재묶는 배선은
 // server.ts 몫이라 여기서는 통보 자체가 나가는지만 본다.
-describe("설정 PUT → onFirstmateHomeChange", () => {
-  test("firstmateHome 교체와 지움(null) 모두 새 값을 통보한다, 값이 그대로면 부르지 않는다", async () => {
+describe("설정 PUT → onProjectsChange", () => {
+  test("projects 교체와 지움(null) 모두 새 값을 통보한다, 값이 그대로면 부르지 않는다", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-rebind-"));
     try {
-      const seen: (string | null)[] = [];
+      const seen: string[][] = [];
       const app = createApp({
         roots,
         treehouse: NO_TREEHOUSE,
         dataDir,
-        onFirstmateHomeChange: (h) => seen.push(h),
+        onProjectsChange: (p) => seen.push(p),
       });
       const put = (body: object) =>
         app.request("/api/settings", {
@@ -1767,9 +1707,9 @@ describe("설정 PUT → onFirstmateHomeChange", () => {
           body: JSON.stringify(body),
         });
       await put({}); // 키 없음 → 통보 없음
-      await put({ firstmateHome: FIXTURES }); // 교체
-      await put({ firstmateHome: null }); // 지움
-      expect(seen).toEqual([FIXTURES, null]);
+      await put({ projects: [FIXTURES] }); // 교체
+      await put({ projects: null }); // 지움
+      expect(seen.length).toBe(2);
     } finally {
       rmSync(dataDir, { recursive: true, force: true });
     }

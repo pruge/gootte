@@ -27,7 +27,6 @@ function feature(slug: string, tickets: FeatureTicket[]): Feature {
     sourceStatus: null,
     statusKnown: true,
     docs: [],
-    conflict: [],
     tickets,
   };
 }

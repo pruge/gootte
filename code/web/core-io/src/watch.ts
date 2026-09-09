@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { dirname, join, sep } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
 import { existsSync, readFileSync, statSync } from "node:fs";
 
@@ -102,39 +102,6 @@ export function watchProjects(
 
   const contentPaths = (ps: typeof projects): string[] => ps.flatMap(contentPathsOf);
 
-  /**
-   * 커밋을 보는 자리(축 2, T05) — 사본마다 `HEAD` 와 `refs/`.
-   * 🔴 왜 필요한가: T01 이 미착지 표식을 버린 뒤에도 **커밋이 화면을 바꾸는 경로가 하나 남았다 —
-   * 갈라짐(`conflict`)** 이다. `resolveFile` 이 HEAD 조상 관계로 나중 판을 고르기 때문이다(T06 조사).
-   * 이 감시가 있어야 15초 주기 재검증기를 안전망으로 내릴 수 있다.
-   * worktree 는 `.git` 이 **파일**이고 그 안에 실제 gitdir 경로가 적혀 있다 — 그것을 따라간다.
-   */
-  const gitRefPathsOf = (p: { copies: string[] }): string[] => {
-    const out: string[] = [];
-    {
-      for (const c of copyPathsOf(p)) {
-        const dotGit = join(c, ".git");
-        let gitDir: string | null = null;
-        try {
-          if (!existsSync(dotGit)) continue;
-          if (statSync(dotGit).isDirectory()) gitDir = dotGit;
-          else {
-            // worktree: "gitdir: /절대/경로" 한 줄.
-            const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, "utf8"));
-            gitDir = m?.[1]?.trim() ?? null;
-          }
-        } catch {
-          gitDir = null;
-        }
-        if (!gitDir) continue;
-        out.push(join(gitDir, "HEAD"), join(gitDir, "refs"));
-      }
-    }
-    return out;
-  };
-
-  const gitRefPaths = (ps: typeof projects): string[] => ps.flatMap(gitRefPathsOf);
-
   const projectOf = (abs: string): string | null => {
     let best: { slug: string; len: number } | null = null;
     // worktree 안의 경로도 그 프로젝트로 접혀야 한다(T05) — 후보에 worktree 를 함께 놓는다.
@@ -180,6 +147,58 @@ export function watchProjects(
   });
 
   /**
+   * state.json 감시(time-records-to-state-store) — CLI(`gootte start/end`)가 쓰는 **레코드·배지
+   * 파일**을 본다. v2 모드 프로젝트는 시간 기록이 MD 가 아니라 state.json 으로 가므로, 이 파일을
+   * 감시하지 않으면 CLI 기록 뒤에도 화면이 낡은 값을 그린다(구멍: MD 감시는 MD 만 보니까).
+   *
+   * 🔴 존재하는 것만 건다 — chokidar 는 미생성 경로를 못 본다(실측). state.json 이 있으면 파일을,
+   * 없으면 `.gootte` 디렉토리를 건다(생성을 잡기 위함). 이벤트는 state.json 만 걸러낸다.
+   * 🔴 되먹임 방지: 이 감시가 `{project}` 를 쏘면 백엔드가 재계산하고 `recalcProjectState` 가
+   * 배지를 다시 쓴다 — 그래서 recalc 은 **값이 같으면 쓰지 않고**(state-store), 여기서는 `.tmp`
+   * 중간산을 걸러 내지 않아도 rename 산물인 state.json 이벤트만 의미가 있다.
+   * 남는 구멍: 감시 시작 때 `.gootte` 조차 없던 프로젝트 — 대시보드 첫 읽기가 state.json 을
+   * 만들 때까지 배지가 없을 뿐이고(표시할 값도 없다), 첫 읽기 뒤 재바인딩 때 붙는다.
+   */
+  const stateWatchPathOf = (copy: string): string | null => {
+    const state = join(copy, ".gootte", "state.json");
+    if (existsSync(state)) return state;
+    const dir = join(copy, ".gootte");
+    return existsSync(dir) ? dir : null;
+  };
+
+  const stateW: FSWatcher = chokidar.watch(
+    projects.flatMap((p) => p.copies).map(stateWatchPathOf).filter((p): p is string => p !== null),
+    { ignoreInitial: true },
+  );
+  stateW.on("error", onWatchError("state"));
+  stateW.on("all", (_ev, abs) => {
+    if (basename(abs) !== "state.json") return; // 디렉토리 감시면 config.json 따위는 무시한다
+    const slug = projectOf(abs);
+    if (slug) fire({ kind: "project", project: slug });
+  });
+
+  /** 새 사본의 state.json 도 같은 감시자에 차분으로 붙인다(rebindCopies 와 같은 규율). */
+  let curState = new Map<string, string[]>(
+    projects.map((p) => [p.slug, p.copies.map(stateWatchPathOf).filter((p2): p2 is string => p2 !== null)]),
+  );
+  const rebindState = (): void => {
+    const live = new Set(projects.map((p) => p.slug));
+    for (const [slug, paths] of curState)
+      if (!live.has(slug) && paths.length) stateW.unwatch(paths);
+    const next = new Map<string, string[]>();
+    for (const p of projects) {
+      const oc = curState.get(p.slug) ?? [];
+      const nc = p.copies.map(stateWatchPathOf).filter((p2): p2 is string => p2 !== null);
+      const add = nc.filter((x) => !oc.includes(x));
+      const rm = oc.filter((x) => !nc.includes(x));
+      if (rm.length) stateW.unwatch(rm);
+      if (add.length) stateW.add(add);
+      next.set(p.slug, nc);
+    }
+    curState = next;
+  };
+
+  /**
    * 축 2 — 커밋 감시(T05). `HEAD`·`refs/` 가 바뀌면 그 프로젝트를 다시 읽는다.
    * 🔴 `.git` 은 다른 감시에서 `HEAVY` 로 걷어내지만 여기서는 **정확히 두 경로만** 콕 집어 건다 —
    * `.git` 전체를 거는 것과 다르다(그건 무겁고, 소켓 같은 것을 끌어들여 백엔드를 죽인 전례가 있다).
@@ -190,20 +209,6 @@ export function watchProjects(
    * 배열만 들고 있으면 "누구 것이었는지" 를 잃어 죽은 경로를 계속 붙들게 된다.
    */
   let curContent = new Map<string, string[]>(projects.map((p) => [p.slug, contentPathsOf(p)]));
-  let curGit = new Map<string, string[]>(projects.map((p) => [p.slug, gitRefPathsOf(p)]));
-
-  const gitW: FSWatcher = chokidar.watch(gitRefPaths(projects), {
-    ignoreInitial: true,
-    ignored: (p) => never(p),
-  });
-  gitW.on("error", onWatchError("커밋"));
-  gitW.on("all", (_ev, abs) => {
-    // 어느 사본의 gitdir 인지는 경로로 못 접는다(worktree 의 gitdir 은 저장소 밖에 있을 수 있다).
-    // 커밋은 드문 사건이라 **프로젝트 전부**를 다시 보게 하는 것으로 충분하다 — 실제 재계산은
-    // T04 의 폴더 지문이 가른다(안 바뀐 폴더는 다시 안 읽힌다).
-    void abs;
-    for (const p of projects) fire({ kind: "project", project: p.slug });
-  });
 
   // 목록 감시 — roots 얕게, 발견 표식(`AGENTS.md` · `docs/features/`) 이벤트만 재발견 트리거.
   // 표식은 discoverProjects(isFirstmateProject)와 같은 두 가지다 — 판정이 바뀌면 여기도 같이 바뀐다.
@@ -248,7 +253,7 @@ export function watchProjects(
   /**
    * 축 3 — **워크트리가 생기는 것**을 본다(a-new-worktree-is-seen-at-once/T01).
    *
-   * 🔴 왜 필요한가: 감시 경로(`contentPaths`·`gitRefPaths`)는 **묶는 시점에 한 번** 계산된다.
+   * 🔴 왜 필요한가: 감시 경로(`contentPaths`)는 **묶는 시점에 한 번** 계산된다.
    * 그 뒤에 생긴 워크트리는 어느 그물에도 안 걸렸다 — BB(`~/.bb/worktrees/…`)는 뿌리 **밖**이고,
    * Claude(`<프로젝트>/.claude/worktrees/…`)는 `listWorthy` 가 막는다. 그래서 그 안의
    * `gootte start` 가 push 를 못 냈고, 캡틴이 **창을 떠났다 와야만** 보였다(확인 2026-09-04).
@@ -318,32 +323,23 @@ export function watchProjects(
     const live = new Set(projects.map((p) => p.slug));
     for (const [slug, paths] of curContent)
       if (!live.has(slug) && paths.length) content.unwatch(paths);
-    for (const [slug, paths] of curGit) if (!live.has(slug) && paths.length) gitW.unwatch(paths);
 
     const nextContent = new Map<string, string[]>();
-    const nextGit = new Map<string, string[]>();
     for (const p of projects) {
       const oc = curContent.get(p.slug) ?? [];
       const nc = contentPathsOf(p);
-      const og = curGit.get(p.slug) ?? [];
-      const ng = gitRefPathsOf(p);
       const addC = nc.filter((x) => !oc.includes(x));
       const rmC = oc.filter((x) => !nc.includes(x));
-      const addG = ng.filter((x) => !og.includes(x));
-      const rmG = og.filter((x) => !ng.includes(x));
       if (rmC.length) content.unwatch(rmC);
       if (addC.length) content.add(addC);
-      if (rmG.length) gitW.unwatch(rmG);
-      if (addG.length) gitW.add(addG);
       // 새 사본은 **생기자마자 문서를 갖고 있을 수 있다**(워크트리는 체크아웃된 채 태어난다).
       // 그래서 감시를 붙이는 것만으로는 부족하고 한 번 다시 읽게 해야 한다(INV-3).
-      if (addC.length || rmC.length || addG.length || rmG.length)
+      if (addC.length || rmC.length)
         fire({ kind: "project", project: p.slug });
       nextContent.set(p.slug, nc);
-      nextGit.set(p.slug, ng);
     }
     curContent = nextContent;
-    curGit = nextGit;
+    rebindState(); // 새 사본이 생기면 그 .gootte/state.json 도 감시 대상이다
   };
 
   let curWtTargets: string[] = containerTargets();
@@ -398,6 +394,7 @@ export function watchProjects(
     // 갖는다. 두 곳에서 걸면 사라진 프로젝트의 경로가 남는 쪽이 생긴다.
     rebindCopies();
     rebindContainers();
+    rebindState();
     fire({ kind: "projects" });
   };
   const rootsW: FSWatcher = chokidar.watch(roots, {
@@ -417,7 +414,7 @@ export function watchProjects(
       for (const t of pending.values()) clearTimeout(t);
       if (rd) clearTimeout(rd);
       if (wtd) clearTimeout(wtd);
-      await Promise.all([content.close(), rootsW.close(), gitW.close(), wtW.close()]);
+      await Promise.all([content.close(), rootsW.close(), wtW.close(), stateW.close()]);
     },
   };
 }

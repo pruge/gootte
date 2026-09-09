@@ -1,0 +1,919 @@
+{
+  "version": 2,
+  "updatedAt": "2026-09-09T12:18:05.026Z",
+  "openFeatures": [],
+  "tickets": {
+    "a-big-document-opens-fast/T01": {
+      "startedAt": "2026-09-04T16:07:17+09:00",
+      "finishedAt": "2026-09-04T16:19:33+09:00",
+      "pauses": [],
+      "statusRaw": "wontfix (2026-09-04 16:24)"
+    },
+    "a-big-document-opens-fast/T02": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "wontfix (2026-09-04 16:24)"
+    },
+    "a-long-list-stays-usable/01-a-search-box-finds-features-and-tickets": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-13 14:03)"
+    },
+    "a-long-list-stays-usable/02-the-feature-list-renders-only-what-is-on-screen": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-13 14:40)"
+    },
+    "a-long-list-stays-usable/03-search-covers-slug-and-clears-with-esc": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-09-02)"
+    },
+    "a-new-worktree-is-seen-at-once/T01": {
+      "startedAt": "2026-09-04T16:27:26+09:00",
+      "finishedAt": "2026-09-04T16:42:08+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "a-quoted-path-is-not-a-parent/T01": {
+      "startedAt": "2026-08-26T19:02:37+09:00",
+      "finishedAt": "2026-08-26T19:13:15+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "a-ticket-tells-how-long-it-took/T01": {
+      "startedAt": "2026-08-27T14:53:51+09:00",
+      "finishedAt": "2026-08-27T15:54:04+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "a-ticket-tells-how-long-it-took/T02": {
+      "startedAt": "2026-08-27T14:53:51+09:00",
+      "finishedAt": "2026-08-27T16:54:12+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "a-ticket-tells-how-long-it-took/T03": {
+      "startedAt": "2026-08-27T14:53:51+09:00",
+      "finishedAt": "2026-08-27T16:54:12+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "a-vanished-card-breaks-nothing/T01": {
+      "startedAt": "2026-08-26T12:25:05+09:00",
+      "finishedAt": "2026-08-26T12:25:05+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "a-waiting-card-is-one-drag-away/T01": {
+      "startedAt": "2026-09-04T18:41:36+09:00",
+      "finishedAt": "2026-09-04T18:55:08+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "a-waiting-card-is-one-drag-away/T02": {
+      "startedAt": "2026-09-04T18:59:35+09:00",
+      "finishedAt": "2026-09-04T19:08:46+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "a-waiting-card-is-one-drag-away/T03": {
+      "startedAt": "2026-09-04T19:36:03+09:00",
+      "finishedAt": "2026-09-04T19:49:54+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "a-waiting-card-is-one-drag-away/T04": {
+      "startedAt": "2026-09-04T21:01:21+09:00",
+      "finishedAt": "2026-09-04T21:05:24+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "block-working-copies/T01": {
+      "startedAt": "2026-08-30T00:00:00+09:00",
+      "finishedAt": "2026-08-30T13:05:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "both-conventions-are-first-class/T01": {
+      "startedAt": "2026-08-26T08:43:35+09:00",
+      "finishedAt": "2026-08-26T08:44:49+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "both-conventions-are-first-class/T02": {
+      "startedAt": "2026-08-26T08:45:26+09:00",
+      "finishedAt": "2026-08-26T08:47:14+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "both-conventions-are-first-class/T03": {
+      "startedAt": "2026-08-26T10:39:08+09:00",
+      "finishedAt": "2026-08-26T10:39:08+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "claude-code-worktrees/T01": {
+      "startedAt": "2026-08-31T05:53:09+09:00",
+      "finishedAt": "2026-08-31T05:53:09+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "codebase-refactor/T01": {
+      "startedAt": "2026-09-08T04:43:45+09:00",
+      "finishedAt": "2026-09-08T04:51:45+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "codebase-refactor/T02": {
+      "startedAt": "2026-09-08T04:51:45+09:00",
+      "finishedAt": "2026-09-08T04:58:45+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "codebase-refactor/T03": {
+      "startedAt": "2026-09-08T04:58:46+09:00",
+      "finishedAt": "2026-09-08T05:08:46+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "codebase-refactor/T04": {
+      "startedAt": "2026-09-08T05:08:47+09:00",
+      "finishedAt": "2026-09-08T05:21:47+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "codebase-refactor/T05": {
+      "startedAt": "2026-09-08T05:21:47+09:00",
+      "finishedAt": "2026-09-08T05:30:47+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "development-order/01-the-plan-is-written-down-and-read-back": {
+      "startedAt": "2026-08-29T21:24:09+09:00",
+      "finishedAt": "2026-08-29T21:34:09+09:00",
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/02-next-names-what-can-go-together": {
+      "startedAt": "2026-08-29T22:04:16+09:00",
+      "finishedAt": "2026-08-29T22:19:16+09:00",
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/03-the-plan-tab-shows-the-whole-order": {
+      "startedAt": "2026-08-29T22:18:49+09:00",
+      "finishedAt": "2026-08-29T22:38:49+09:00",
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/04-the-captain-drags-to-change-the-order": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/05-what-else-got-built-is-caught": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/06-the-captain-asks-for-an-opinion": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/07-plan-changes-push-live": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/08-completed-tickets-drop-themselves": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/09-the-plan-tab-becomes-usable": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/11-a-decorated-no-blockers-line-is-understood": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/15-the-plan-output-shows-its-own-blind-spots": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/16-the-plan-tab-and-features-tab-become-one-loop": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "development-order/17-a-blocker-with-no-ticket-number-still-blocks": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-12)"
+    },
+    "every-home-reports-its-status/T01": {
+      "startedAt": "2026-08-26T13:08:32+09:00",
+      "finishedAt": "2026-08-26T13:08:32+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "every-home-reports-its-status/T02": {
+      "startedAt": "2026-08-26T13:21:03+09:00",
+      "finishedAt": "2026-08-26T13:21:03+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "fast-cold-start/T01": {
+      "startedAt": "2026-08-27T20:28:06+09:00",
+      "finishedAt": "2026-08-27T20:32:56+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "fast-cold-start/T02": {
+      "startedAt": "2026-08-27T20:07:56+09:00",
+      "finishedAt": "2026-08-27T20:14:36+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "fast-cold-start/T03": {
+      "startedAt": "2026-08-27T20:28:06+09:00",
+      "finishedAt": "2026-08-27T21:35:00+09:00",
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-27 21:35)"
+    },
+    "fast-cold-start/T04": {
+      "startedAt": "2026-08-27T20:28:06+09:00",
+      "finishedAt": "2026-08-28T01:17:55+09:00",
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-28)"
+    },
+    "fast-cold-start/T05": {
+      "startedAt": "2026-08-27T20:28:06+09:00",
+      "finishedAt": "2026-08-28T09:46:20+09:00",
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-28)"
+    },
+    "fast-cold-start/T06": {
+      "startedAt": "2026-08-27T20:28:06+09:00",
+      "finishedAt": "2026-08-28T09:55:24+09:00",
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-28)"
+    },
+    "fast-cold-start/T07": {
+      "startedAt": "2026-08-27T21:11:35+09:00",
+      "finishedAt": "2026-08-28T11:17:45+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "feature-doc-browser/01-browse-feature-docs": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "feature-doc-browser/02-check-list-lines-up": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "feature-doc-browser/03-work-in-progress-rises": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-10)"
+    },
+    "feature-doc-browser/04-the-ticket-list-opens-its-own-text": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-12 20:53)"
+    },
+    "firstmate-migration/01-firstmate-repo-shape": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "firstmate-migration/02-codegraph-vocabulary": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "firstmate-migration/03-remove-cling-doc-tree": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "firstmate-migration/04-remove-mermaid": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "firstmate-migration/05-ports-firstmate-way": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "firstmate-migration/06-remove-cling-profile": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "firstmate-project-source/01-discover-firstmate-projects": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "firstmate-project-source/02-read-features-and-issues": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "firstmate-project-source/03-in-progress-from-worktrees": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "firstmate-project-source/04-remove-cling-read-path": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "git-removal-and-state-store/T01": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "git-removal-and-state-store/T02": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "git-removal-and-state-store/T03": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "git-removal-and-state-store/T04": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "git-removal-and-state-store/T05": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "git-removal-and-state-store/T06": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "git-removal-and-state-store/T07": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "git-removal-and-state-store/T08": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "git-removal-and-state-store/T09": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "git-removal-and-state-store/T10": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "git-removal-and-state-store/T11": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "git-removal-and-state-store/T12": {
+      "startedAt": "2026-09-08T05:30:00+09:00",
+      "finishedAt": "2026-09-09T09:44:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "legacy-ticket-time-backfill/T01": {
+      "startedAt": "2026-08-29T16:49:42+09:00",
+      "finishedAt": "2026-08-29T17:23:32+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "legacy-ticket-time-backfill/T02": {
+      "startedAt": "2026-08-29T16:49:42+09:00",
+      "finishedAt": "2026-08-29T17:23:32+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memo-pad/T01": {
+      "startedAt": "2026-09-01T23:00:00+09:00",
+      "finishedAt": "2026-09-02T00:10:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "one-setting-finds-every-copy/T01": {
+      "startedAt": "2026-08-27T13:01:30+09:00",
+      "finishedAt": "2026-08-27T13:06:12+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "one-setting-finds-every-copy/T02": {
+      "startedAt": "2026-08-27T13:07:01+09:00",
+      "finishedAt": "2026-08-27T13:45:15+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "one-setting-finds-every-copy/T03": {
+      "startedAt": "2026-08-27T13:07:01+09:00",
+      "finishedAt": "2026-08-27T15:06:57+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "one-setting-finds-every-copy/T04": {
+      "startedAt": "2026-08-27T13:07:01+09:00",
+      "finishedAt": "2026-08-27T15:26:20+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "one-setting-finds-every-copy/T05": {
+      "startedAt": "2026-08-27T13:07:01+09:00",
+      "finishedAt": "2026-08-27T16:29:45+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "one-setting-finds-every-copy/T06": {
+      "startedAt": "2026-08-27T13:07:01+09:00",
+      "finishedAt": "2026-08-27T16:29:45+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "per-folder-watch-roots/T01": {
+      "startedAt": "2026-08-30T00:00:00+09:00",
+      "finishedAt": "2026-08-30T00:00:00+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "plan-board/01-the-old-plan-wiring-is-removed": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-12)"
+    },
+    "plan-board/02-a-written-document-appears-on-the-board": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-12)"
+    },
+    "plan-board/03-the-captain-moves-cards-between-areas": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-12)"
+    },
+    "plan-board/04-tickets-tick-themselves-and-the-card-closes": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-12)"
+    },
+    "plan-board/05-steps-are-assigned-and-next-speaks-only-of-step-one": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-12 20:36)"
+    },
+    "plan-board/06-the-completion-time-is-read-to-the-minute": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-12 22:06)"
+    },
+    "plan-board/07-the-process-tab-shows-the-work-in-step-order": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-12 21:42)"
+    },
+    "plan-board/08-the-captain-drags-a-ticket-to-set-its-step": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-12 22:52)"
+    },
+    "plan-board/09-a-plan-change-elsewhere-reaches-the-screen": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-12 22:50)"
+    },
+    "plan-board/10-a-closed-card-comes-back-when-work-appears": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-13 12:49)"
+    },
+    "plan-board/11-any-parked-card-comes-back-when-a-new-ticket-arrives": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-13 13:51)"
+    },
+    "plan-board/12-a-dropped-ticket-counts-as-finished": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-14 07:35)"
+    },
+    "process-two-column/T01": {
+      "startedAt": "2026-08-31T19:51:54+09:00",
+      "finishedAt": "2026-08-31T19:59:09+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "read-path-redesign/T01": {
+      "startedAt": "2026-09-04T11:12:38+09:00",
+      "finishedAt": "2026-09-04T11:21:39+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "read-path-redesign/T02": {
+      "startedAt": "2026-09-04T11:35:23+09:00",
+      "finishedAt": "2026-09-04T11:41:06+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "read-path-redesign/T03": {
+      "startedAt": "2026-09-04T11:41:06+09:00",
+      "finishedAt": "2026-09-04T11:46:58+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "read-path-redesign/T04": {
+      "startedAt": "2026-09-04T11:46:59+09:00",
+      "finishedAt": "2026-09-04T11:53:08+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "read-path-redesign/T05": {
+      "startedAt": "2026-09-04T11:53:08+09:00",
+      "finishedAt": "2026-09-04T11:58:11+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "read-path-redesign/T06": {
+      "startedAt": "2026-09-04T11:27:09+09:00",
+      "finishedAt": "2026-09-04T11:35:18+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "read-path-redesign/T07": {
+      "startedAt": "2026-09-04T12:00:40+09:00",
+      "finishedAt": "2026-09-04T12:10:19+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "read-path-redesign/T08": {
+      "startedAt": "2026-09-04T12:10:19+09:00",
+      "finishedAt": "2026-09-04T12:30:42+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "read-path-redesign/T09": {
+      "startedAt": "2026-09-04T11:58:11+09:00",
+      "finishedAt": "2026-09-04T12:00:40+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "settings-in-main-area/T01": {
+      "startedAt": "2026-08-30T18:43:56+09:00",
+      "finishedAt": "2026-08-30T18:47:05+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "settings-in-main-area/T02": {
+      "startedAt": "2026-08-30T18:47:22+09:00",
+      "finishedAt": "2026-08-30T18:50:57+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "settings-in-main-area/T03": {
+      "startedAt": "2026-08-30T18:51:07+09:00",
+      "finishedAt": "2026-08-30T18:53:20+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "status-colors-tell-apart/01-in-progress-is-told-apart-at-a-glance": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-11)"
+    },
+    "status-colors-tell-apart/02-work-in-flight-is-blue-on-the-board": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-13 12:49)"
+    },
+    "steps-start-from-dependencies/T01": {
+      "startedAt": "2026-08-25T19:16:08+09:00",
+      "finishedAt": "2026-08-25T20:13:12+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "steps-start-from-dependencies/T02": {
+      "startedAt": "2026-08-25T20:31:13+09:00",
+      "finishedAt": "2026-08-25T20:42:43+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "steps-start-from-dependencies/T03": {
+      "startedAt": "2026-08-26T09:35:09+09:00",
+      "finishedAt": "2026-08-26T09:35:09+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "tauri-desktop-app/T01": {
+      "startedAt": "2026-08-25T02:26:05+09:00",
+      "finishedAt": "2026-08-25T07:32:04+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "tauri-desktop-app/T02": {
+      "startedAt": "2026-08-25T07:35:44+09:00",
+      "finishedAt": "2026-08-25T09:05:04+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "tauri-desktop-app/T03": {
+      "startedAt": "2026-08-25T07:35:44+09:00",
+      "finishedAt": "2026-08-25T09:35:30+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "tauri-desktop-app/T04": {
+      "startedAt": "2026-08-25T07:35:44+09:00",
+      "finishedAt": "2026-08-25T14:15:05+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "tauri-desktop-app/T05": {
+      "startedAt": "2026-08-25T07:35:44+09:00",
+      "finishedAt": "2026-08-25T16:49:38+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "the-eye-mark-comes-from-one-place/01-gootte-publishes-the-eye-judgment": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-14 10:48)"
+    },
+    "the-header-agrees-with-its-tickets/T01": {
+      "startedAt": "2026-08-26T13:45:44+09:00",
+      "finishedAt": "2026-08-26T13:45:44+09:00",
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-26)"
+    },
+    "the-header-agrees-with-its-tickets/T02": {
+      "startedAt": "2026-08-26T14:00:05+09:00",
+      "finishedAt": "2026-08-26T14:00:05+09:00",
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-26)"
+    },
+    "the-roster-line-as-written/T01": {
+      "startedAt": "2026-08-26T18:27:19+09:00",
+      "finishedAt": "2026-08-26T18:30:30+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "the-terminal-agrees-with-the-screen/T01": {
+      "startedAt": "2026-08-26T12:48:09+09:00",
+      "finishedAt": "2026-08-26T12:48:09+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "the-terminal-agrees-with-the-screen/T02": {
+      "startedAt": "2026-08-26T12:48:09+09:00",
+      "finishedAt": "2026-08-26T12:48:09+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "ticket-done-from-git/T01": {
+      "startedAt": "2026-08-28T12:48:41+09:00",
+      "finishedAt": "2026-08-28T13:08:10+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "ticket-done-from-git/T02": {
+      "startedAt": "2026-08-28T12:48:41+09:00",
+      "finishedAt": "2026-08-28T13:14:03+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "ticket-done-from-git/T03": {
+      "startedAt": "2026-08-28T12:48:41+09:00",
+      "finishedAt": "2026-08-28T13:58:12+09:00",
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-28)"
+    },
+    "ticket-done-from-git/T04": {
+      "startedAt": "2026-08-28T12:48:41+09:00",
+      "finishedAt": "2026-08-28T14:07:26+09:00",
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-28)"
+    },
+    "ticket-done-from-git/T05": {
+      "startedAt": "2026-08-28T12:48:41+09:00",
+      "finishedAt": "2026-08-29T09:38:02+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "ticket-done-from-git/T06": {
+      "startedAt": "2026-08-29T08:33:40+09:00",
+      "finishedAt": "2026-08-29T08:56:43+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "ticket-done-from-git/T07": {
+      "startedAt": "2026-08-29T09:09:47+09:00",
+      "finishedAt": "2026-08-29T09:38:02+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "ticket-row-repair/01-in-progress-means-now": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "ticket-row-repair/02-date-keeps-its-place": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "ticket-row-repair/03-state-column-keeps-its-place": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "ticket-time-stamp/T01": {
+      "startedAt": "2026-08-29T07:43:34+09:00",
+      "finishedAt": "2026-08-29T08:46:03+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "ticket-time-stamp/T02": {
+      "startedAt": "2026-08-29T15:22:46+09:00",
+      "finishedAt": "2026-08-29T15:22:48+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "ticket-time-stamp/T03": {
+      "startedAt": "2026-08-29T07:43:34+09:00",
+      "finishedAt": "2026-08-29T15:22:48+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "ticket-time-stamp/T04": {
+      "startedAt": "2026-08-29T10:30:49+09:00",
+      "finishedAt": "2026-08-29T10:30:49+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "ticket-time-stamp/T05": {
+      "startedAt": "2026-08-29T14:01:16+09:00",
+      "finishedAt": "2026-08-29T14:01:16+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "time-records-to-state-store/T01": {
+      "startedAt": "2026-09-09T08:51:18+09:00",
+      "finishedAt": "2026-09-09T08:55:24+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "time-records-to-state-store/T02": {
+      "startedAt": "2026-09-09T08:55:25+09:00",
+      "finishedAt": "2026-09-09T09:05:02+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "time-records-to-state-store/T03": {
+      "startedAt": "2026-09-09T09:05:02+09:00",
+      "finishedAt": "2026-09-09T09:22:26+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "time-records-to-state-store/T04": {
+      "startedAt": "2026-09-09T09:22:26+09:00",
+      "finishedAt": "2026-09-09T09:41:45+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "time-records-to-state-store/T05": {
+      "startedAt": "2026-09-09T09:41:45+09:00",
+      "finishedAt": "2026-09-09T09:54:56+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "time-records-to-state-store/T06": {
+      "startedAt": "2026-09-09T09:54:56+09:00",
+      "finishedAt": "2026-09-09T10:06:30+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "time-records-to-state-store/T07": {
+      "startedAt": "2026-09-09T10:06:30+09:00",
+      "finishedAt": "2026-09-09T15:58:26+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "unread-tickets-show-themselves/01-an-unread-ticket-is-green-until-i-open-it": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-13 10:30)"
+    },
+    "unread-tickets-show-themselves/02-the-unread-mark-follows-the-ticket-into-the-plan-tabs": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-13 11:15)"
+    },
+    "unread-tickets-show-themselves/03-the-card-header-is-green-wherever-the-card-stands": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-13 12:49)"
+    },
+    "work-claims-its-ticket/01-claimed-means-taken": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-08-09)"
+    },
+    "work-claims-its-ticket/02-in-progress-comes-from-time": {
+      "startedAt": null,
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": "resolved (2026-09-02)"
+    },
+    "time-records-to-state-store/T08": {
+      "startedAt": "2026-09-09T10:36:05+09:00",
+      "finishedAt": "2026-09-09T10:56:23+09:00",
+      "pauses": [],
+      "statusRaw": null
+    }
+  }
+}

@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { IconNote, IconSearch, IconTrash, IconDeviceFloppy, IconCircleCheck, IconCircle, IconCopy } from "@tabler/icons-react";
 import type { Memo } from "@gootte/contract";
 import { useMemos, useCreateMemo, useUpdateMemo, useDeleteMemo } from "../../lib/query";
+import { useAutoHeight } from "../common/useAutoHeight";
+import { usePersistedState } from "../../hooks/usePersistedState";
 import { Loading, ErrorMsg, Empty } from "../common/states";
 
 /**
@@ -25,16 +27,14 @@ export function MemoView({ project }: { project: string }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [newContent, setNewContent] = useState("");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "done" | "undone">("all");
-  const newInputRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    const el = newInputRef.current;
-    if (el) {
-      el.style.height = "auto";
-      el.style.height = `${el.scrollHeight}px`;
-    }
-  }, [newContent]);
+  // 🔴 완료 필터는 localStorage 에 유지된다 — 한번 정하면 탭을 다시 열어도 그 값(캡틴 지시 2026-09-09).
+  const [filter, setFilter] = usePersistedState<"all" | "done" | "undone">(
+    "gootte:memo-filter",
+    ["all", "done", "undone"],
+    "all",
+  );
+  // 🔴 자동 높이 — 내용에 맞춰 늘어나 수직 스크롤이 없다(캡틴 지시 2026-09-09).
+  const newInputRef = useAutoHeight(newContent);
 
   if (isError && !data) return <ErrorMsg error={error} />;
   if (!data) return <Loading label="메모를 읽는 중…" />;
@@ -100,8 +100,7 @@ export function MemoView({ project }: { project: string }) {
           </div>
           <select
             value={filter}
-            onChange={(e) => setFilter(e.target.value as "all" | "done" | "undone")}
-            aria-label="완료 상태 필터"
+            onChange={(e) => setFilter(e.target.value as "all" | "done" | "undone")}            aria-label="완료 상태 필터"
             className="shrink-0 w-auto h-8 rounded-md border border-border bg-surface-2/40 px-2 text-sm text-fg focus:border-accent focus:outline-none appearance-none"
           >
             <option value="all">전체</option>
@@ -220,6 +219,8 @@ function MemoNote({
   const [copied, setCopied] = useState(false);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const copyBtnRef = useRef<HTMLButtonElement>(null);
+  // 🔴 자동 높이 — 메모지도 내용 전체를 보여준다. 편집 값이 바뀔 때마다 늘어난다.
+  const textareaRef = useAutoHeight(editing);
 
   const handleSave = () => {
     onSave(editing);
@@ -313,6 +314,7 @@ function MemoNote({
         </span>
       </div>
       <textarea
+        ref={textareaRef}
         value={editing}
         onChange={(e) => setEditing(e.target.value)}
         onKeyDown={(e) => {
@@ -321,7 +323,7 @@ function MemoNote({
             if (dirty) handleSave();
           }
         }}
-        className={`min-h-[4rem] w-full resize-none bg-transparent px-3 py-2 text-sm placeholder:text-muted focus:outline-none ${
+        className={`min-h-[4rem] w-full resize-none overflow-hidden bg-transparent px-3 py-2 text-sm placeholder:text-muted focus:outline-none ${
           memo.done
 ? "text-muted line-through decoration-2 decoration-strike"
           : "text-fg"

@@ -16,9 +16,7 @@ const NO_WORK: FeaturesResponse["inProgress"] = {
   copies: 0,
   working: 0,
   tickets: 0,
-  unknown: [],
   unreadable: [],
-  unclaimed: [],
 };
 const DATA: FeaturesResponse = {
   project: "alpha",
@@ -320,12 +318,11 @@ describe("FeaturesView — 이어지지 않은 작업(격리 사본 관측)", ()
         ...NO_WORK,
         copies: 2,
         working: 1,
-        unknown: [{ slug: "alpha-abc123/2", branch: "fm/mystery", path: "/tmp/th/alpha-abc123/2" }],
       },
     });
-    expect(screen.getByText(/티켓 미상 · 작업중 1/)).toBeInTheDocument();
-    expect(screen.getByText("fm/mystery")).toBeInTheDocument();
-    expect(screen.getByText("alpha-abc123/2")).toBeInTheDocument();
+    // 🔴 옛 "티켓 미상 · 작업중" 구역은 git 제거(time-records)로 삭제됐다 — 사본↔티켓 연결의
+    // 근거(커밋 관측)가 소멸해 모든 작업 사본을 미상으로 오분류했다(캡틴 지시 2026-09-09).
+    expect(screen.queryByText(/티켓 미상/)).not.toBeInTheDocument();
   });
 
   it("🔴 상태를 읽지 못한 사본도 유휴로 접히지 않고 화면에 남는다", () => {
@@ -342,17 +339,13 @@ describe("FeaturesView — 이어지지 않은 작업(격리 사본 관측)", ()
     expect(screen.getByText("alpha-abc123/3")).toBeInTheDocument();
   });
 
-  it("🔴 claimed 인데 붙든 사본이 없는 티켓도 사라지지 않는다 — 처리중으로도 그리지 않는다", () => {
-    renderView({
-      ...DATA,
-      inProgress: {
-        ...NO_WORK,
-        unclaimed: [{ feature: "auth-login", ticket: "02-x", title: "무언가" }],
-      },
-    });
-    expect(screen.getByText(/임자 없이 남은 표시 1/)).toBeInTheDocument();
-    expect(screen.getByText("auth-login/02-x")).toBeInTheDocument();
-    expect(screen.getByText("무언가")).toBeInTheDocument();
+  it("🔴 claimed 인데 Time 기록이 없는 티켓은 처리중으로 그리지 않는다 — 임자의 증거는 Time(ADR 0001)", () => {
+    const claimed = DATA.features.map((f) => ({
+      ...f,
+      tickets: f.tickets.map((t) => ({ ...t, sourceStatus: "claimed" })),
+    }));
+    renderView({ ...DATA, features: claimed });
+    expect(screen.queryByText(/임자 없이 남은 표시/)).not.toBeInTheDocument();
   });
 
   it("기능이 없으면 빈 목록 안내", () => {
@@ -368,11 +361,11 @@ describe("FeaturesView — 이어지지 않은 작업(격리 사본 관측)", ()
         ...NO_WORK,
         copies: 1,
         working: 1,
-        unknown: [{ slug: "alpha-abc123/1", branch: "fm/mystery", path: "/tmp/th/alpha-abc123/1" }],
+        unreadable: [{ slug: "alpha-abc123/1", path: "/tmp/th/alpha-abc123/1", reason: "no-repo" }],
       },
     });
     expect(screen.queryByText(/기능이 없습니다/)).toBeNull();
-    expect(screen.getByText(/티켓 미상 · 작업중 1/)).toBeInTheDocument();
+    expect(screen.getByText(/상태를 읽지 못한 사본 1/)).toBeInTheDocument();
   });
 });
 
@@ -618,16 +611,16 @@ describe("FeaturesView — 검색 상자가 기능과 티켓을 찾아 준다(a-
     expect(screen.getByRole("heading", { name: "결제" })).toBeInTheDocument();
   });
 
-  it("🔴 미해소 사본 구역은 검색과 무관하게 그대로 선다 — 경고를 검색어로 숨길 수 없다", () => {
+  it("🔴 상태를 읽지 못한 사본 구역은 검색과 무관하게 그대로 선다 — 경고를 검색어로 숨길 수 없다", () => {
     renderView({
       ...SEARCH_DATA,
       inProgress: {
         ...NO_WORK,
-        unknown: [{ slug: "alpha-abc123/2", branch: "fm/mystery", path: "/tmp/th/alpha-abc123/2" }],
+        unreadable: [{ slug: "alpha-abc123/2", path: "/tmp/th/alpha-abc123/2", reason: "no-repo" }],
       },
     });
     fireEvent.change(searchBox(), { target: { value: "존재하지-않는-검색어" } });
-    expect(screen.getByText(/티켓 미상 · 작업중 1/)).toBeInTheDocument();
+    expect(screen.getByText(/상태를 읽지 못한 사본 1/)).toBeInTheDocument();
   });
 
   it("🔴 정규식 특수문자를 넣어도 깨지지 않는다 — 글자로 다루지 규칙으로 다루지 않는다", () => {
@@ -712,5 +705,18 @@ describe("FeaturesView — 완료 영역은 최근 완료가 위(plan 탭과 같
       .map((s) => s.textContent)
       .filter((t): t is string => !!t && /^done-/.test(t));
     expect(slugs).toEqual(["done-recent", "done-middle", "done-old"]);
+  });
+});
+
+describe("FeatureCard — 다른 칸으로 보내기(캡틴 지시 2026-09-09)", () => {
+  it("이동 아이콘이 있고, 누르면 어느 칸으로 갈지 묻는 대화상자가 뜬다", async () => {
+    // board 가 waiting 에 auth-login 을 두고 있다 — features 탭도 같은 분류를 빌려 쓴다.
+    renderView(DATA);
+    fireEvent.click(screen.getByRole("button", { name: /auth-login 다른 칸으로 보내기/ }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByText(/auth-login/)).toBeInTheDocument();
+    // 현재 칸(waiting)은 목적지 후보에서 빠진다.
+    expect(within(screen.getByRole("dialog")).queryByText("대기")).toBeNull();
+    expect(within(screen.getByRole("dialog")).getByText("작업 대상")).toBeInTheDocument();
   });
 });

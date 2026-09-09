@@ -8,12 +8,13 @@ import {
   discoverProjects,
   readPlacements,
   readSteps,
+  upsertTicketRecord,
   writePlanMove,
   writeSettings,
 } from "@gootte/core-io";
 import { CliError } from "./args";
 
-import { boardText, discoverText, nextText, resolveProjectPath, stepClearText, stepText } from "./commands";
+import { boardText, discoverText, nextText, pendingText, resolveProjectPath, stepClearText, stepText, workingText } from "./commands";
 
 function w(root: string, rel: string, content: string): void {
   const full = join(root, rel);
@@ -276,10 +277,8 @@ describe("cli — step · step --clear · board · next(plan-board/05)", () => {
       }
       // 뿌리 하나만 주면 사본이 하나뿐이라 갈라질 일이 없다 — 대조군(회귀 방지).
       expect(out).not.toContain("갈라짐");
-      // 두 사본을 다 보게 하면 갈라짐 사실이 한 줄로 실린다 — 어느 파일·어느 사본인지 말한다(AC2).
-      expect(out2).toContain("! 갈라짐: spec.md");
-      expect(out2).toContain(a);
-      expect(out2).toContain(b);
+      // 두 사본을 다 보게 해도 갈라짐 표시는 더 이상 응답에 없다(conflict 속성 제거).
+      expect(out2).not.toContain("갈라짐");
     } finally {
       for (const d of [root, bRoot]) rmSync(d, { recursive: true, force: true });
     }
@@ -389,7 +388,7 @@ describe("cli — board·next 에 백로그 조인(T01)", () => {
     w(proj, "docs/features/g/tickets/T02.md", "# T02 — d\n\n## Depends on\n- nothing\n");
     activate(dataDir, slug(), "g");
     backlogWithT01Done(home, slug(), "g");
-    writeSettings(dataDir, { firstmateHome: home });
+    writeSettings(dataDir, {});
   });
   afterEach(() => {
     for (const p of [proj, dataDir, home]) rmSync(p, { recursive: true, force: true });
@@ -510,5 +509,54 @@ describe("cli — resolveProjectPath 는 GOOTTE_ROOTS 도 본다(T02)", () => {
     withEnv(undefined, () => {
       expect(resolveProjectPath("ghost-proj-nowhere", "/nonexistent-cwd")).toBeNull();
     });
+  });
+});
+
+describe("cli — working · pending(처리중·대기 티켓 목록, 캡틴 지시 2026-09-09)", () => {
+  let proj: string;
+  beforeEach(() => {
+    proj = mkdtempSync(join(tmpdir(), "gootte-wp-"));
+    w(proj, "AGENTS.md", "# AGENTS\n");
+    w(proj, "docs/features/alpha/tickets/T01.md", "# T01 — 시작함\n");
+    w(proj, "docs/features/alpha/tickets/T02.md", "# T02 — 안 함\n");
+    w(proj, "docs/features/alpha/tickets/T03.md", "# T03 — 끝남\n");
+    w(proj, "docs/features/beta/tickets/T01.md", "# B01 — 폐기\n");
+  });
+  afterEach(() => rmSync(proj, { recursive: true, force: true }));
+
+  const slug = () => basename(proj);
+
+  it("처리중 — started 만 있는 레코드(진행 중)만 실린다", () => {
+    upsertTicketRecord(proj, "alpha/T01", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: null });
+    upsertTicketRecord(proj, "alpha/T03", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: "2026-09-09T10:00:00+09:00" });
+    upsertTicketRecord(proj, "beta/T01", { startedAt: null, finishedAt: null, statusRaw: "wontfix (2026-09-01)" });
+    expect(workingText([slug()], undefined, proj)).toBe("alpha\tT01");
+  });
+
+  it("대기 — 레코드 없는 티켓(미시작)이 실린다. done·dropped·처리중은 아니다", () => {
+    upsertTicketRecord(proj, "alpha/T01", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: null });
+    upsertTicketRecord(proj, "alpha/T03", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: "2026-09-09T10:00:00+09:00" });
+    upsertTicketRecord(proj, "beta/T01", { startedAt: null, finishedAt: null, statusRaw: "wontfix (2026-09-01)" });
+    expect(pendingText([slug()], undefined, proj)).toBe("alpha\tT02");
+  });
+
+  it("줄 서식 — <기능-slug>\\t<티켓>(캡틴이 정한 형식)", () => {
+    upsertTicketRecord(proj, "alpha/T01", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: null });
+    upsertTicketRecord(proj, "beta/T02", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: null });
+    w(proj, "docs/features/beta/tickets/T02.md", "# B02\n");
+    expect(workingText([slug()], undefined, proj)).toBe("alpha\tT01\nbeta\tT02");
+  });
+
+  it("프로젝트 밖에서 인자 생략하면 거절 — 안에서는 생략 가능(캡틴 지시 2026-09-09)", () => {
+    // cwd = 임시 프로젝트 안 → 유추 성공. 프로젝트 밖 cwd 를 주면 거절한다.
+    expect(() => workingText([], undefined, join(proj, "docs", "features"))).not.toThrow(); // 안
+    expect(() => workingText([], undefined, "/")).toThrow(CliError); // 밖
+  });
+
+  it("MD 모드(레코드 없는 프로젝트)에서도 MD Time 줄 기준으로 읽는다 — 폴백 회귀", () => {
+    // 🔴 처리중은 Time 기록에서만 나온다 — `Status: claimed` 은 pending 사상(계약 Q3)이라
+    // 이 목록에 실리지 않는다. started= 만 있고 finished= 가 없으면 in_progress 이다.
+    w(proj, "docs/features/gamma/tickets/T01.md", "# G01\n\n**Time:** started=2026-09-09T09:00:00+09:00\n");
+    expect(workingText([slug()], undefined, proj)).toBe("gamma\tT01");
   });
 });

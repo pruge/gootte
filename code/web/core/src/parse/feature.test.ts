@@ -50,6 +50,7 @@ describe("parseStatusLine — 아홉 값이 그대로 살아 돌아온다", () =
       raw: null,
       value: null,
       completedAt: null,
+      rest: null, // time-records T06 — 줄 전체 원문 칸도 없다
     });
   });
 
@@ -69,6 +70,7 @@ describe("parseStatusLine — 값 뒤에 붙는 것에 넘어가지 않는다", 
       raw: "resolved",
       value: "resolved",
       completedAt: "2026-08-09",
+      rest: "resolved (2026-08-09)", // 줄 전체 원문 — time-records T06 statusRaw 의 원료
     });
   });
 
@@ -77,6 +79,7 @@ describe("parseStatusLine — 값 뒤에 붙는 것에 넘어가지 않는다", 
       raw: "resolved",
       value: "resolved",
       completedAt: "2026-08-12 14:30",
+      rest: "resolved (2026-08-12 14:30)",
     });
   });
 

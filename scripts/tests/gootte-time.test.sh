@@ -39,6 +39,12 @@ make_fixture() {
   shift 3
   mkdir -p "$dir/docs/features/$feature/tickets"
   printf '%s\n' "$@" > "$dir/docs/features/$feature/tickets/$ticket_file"
+  # 🔴 이 하니스는 **MD 모드**(bash MD 편집 경로)를 잰다. 캡틴 결정(2026-09-09)으로 기록
+  # 흔적이 없는 새 프로젝트는 첫 기록부터 레코드 모드(TS 위임)로 가므로, MD 경로를 유지하려면
+  # 픽스처에 기록 흔적이 하나 필요하다 — 검사 대상 티켓과 무관한 시드 티켓으로 심는다.
+  mkdir -p "$dir/docs/features/__mode-seed__/tickets"
+  printf '# 시드 — MD 모드 표식\n\n**Time:** started=2020-01-01T00:00:00+09:00\n' \
+    > "$dir/docs/features/__mode-seed__/tickets/T01.md"
 }
 
 # case 1: start — 제목 뒤(본문 앞)에 **Time:** started=<ISO> 삽입

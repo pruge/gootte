@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,20 +6,12 @@ import { type Project } from "@gootte/contract";
 import { readFeatures } from "@gootte/core-io";
 import { clearSnapshot, recordProjectScan, revalidateSnapshot, snapshotPath } from "../src/snapshot";
 
-const git = (repo: string, ...args: string[]): string =>
-  execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" }).trim();
-
-const makeRepoProject = (parent: string, slug: string): string => {
+const makeProject = (parent: string, slug: string): string => {
   const repo = join(parent, slug);
   mkdirSync(join(repo, "docs", "features", "auth-login", "issues"), { recursive: true });
   writeFileSync(join(repo, "AGENTS.md"), "# AGENTS\n");
   writeFileSync(join(repo, "docs/features/auth-login/spec.md"), "# auth-login\n\n## Goal\n\nfirst\n");
   writeFileSync(join(repo, "docs/features/auth-login/issues/01-a.md"), "# T01\n");
-  execFileSync("git", ["init", "-q", repo], { stdio: "ignore" });
-  git(repo, "config", "user.email", "test@example.com");
-  git(repo, "config", "user.name", "test");
-  git(repo, "add", "-A");
-  git(repo, "commit", "-q", "-m", "initial");
   return repo;
 };
 
@@ -37,10 +28,12 @@ beforeEach(() => {
   return () => rmSync(dataDir, { recursive: true, force: true });
 });
 
-describe("fast-cold-start T04", () => {
-  test("HEAD가 같으면 재검증은 no-op이고 스냅샷을 바꾸지 않는다", async () => {
+describe("fast-cold-start T04 — 재검증 게이팅(git-removal T03/T04 이후)", () => {
+  // git 스탬프(headCommit)가 사라졌으므로 판정 기준은 **사본 구성(sameCopies)과 프로젝트 목록** 둘뿐이다.
+  // 문서 내용 변경은 재검증기가 아니라 감시 신호(축 1 → scheduleProjectUpdate)의 몫이다.
+  test("사본 구성이 같으면 재검증은 no-op이고 스냅샷을 바꾸지 않는다", async () => {
     const root = mkdtempSync(join(tmpdir(), "gootte-t04-root-"));
-    const alpha = makeRepoProject(root, "alpha");
+    const alpha = makeProject(root, "alpha");
     try {
       recordProjectScan(dataDir, project(alpha), readFeatures([alpha]));
       const before = readFileSync(snapshotPath(dataDir), "utf8");
@@ -52,32 +45,32 @@ describe("fast-cold-start T04", () => {
     }
   });
 
-  test("한 프로젝트의 HEAD만 바뀌면 그 프로젝트만 갱신하고 나머지는 보존한다", async () => {
+  test("한 프로젝트의 사본 구성만 바뀌면 그 프로젝트만 갱신하고 나머지는 보존한다", async () => {
     const root = mkdtempSync(join(tmpdir(), "gootte-t04-root-"));
-    const alpha = makeRepoProject(root, "alpha");
-    const beta = makeRepoProject(root, "beta");
+    const alpha = makeProject(root, "alpha");
+    const beta = makeProject(root, "beta");
     try {
       recordProjectScan(dataDir, project(alpha), readFeatures([alpha]));
       recordProjectScan(dataDir, project(beta), readFeatures([beta]));
       const before = JSON.parse(readFileSync(snapshotPath(dataDir), "utf8"));
       const betaBefore = before.projects.find((p: { slug: string }) => p.slug === "beta");
 
-      writeFileSync(join(alpha, "docs/features/auth-login/spec.md"), "# auth-login\n\n## Goal\n\nchanged\n");
-      git(alpha, "add", "-A");
-      git(alpha, "commit", "-q", "-m", "changed");
+      // alpha 에 두 번째 사본을 붙인다 — depth 2 스캔이 잡는 자리(root/sub/alpha).
+      const alphaCopy = join(root, "sub", "alpha");
+      mkdirSync(join(alphaCopy, "docs", "features"), { recursive: true });
+      writeFileSync(join(alphaCopy, "AGENTS.md"), "# AGENTS\n");
 
       const result = await revalidateSnapshot(dataDir, [root]);
       const after = JSON.parse(readFileSync(snapshotPath(dataDir), "utf8"));
       const alphaAfter = after.projects.find((p: { slug: string }) => p.slug === "alpha");
       const betaAfter = after.projects.find((p: { slug: string }) => p.slug === "beta");
 
-       expect(result).toEqual({ changedProjects: ["alpha"], projectsChanged: false });
-       expect(alphaAfter.stamps[0].head).toBe(git(alpha, "rev-parse", "HEAD"));
-       // alpha는 갱신되었으니 stamps가 바뀌었다
-       expect(alphaAfter.stamps[0].head).not.toBe(betaAfter.stamps[0].head);
-       // beta는 보존되었다
-       expect(betaAfter.stamps).toEqual(betaBefore.stamps);
-       expect(betaAfter.features).toEqual(betaBefore.features);
+      expect(result).toEqual({ changedProjects: ["alpha"], projectsChanged: false });
+      // alpha는 갱신되었으니 사본 구성이 바뀌었다
+      expect(alphaAfter.copies).toContain(alphaCopy);
+      // beta는 보존되었다
+      expect(betaAfter.copies).toEqual(betaBefore.copies);
+      expect(betaAfter.features).toEqual(betaBefore.features);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -85,10 +78,10 @@ describe("fast-cold-start T04", () => {
 
   test("프로젝트 추가와 삭제는 projectsChanged로 판정한다", async () => {
     const root = mkdtempSync(join(tmpdir(), "gootte-t04-root-"));
-    const alpha = makeRepoProject(root, "alpha");
+    const alpha = makeProject(root, "alpha");
     try {
       recordProjectScan(dataDir, project(alpha), readFeatures([alpha]));
-      const beta = makeRepoProject(root, "beta");
+      const beta = makeProject(root, "beta");
 
       const added = await revalidateSnapshot(dataDir, [root]);
       expect(added.projectsChanged).toBe(true);

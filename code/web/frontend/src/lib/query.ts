@@ -226,22 +226,7 @@ export function usePlanMove(slug: string) {
   return { move, isError: mutation.isError, error: mutation.error };
 }
 
-/**
- * 캡틴이 `process` 탭에서 티켓을 끌어 단계를 정한다(plan-board/08).
- *
- * 🔴 `plan` 탭의 `usePlanMove` 와 달리 놓는 동안의 연출 프레임이 없다 — process 탭은 카드가
- * 칸을 오가지 않고 그룹 안에서 줄이 있던 위치를 다시 그릴 뿐이라, 서버가 다시 가른 판을 그대로
- * 앉히는 것으로 충분하다(INV-1·INV-3). 실패하면 이전 판이 그대로 남는다 — 캐시를 손대지
- * 않았으므로 되돌릴 것도 없다.
- */
-export function useStepMove(slug: string) {
-  const qc = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: (request: StepMoveRequest) => moveStep(slug, request),
-    onSuccess: (board) => qc.setQueryData(qk.plan(slug), board),
-  });
-  return { move: mutation.mutate, isError: mutation.isError, error: mutation.error };
-}
+
 
 /**
  * 시간 기록(ADR-0002) — steps 탭 버튼으로 start/pause/resume/end 를 티켓 문서에 남긴다.

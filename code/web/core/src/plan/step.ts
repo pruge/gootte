@@ -7,7 +7,7 @@ import { UNRANKED_STEP, type StepRow } from "./move";
  * feature slug → ticket slug → 화면에 보일 단계(당김까지 끝난 값, plan-board/05).
  * 값이 없는 조합은 이 표에 없다 — 빈 단계로 당겨져 사라졌거나 작업 대상 밖이다.
  */
-export type DisplayStepMap = Record<string, Record<string, number>>;
+type DisplayStepMap = Record<string, Record<string, number>>;
 
 /**
  * 작업 대상 기능의 실제 티켓에 붙은 단계 행만 남기고, 완료 여부를 함께 조회할 수 있게 한다 —
@@ -102,7 +102,7 @@ export function computeDisplaySteps(
  *   맨 뒤(9999 무더기 앞)다.
  * - `unranked` — `9999` 무더기 위에 놓았다.
  */
-export type StepPlacement =
+type StepPlacement =
   | { readonly kind: "onStep"; readonly displayStep: number }
   | { readonly kind: "gap"; readonly index: number }
   | { readonly kind: "unranked" };

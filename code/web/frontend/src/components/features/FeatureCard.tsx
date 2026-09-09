@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { IconArrowMoveRight } from "@tabler/icons-react";
 import type { Feature } from "@gootte/contract";
 import { featureDescription } from "../plan/cardTitle";
 import { dateOnly } from "../../lib/dateOnly";
-import { ConflictBadge } from "./ConflictBadge";
 import { FeatureTree, type OpenDocFn } from "./FeatureTree";
 import { HighlightedText } from "./HighlightedText";
+import type { BoardAreaId } from "../plan/areas";
 
 /**
  * 남은 일 / 완료 / 착수 가능 / 처리중 세기 — 서버가 준 값을 세기만 한다(재계산 X, INV-1).
@@ -42,6 +43,10 @@ interface FeatureCardProps {
   onToggleExpanded?: () => void;
   /** 완료 칸일 때의 완료 시각 표시("YYYY-MM-DD HH:MM") — 있으면 헤더를 간소화한다. */
   completed?: string | null;
+  /** 지금 카드가 있는 칸 — 이동 아이콘의 목적지 후보에서 뺀다(plan 탭과 같은 규칙). */
+  area?: BoardAreaId;
+  /** 이동 아이콘 — "어느 칸으로 보낼까요" 대화상자를 여는 콜백(plan 탭 MoveDialog 재사용). */
+  onRequestMove?: (slug: string) => void;
 }
 
 /**
@@ -63,6 +68,8 @@ export function FeatureCard({
   expanded: controlledExpanded,
   onToggleExpanded,
   completed = null,
+  area,
+  onRequestMove,
 }: FeatureCardProps) {
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = controlledExpanded ?? localExpanded;
@@ -103,8 +110,6 @@ export function FeatureCard({
               안 읽음
             </span>
           )}
-          {/* T03 — 갈라진 사본이 있으면 조용히 하나를 고르지 않고 화면이 말한다(ADR-0001). */}
-          <ConflictBadge conflicts={feature.conflict ?? []} />
           {isDone ? (
             // 완료 카드 — 네 수 대신 "완료 [날짜]" 하나만(캡틴 지시: 완료후 헤더는 이것만 남긴다).
             <span className="mono ml-auto text-sm tabular-nums text-muted">
@@ -121,6 +126,25 @@ export function FeatureCard({
             </span>
           )}
         </button>
+        {onRequestMove && !isDone && (
+          // 🔴 다른 칸으로 보내기 — plan 탭 BoardCard 의 이동 아이콘과 같은 길이다.
+          // 대화상자(MoveDialog)는 FeaturesView 가 열고, 실제 이동도 plan 과 같은
+          // `movePlanCards` API(판정 자리 = 서버 planMove 하나)로 간다(INV-3).
+          <div className="flex shrink-0 items-start justify-end self-center pr-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRequestMove(feature.slug);
+              }}
+              aria-label={`${feature.slug} 다른 칸으로 보내기`}
+              title="어느 칸으로 보낼지 고른다"
+              className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <IconArrowMoveRight size={17} stroke={1.6} />
+            </button>
+          </div>
+        )}
       </div>
 
       {isExpanded && (

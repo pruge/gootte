@@ -16,9 +16,7 @@ const NO_WORK: FeaturesResponse["inProgress"] = {
   copies: 0,
   working: 0,
   tickets: 0,
-  unknown: [],
   unreadable: [],
-  unclaimed: [],
 };
 
 /** 티켓 하나 — `unread` 값만 다르다. */

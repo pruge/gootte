@@ -26,7 +26,7 @@ export interface BacklogWatcher {
   close(): Promise<void>;
 }
 
-export interface WatchBacklogOptions {
+interface WatchBacklogOptions {
   debounceMs?: number;
   /**
    * 감시를 못 붙였을 때의 통보 — stderr 기록과 함께 부른다. 폴백 폴러로 갈아타는 근거

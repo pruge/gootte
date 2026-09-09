@@ -25,20 +25,26 @@
 - **INV-1 — 파생물만.** projection(막힘 해제 · 처리중 · render-data)은 **관리대상의 md SoT 와 격리 사본
   관측에서 재생성**되는 파생물이다. 손으로 유지되는 2차 SoT 금지 — desync = 틀린 다음-할일 =
   이 제품이 없애려는 통증의 재발. (사람만 아는 계획 자체를 저장해도 되는 경계는 INV-5 가 갖는다.)
+  🔴 **예외(time-records-to-state-store, 캡틴 승인 2026-09-09): 티켓의 시간·상태 기록(`Time:`·
+  `Status:`)은 `<프로젝트>/.gootte/state.json` v2 의 `tickets` 맵이 SoT 다** — `gootte start/end` 가
+  기록한 시각은 write-time 캡처라 원본(MD 줄)을 지운 뒤에는 재생성할 수 없는 INV-5 값이다.
+  v2 가 없는 프로젝트는 예전대로 MD 줄을 읽는다(모드는 프로젝트 단위 이분법 — 혼합 금지).
 - **INV-2 — 관리대상은 읽기 전용.** gootte 는 관리대상 프로젝트 문서를 **읽기만** 한다.
   관리대상의 SoT 문서(`docs/features/` 의 spec·티켓·adr)는 **절대 mutate 하지 않는다** —
   처리중 표시를 티켓 파일에 적어 넣는 것도 여기 포함된다.
-  (지금 gootte 는 관리대상에 **아무것도 쓰지 않는다.** 쓰기가 생긴다면 자기 `.gootte/` 네임스페이스
-  안이어야 하고, 그때 그 산출물은 AUTO-GENERATED 헤더를 단다.)
+  (위 INV-1 예외로 gootte 는 v2 프로젝트에서 시간 명령이 **자기 `.gootte/state.json` 에만** 쓴다 —
+  MD 편집은 이제 없다. 산출물은 이미 `.gootte/` 네임스페이스 안이다.)
 - **INV-3 — stale 뷰 금지.** 뷰는 **항상 현재 SoT 를 반영**한다(실시간 체크·재계산).
 - **INV-4 — read-path 는 결정적·LLM-free.** 할일 목록·막힘 해제·처리중 판정은 전부 계산이다.
   산문 "왜" 는 요약하지 말고 **verbatim 릴레이** — 지능(왜 판단)은 write-time 에 캡처되고,
   read-time 은 계산과 릴레이만 한다.
 - **INV-5 — 계획은 저장하고 사실은 저장하지 않는다.** 사람이 정한 것(단계 · 기능 순위 · 트랙 · 왜)은
   gootte 자기 저장소에 저장한다. **원본을 다시 읽어 같은 값이 나오는 것은 저장하지 않는다** —
-  티켓 상태 · 막힘 · 착수 가능 여부 · 처리중 · 임자 · 완료 · 제목.
+  막힘 · 착수 가능 여부 · 처리중 · 임자 · 제목.
+  🔴 위 INV-1 예외에 따라 **티켓 시간 기록(started/finished/pauses)과 폐기 원문은 저장한다** —
+  행위의 기록이라 원본 재생성이 불가능한 INV-5 값으로 갈린다(2026-09-09 개정).
   판단 기준 한 줄: **다른 어디에도 없는 것만 저장할 자격이 있다.**
-  (`docs/features/development-order/`)
+  (`docs/features/development-order/` · `docs/features/time-records-to-state-store/`)
 
 빠른 판단: 새 파일을 쓰려 한다 → INV-1·INV-2, 단 사람만 아는 계획(단계·순위·트랙·왜)이면 INV-5 가 저장을
 허락한다 / 캐시·스냅샷을 두려 한다 → INV-1·INV-3 / 요약·추론을 넣으려 한다 → INV-4.
@@ -109,7 +115,7 @@ TS 소비처(`core` `core-io` `cli` `backend` `frontend`)는 `@gootte/contract` 
 | `pnpm test` · `pnpm test:ports` | vitest 만 · 포트 해석기만 |
 | `pnpm discover <root>` | 로컬 관리대상 프로젝트 발견(읽기 전용) |
 | `pnpm gootte <step\|board\|next> …` | 계획 조회·단계 배정. `board`·`next` 는 읽기 전용 |
-| `gootte start/end/pause/resume/cancel/drop` | 🔴 **티켓의 `Time:` 을 기록하는 유일한 주체.** → 스킬 `gootte-ticket` |
+| `gootte start/end/pause/resume/cancel/drop` | 🔴 **티켓 시간 기록의 유일한 주체.** v2 프로젝트는 state.json 레코드, 아니면 MD `Time:` 줄. → 스킬 `gootte-ticket` |
 | `pnpm dev` · `dev:tauri` · `build:tauri` · `e2e` | dev 서버·데스크톱 셸·e2e → 🔴 **띄우기 전에 스킬 `gootte-dev-server`** |
 
 `discover` 와 backend 가 뒤질 곳은 env `GOOTTE_ROOTS`(기본 `~/Documents/ai2/projects`)가 정한다.

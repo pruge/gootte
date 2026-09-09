@@ -177,6 +177,59 @@ describe("watchProjects (022)", () => {
   });
 });
 
+// ── time-records-to-state-store — state.json 감시(CLI 기록 → 실시간 배지) ─────
+describe("watchProjects — .gootte/state.json 을 본다(time-records)", () => {
+  let w: ProjectWatcher | null = null;
+  let root = "";
+  afterEach(async () => {
+    await w?.close();
+    w = null;
+    if (root) rmSync(root, { recursive: true, force: true });
+    root = "";
+  });
+
+  it("🔴 v2 모드는 기록이 state.json 으로 가므로 — 파일 변경이 project 신호가 된다", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-watch-state-"));
+    const proj = join(root, "alpha");
+    makeProject(root, "alpha");
+    mkdirSync(join(proj, ".gootte"), { recursive: true });
+    // v2 state.json 이 미리 있어야 감시 대상이 된다(존재하는 파일만 건다 — 없는 경로는
+    // 재바인딩 때 차분으로 붙는다).
+    writeFileSync(join(proj, ".gootte", "state.json"), '{"version":2,"tickets":{}}\n');
+
+    const seen: Change[] = [];
+    w = watchProjects([root], (c) => seen.push(c), { debounceMs: 20 });
+    await sleep(300);
+    seen.length = 0;
+
+    // CLI 가 하는 것과 같은 원자적 교체 — .tmp 쓰고 rename
+    const tmp = join(proj, ".gootte", "state.json.tmp");
+    writeFileSync(tmp, '{"version":2,"tickets":{"alpha/T01":{"startedAt":"2026-09-09T00:00:00+09:00","finishedAt":null,"pauses":[],"statusRaw":null}}}\n');
+    const { renameSync } = await import("node:fs");
+    renameSync(tmp, join(proj, ".gootte", "state.json"));
+
+    await waitFor(() => seen.some((c) => c.kind === "project" && c.project === "alpha"));
+  });
+
+  it("감시 시작 뒤 생긴 state.json 도 잡힌다 — .gootte 디렉토리가 있으면 디렉토리 감시로 생성을 본다", async () => {
+    root = mkdtempSync(join(tmpdir(), "gootte-watch-state2-"));
+    const proj = join(root, "alpha");
+    makeProject(root, "alpha");
+    // 🔴 chokidar 는 미생성 경로를 못 본다(실측) — .gootte 디렉토리는 미리 있어야 하고,
+    // state.json 이 뒤에 생기는 것을 디렉토리 감시로 잡는다.
+    mkdirSync(join(proj, ".gootte"), { recursive: true });
+
+    const seen: Change[] = [];
+    w = watchProjects([root], (c) => seen.push(c), { debounceMs: 20 });
+    await sleep(300);
+    seen.length = 0;
+
+    writeFileSync(join(proj, ".gootte", "state.json"), '{"version":1,"openFeatures":[]}\n');
+
+    await waitFor(() => seen.some((c) => c.kind === "project" && c.project === "alpha"));
+  });
+});
+
 // ── read-path-redesign/T05 — 감시 축 둘 ────────────────────────────────────────
 describe("watchProjects — worktree 와 커밋도 본다 (read-path-redesign/T05)", () => {
   let w: ProjectWatcher | null = null;
@@ -220,7 +273,9 @@ describe("watchProjects — worktree 와 커밋도 본다 (read-path-redesign/T0
     await waitFor(() => seen.some((c) => c.kind === "project" && c.project === "alpha"));
   });
 
-  it("🔴 커밋(HEAD 변경)이 잡힌다 — 갈라짐 판정이 커밋으로 바뀌기 때문(축 2, T06 조사)", async () => {
+  it("🔴 커밋(HEAD 변경)만으로는 신호가 나지 않는다 — 축 2(커밋 감시)는 git-removal/T04 에서 삭제됐다", async () => {
+    // 커밋이 티켓 상태를 바꾸는 길은 **문서 파일 자체**뿐이다(Time: 줄이 SoT) — 문서 감시(축 1)가
+    // 그것을 본다. 문서 밖 파일만 바뀌는 커밋은 다시 계산할 뷰가 없으므로 조용히 무시하는 것이 맞다.
     root = mkdtempSync(join(tmpdir(), "gootte-watch-git-"));
     const proj = join(root, "alpha");
     makeProject(root, "alpha");
@@ -233,13 +288,14 @@ describe("watchProjects — worktree 와 커밋도 본다 (read-path-redesign/T0
     await sleep(300);
     seen.length = 0;
 
-    // 🔴 `docs/features` **밖** 파일만 커밋한다 — 축 1(문서 감시)이 못 보는 변경이어야
-    // 축 2(커밋 감시)가 일한다는 것이 증명된다.
+    // `docs/features` 밖 파일만 커밋한다 — 예전 축 2(.git/HEAD·refs 감시)가 살아 있었다면
+    // 여기서 project 신호가 나왔을 것이다. 이제 아무 신호도 없어야 한다.
     writeFileSync(join(proj, "README.md"), "x\n");
     git(proj, "add", "-A");
     git(proj, "commit", "-q", "-m", "unrelated");
 
-    await waitFor(() => seen.some((c) => c.kind === "project" && c.project === "alpha"));
+    await sleep(300);
+    expect(seen).toEqual([]);
   });
 });
 

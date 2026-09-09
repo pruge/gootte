@@ -1,4 +1,3 @@
-export * from "./git";
 export * from "./discover";
 export * from "./features";
 export * from "./treehouse";
@@ -8,5 +7,7 @@ export * from "./backlog-watch";
 export * from "./backlog";
 export * from "./plan-store";
 export * from "./settings-store";
+export * from "./state-store";
+export type { ProjectStateV2, TicketTimeRecord } from "@gootte/contract";
 export * from "./secondmates";
 export * from "./memo-store";

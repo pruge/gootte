@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { IconAlertTriangle, IconEyeOff, IconProgressAlert } from "@tabler/icons-react";
+import { IconAlertTriangle, IconEyeOff } from "@tabler/icons-react";
 import type { InProgressSummary } from "@gootte/contract";
 import { byClosedDisplayAt, closedDisplayAt } from "@gootte/core/plan";
-import { useBlockedCopies, useFeatures, usePlanBoard, useSettings } from "../../lib/query";
-import { ALL_AREAS, AREA_LABEL, type BoardAreaId } from "../plan/areas";
+import { useBlockedCopies, useFeatures, usePlanBoard, useSettings, usePlanMove } from "../../lib/query";
+import { ALL_AREAS, AREA_LABEL, storedArea, type BoardAreaId } from "../plan/areas";
+import { MoveDialog } from "../plan/MoveDialog";
 import { Loading, ErrorMsg, Empty } from "../common/states";
 import { FeatureCard } from "./FeatureCard";
 import { FeatureSearchBox } from "./FeatureSearchBox";
@@ -62,9 +63,11 @@ function CopyRow({
 }
 
 /**
- * 🔴 이어지지 않았거나 읽지 못한 사본 — **감추지 않는다.**
+ * 🔴 상태를 읽지 못한 사본 — **감추지 않는다.**
  * 조용히 빠뜨리면 화면이 "아무도 아무것도 안 하는 중" 이라고 거짓말하고, 캡틴은 이미
- * 진행 중인 일을 다시 배정한다. 어느 사본의 어느 가지인지 원문 그대로 보여준다(INV-4 릴레이).
+ * 진행 중인 일을 다시 배정한다. 어느 사본인지 원문 그대로 보여준다(INV-4 릴레이).
+ * 🔴 옛 `unknown`(티켓 미상)·`unclaimed`(임자 없음) 구역은 git 제거(time-records)와 함께
+ * 삭제됐다 — 사본↔티켓 연결의 근거(커밋 관측)가 소멸해 모든 작업 사본을 미상으로 오분류했다.
  */
 function UnresolvedWork({
   inProgress,
@@ -74,39 +77,14 @@ function UnresolvedWork({
   /** 숨기기 버튼을 누르면 해당 복사본 slug 로 호출된다. 없으면 버튼을 붙이지 않는다. */
   onHide?: (slug: string) => void;
 }) {
-  const { unknown, unreadable, unclaimed } = inProgress;
-  if (unknown.length === 0 && unreadable.length === 0 && unclaimed.length === 0) return null;
+  const { unreadable } = inProgress;
+  if (unreadable.length === 0) return null;
 
   return (
     <section
       role="status"
       className="overflow-hidden rounded-lg border border-partial/40 bg-partial/10"
     >
-      {unknown.length > 0 && (
-        <>
-          <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3">
-            <IconProgressAlert size={17} className="shrink-0 self-center text-partial" />
-            <h2 className="font-medium tracking-tight text-partial">
-              티켓 미상 · 작업중 {unknown.length}
-            </h2>
-            <span className="text-sm text-muted">
-              작업 가지에 올라가 있지만 커밋이 어느 티켓 파일도 건드리지 않아 이을 수 없었습니다.
-            </span>
-          </header>
-          <ul className="divide-y divide-border/60 border-t border-partial/25">
-            {unknown.map((w) => (
-              <CopyRow
-                key={w.slug}
-                slug={w.slug}
-                detail={w.branch}
-                title={w.path}
-                onHide={onHide ? () => onHide(w.slug) : undefined}
-              />
-            ))}
-          </ul>
-        </>
-      )}
-
       {unreadable.length > 0 && (
         <>
           <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-partial/25 px-4 py-3">
@@ -126,31 +104,6 @@ function UnresolvedWork({
                 detail={UNREADABLE_REASON[c.reason]}
                 title={c.path}
                 onHide={onHide ? () => onHide(c.slug) : undefined}
-              />
-            ))}
-          </ul>
-        </>
-      )}
-
-      {unclaimed.length > 0 && (
-        <>
-          <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-partial/25 px-4 py-3">
-            <IconAlertTriangle size={17} className="shrink-0 self-center text-partial" />
-            <h2 className="font-medium tracking-tight text-partial">
-              임자 없이 남은 표시 {unclaimed.length}
-            </h2>
-            <span className="text-sm text-muted">
-              문서는 claimed 라고 말하지만 지금 붙들고 있는 사본이 없습니다 — 지우다 만 흔적일 수
-              있습니다.
-            </span>
-          </header>
-          <ul className="divide-y divide-border/60 border-t border-partial/25">
-            {unclaimed.map((t) => (
-              <CopyRow
-                key={`${t.feature}/${t.ticket}`}
-                slug={`${t.feature}/${t.ticket}`}
-                detail={t.title}
-                title={t.title}
               />
             ))}
           </ul>
@@ -211,6 +164,11 @@ export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
   // plan 탭의 영역 분류(작업 대상/대기/예약/폐기/완료)를 그대로 가져와 기능을 같은 칸에 묶는다.
   // 🔴 화면이 자기만의 분류를 짜지 않는다 — 판정 자리는 서버(`planMove`) 하나뿐(areas.ts).
   const { data: board } = usePlanBoard(project);
+  // 🔴 카드 이동도 plan 탭과 **같은 API·같은 판정 자리**(`movePlanCards`)로 간다(캡틴 지시
+  // 2026-09-09: features 카드에도 카테고리 이동 아이콘). 응답 판을 `plan` 쿼리에 앉히면
+  // 이 탭의 `board` 도 같은 쿼리 키라 함께 갱신된다(INV-3).
+  const planMove = usePlanMove(project);
+  const [moveDialog, setMoveDialog] = useState<{ slug: string; area: BoardAreaId } | null>(null);
   const [tab, setTab] = useState<BoardAreaId>("waiting");
   const areaBySlug = useMemo(() => {
     const m = new Map<string, BoardAreaId>();
@@ -317,10 +275,7 @@ export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
   if (isError && !data) return <ErrorMsg error={error} />;
   if (!data) return <Loading label="기능 문서 읽는 중…" />;
   // 🔴 기능이 하나도 없어도 미해소 사본이 있으면 그것만은 보여준다 — 빈 화면이 거짓말하지 않게.
-  const unresolved =
-    data.inProgress.unknown.length +
-    data.inProgress.unreadable.length +
-    data.inProgress.unclaimed.length;
+  const unresolved = data.inProgress.unreadable.length;
   if (data.features.length === 0 && unresolved === 0)
     return <Empty>docs/features/ 아래 기능이 없습니다.</Empty>;
 
@@ -403,6 +358,8 @@ export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
                       expanded={expanded.has(feature.slug)}
                       onToggleExpanded={() => toggleExpanded(feature.slug)}
                       completed={completedAtBySlug?.get(feature.slug) ?? null}
+                      area={areaBySlug.get(feature.slug)}
+                      onRequestMove={(slug) => setMoveDialog({ slug, area: areaBySlug.get(slug) ?? tab })}
                     />
                   </div>
                 );
@@ -417,6 +374,19 @@ export function FeaturesView({ project, view, onView }: FeaturesViewProps) {
         path={docView?.path ?? null}
         onClose={closeDoc}
       />
+      {moveDialog && (
+        <MoveDialog
+          features={[moveDialog.slug]}
+          from={moveDialog.area}
+          onClose={() => setMoveDialog(null)}
+          onMove={(to) => {
+            setMoveDialog(null);
+            // plan 탭과 같은 규칙 — 대화상자로 보낸 카드는 그 칸의 맨 뒤에 선다.
+            // 🔴 대기는 `area: null`(자리 행을 지우는 것, INV-B1) — `storedArea` 가 그 변환 하나.
+            planMove.move({ features: [moveDialog.slug], area: storedArea(to), index: 0 });
+          }}
+        />
+      )}
     </>
   );
 }

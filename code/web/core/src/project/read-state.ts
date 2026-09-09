@@ -8,7 +8,7 @@ import { allTickets } from "./features";
  * 🔴 **읽음 기록을 못 읽었으면**(`readMarks === null`) **조용한 쪽으로 기운다**(INV-U1) — 전부
  * 읽은 것으로 본다. 거짓 초록은 캡틴을 헛걸음시키고, 몇 번 반복되면 초록 자체를 안 믿게 된다.
  */
-export function readMarkKey(feature: string, path: string): string {
+function readMarkKey(feature: string, path: string): string {
   return `${feature}/${path}`;
 }
 

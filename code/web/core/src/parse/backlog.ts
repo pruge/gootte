@@ -9,7 +9,7 @@
  * 뿐이다 — `code/web/core-io/src/backlog.ts` 참고).
  */
 
-export type BacklogSection = "in_flight" | "queued" | "done";
+type BacklogSection = "in_flight" | "queued" | "done";
 
 /** 백로그 한 줄(+ 딸린 들여쓴 메모) — `<parent>-t<NN>` 자식 작업도 부모 작업도 같은 모양. */
 export interface BacklogTaskDoc {

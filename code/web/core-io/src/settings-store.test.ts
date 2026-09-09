@@ -7,9 +7,8 @@ import {
   normalizeDirPath,
   readSettings,
   settingsFile,
-  settingsHasWatchRoots,
-  resolveWatchRoots,
-  suggestFirstmateHome,
+  settingsHasProjects,
+  resolveProjects,
   writeSettings,
 } from "./settings-store";
 
@@ -25,12 +24,12 @@ afterEach(() => {
 
 describe("readSettings", () => {
   test("파일이 없으면 null — 소비처는 기본값으로 떨어진다", () => {
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: null, watchRoots: [], blockedCopies: [], autoClose: true });
+    expect(readSettings(dataDir)).toEqual({ projects: [], blockedCopies: [], autoClose: true });
   });
 
   test("저장한 값을 그대로 읽는다", () => {
-    writeSettings(dataDir, { firstmateHome: "/tmp/fm" });
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [], blockedCopies: [], autoClose: true });
+    writeSettings(dataDir, { projects: ["/tmp/projects"] });
+    expect(readSettings(dataDir)).toEqual({ projects: ["/tmp/projects"], blockedCopies: [], autoClose: true });
   });
 
   test("망가진 JSON 은 빈 설정으로 위장하지 않고 던진다", () => {
@@ -40,38 +39,38 @@ describe("readSettings", () => {
 
   // 수용 기준 6 — 저장 파일에 남아 있는 옛 watchRoot 값은 무시하고 오류 없이 읽는다
   // (spec §Data and migration: 지우는 마이그레이션도 하지 않는다).
-  test("저장 파일에 남은 옛 watchRoot 값은 무시된다 — 오류 없이 firstmateHome 만 읽는다", () => {
+  test("저장 파일에 남은 옛 watchRoot 값은 무시된다 — 오류 없이 projects 만 읽는다", () => {
     writeFileSync(
       settingsFile(dataDir),
-      `${JSON.stringify({ watchRoot: "/옛/값", firstmateHome: "/tmp/fm" }, null, 2)}\n`,
+      `${JSON.stringify({ watchRoot: "/옛/값", projects: ["/tmp/projects"] }, null, 2)}\n`,
     );
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/tmp/fm", watchRoots: [], blockedCopies: [], autoClose: true });
+    expect(readSettings(dataDir)).toEqual({ projects: ["/tmp/projects"], blockedCopies: [], autoClose: true });
   });
 });
 
 describe("writeSettings", () => {
   test("들어온 키만 갈아 끼운다(merge)", () => {
     writeSettings(dataDir, {});
-    writeSettings(dataDir, { firstmateHome: "/b" });
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: "/b", watchRoots: [], blockedCopies: [], autoClose: true });
+    writeSettings(dataDir, { projects: ["/b"] });
+    expect(readSettings(dataDir)).toEqual({ projects: ["/b"], blockedCopies: [], autoClose: true });
   });
 
   test("null 은 지움(unset)이다", () => {
-    writeSettings(dataDir, { firstmateHome: "/b" });
-    writeSettings(dataDir, { firstmateHome: null });
-    expect(readSettings(dataDir)).toEqual({ firstmateHome: null, watchRoots: [], blockedCopies: [], autoClose: true });
+    writeSettings(dataDir, { projects: ["/b"] });
+    writeSettings(dataDir, { projects: null });
+    expect(readSettings(dataDir)).toEqual({ projects: [], blockedCopies: [], autoClose: true });
   });
 
   test("재시작(새 read) 후에도 유지된다 — 같은 자리를 다시 읽으면 같은 값", () => {
-    writeSettings(dataDir, { firstmateHome: "/persisted" });
+    writeSettings(dataDir, { projects: ["/persisted"] });
     // 새 프로세스가 파일에서 다시 읽는 것과 같다 — readSettings 는 메모리 캐시가 없다.
-    expect(readSettings(dataDir).firstmateHome).toBe("/persisted");
+    expect(readSettings(dataDir).projects).toEqual(["/persisted"]);
   });
 
   test("데이터 디렉터리가 없어도 만들고 쓴다", () => {
     const nested = join(dataDir, "deep", "dir");
-    writeSettings(nested, { firstmateHome: "/x" });
-    expect(readSettings(nested).firstmateHome).toBe("/x");
+    writeSettings(nested, { projects: ["/x"] });
+    expect(readSettings(nested).projects).toEqual(["/x"]);
   });
 });
 
@@ -107,85 +106,63 @@ describe("dirExists", () => {
   });
 });
 
-describe("suggestFirstmateHome", () => {
-  test("실제로 있는 첫 후보를 준다", () => {
-    const existing = join(dataDir, "firstmate2");
-    mkdirSync(existing);
-    expect(suggestFirstmateHome([existing])).toBe(existing);
-  });
-
-  test("후보가 하나도 없으면 null(placeholder 생략)", () => {
-    expect(suggestFirstmateHome([join(dataDir, "없음")])).toBeNull();
-  });
-
-  test("먼저 오는 존재하는 후보를 준다 — 순서가 우선순위", () => {
-    const missing = join(dataDir, "없음");
-    const existing = join(dataDir, "firstmate2");
-    mkdirSync(existing);
-    expect(suggestFirstmateHome([missing, existing])).toBe(existing);
-  });
-});
-
-describe("settingsHasWatchRoots", () => {
+describe("settingsHasProjects", () => {
   test("키가 없으면 false — 파생 규칙이 적용된다", () => {
-    writeSettings(dataDir, { firstmateHome: "/tmp/fm" });
-    expect(settingsHasWatchRoots(dataDir)).toBe(false);
+    writeSettings(dataDir, { projects: ["/tmp/projects"] });
+    // 키를 안 썼으니 false
+    writeSettings(dataDir, { projects: null });
+    expect(settingsHasProjects(dataDir)).toBe(false);
   });
 
   test("키가 있으면(빈 배열 포함) true — 명시 값이 권위다", () => {
-    writeSettings(dataDir, { watchRoots: [] });
-    expect(settingsHasWatchRoots(dataDir)).toBe(true);
-    writeSettings(dataDir, { watchRoots: ["/a/projects"] });
-    expect(settingsHasWatchRoots(dataDir)).toBe(true);
+    writeSettings(dataDir, { projects: [] });
+    expect(settingsHasProjects(dataDir)).toBe(true);
+    writeSettings(dataDir, { projects: ["/a/projects"] });
+    expect(settingsHasProjects(dataDir)).toBe(true);
   });
 });
 
-describe("resolveWatchRoots", () => {
+describe("resolveProjects", () => {
   const fallback = ["/env/projects"];
 
   test("키가 있으면(빈 배열 포함) 그것이 권위다 — fallback 도 건드리지 않는다", () => {
-    writeSettings(dataDir, { watchRoots: ["/a/projects", "/b/projects"] });
-    expect(resolveWatchRoots(dataDir, fallback)).toEqual(["/a/projects", "/b/projects"]);
-    writeSettings(dataDir, { watchRoots: [] });
-    expect(resolveWatchRoots(dataDir, fallback)).toEqual([]);
+    writeSettings(dataDir, { projects: ["/a/projects", "/b/projects"] });
+    expect(resolveProjects(dataDir, fallback)).toEqual(["/a/projects", "/b/projects"]);
+    writeSettings(dataDir, { projects: [] });
+    expect(resolveProjects(dataDir, fallback)).toEqual([]);
   });
 
-  test("키가 없고 firstmateHome 이 있으면 홈에서 파생된다", () => {
-    writeSettings(dataDir, { firstmateHome: "/tmp/fm" });
-    expect(resolveWatchRoots(dataDir, fallback)).toEqual([join("/tmp/fm", "projects")]);
-  });
-
-  test("키도 없고 firstmateHome 도 없으면 fallback 으로 떨어진다", () => {
+  test("키가 없고 fallback 이 있으면 fallback 으로 떨어진다", () => {
     writeSettings(dataDir, {});
-    expect(resolveWatchRoots(dataDir, fallback)).toEqual(fallback);
+    expect(resolveProjects(dataDir, fallback)).toEqual(fallback);
   });
 });
 
-describe("writeSettings watchRoots", () => {
+describe("writeSettings projects", () => {
   test("들어온 키만 갈아 끼우고 나머지(키 부재)를 보존한다", () => {
-    writeSettings(dataDir, { firstmateHome: "/b" });
-    expect(settingsHasWatchRoots(dataDir)).toBe(false); // watchRoots 키를 안 건드렸다
-    writeSettings(dataDir, { watchRoots: ["/c/projects"] });
-    // firstmateHome 은 남고 watchRoots 키가 생겼다
-    expect(readSettings(dataDir).firstmateHome).toBe("/b");
-    expect(readSettings(dataDir).watchRoots).toEqual(["/c/projects"]);
-    expect(settingsHasWatchRoots(dataDir)).toBe(true);
+    writeSettings(dataDir, { projects: ["/b"] });
+    expect(settingsHasProjects(dataDir)).toBe(true);
+    writeSettings(dataDir, { projects: null });
+    // projects 키를 지웠으니 파생 규칙으로 되돌아간다
+    expect(settingsHasProjects(dataDir)).toBe(false);
+    writeSettings(dataDir, { projects: ["/c/projects"] });
+    expect(readSettings(dataDir).projects).toEqual(["/c/projects"]);
+    expect(settingsHasProjects(dataDir)).toBe(true);
   });
 
   test("null 은 지움(unset) — 파생 규칙으로 되돌아간다", () => {
-    writeSettings(dataDir, { watchRoots: ["/c/projects"] });
-    writeSettings(dataDir, { watchRoots: null });
-    expect(settingsHasWatchRoots(dataDir)).toBe(false);
+    writeSettings(dataDir, { projects: ["/c/projects"] });
+    writeSettings(dataDir, { projects: null });
+    expect(settingsHasProjects(dataDir)).toBe(false);
   });
 });
 
 describe("writeSettings blockedCopies", () => {
   test("차단 목록을 그대로 저장하고, 다른 키는 건드리지 않는다", () => {
-    writeSettings(dataDir, { firstmateHome: "/b", watchRoots: ["/c/projects"] });
+    writeSettings(dataDir, { projects: ["/b"], blockedCopies: [] });
     writeSettings(dataDir, { blockedCopies: ["pool/1", "pool/2"] });
     const s = readSettings(dataDir);
-    expect(s.firstmateHome).toBe("/b");
-    expect(s.watchRoots).toEqual(["/c/projects"]);
+    expect(s.projects).toEqual(["/b"]);
     expect(s.blockedCopies).toEqual(["pool/1", "pool/2"]);
   });
 

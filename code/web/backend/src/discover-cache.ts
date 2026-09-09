@@ -1,6 +1,6 @@
 import type { Project } from "@gootte/contract";
-import { discoverProjects, headCommit, readFeatures } from "@gootte/core-io";
-import { clearSnapshotMemory, readSnapshotStamps, recordProjectScan } from "./snapshot";
+import { discoverProjects } from "@gootte/core-io";
+import { clearSnapshotMemory, recordProjectScan } from "./snapshot";
  
  /**
   * discover 캐시 (W2) — 머신 scan 은 무거워 매 요청 재실행 금지. 프로세스 메모리에 TTL 캐시.
@@ -39,17 +39,11 @@ export function clearDiscoverCache(): void {
   clearSnapshotMemory();
 }
 
-/** 메모리 캐시만 비운다 (재시작 시뮬레이션용). 디스크 스냅샷 파일은 건드리지 않는다. */
-export function clearDiscoverCacheMemory(): void {
-  cache = null;
-  payloadCache = null;
-  clearSnapshotMemory();
-}
 
 /**
  * `/api/projects` **전체 페이로드** 캐시 (fix/projects-listing-spin).
  *
- * 목록 엔드포인트는 사본마다 git 하위프로세스(`check-ignored`·`unlanded`)를 도는
+ * 목록 엔드포인트는 사본마다 git 하위프로세스(`check-ignored`)를 도는
  * `readFeatures` 를 **모든 프로젝트·모든 사본** 에 대해 매 요청 재실행한다 — 뿌리가 늘어나면
  * (one-setting-finds-every-copy) 요청 하나가 ~13초가 되고, 감시 폴백 폴링이 그것을 5초마다
  * 다시 돌려 스피너가 멈추지 않는다. 발견 결과(discover)와 달리 `openFeatures` 카운트는

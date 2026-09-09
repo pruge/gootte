@@ -109,7 +109,7 @@ beforeEach(() => {
 afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
 describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => {
-  it("작업 가지의 커밋이 티켓 파일을 건드리고 Time 기록(started=)이 있으면 처리중", () => {
+  it("Time 기록(started=)이 있으면 처리중이 된다 — 임자의 증거는 Time 기록(ADR 0001)", () => {
     startTicket("02-screen.md", "02", "로그인 화면");
     makeCopy({
       slot: "1",
@@ -121,10 +121,9 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     expect(ticketOf(features, "02-screen")?.status).toBe("in_progress");
     expect(ticketOf(features, "01-session")?.status).toBe("pending");
     expect(inProgress).toMatchObject({ rootExists: true, copies: 1, working: 1, tickets: 1 });
-    expect(inProgress.unknown).toEqual([]);
   });
 
-  it("🔴 브랜치가 티켓 파일을 건드려도 Time 기록(started=)이 없으면 처리중이 아니다 — 자동 처리중 폐기(ADR 0001)", () => {
+  it("🔴 Time 기록(started=)이 없으면 처리중이 아니다(ADR 0001)", () => {
     // main 프로젝트 티켓에 Time 이 없다(처리중 판정 근거 없음). 브랜치가 파일을 건드려도 pending.
     makeCopy({
       slot: "1",
@@ -135,21 +134,18 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     const { features, inProgress } = observe();
     expect(ticketOf(features, "02-screen")?.status).toBe("pending");
     expect(inProgress.tickets).toBe(0);
-    // 작업중 사본은 여전히 보인다(INV-4) — 알려진 티켓을 건드렸으므로 미상도 아니다.
     expect(inProgress.working).toBe(1);
-    expect(inProgress.unknown).toEqual([]);
   });
 
-  it("유휴 사본(detached HEAD)은 아무 티켓도 처리중으로 만들지 않는다", () => {
+  it("디렉토리가 존재하면 사본으로 센다 — detached HEAD 구분 없이 전부 working", () => {
     makeCopy({ slot: "1" });
 
     const { features, inProgress } = observe();
     expect(features[0]?.tickets.every((t) => t.status === "pending")).toBe(true);
-    expect(inProgress).toMatchObject({ copies: 1, working: 0, tickets: 0 });
-    expect(inProgress.unknown).toEqual([]);
+    expect(inProgress).toMatchObject({ copies: 1, working: 1, tickets: 0 });
   });
 
-  it("🔴 작업중인데 티켓 파일을 안 건드린 사본은 사라지지 않고 `티켓 미상 · 작업중` 으로 세어진다", () => {
+  it("🔴 작업중 사본은 working 수로 센다 — 사본이 살아 있다는 사실은 감추지 않는다", () => {
     makeCopy({
       slot: "1",
       branch: "fm/refactor-core",
@@ -161,20 +157,13 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     expect(features[0]?.tickets.every((t) => t.status === "pending")).toBe(true);
     expect(inProgress.tickets).toBe(0);
     expect(inProgress.working).toBe(1);
-    expect(inProgress.unknown).toHaveLength(1);
-    expect(inProgress.unknown[0]).toMatchObject({
-      slug: `${POOL}/1`,
-      branch: "fm/refactor-core",
-    });
-    expect(inProgress.unknown[0]?.path).toContain(join(POOL, "1", PROJECT));
   });
 
-  it("🔴 가지는 만들었지만 아직 커밋이 없는 사본도 미상으로 드러난다 — 작업은 이미 시작됐다", () => {
+  it("🔴 가지는 만들었지만 아직 커밋이 없는 사본도 작업중으로 센다 — 작업은 이미 시작됐다", () => {
     makeCopy({ slot: "1", branch: "fm/just-started" });
 
     const { inProgress } = observe();
     expect(inProgress.working).toBe(1);
-    expect(inProgress.unknown.map((u) => u.branch)).toEqual(["fm/just-started"]);
   });
 
   it("격리 사본 뿌리가 없으면 빈 결과 — 예외로 죽지 않는다", () => {
@@ -182,7 +171,6 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
 
     expect(features[0]?.tickets).toHaveLength(2); // 할일 목록은 그대로 산다
     expect(inProgress).toMatchObject({ rootExists: false, copies: 0, working: 0, tickets: 0 });
-    expect(inProgress.unknown).toEqual([]);
     expect(inProgress.unreadable).toEqual([]);
   });
 
@@ -197,29 +185,26 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     expect(inProgress.working).toBe(2); // 사본 둘 — 둘 다 보인다
   });
 
-  it("🔴 저장소를 못 찾은 슬롯은 건너뛰지 않고 `못 읽음` 으로 센다", () => {
-    mkdirSync(join(root, POOL, "1", PROJECT), { recursive: true }); // `.git` 없음(복제 중 등)
+  it("🔴 슬롯 디렉토리가 존재하면 .git 없이도 사본으로 센다", () => {
+    mkdirSync(join(root, POOL, "1", PROJECT), { recursive: true }); // `.git` 없음
 
     const { inProgress } = observe();
-    expect(inProgress.copies).toBe(1); // 사본 수에서도 사라지지 않는다
-    expect(inProgress.unreadable).toEqual([
-      { slug: `${POOL}/1`, path: join(root, POOL, "1"), reason: "no-repo" },
-    ]);
+    expect(inProgress.copies).toBe(1);
+    expect(inProgress.working).toBe(1); // 디렉토리 존재 = working
+    expect(inProgress.unreadable).toEqual([]);
   });
 
-  it("🔴 git 이 답하지 않는 사본을 유휴로 접지 않는다 — 실제로 돌고 있을 수 있다", () => {
+  it("🔴 깨진 .git 이 있어도 디렉토리가 존재하면 사본으로 센다", () => {
     const repo = join(root, POOL, "1", PROJECT);
     mkdirSync(repo, { recursive: true });
-    writeFileSync(join(repo, ".git"), "gitdir: /없는/경로\n"); // 깨진 worktree 포인터
+    writeFileSync(join(repo, ".git"), "gitdir: /없는/경로\n");
 
     const { inProgress } = observe();
-    expect(inProgress.working).toBe(0);
-    expect(inProgress.unreadable).toEqual([
-      { slug: `${POOL}/1`, path: repo, reason: "git-failed" },
-    ]);
+    expect(inProgress.working).toBe(1);
+    expect(inProgress.unreadable).toEqual([]);
   });
 
-  it("비 ASCII 슬러그의 티켓도 이어진다 — git 의 경로 이스케이프에 걸려 미상으로 흘리지 않는다", () => {
+  it("비 ASCII 슬러그의 티켓도 처리중이 된다", () => {
     const dir = join(project, "docs", "features", "결제", "issues");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "01-환불.md"), startedTicketFile("01", "환불"));
@@ -232,7 +217,6 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     const { features, inProgress } = observe();
     const t = features.find((f) => f.slug === "결제")?.tickets[0];
     expect(t?.status).toBe("in_progress");
-    expect(inProgress.unknown).toEqual([]);
   });
 
   it("다른 프로젝트의 풀은 이 프로젝트의 처리중이 아니다", () => {
@@ -328,8 +312,6 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     // 이을 근거(기준 가지)가 없으니 이 티켓은 처리중이 아니다 — 전체 이력을 훑어 갖다 붙이지 않는다.
     expect(ticketOf(features, "01-session")?.status).toBe("pending");
     expect(inProgress.tickets).toBe(0);
-    // 그렇다고 작업중이라는 사실 자체를 숨기지도 않는다 — 티켓 미상으로 드러난다.
-    expect(inProgress.unknown.map((u) => u.branch)).toEqual(["fm/orphan"]);
   });
 
   it("🔴 관리대상에도 사본에도 아무것도 쓰지 않는다(INV-2) — 관측 후 워킹트리가 깨끗하다", () => {
@@ -379,9 +361,7 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     expect(inProgress.rootExists).toBe(false);
     expect(inProgress.copies).toBe(1);
     expect(inProgress.working).toBe(1);
-    expect(inProgress.unknown).toEqual([]);
     expect(inProgress.unreadable).toEqual([]);
-    expect(inProgress.unclaimed).toEqual([]);
   });
 
   it("🔴 Claude Code worktree 의 슬러그는 treehouse 와 겹치지 않는다(<프로젝트>/claude/<이름>)", () => {
@@ -442,7 +422,7 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     // 겹치지 않아야 차단 목록에서 헷갈리지 않는다.
     expect(scan.copies.map((c) => c.slug)).toEqual([`${PROJECT}/bb/env_n8franv9qv`]);
     expect(scan.copies[0]?.state).toBe("working");
-    expect(scan.copies[0]?.branch).toBe("bb/t01-thr_9vbsnd5pgc");
+    expect(scan.copies[0]?.branch).toBe("");
 
     const { features, inProgress } = observe(root, [mainRepo], bbRoot);
     expect(ticketOf(features, "02-screen")?.status).toBe("in_progress");
@@ -519,7 +499,6 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
       startedTicketFile("02", "로그인 화면 v3"),
     );
     // worktree 쪽에도 같은 편집을 남긴다 — worktree 가 그 티켓을 건드리고 있음을 관측에 남긴다
-    // (이 테스트의 요점은 "커밋 안 된 Time 기록" 이지 "미상 작업" 이 아니다).
     writeFileSync(
       join(wt, "docs", "features", "auth", "issues", "02-screen.md"),
       startedTicketFile("02", "로그인 화면 v3"),
@@ -529,7 +508,6 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     expect(ticketOf(features, "02-screen")?.status).toBe("in_progress");
     expect(inProgress.tickets).toBe(1);
     expect(inProgress.working).toBe(1);
-    expect(inProgress.unknown).toEqual([]);
   });
 
   it("🔴 untracked(??) 티켓 파일은 처리중으로 만들지 않는다 — 새 파일 존재는 붙든 증거가 아니다", () => {
@@ -562,9 +540,6 @@ describe("scanWorkingCopies — 격리 사본이 말해주는 처리중", () => 
     const billing = features.find((f) => f.slug === "billing");
     expect(billing?.newTickets?.[0]?.status).toBe("pending");
     expect(inProgress.tickets).toBe(0);
-    // worktree 는 branch 를 가진 working 이지만 티켓에 못 잇는다 → '티켓 미상 · 작업중' 으로 세는
-    // 것은 설계대로다(새 파일 존재는 그 자체로 "붙들고 있음"의 증거가 아니다 — Time 줄이 증거다).
-    expect(inProgress.unknown.map((u) => u.slug)).toContain("alpha/claude/fm-x");
   });
 });
 

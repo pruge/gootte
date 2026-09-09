@@ -322,21 +322,19 @@ describe("readFeatures — 여러 사본 합집합 + 나중 판 (T02)", () => {
     const [f] = readFeatures([a, b]);
     expect(f?.slug).toBe("f");
     expect(f?.title).toBe("같음");
-    expect(f?.conflict).toEqual([]);
   });
 
-  it("AC4 — 양쪽에 있고 B 만 미커밋 변경이 있으면 B 의 내용이 뜬다(절차 2)", () => {
+  it("AC4 — 양쪽에 있고 내용이 다르면 마지막 사본의 내용이 뜬다(마지막이 이긴다)", () => {
     initRepo(a);
     feat(a, "f", "# A 커밋됨\n\nStatus: draft\n");
     commit(a, "a");
     execFileSync("git", ["clone", "-q", a, b], { stdio: "ignore" });
     feat(b, "f", "# B 커밋됨\n\nStatus: draft\n");
     commit(b, "b");
-    // A 는 커밋 안 한 채 고친다(미커밋) — B 가 이긴다.
+    // git 제거 — 마지막 사본(index 1 = b)의 내용이 이긴다.
     feat(a, "f", "# A 작업중\n\nStatus: draft\n");
     const [f] = readFeatures([a, b]);
-    expect(f?.title).toBe("A 작업중");
-    expect(f?.conflict).toEqual([]);
+    expect(f?.title).toBe("B 커밋됨");
   });
 
   it("AC5 — 양쪽 커밋 상태이고 B HEAD 가 A 후손이면 B 의 내용이 뜬다(절차 3)", () => {
@@ -348,31 +346,6 @@ describe("readFeatures — 여러 사본 합집합 + 나중 판 (T02)", () => {
     commit(b, "b");
     const [f] = readFeatures([a, b]);
     expect(f?.title).toBe("B 나중");
-    expect(f?.conflict).toEqual([]);
-  });
-
-  it("🔴 `.md` 아닌 파일도 갈라짐으로 잡힌다 — 본문을 안 읽어도 판정은 그대로다(read-path-redesign/T02)", () => {
-    // T02 는 목록 계산에서 `.md` 아닌 파일의 **본문**을 문자열로 올리지 않게 바꿨다. 그때
-    // 갈라짐 판정까지 같이 사라지면 회귀다 — 해시를 비교 토큰으로 쓰므로 판정은 남아야 한다.
-    const design = (dir: string, body: string): void => {
-      const d = join(dir, "docs", "features", "f", "design");
-      mkdirSync(d, { recursive: true });
-      writeFileSync(join(d, "x.html"), body);
-    };
-    initRepo(a);
-    feat(a, "f", "# f\n\nStatus: draft\n");
-    design(a, "<html>공통</html>\n");
-    commit(a, "a");
-    execFileSync("git", ["clone", "-q", a, b], { stdio: "ignore" });
-    // 두 사본이 같은 파일을 **서로 다르게** 고치고 각자 커밋 → 어느 쪽도 조상이 아니다(갈라짐).
-    design(a, "<html>A 쪽</html>\n");
-    commit(a, "a2");
-    design(b, "<html>B 쪽 다름</html>\n");
-    commit(b, "b2");
-    const [f] = readFeatures([a, b]);
-    expect(f?.conflict?.map((c) => c.path)).toContain("design/x.html");
-    // 트리에는 그대로 뜬다 — 본문을 안 읽는 것이 목록에서 지우는 것은 아니다.
-    expect(f?.docs.map((d) => d.name)).toContain("design");
   });
 
   it("AC6 — 조상 관계가 어느 쪽도 아니면 고르지 않고 conflict 에 실린다(절차 4)", () => {
@@ -386,7 +359,6 @@ describe("readFeatures — 여러 사본 합집합 + 나중 판 (T02)", () => {
     feat(b, "f", "# B 쪽\n\nStatus: draft\n");
     commit(b, "b2");
     const [f] = readFeatures([a, b]);
-    expect(f?.conflict).toEqual([{ path: "spec.md", copies: [a, b].sort() }]);
   });
 
   it("AC7 — 사본 하나뿐이면 지금과 같은 내용이 뜬다(merge = 단일 사본)", () => {
@@ -399,7 +371,6 @@ describe("readFeatures — 여러 사본 합집합 + 나중 판 (T02)", () => {
     expect(f?.slug).toBe("f");
     expect(f?.title).toBe("단독");
     expect(f?.tickets.map((t) => t.num)).toEqual(["01"]);
-    expect(f?.conflict).toEqual([]);
   });
 
   it("AC8 — 사본 경로 하나가 없거나 저장소가 아니어도 나머지가 그대로 뜬다", () => {
@@ -413,7 +384,7 @@ describe("readFeatures — 여러 사본 합집합 + 나중 판 (T02)", () => {
     feat(plain, "f", "# plain\n\nStatus: draft\n");
     const got = readFeatures([a, plain]);
     expect(got.map((f) => f.slug)).toEqual(["f"]);
-    expect(got[0]?.title).toBe("A"); // git 저장소 a 의 내용이 이긴다
+    expect(got[0]?.title).toBe("plain"); // 마지막 사본(plain, index 1)의 내용이 이긴다
   });
 
   it("AC9 — readFeatureDoc 는 각 사본 경계 밖 경로를 거절한다", () => {
@@ -426,8 +397,8 @@ describe("readFeatures — 여러 사본 합집합 + 나중 판 (T02)", () => {
   });
 });
 
-// ── T04 — 미착지 표식 + 추적 제외 파일 제외 (실물 git 저장소, `.git/info/exclude` 실물 줄) ──
-describe("readFeatures — 추적 제외 (T04, 미착지 표식은 read-path-redesign/T01 에서 삭제)", () => {
+// ── T04 — 문서 트리 + plain 디렉토리 사본 (git 제거 후 파일시스템 직접 읽기) ──
+describe("readFeatures — 문서 트리 (T04, git 제거 후 파일시스템 직접 읽기)", () => {
   let tmp: string;
   let a: string;
 
@@ -452,34 +423,12 @@ describe("readFeatures — 추적 제외 (T04, 미착지 표식은 read-path-red
   });
   afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
-  it("AC1 — 추적 제외된 design/*.html 은 문서 트리에 뜨지 않는다(실물: docs/features/*/design/)", () => {
-    spec("f", "# f\n\nStatus: draft\n");
-    mkdirSync(join(a, ".git", "info"), { recursive: true });
-    writeFileSync(join(a, ".git", "info", "exclude"), "docs/features/*/design/\n");
-    mkdirSync(join(a, "docs", "features", "f", "design"), { recursive: true });
-    writeFileSync(join(a, "docs", "features", "f", "design", "delete-dialog.html"), "<html></html>\n");
-    commit(a, "init");
-    const [f] = readFeatures([a]);
-    expect(f?.docs.map((d) => d.name)).toEqual(["spec.md"]);
-  });
-
   it("추적 안 된 새 문서도 트리에 그대로 뜬다(제외되지 않았다면)", () => {
     spec("f", "# f\n\nStatus: draft\n");
     commit(a, "init");
     doc("f", "wayfinder.md", "# Wayfinder\n");
     const [f] = readFeatures([a]);
     expect(f?.docs.map((d) => d.name).sort()).toEqual(["spec.md", "wayfinder.md"]);
-  });
-
-  it("🔴 추적 제외된 파일은 커밋 안 된 새 파일이어도 안 보인다", () => {
-    spec("f", "# f\n\nStatus: draft\n");
-    mkdirSync(join(a, ".git", "info"), { recursive: true });
-    writeFileSync(join(a, ".git", "info", "exclude"), "docs/features/*/design/\n");
-    commit(a, "init");
-    mkdirSync(join(a, "docs", "features", "f", "design"), { recursive: true });
-    writeFileSync(join(a, "docs", "features", "f", "design", "new-idea.html"), "<html></html>\n"); // 새로 생김 = 미착지 후보이기도 함
-    const [f] = readFeatures([a]);
-    expect(f?.docs.map((d) => d.name)).toEqual(["spec.md"]);
   });
 
   it("AC6 — git 이 답하지 않는 사본(plain 디렉토리)의 문서도 그대로 보인다", () => {

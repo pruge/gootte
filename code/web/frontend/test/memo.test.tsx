@@ -1,4 +1,4 @@
-import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Memo, MemosResponse } from "@gootte/contract";
@@ -164,5 +164,36 @@ describe("MemoView — memo-pad 탭", () => {
     fireEvent.change(screen.getByLabelText("메모 검색"), { target: { value: "로그인" } });
     expect(screen.getByText("로그인 토큰")).toBeInTheDocument();
     expect(screen.queryByText("로그인 리프레시")).toBeNull();
+  });
+});
+
+describe("MemoView — 완료 필터 유지(캡틴 지시 2026-09-09)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  const renderMemoView = (): void => {
+    renderMemo([]);
+  };
+
+  it("필터를 바꾸면 localStorage 에 저장되고, 다시 열어도 그 값이 선택돼 있다", () => {
+    renderMemoView();
+    fireEvent.change(screen.getByLabelText("완료 상태 필터"), { target: { value: "done" } });
+    expect(localStorage.getItem("gootte:memo-filter")).toBe("done");
+    cleanup();
+
+    // 다시 열기 — 새 컴포넌트 마운트
+    renderMemoView();
+    expect(
+      (screen.getByLabelText("완료 상태 필터") as HTMLSelectElement).value,
+    ).toBe("done");
+  });
+
+  it("저장된 값이 규약 밖이면 폐기하고 기본값(all)으로 돌아간다", () => {
+    localStorage.setItem("gootte:memo-filter", "이상한-값");
+    renderMemoView();
+    expect(
+      (screen.getByLabelText("완료 상태 필터") as HTMLSelectElement).value,
+    ).toBe("all");
   });
 });
