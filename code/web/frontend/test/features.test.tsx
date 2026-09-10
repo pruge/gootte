@@ -706,6 +706,30 @@ describe("FeaturesView — 완료 영역은 최근 완료가 위(plan 탭과 같
       .filter((t): t is string => !!t && /^done-/.test(t));
     expect(slugs).toEqual(["done-recent", "done-middle", "done-old"]);
   });
+
+  it("완료 카드에도 이동 아이콘이 선다 — 완료에서 꺼내는 되돌리기가 정당하므로(plan 탭과 같은 규칙)", () => {
+    const f = {
+      slug: "done-x",
+      title: "done-x — 제목",
+      status: "pending" as const,
+      sourceStatus: "draft",
+      statusKnown: true,
+      docs: [ISSUES_DIR],
+      tickets: [doneFeature("done-x", "2026-09-01")],
+    };
+    renderDoneBoard([f], [{ feature: f, seq: 0, closedAt: "2026-09-01 09:00" }]);
+
+    // 완료 탭 선택
+    fireEvent.click(screen.getByRole("tab", { name: /완료/ }));
+
+    // 헤더 문구는 간소화 그대로("완료 [날짜]"만) — 돌아온 것은 아이콘뿐이다.
+    expect(screen.getByText(/완료 2026-09-01/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /done-x 다른 칸으로 보내기/ }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    // 현재 칸(완료)은 목적지 후보에서 빠진다.
+    expect(within(screen.getByRole("dialog")).queryByText("완료")).toBeNull();
+    expect(within(screen.getByRole("dialog")).getByText("작업 대상")).toBeInTheDocument();
+  });
 });
 
 describe("FeatureCard — 다른 칸으로 보내기(캡틴 지시 2026-09-09)", () => {

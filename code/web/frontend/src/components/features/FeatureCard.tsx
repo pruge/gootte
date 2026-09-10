@@ -126,8 +126,11 @@ export function FeatureCard({
             </span>
           )}
         </button>
-        {onRequestMove && !isDone && (
+        {onRequestMove && (
           // 🔴 다른 칸으로 보내기 — plan 탭 BoardCard 의 이동 아이콘과 같은 길이다.
+          // 완료 카드에도 선다(plan 탭 done 칸과 같은 규칙, 9ae6b4d — 완료에서 꺼내는
+          // 되돌리기가 정당한 이동이므로 감추지 않는다). 헤더 문구 간소화("완료 [날짜]"만)는
+          // 그대로다 — 돌아온 것은 아이콘뿐이다.
           // 대화상자(MoveDialog)는 FeaturesView 가 열고, 실제 이동도 plan 과 같은
           // `movePlanCards` API(판정 자리 = 서버 planMove 하나)로 간다(INV-3).
           <div className="flex shrink-0 items-start justify-end self-center pr-2">
