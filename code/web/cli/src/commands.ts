@@ -1,4 +1,4 @@
-import { allTickets, applyBacklogStatus, computeDisplaySteps, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
+import { allTickets, applyBacklogStatus, computeDisplaySteps, computeFrontier, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
 import { type Feature, AREA_LABEL, ALL_AREAS, type BoardAreaId, type TodoStatus } from "@gootte/contract";
 import { basename, dirname, resolve } from "node:path";
 import {
@@ -340,4 +340,28 @@ export function workingText(argv: readonly string[], dataDir = defaultPlanDataDi
 /** 대기 티켓 목록 — `gootte pending [프로젝트]`. 프로젝트 안에서 실행하면 인자 생략. */
 export function pendingText(argv: readonly string[], dataDir = defaultPlanDataDir(), cwd: string = process.cwd()): string {
   return filteredTicketsText(argv, ["pending"], "pending", dataDir, cwd);
+}
+
+/**
+ * `frontier [프로젝트]` — 착수 가능(대기 + 차단 없음 + 임자 없음) 티켓 목록,
+ * `<기능-slug>\t<티켓>\t<제목>` 줄. 프로젝트 안에서 실행하면 인자 생략.
+ *
+ * 🔴 판정은 core `computeFrontier` 하나뿐이다 — 레코드 조인(`readProjectFeatures`) + 백로그
+ * 조인(`withBacklogStatus`) 뒤의 `status`·`startable` 만 본다. 여기서 상태를 다시 추정하지
+ * 않는다(INV-4). `next` 와 달리 계획 DB(작업 대상·단계)를 안 쓴다 — 프로젝트 전체가 대상이다.
+ */
+export function frontierText(
+  argv: readonly string[],
+  dataDir = defaultPlanDataDir(),
+  cwd: string = process.cwd(),
+): string {
+  rejectFlags(argv);
+  const project = resolveProjectArg(argv, cwd, "usage: gootte frontier [프로젝트]");
+  const { features } = readProjectFeatures(project, cwd);
+  const joined = withBacklogStatus(project, dataDir, features);
+  const rows = computeFrontier(joined);
+  if (rows.length === 0) return "(착수 가능 티켓 없음)";
+  return rows
+    .map((t) => `${t.feature}\t${t.ticket}\t${t.title}${t.needsCaptainEye ? " 👁" : ""}`)
+    .join("\n");
 }

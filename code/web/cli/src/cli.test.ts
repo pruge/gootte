@@ -14,7 +14,7 @@ import {
 } from "@gootte/core-io";
 import { CliError } from "./args";
 
-import { boardText, discoverText, nextText, pendingText, resolveProjectPath, stepClearText, stepText, workingText } from "./commands";
+import { boardText, discoverText, frontierText, nextText, pendingText, resolveProjectPath, stepClearText, stepText, workingText } from "./commands";
 
 function w(root: string, rel: string, content: string): void {
   const full = join(root, rel);
@@ -558,5 +558,58 @@ describe("cli — working · pending(처리중·대기 티켓 목록, 캡틴 지
     // 이 목록에 실리지 않는다. started= 만 있고 finished= 가 없으면 in_progress 이다.
     w(proj, "docs/features/gamma/tickets/T01.md", "# G01\n\n**Time:** started=2026-09-09T09:00:00+09:00\n");
     expect(workingText([slug()], undefined, proj)).toBe("gamma\tT01");
+  });
+});
+
+describe("cli — frontier(착수 가능 티켓 목록)", () => {
+  let proj: string;
+  beforeEach(() => {
+    proj = mkdtempSync(join(tmpdir(), "gootte-fr-"));
+    w(proj, "AGENTS.md", "# AGENTS\n");
+    w(proj, "docs/features/alpha/tickets/T01.md", "# 시작함\n");
+    w(proj, "docs/features/alpha/tickets/T02.md", "# 대기중\n");
+    w(proj, "docs/features/alpha/tickets/T03.md", "# 끝남\n");
+    w(proj, "docs/features/beta/tickets/T01.md", "# 폐기\n");
+  });
+  afterEach(() => rmSync(proj, { recursive: true, force: true }));
+
+  const slug = () => basename(proj);
+
+  it("대기+차단 없음만 제목과 함께 실린다 — 처리중·완료·폐기는 아니다", () => {
+    upsertTicketRecord(proj, "alpha/T01", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: null });
+    upsertTicketRecord(proj, "alpha/T03", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: "2026-09-09T10:00:00+09:00" });
+    upsertTicketRecord(proj, "beta/T01", { startedAt: null, finishedAt: null, statusRaw: "wontfix (2026-09-01)" });
+    expect(frontierText([slug()], undefined, proj)).toBe("alpha\tT02\t대기중");
+  });
+
+  it("`Blocked by:` 줄이 있는 티켓은 막히고, 줄 없는 옛 포맷은 차단 없음으로 실린다", () => {
+    w(proj, "docs/features/gamma/tickets/T01.md", "# 막힘\n\n**Blocked by:** T02\n");
+    w(proj, "docs/features/gamma/tickets/T02.md", "# 열림\n");
+    const lines = frontierText([slug()], undefined, proj).split("\n");
+    expect(lines).toContain("gamma\tT02\t열림");
+    expect(lines.some((l) => l.startsWith("gamma\tT01\t"))).toBe(false);
+  });
+
+  it("레코드로 완료된 선행은 신관례 티켓을 해제한다 — 백로그 조인 뒤 재판정 회귀", () => {
+    // an-fsm-can-hold-other-fsms/T10 실측: MD 파싱 시점엔 선행이 전부 pending 이라 막혀 보이지만,
+    // v2 레코드로 끝나면 frontier 에 들어와야 한다(INV-3).
+    w(proj, "docs/features/gamma/tickets/T01.md", "# 막힘\n\n**Blocked by:** T02\n");
+    w(proj, "docs/features/gamma/tickets/T02.md", "# 열림\n");
+    upsertTicketRecord(proj, "gamma/T02", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: "2026-09-09T10:00:00+09:00" });
+    const lines = frontierText([slug()], undefined, proj).split("\n");
+    expect(lines).toContain("gamma\tT01\t막힘");
+  });
+
+  it("없으면 안내 문구", () => {
+    upsertTicketRecord(proj, "alpha/T01", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: "2026-09-09T10:00:00+09:00" });
+    upsertTicketRecord(proj, "alpha/T02", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: "2026-09-09T10:00:00+09:00" });
+    upsertTicketRecord(proj, "alpha/T03", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: "2026-09-09T10:00:00+09:00" });
+    upsertTicketRecord(proj, "beta/T01", { startedAt: null, finishedAt: null, statusRaw: "wontfix (2026-09-01)" });
+    expect(frontierText([slug()], undefined, proj)).toBe("(착수 가능 티켓 없음)");
+  });
+
+  it("프로젝트 안에서는 인자 생략 가능 — 밖에서는 거절(resolveProjectArg 공용)", () => {
+    expect(() => frontierText([], undefined, join(proj, "docs", "features"))).not.toThrow();
+    expect(() => frontierText([], undefined, "/")).toThrow(CliError);
   });
 });
