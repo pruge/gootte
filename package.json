@@ -18,6 +18,7 @@
     "dev:frontend": "bash scripts/dev-frontend.sh",
     "dev": "bash scripts/dev.sh",
     "dev:stop": "bash scripts/dev-stop.sh",
+    "kill": "bash scripts/kill-port.sh",
     "dev:tauri": "bash scripts/tauri-dev.sh",
     "build:tauri": "bash scripts/tauri-build.sh",
     "install:tauri": "bash scripts/tauri-install.sh",

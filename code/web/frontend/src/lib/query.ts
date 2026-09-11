@@ -10,6 +10,8 @@ import {
   fetchPlanBoard,
   recordTime,
   fetchSettings,
+  fetchStorage,
+  clearStorage,
   movePlanCards,
   moveStep,
   saveSettings,
@@ -59,33 +61,57 @@ function hydrateFromStorage(qc: QueryClient): void {
   }
 }
 
-function attachSaver(qc: QueryClient): void {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  qc.getQueryCache().subscribe(() => {
-    if (timer) return;
-    timer = setTimeout(() => {
-      timer = null;
-      try {
-        const cutoff = Date.now() - PERSIST_FRESH_MS;
-        const dehydrated = dehydrate(qc, {
-          shouldDehydrateQuery: (q) =>
-            q.queryKey[0] !== "featureDoc" &&
-            q.state.status === "success" &&
-            q.state.data !== undefined &&
-            (q.state.dataUpdatedAt ?? 0) >= cutoff,
-        });
-        localStorage.setItem(PERSIST_KEY, JSON.stringify(dehydrated));
-      } catch {
-        // quota 초과 등 — 영속 실패는 치명하지 않다(다음 fetches 가 메운다)
-      }
-    }, 5000);
+/**
+ * 영속 저장(query-persist-on-hide) — dirty 표시 + 닫힘 flush.
+ *
+ * 옛 구조(캐시 변경마다 디바운스 전량 저장)는 localStorage SQLite WAL 을 104MB 까지
+ * 불렸다(실측 2026-09-11) — 메가바이트급 직렬화가 수초마다 돌아 GC 압박이 됐다.
+ * 이제 저장은 세 길로만 나간다: 탭 숨김·페이지 닫힘·60초 안전망(dirty 일 때만).
+ * 저장 실패(quota 등)는 치명하지 않다 — 다음 fetch 가 메운다(D4).
+ * cleanup 을 반환한다 — 앱 본체는 수명과 같이 가므로 안 쓰지만 테스트가 쓴다.
+ * 테스트 갈고리로 내보낸다(`folderCacheSize` 와 같은 규율).
+ */
+export function attachSaver(qc: QueryClient): () => void {
+  let dirty = false;
+  const save = (): void => {
+    if (!dirty) return;
+    dirty = false;
+    try {
+      const cutoff = Date.now() - PERSIST_FRESH_MS;
+      const dehydrated = dehydrate(qc, {
+        shouldDehydrateQuery: (q) =>
+          q.queryKey[0] !== "featureDoc" &&
+          q.state.status === "success" &&
+          q.state.data !== undefined &&
+          (q.state.dataUpdatedAt ?? 0) >= cutoff,
+      });
+      localStorage.setItem(PERSIST_KEY, JSON.stringify(dehydrated));
+    } catch {
+      // quota 초과 등 — 영속 실패는 치명하지 않다(다음 fetches 가 메운다)
+    }
+  };
+  const unsubscribe = qc.getQueryCache().subscribe(() => {
+    dirty = true;
   });
+  const onHidden = (): void => {
+    if (document.visibilityState === "hidden") save();
+  };
+  document.addEventListener("visibilitychange", onHidden);
+  window.addEventListener("pagehide", save);
+  const timer = setInterval(save, 60_000);
+  return () => {
+    unsubscribe();
+    document.removeEventListener("visibilitychange", onHidden);
+    window.removeEventListener("pagehide", save);
+    clearInterval(timer);
+  };
 }
 
 export const qk = {
   projects: ["projects"] as const,
   features: (slug: string) => ["features", slug] as const,
   settings: ["settings"] as const,
+  storage: ["storage"] as const,
   memos: (slug: string) => ["memos", slug] as const,
   /**
    * 🔴 자리 둘을 동시에 만족해야 하는 열쇠다(`lib/live.ts`): 맨 앞이 `"plan"` 이라 계획 DB 변경
@@ -112,6 +138,22 @@ export function useProjects() {
 export function invalidateLiveQueries(qc: QueryClient): Promise<void> {
   return qc.invalidateQueries({
     predicate: (q) => q.queryKey[0] !== "featureDoc" || q.isActive(),
+  });
+}
+
+/** 저장소 사용량(settings-storage-meter) — 설정 화면이 열 때마다 새로 잰다(INV-5 저장 없음). */
+export function useStorage() {
+  return useQuery({ queryKey: qk.storage, queryFn: fetchStorage });
+}
+
+/**
+ * 앱 내 캐시 비우기 — 서버 파생 캐시를 먼저 비우고, 본체는 호출자가 `localStorage.clear()`·
+ * `qc.clear()`·`location.reload()` 로 마무리한다(순서가 핵심: 서버를 먼저 비워야 새로고침
+ * 직후 재계산이 깨끗하다). WAL 파일 잔량은 다음 앱 종료 때 정리된다.
+ */
+export function useClearStorage() {
+  return useMutation({
+    mutationFn: clearStorage,
   });
 }
 
@@ -308,6 +350,9 @@ export function useFeatureDoc(
       qc.invalidateQueries({ queryKey: qk.plan(project as string) });
       return doc;
     },
+    // 🔴 드로어를 닫으면(관찰자 0명) 즉시 버린다 — 500KB 로그 같은 큰 문서를 열어 두면
+    // 렌더러 힙에 그대로 눌러앉는다(실측 2026-09-11). 다시 열면 staleTime 으로 다시 읽는다.
+    gcTime: 0,
     enabled: project !== null && feature !== null && path !== null,
   });
 }

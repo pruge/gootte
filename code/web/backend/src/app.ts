@@ -1,7 +1,8 @@
-import { existsSync, readdirSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import {
@@ -65,6 +66,7 @@ import {
 import { createMemoRoutes } from "./routes/memo";
 import { createTimeRoutes } from "./routes/time";
 import { createSettingsRoutes } from "./routes/settings";
+import { createStorageRoutes } from "./routes/storage";
 
 /**
  * env `GOOTTE_ROOTS`(콜론 구분) → discover 루트. 기본 `~/Documents/ai2/projects`. */
@@ -364,6 +366,9 @@ export function createApp(options: AppOptions = {}): Hono {
     onProjectsChange: options.onProjectsChange,
   }));
 
+  // ── 저장소 사용량 — storage.ts 로 분리 (settings-storage-meter) ──
+  app.route("/", createStorageRoutes());
+
   // POST /api/refresh — 캐시·스냅샷을 통째로 비운다. 새 worktree 나 새 기능 폴더가 생겼는데
   // 감지가 안 될 때(스냅샷이 낡았을 때) 사용자가 손으로 밀어 넣는 길(캡틴 지시 2026-08-31).
   // 다음 요청부터 각 라우트가 빈 스냅샷 위에서 다시 스캔해 기록한다 — INV-1 파생물이라 지우는
@@ -647,8 +652,70 @@ export function createApp(options: AppOptions = {}): Hono {
 
 /**
  * 캐치올 fallback — server.ts 가 `/api/live`(WS) 등록 *후* 마지막에 마운트(순서상 `*` 가 WS 라우트를 삼키지 않게).
- * 정적 frontend 서빙(Phase 5)은 여기서 확장.
+ *
+ * backend-serves-ui — `GOOTTE_SERVE_DIST=1` 이고 dist 가 있으면 frontend 빌드 산물을 직접
+ * 서빙한다(Tauri preview arm 의 vite 대체). 프론트는 same-origin 상대경로만 쓰므로(`BASE=""`,
+ * `liveUrl()`) 프록시 없이 `/api`·`/api/live` 가 그대로 붙는다. flag off 거나 dist 가 없으면
+ * 기존 placeholder 그대로 — dev backend·e2e 는 낡은 dist 를 조용히 서빙하지 않는다.
  */
 export function mountFallback(app: Hono): void {
-  app.get("*", (c) => c.text("gootte backend — frontend 미빌드 (web-dashboard 2a T2+)", 200));
+  const dist = resolveDistDir();
+  if (!dist) {
+    app.get("*", (c) => c.text("gootte backend — frontend 미빌드 (web-dashboard 2a T2+)", 200));
+    return;
+  }
+  // D4 — 정확한 파일 + `/`(→index.html)만. deep link 가 없어(쿼리 파라미터만 쓴다)
+  // rewrite 는 두지 않고, dist 밖은 404 다.
+  app.get("*", (c) => {
+    const rel = decodeURIComponent(c.req.path).replace(/^\/+/, "") || "index.html";
+    return serveDistFile(c, dist, rel);
+  });
+}
+
+/**
+ * 서빙할 dist — flag 가 켜져 있고 `index.html` 이 있을 때만. 테스트용 env 오버라이드
+ * (`GOOTTE_DIST_DIR`, `GOOTTE_WEBKIT_DATA_DIR` 선례)를 먼저 본다.
+ */
+function resolveDistDir(): string | null {
+  if (process.env.GOOTTE_SERVE_DIST !== "1") return null;
+  const here = dirname(fileURLToPath(import.meta.url)); // backend/src
+  const override = process.env.GOOTTE_DIST_DIR?.trim();
+  const dist = override || join(here, "..", "..", "frontend", "dist");
+  // 없으면 placeholder 로 떨어진다(T01 기본) — 기동 실패 판단은 점화자(T02 main.rs) 몫이다.
+  try {
+    if (statSync(join(dist, "index.html")).isFile()) return dist;
+  } catch {
+    // 없음 — placeholder 로 떨어진다
+  }
+  return null;
+}
+
+const DIST_MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".txt": "text/plain; charset=utf-8",
+};
+
+/** dist 안의 파일 하나 — 루트 밖으로 벗어나면 404(경로 탈출 금지). */
+function serveDistFile(c: Context, dist: string, rel: string) {
+  const abs = join(dist, rel);
+  const prefix = dist.endsWith(sep) ? dist : dist + sep;
+  if (abs !== dist && !abs.startsWith(prefix)) {
+    return c.text("찾을 수 없음", 404);
+  }
+  try {
+    if (!statSync(abs).isFile()) return c.text("찾을 수 없음", 404);
+    const body = readFileSync(abs);
+    const ext = extname(abs).toLowerCase();
+    const type = DIST_MIME[ext] ?? "application/octet-stream";
+    return c.body(body, 200, { "content-type": type });
+  } catch {
+    return c.text("찾을 수 없음", 404);
+  }
 }

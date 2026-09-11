@@ -11,6 +11,8 @@ vi.mock("../src/lib/api", () => ({
   fetchSettings: vi.fn(),
   saveSettings: vi.fn(),
   refreshBackend: vi.fn(),
+  fetchStorage: vi.fn(),
+  clearStorage: vi.fn(),
 }));
 
 vi.mock("../src/lib/tauri", () => ({
@@ -18,12 +20,14 @@ vi.mock("../src/lib/tauri", () => ({
   pickFolder: vi.fn(),
 }));
 
-import { fetchSettings, refreshBackend, saveSettings } from "../src/lib/api";
+import { fetchSettings, refreshBackend, saveSettings, fetchStorage, clearStorage } from "../src/lib/api";
 import { pickFolder } from "../src/lib/tauri";
 
 const mockFetch = vi.mocked(fetchSettings);
 const mockSave = vi.mocked(saveSettings);
 const mockRefresh = vi.mocked(refreshBackend);
+const mockFetchStorage = vi.mocked(fetchStorage);
+const mockClearStorage = vi.mocked(clearStorage);
 const mockPickFolder = vi.mocked(pickFolder);
 
 function settings(partial: Partial<SettingsResponseType>): SettingsResponseType {
@@ -172,5 +176,18 @@ describe("SettingsView — VSCode 레이아웃 (settings-in-main-area T02)", () 
     fireEvent.click(btn);
     await waitFor(() => expect(mockRefresh).toHaveBeenCalled());
     expect(await screen.findByText(/다시 읽었습니다/)).toBeInTheDocument();
+  });
+
+  it("저장소 사용량 — 총량이 보이고 비우기 버튼이 있다(settings-storage-meter)", async () => {
+    mockFetchStorage.mockResolvedValue({ totalBytes: 12345 });
+    renderView();
+    expect(await screen.findByText("12.1 KB")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "비우기" })).toBeInTheDocument();
+  });
+
+  it("잴 수 없으면 확인 불가로 보인다", async () => {
+    mockFetchStorage.mockResolvedValue({ totalBytes: null });
+    renderView();
+    expect(await screen.findByText("확인 불가")).toBeInTheDocument();
   });
 });

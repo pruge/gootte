@@ -318,6 +318,16 @@ export const SettingsResponse = Settings.extend({
 });
 export type SettingsResponse = z.infer<typeof SettingsResponse>;
 
+// ── 저장소 사용량 (settings-storage-meter) ─────────────────────────────────
+/**
+ * `GET /api/storage` 응답 — WebKit WebsiteData 전체 합산 바이트(INV-5: 그때 잰 사실이라
+ * 저장하지 않는다). 잴 수 없으면(비macOS·경로 없음) `null` — 죽지 않는다.
+ */
+export const StorageResponse = z.object({
+  totalBytes: z.number().int().nonnegative().nullable(),
+});
+export type StorageResponse = z.infer<typeof StorageResponse>;
+
 /**
  * 설정 바꾸기(PUT) — 부분 갱신. `undefined` = 그대로, `null` = 지움(unset), 문자열/배열 = 교체.
  * 서버가 절대 경로로 정규화하고(`~` 전개 포함), 상대 경로는 400 으로 거절한다.

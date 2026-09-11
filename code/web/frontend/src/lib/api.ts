@@ -5,6 +5,7 @@ import {
   FeatureDocResponse,
   PlanBoardResponse,
   SettingsResponse,
+  StorageResponse,
   ApiError,
   MemosResponse,
   Memo,
@@ -14,6 +15,7 @@ import {
   type Project,
   type SettingsUpdateRequest,
   type SettingsResponse as SettingsResponseType,
+  type StorageResponse as StorageResponseType,
 } from "@gootte/contract";
 
 /** same-origin(prod = backend가 정적 서빙) · dev = vite 프록시가 /api → backend. */
@@ -90,6 +92,15 @@ export const fetchFeatureDoc = (
 /** 설정 읽기(tauri-desktop-app T02) — 존재 여부는 서버가 응답 때 다시 본다(INV-3). */
 export const fetchSettings = (): Promise<SettingsResponseType> =>
   get("/api/settings", SettingsResponse);
+
+/** 저장소 사용량(settings-storage-meter) — WebKit 사이트 데이터 총량(그때 잰 값). */
+export const fetchStorage = (): Promise<StorageResponseType> =>
+  get("/api/storage", StorageResponse);
+
+/** 앱 내 캐시 비우기 — localStorage 파일은 손대지 않는다(실행 중 렌더러가 물고 있다). */
+export const clearStorage = async (): Promise<void> => {
+  await send("/api/storage/clear", z.object({ ok: z.boolean() }), { method: "POST" });
+};
 
 /**
  * 설정 바꾸기 — 응답은 **저장 뒤의 설정 전체**다. 화면이 자기 손으로 고친 값을 그대로 두지

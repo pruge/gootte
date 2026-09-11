@@ -12,8 +12,9 @@ import {
   IconRefresh,
   IconSearch,
 } from "@tabler/icons-react";
-import { useBlockedCopies, useSaveSettings, useSettings } from "../../lib/query";
+import { useBlockedCopies, useClearStorage, useSaveSettings, useSettings, useStorage } from "../../lib/query";
 import { refreshBackend } from "../../lib/api";
+import { formatBytes } from "../../lib/bytes";
 import { isTauri, pickFolder } from "../../lib/tauri";
 import { ThemeToggle } from "../../theme/ThemeToggle";
 
@@ -126,6 +127,26 @@ export function SettingsView() {
       // 실패해도 조용히 — 다음 요청이 다시 시도한다
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  // 저장소 비우기(settings-storage-meter) — 서버 파생 캐시 → localStorage → 쿼리 캐시 순으로
+  // 비우고 새로고침한다. WAL 파일 잔량은 다음 앱 종료 때 SQLite 가 정리한다.
+  const storage = useStorage();
+  const clearStorage = useClearStorage();
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+  const handleClearStorage = async () => {
+    setClearing(true);
+    setClearError(null);
+    try {
+      await clearStorage.mutateAsync();
+      localStorage.clear();
+      await qc.clear();
+      window.location.reload();
+    } catch (e: unknown) {
+      setClearError(e instanceof Error ? e.message : "비우기 실패");
+      setClearing(false);
     }
   };
 
@@ -312,6 +333,28 @@ export function SettingsView() {
                 </span>
               )}
             </div>
+          </SettingRow>
+        )}
+
+        {activeCategory === "general" && (
+          <SettingRow
+            title="저장소 사용량"
+            hint="gootte 가 쓰는 저장소(WebKit 사이트 데이터) 총량입니다. 비우기를 누르면 앱 안의 캐시가 비워지고 화면이 새로고침됩니다. 파일 잔량은 다음 앱 종료 시 정리됩니다."
+          >
+            <div className="flex items-center gap-3">
+              <span className="mono text-sm tabular-nums" aria-live="polite">
+                {storage.isLoading ? "재는 중…" : formatBytes(storage.data?.totalBytes)}
+              </span>
+              <button
+                type="button"
+                onClick={handleClearStorage}
+                disabled={clearing}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-accent hover:text-fg focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {clearing ? "비우는 중…" : "비우기"}
+              </button>
+            </div>
+            {clearError && <Warning text={clearError} />}
           </SettingRow>
         )}
 

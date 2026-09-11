@@ -86,6 +86,27 @@ describe("DocDrawer — 마크다운을 서식대로 렌더링한다(티켓 01 �
     fireEvent.click(screen.getByRole("button", { name: "닫기" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("드로어를 닫으면(언마운트) 문서 캐시가 즉시 버려진다 — 큰 문서가 힙에 눌러앉지 않는다", async () => {
+    vi.spyOn(api, "fetchFeatureDoc").mockResolvedValue({ path: "spec.md", content: "# 제목\n" });
+    try {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const key = qk.featureDoc("alpha", "auth-login", "spec.md");
+      const { unmount } = render(
+        <QueryClientProvider client={qc}>
+          <DocDrawer project="alpha" featureSlug="auth-login" path="spec.md" onClose={vi.fn()} />
+        </QueryClientProvider>,
+      );
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1, name: "제목" })).toBeInTheDocument(),
+      );
+      expect(qc.getQueryData(key)).toBeDefined();
+      unmount();
+      await waitFor(() => expect(qc.getQueryData(key)).toBeUndefined());
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
 });
 
 describe("DocDrawer — 읽지 못한 문서는 조용히 빈 드로어가 되지 않는다", () => {

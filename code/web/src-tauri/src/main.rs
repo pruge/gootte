@@ -51,39 +51,30 @@ fn install_signal_handlers() {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum FrontendMode {
-    Dev,
-    Preview,
-}
-
-impl FrontendMode {
-    fn resolve() -> Result<Self, String> {
-        if let Some(raw) = std::env::var_os("GOOTTE_TAURI_FRONTEND_MODE") {
-            return match raw.to_string_lossy().as_ref() {
-                "dev" => Ok(Self::Dev),
-                "preview" => Ok(Self::Preview),
-                other => Err(format!(
-                    "GOOTTE_TAURI_FRONTEND_MODE 는 dev|preview 만 받는다(현재 '{other}')"
-                )),
-            };
-        }
-        // 래퍼 스크립트 없이 완성 .app 을 곧바로 띄운 실행(release)은 빌드된 dist 를
-        // 서빙하는 vite preview, tauri dev(debug)는 HMR 있는 vite dev 서버로 간다 —
-        // 페이지 오리진이 같아서 UI 코드 차이는 없다.
-        if cfg!(debug_assertions) {
-            Ok(Self::Dev)
-        } else {
-            Ok(Self::Preview)
-        }
+/// HMR vite 자식을 띄우는가(backend-serves-ui T03) — enum 이었던 자리에 bool 하나만 남았다.
+/// `GOOTTE_TAURI_FRONTEND_MODE=dev` 면 HMR, `preview` 면 backend 서빙(값은 받아 두되 HMR 을
+/// 켜지 않는다 — tauri-build.sh 가 preview 를 export 하므로), 미지정이면 debug=dev·release=서빙.
+/// tauri-dev.sh 가 dev 를 **명시**하던 계약은 유지한다.
+fn resolve_dev_frontend() -> Result<bool, String> {
+    if let Some(raw) = std::env::var_os("GOOTTE_TAURI_FRONTEND_MODE") {
+        return match raw.to_string_lossy().as_ref() {
+            "dev" => Ok(true),
+            "preview" => Ok(false),
+            other => Err(format!(
+                "GOOTTE_TAURI_FRONTEND_MODE 는 dev|preview 만 받는다(현재 '{other}')"
+            )),
+        };
     }
+    Ok(cfg!(debug_assertions))
 }
 
 struct StackConfig {
     root: PathBuf,
     backend_port: u16,
     frontend_port: u16,
-    mode: FrontendMode,
+    /// true 면 vite dev 자식(HMR)을 띄우고 창이 frontend 를 본다. false 면 backend 가
+    /// dist 까지 서빙하고 창이 backend 를 본다(vite 자식 없음).
+    dev_frontend: bool,
 }
 
 fn logln(msg: &str) {
@@ -311,16 +302,9 @@ fn spawn_children(cfg: &StackConfig) -> Result<(), String> {
     let node = resolve_node()?;
     logln(&format!("node = {}", node.display()));
 
-    let vite_js = cfg
-        .root
-        .join("code/web/frontend/node_modules/vite/bin/vite.js");
-    if !vite_js.is_file() {
-        return Err(format!(
-            "{} 가 없다 — 먼저 `pnpm setup` 으로 의존성을 깔아라",
-            vite_js.display()
-        ));
-    }
-    if cfg.mode == FrontendMode::Preview {
+    // backend 가 dist 를 직접 서빙하는 길(backend-serves-ui) — vite 자식이 없다.
+    // 없으면 조용한 낡은 화면 대신 큰 소리로 멈춘다(A3).
+    if !cfg.dev_frontend {
         let dist = cfg.root.join("code/web/frontend/dist/index.html");
         if !dist.is_file() {
             return Err(format!(
@@ -335,7 +319,12 @@ fn spawn_children(cfg: &StackConfig) -> Result<(), String> {
         // tsx watch 가 아니라 단일 실행 — 셸의 SIGTERM 한 방으로 깨끗이 끊긴다.
         .args(["--import", "tsx", "src/server.ts"])
         .current_dir(cfg.root.join("code/web/backend"))
-        .env("PORT", cfg.backend_port.to_string())
+        .env("PORT", cfg.backend_port.to_string());
+    if !cfg.dev_frontend {
+        // backend 서빙 점화(T01) — dev arm 은 vite dev 가 화면을 맡으므로 끄고 간다.
+        backend_cmd.env("GOOTTE_SERVE_DIST", "1");
+    }
+    backend_cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -354,46 +343,55 @@ fn spawn_children(cfg: &StackConfig) -> Result<(), String> {
         child: backend,
     });
 
-    // 🔴 프로세스 표시 이름 — node 플래그는 스크립트 경로보다 앞에 와야 한다. 뒤에 두면
-    // vite CLI 가 파싱해 `Unknown option --import` 로 죽는다(실측 2026-09-11).
-    // `--import` 로 제목 모듈을 먼저 올려 `node` 가 아니라 `gootte-front` 로 뜬다
-    // (Activity Monitor·ps, backend 의 server.ts 한 줄과 짝).
-    let title_module = cfg.root.join("code/web/scripts/proc-title.mjs");
-    let mut frontend_cmd = Command::new(&node);
-    frontend_cmd
-        .args(["--import", &title_module.to_string_lossy()])
-        .env("GOOTTE_PROC_TITLE", "gootte-front");
-    frontend_cmd.arg(&vite_js);
-    if cfg.mode == FrontendMode::Preview {
-        frontend_cmd.arg("preview");
+    // dev arm(HMR)만 vite 자식을 띄운다. 서빙 arm 은 backend 가 화면까지 맡는다.
+    if cfg.dev_frontend {
+        let vite_js = cfg
+            .root
+            .join("code/web/frontend/node_modules/vite/bin/vite.js");
+        if !vite_js.is_file() {
+            return Err(format!(
+                "{} 가 없다 — 먼저 `pnpm setup` 으로 의존성을 깔아라",
+                vite_js.display()
+            ));
+        }
+        // 🔴 프로세스 표시 이름 — node 플래그는 스크립트 경로보다 앞에 와야 한다. 뒤에 두면
+        // vite CLI 가 파싱해 `Unknown option --import` 로 죽는다(실측 2026-09-11).
+        // `--import` 로 제목 모듈을 먼저 올려 `node` 가 아니라 `gootte-front` 로 뜬다
+        // (Activity Monitor·ps).
+        let title_module = cfg.root.join("code/web/scripts/proc-title.mjs");
+        let mut frontend_cmd = Command::new(&node);
+        frontend_cmd
+            .args(["--import", &title_module.to_string_lossy()])
+            .env("GOOTTE_PROC_TITLE", "gootte-front");
+        frontend_cmd.arg(&vite_js);
+        frontend_cmd
+            // localhost 바인딩은 macOS 에서 ::1(IPv6)만 잡히곤 한다 — 창·헬스체크와
+            // 같은 패밀리(IPv4 루프백)로 고정해 두어야 오리진이 하나로 모인다.
+            .args(["--host", "127.0.0.1"])
+            .args(["--port", &cfg.frontend_port.to_string(), "--strictPort"])
+            .current_dir(cfg.root.join("code/web/frontend"))
+            .env(
+                "VITE_BACKEND_URL",
+                format!("http://localhost:{}", cfg.backend_port),
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut frontend = frontend_cmd
+            .spawn()
+            .map_err(|e| format!("frontend(vite dev) 스폰 실패: {e}"))?;
+        if let Some(out) = frontend.stdout.take() {
+            forward_output("frontend", out);
+        }
+        if let Some(err) = frontend.stderr.take() {
+            forward_output("frontend", err);
+        }
+        logln(&format!("frontend spawned (pid {})", frontend.id()));
+        register_child(ManagedChild {
+            name: "frontend",
+            child: frontend,
+        });
     }
-    frontend_cmd
-        // localhost 바인딩은 macOS 에서 ::1(IPv6)만 잡히곤 한다 — 창·헬스체크와
-        // 같은 패밀리(IPv4 루프백)로 고정해 두어야 오리진이 하나로 모인다.
-        .args(["--host", "127.0.0.1"])
-        .args(["--port", &cfg.frontend_port.to_string(), "--strictPort"])
-        .current_dir(cfg.root.join("code/web/frontend"))
-        .env(
-            "VITE_BACKEND_URL",
-            format!("http://localhost:{}", cfg.backend_port),
-        )
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut frontend = frontend_cmd
-        .spawn()
-        .map_err(|e| format!("frontend(vite {:?}) 스폰 실패: {e}", cfg.mode))?;
-    if let Some(out) = frontend.stdout.take() {
-        forward_output("frontend", out);
-    }
-    if let Some(err) = frontend.stderr.take() {
-        forward_output("frontend", err);
-    }
-    logln(&format!("frontend spawned (pid {})", frontend.id()));
-    register_child(ManagedChild {
-        name: "frontend",
-        child: frontend,
-    });
 
     Ok(())
 }
@@ -432,8 +430,8 @@ fn wait_listening(port: u16, label: &str, timeout: Duration) -> Result<(), Strin
 }
 
 fn main() {
-    let mode = match FrontendMode::resolve() {
-        Ok(m) => m,
+    let dev_frontend = match resolve_dev_frontend() {
+        Ok(v) => v,
         Err(e) => {
             logln(&format!("FATAL {e}"));
             std::process::exit(1);
@@ -444,7 +442,7 @@ fn main() {
             root,
             backend_port,
             frontend_port,
-            mode,
+            dev_frontend,
         })
     }) {
         Ok(c) => c,
@@ -454,11 +452,11 @@ fn main() {
         }
     };
     logln(&format!(
-        "root = {} · backend :{} · frontend :{} · mode = {:?}",
+        "root = {} · backend :{} · frontend :{} · dev_frontend = {}",
         cfg.root.display(),
         cfg.backend_port,
         cfg.frontend_port,
-        cfg.mode
+        cfg.dev_frontend
     ));
 
     if CHILDREN.set(Mutex::new(Vec::new())).is_err() {
@@ -511,13 +509,24 @@ fn main() {
 
             wait_listening(cfg.backend_port, "backend", Duration::from_secs(20))
                 .and_then(|()| {
-                    wait_listening(cfg.frontend_port, "frontend", Duration::from_secs(20))
+                    // dev arm(HMR)만 프론트 자식을 기다린다 — 서빙 arm 은 backend 가 화면까지 맡는다.
+                    if cfg.dev_frontend {
+                        wait_listening(cfg.frontend_port, "frontend", Duration::from_secs(20))
+                    } else {
+                        Ok(())
+                    }
                 })
                 .unwrap_or_else(|e| fail_fatal(&e));
 
-            // 둘 다 살아난 뒤에만 창을 만든다 — 반쯤 뜬 화면(stale 뷰)을 보여 주지 않게.
-            // vite 를 127.0.0.1 로 고정했으니 오리진도 같은 패밀리로.
-            let url: tauri::Url = format!("http://127.0.0.1:{}", cfg.frontend_port)
+            // backend 가 살아난 뒤에만 창을 만든다 — 반쯤 뜬 화면(stale 뷰)을 보여 주지 않게.
+            // 서빙 arm 은 backend 가 dist 까지 서빙하므로 창이 backend 를 본다.
+            // dev arm 은 vite 를 127.0.0.1 로 고정했으니 오리진도 같은 패밀리로.
+            let ui_port = if cfg.dev_frontend {
+                cfg.frontend_port
+            } else {
+                cfg.backend_port
+            };
+            let url: tauri::Url = format!("http://127.0.0.1:{ui_port}")
                 .parse()
                 .unwrap_or_else(|e| fail_fatal(&format!("UI URL 파싱 실패: {e}")));
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
