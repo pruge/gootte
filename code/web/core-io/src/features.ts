@@ -287,11 +287,30 @@ interface FolderCacheEntry {
   key: string;
   docs: FeatureDocs;
 }
+/**
+ * 상한 있는 폴더 캐시(memory-diet T05) — 항목이 넘치면 가장 오래된 것부터 버린다(Map 삽입순).
+ * 키에 사본 목록 전체가 들어가 사본 구성이 바뀔 때마다 새 항목이 생기므로, 무제한이면 켜둔
+ * 서버에 쌓인다. 버려도 된다 — 다음 read 가 지문 미적중으로 다시 계산한다(INV-1 파생물).
+ */
+const MAX_FOLDER_CACHE = 100;
 const folderCache = new Map<string, FolderCacheEntry>();
+
+function evictFolderCache(): void {
+  while (folderCache.size > MAX_FOLDER_CACHE) {
+    const oldest = folderCache.keys().next();
+    if (oldest.done) return;
+    folderCache.delete(oldest.value);
+  }
+}
 
 /** 기능 폴더 캐시를 통째로 비운다 — 테스트와 명시적 무효화용. */
 export function clearFeatureCache(): void {
   folderCache.clear();
+}
+
+/** 캐시 항목 수 — 상한 회귀 테스트용. */
+export function folderCacheSize(): number {
+  return folderCache.size;
 }
 
 /**
@@ -370,6 +389,7 @@ export function readFeatures(copies: string[]): Feature[] {
       folderCache.set(mapKeyOf(slug), { key: keyOf(slug), docs: merged });
       bySlugDocs.set(slug, merged);
     }
+    evictFolderCache();
   }
 
   const docs: FeatureDocs[] = [];

@@ -403,14 +403,13 @@ describe("GET /api/features/:slug", () => {
 });
 
 /**
- * T04 — `tickets/T<NN>.md` 신관례. 파서·조인 자체는 core/core-io 가 이미 잰다
- * (`backlog.test.ts`·`backlog-join.test.ts`·`features.test.ts`). 여기서 보는 것은
- * **라우트가 projects 설정으로 프로젝트를 발견하고 신관례 티켓을 싣는가**다.
+ * T04 — `tickets/T<NN>.md` 신관례. 여기서 보는 것은 **라우트가 projects 설정으로
+ * 프로젝트를 발견하고 신관례 티켓을 싣는가**다.
  */
-describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
-  // T05 — firstmateHome 은 이제 감시 뿌리도 함께 파생하므로(discover → `<홈>/projects`), 백로그
-  // 조인만 확인하려는 이 그룹의 픽스처도 프로젝트를 그 홈의 `projects/` 아래에 둔다 — 그래야
-  // 홈을 설정한 뒤에도 discover 가 여전히 이 프로젝트를 찾는다(실물 배치와 같은 모양).
+describe("GET /api/features/:slug — T04 신관례", () => {
+  // T05 — firstmateHome 을 설정하면 감시 뿌리도 그 홈의 `projects/` 로 갈아탄다(discover 입력이
+  // 바뀐다). 이 그룹의 픽스처도 프로젝트를 그 홈의 `projects/` 아래에 둔다 — 그래야 홈을 설정한
+  // 뒤에도 discover 가 여전히 이 프로젝트를 찾는다(실물 배치와 같은 모양).
   function makeProjectRoot(ticketFile = "T04.md", ticketBody = "# T04 — 신관례 문서 표시\n"): string {
     const parent = mkdtempSync(join(tmpdir(), "gootte-app-t04-"));
     const featDir = join(parent, "widget", "docs", "features", "tauri-desktop-app");
@@ -421,10 +420,9 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
     return parent;
   }
 
-  function makeFirstmateHome(backlog: string): string {
+  function makeEmptyHome(): string {
     const home = mkdtempSync(join(tmpdir(), "gootte-app-fmhome-"));
     mkdirSync(join(home, "data"), { recursive: true });
-    writeFileSync(join(home, "data", "backlog.md"), backlog);
     return home;
   }
 
@@ -439,37 +437,14 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
     rmSync(projectRoot, { recursive: true, force: true });
   }
 
-  const BACKLOG = [
-    "# Backlog",
-    "",
-    "## In flight",
-    "- [ ] widget-tauri-t04 - New-convention docs tree (repo: widget) (kind: ship) (since 2026-08-25)",
-    "- [ ] widget-tauri - Tauri desktop app (repo: widget) (kind: ship) (since 2026-08-25)",
-    "  Artifacts: projects/widget/docs/features/tauri-desktop-app/. Decisions D1-D5 in grill.md.",
-    "",
-  ].join("\n");
-
-  // 백로그에서 이미 끝난 모양 — done 절의 `- [x]`. 사이드바(openFeatures) 회귀 시험이 쓴다.
-  // 조인은 <parent>-t<NN> 자식에 부모 메모의 Artifacts 경로를 쓰므로 부모 항목도 함께 둔다.
-  const DONE_BACKLOG = [
-    "# Backlog",
-    "",
-    "## Done",
-    "- [x] widget-tauri-t04 - New-convention docs tree (repo: widget) (kind: ship) (done: 2026-08-25)",
-    "- [x] widget-tauri - Tauri desktop app (repo: widget) (kind: ship) (done: 2026-08-25)",
-    "  Artifacts: projects/widget/docs/features/tauri-desktop-app/. Decisions D1-D5 in grill.md.",
-    "",
-  ].join("\n");
-
   /**
-   * 🔴 사이드바(`GET /api/projects` 의 `openFeatures`)도 **조인 뒤에 세야 한다** — 신관례
-   * 티켓은 파일에 상태가 없어 조인 없이는 전부 pending 이고, 백로그에서 다 끝난 기능까지
-   * "남은 일 있음" 으로 셰진다(실제 결함, 2026-08-25 실측: firstmate 2 → 실제 0).
+   * 🔴 사이드바(`GET /api/projects` 의 `openFeatures`)도 **확정 뒤에 세야 한다** — 신관례
+   * 티켓은 파일에 상태가 없어 확정 없이는 전부 pending 이고, 다 끝난 기능까지 "남은 일 있음" 으로 셰진다.
    */
   test("사이드바 카운트(openFeatures)는 state.json 에서 읽는다 — 다 끝난 신관례 기능은 세지 않는다", async () =>
     withDataDir(async (dataDir) => {
       const projectRoot = makeProjectRoot();
-      const home = makeFirstmateHome(DONE_BACKLOG);
+      const home = makeEmptyHome();
       try {
         const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
         const count = async () =>
@@ -514,7 +489,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
   test("신관례 티켓은 문서만으로 상태를 안다 — projects 설정으로 발견된다", async () =>
     withDataDir(async (dataDir) => {
       const projectRoot = makeProjectRoot();
-      const home = makeFirstmateHome(BACKLOG);
+      const home = makeEmptyHome();
       try {
         relocateUnderHomeProjects(projectRoot, home);
         const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
@@ -525,8 +500,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         });
         const body = FeaturesResponse.parse(await (await app.request("/api/features/widget")).json());
         const f = body.features.find((x) => x.slug === "tauri-desktop-app");
-        // 🔴 백로그 조인이 현재 비활성(readBacklogTasks(undefined))이므로 상태는 문서만으로 결정된다.
-        // T04.md 에 Status: 줄도 Time: 줄도 없으면 pending 이고 착수 가능이다.
+        // 상태는 문서만으로 결정된다. T04.md 에 Status: 줄도 Time: 줄도 없으면 pending 이고 착수 가능이다.
         expect(f?.newTickets?.[0]).toMatchObject({
           num: "04",
           docConvention: "tickets",
@@ -539,8 +513,8 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
       }
     }));
 
-  // T01 — 신관례 티켓의 `## Depends on` 도 API 응답에 실린다. 백로그엔 t03 이 없어
-  // 상태를 모르므로(pending) 의존 03 은 계속 대기다 — 응답 모양이 기대와 같은지가 관건.
+  // T01 — 신관례 티켓의 `## Depends on` 도 API 응답에 실린다. t03 은 문서에 없으므로
+  // pending 이고 의존 03 은 계속 대기다 — 응답 모양이 기대와 같은지가 관건.
   test("신관례 티켓의 Depends on 이 blockedBy·waitingOn·startable 로 응답에 실린다", async () =>
     withDataDir(async (dataDir) => {
       const projectRoot = makeProjectRoot("T04.md", "# T04 — 신관례 문서 표시\n\n## Depends on\n- T03 (먼저 끝내기)\n");
@@ -559,10 +533,10 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
       }
     }));
 
-  test("조인 실패(미매칭)여도 문서만으로 상태를 아는 신관례 티켓은 뜬다 — 막히지 않았으면 착수 가능", async () =>
+  test("문서만으로 상태를 아는 신관례 티켓은 뜬다 — 막히지 않았으면 착수 가능", async () =>
     withDataDir(async (dataDir) => {
-      const projectRoot = makeProjectRoot("T09.md"); // 백로그엔 t04 만 있다
-      const home = makeFirstmateHome(BACKLOG);
+      const projectRoot = makeProjectRoot("T09.md");
+      const home = makeEmptyHome();
       try {
         relocateUnderHomeProjects(projectRoot, home);
         const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
@@ -575,7 +549,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         expect(res.status).toBe(200);
         const body = FeaturesResponse.parse(await res.json());
         const f = body.features.find((x) => x.slug === "tauri-desktop-app");
-        expect(f?.newTickets?.[0]?.joinFailed).toBe(false); // 신관례 자급 — 미매칭이어도 착수 가능
+        expect(f?.newTickets?.[0]?.joinFailed).toBe(false); // 신관례 자급 — 막히지 않았으면 착수 가능
         expect(f?.newTickets?.[0]?.status).toBe("pending");
         expect(f?.newTickets?.[0]?.startable).toBe(true);
       } finally {
@@ -599,12 +573,12 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
       }
     }));
 
-  // 🔴 회귀 — 백로그 조인은 features 탭에만 걸려 있었고 plan/process 탭(GET /api/plan/:slug)에는
+  // 🔴 회귀 — 상태 확정은 features 탭에만 걸려 있었고 plan/process 탭(GET /api/plan/:slug)에는
   // 안 걸려 있어서, 그 탭의 신관례 티켓은 영원히 "상태 줄 없음" 으로만 보였다(캡틴 지시, 2026-08-25).
-  test("GET /api/plan/:slug 도 같은 백로그 조인을 받는다 — features 탭과 다른 말을 하지 않는다", async () =>
+  test("GET /api/plan/:slug 도 같은 상태 확정을 받는다 — features 탭과 다른 말을 하지 않는다", async () =>
     withDataDir(async (dataDir) => {
       const projectRoot = makeProjectRoot();
-      const home = makeFirstmateHome(BACKLOG);
+      const home = makeEmptyHome();
       try {
         relocateUnderHomeProjects(projectRoot, home);
         const app = createApp({ roots: [projectRoot], treehouse: NO_TREEHOUSE, dataDir });
@@ -615,7 +589,7 @@ describe("GET /api/features/:slug — T04 신관례 백로그 조인", () => {
         });
         const body = PlanBoardResponse.parse(await (await app.request("/api/plan/widget")).json());
         const card = body.waiting.find((c) => c.feature.slug === "tauri-desktop-app");
-        // 🔴 백로그 조인이 현재 비활성(readBacklogTasks(undefined))이므로 상태는 문서만으로 결정된다.
+        // 상태는 문서만으로 결정된다.
         expect(card?.feature.newTickets?.[0]).toMatchObject({
           num: "04",
           docConvention: "tickets",

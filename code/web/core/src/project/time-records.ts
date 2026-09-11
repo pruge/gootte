@@ -3,7 +3,7 @@ import { mapFirstmateStatus, parseStatusLine } from "../parse/feature";
 
 /**
  * 티켓 시간·상태 레코드(`state.json` v2 `tickets` 맵)를 기능 목록에 얹는 조인 —
- * 순수·결정적(INV-4). `applyInProgress`·`applyBacklogStatus`와 같은 패턴이다.
+ * 순수·결정적(INV-4). `applyInProgress`·`finalizeFeatureStatus`와 같은 패턴이다.
  *
  * 🔴 **이 함수를 부른다는 것 자체가 "이 프로젝트는 레코드가 권위다"(v2 모드)라는 뜻이다**
  * (time-records-to-state-store D2 — 모드는 프로젝트 단위로 이분법). 그래서:

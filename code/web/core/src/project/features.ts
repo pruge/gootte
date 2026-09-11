@@ -12,7 +12,7 @@ export interface FeatureDocs {
   spec: FeatureSpecDoc | null;
   tickets: TicketDoc[];
   tree: FeatureDocNode[];
-  /** `tickets/T<NN>.md` 신관례(T04) — 상태는 없다(백로그 조인이 나중에 얹는다). 없으면 빈 배열. */
+  /** `tickets/T<NN>.md` 신관례(T04) — 상태는 없다(확정이 나중에 얹는다). 없으면 빈 배열. */
   newTickets?: NewTicketDoc[];
 }
 
@@ -37,7 +37,7 @@ function byNum(a: { num: string; slug: string }, b: { num: string; slug: string 
  * `tickets/T<NN>.md` 신관례(T04) 한 장 → 계약 형태. 상태는 **문서에 명시됐으면 문서가 SoT**다
  * (`doc.statusKnown` — `Status: resolved`/등, T04). 명시가 없으면 `statusKnown: false`(리졸버·백로그가
  * 나중에 채움) — "모른다" 를 뜻하지 "이슈 관례의 알 수 없는 상태" 를 뜻하지 않는다(화면은 `docConvention`
- * 으로 그 둘을 가른다). 백로그 조인/`applyBacklogStatus` 가 최종 상태를 얹는다.
+ * 으로 그 둘을 가른다). `finalizeFeatureStatus` 가 최종 상태를 얹는다.
  */
 function toNewTicket(
   doc: NewTicketDoc,
@@ -64,7 +64,7 @@ function toNewTicket(
     docConvention: "tickets",
     joinFailed: false,
     // T04 — `Time:` 줄에서 읽은 착수·완료 시각을 그대로 얹는다. 완료(done) 단일 출처는 이
-    // `finishedAt` 이며, `applyBacklogStatus`/`joinTicket` 가 이것을 우선해 판정한다.
+    // `finishedAt` 이며, `finalizeFeatureStatus` 가 이것을 우선해 판정한다.
     startedAt: doc.startedAt ?? undefined,
     finishedAt: doc.finishedAt ?? undefined,
     pauses: doc.pauses.map((p) => ({ pausedAt: p.pausedAt, resumedAt: p.resumedAt })),
@@ -84,7 +84,7 @@ export type CrossFeatureIndex = ReadonlyMap<string, FeatureNums>;
 
 /**
  * 티켓 무리에서 번호 현황을 만든다 — 두 관례(`issues/`·`tickets/`)를 섞어 넘겨도 된다.
- * `buildCrossFeatureIndex` 와 백로그 조인 뒤의 재판정(backlog-join, INV-3)이 함께 쓴다.
+  * `buildCrossFeatureIndex` 와 최종 확정 뒤의 재판정(finalize-status, INV-3)이 함께 쓴다.
  */
 export function featureNums(tickets: readonly { num: string; status: TodoStatus }[]): FeatureNums {
   const all = new Set<number>();
@@ -104,7 +104,7 @@ function buildCrossFeatureIndex(docsList: readonly FeatureDocs[]): CrossFeatureI
   for (const docs of docsList) {
     // 🔴 신관례(`tickets/`, T01) 티켓의 번호도 같은 색인에 넣는다 — 안 그러면 신관례를
     // 가리키는/신관례가 거는 기능 간 참조가 "그 기능에 없다" 고 거짓말한다. 빌드 시점의
-    // 신관례 상태는 언제나 백로그 조인 전(pending)이다 — 완료 재판정은 applyBacklogStatus 몫.
+    // 신관례 상태는 언제나 확정 전(pending)이다 — 완료 재판정은 finalizeFeatureStatus 몫.
     index.set(
       docs.slug,
       featureNums([...docs.tickets, ...(docs.newTickets ?? []).map((t) => ({ ...t, status: "pending" as const }))]),
@@ -143,7 +143,7 @@ function waitingOn(
   });
 }
 
-/** `waitingOn` 의 좁은 창구 — 백로그 조인 뒤의 신관례 재판정(`backlog-join`)이 함께 쓴다(INV-3). */
+/** `waitingOn` 의 좁은 창구 — 최종 확정 뒤의 신관례 재판정(`finalize-status`)이 함께 쓴다(INV-3). */
 export function resolveWaitingOn(
   blockedBy: readonly string[],
   doneNums: ReadonlySet<number>,
@@ -193,11 +193,11 @@ function toTicket(
  */
 export function buildFeature(docs: FeatureDocs, crossIndex?: CrossFeatureIndex): Feature {
   // 완료 색인에도 두 관례를 섞는다 — 신관례 티켓이 구관례를, 구관례가 신관례를 선행으로
-  // 가리킬 수 있으므로(T01). 빌드 시점엔 신관례 상태가 아직 백로그 조인 전(pending)이라
-  // 실질은 구관례 쪽이 채우고, 조인 뒤의 재판정은 `applyBacklogStatus` 가 한다(INV-3).
+  // 가리킬 수 있으므로(T01). 빌드 시점엔 신관례 상태가 아직 확정 전(pending)이라
+  // 실질은 구관례 쪽이 채우고, 확정 뒤의 재판정은 `finalizeFeatureStatus` 가 한다(INV-3).
   const doneNums = new Set<number>();
   for (const t of docs.tickets) {
-    // 신관례는 이 시점엔 언제나 pending(백로그 조인 전)이라 done 이 나올 수 없다 — 주석은
+    // 신관례는 이 시점엔 언제나 pending(확정 전)이라 done 이 나올 수 없다 — 주석은
     // 취지를 알리는 것이고 실제 필터는 구관례에만 의미가 있다.
     const n = numKey(t.num);
     if (n !== null && t.status === "done") doneNums.add(n);

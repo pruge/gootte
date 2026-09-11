@@ -15,7 +15,7 @@ import {
   type Feature,
 } from "@gootte/contract";
 import {
-  applyBacklogStatus,
+  finalizeFeatureStatus,
   allTickets,
   applyInProgress,
   applyReadState,
@@ -29,7 +29,6 @@ import {
 import {
   readFeatures,
   readFeatureDoc,
-  readBacklogTasks,
   readPlacements,
   readPlacementsWithAutoClose,
   readReadMarks,
@@ -326,14 +325,11 @@ export function createApp(options: AppOptions = {}): Hono {
     applyInProgress(features, await inProgressFor(project)).features;
 
   /**
-   * 백로그 상태 조인을 얹은 기능 목록 — `features` 탭과 **같은 판정 자리**(`applyBacklogStatus`)를
-   * `plan`·`process` 탭에도 태운다(T04 후속, 캡틴 지시 2026-08-25). `tickets/T<NN>.md` 신관례
-   * 티켓은 파일에 상태가 없다(SoT = 백로그) — 이 조인이 없으면 그 탭의 신관례 티켓은 영원히
-   * "상태 줄 없음" 으로만 보인다. 홈 미설정·백로그 없음은 `readBacklogTasks` 가 빈 목록으로
-   * 흡수한다 — 조인 실패는 상태 미표시로만 드러난다(`/api/features/:slug` 와 같은 원칙).
+   * 최종 상태를 확정한 기능 목록 — `features` 탭과 **같은 판정 자리**(`finalizeFeatureStatus`)를
+   * `plan`·`process` 탭에도 태운다. `tickets/T<NN>.md` 신관례 티켓의 상태 단일 출처는 티켓
+   * 문서(`Status:`·`Time:`·의존)다 — 확정 없이 그 탭의 신관례 티켓은 영원히 "상태 줄 없음" 으로만 보인다.
    */
-  const withBacklogStatus = (project: string, features: Feature[]): Feature[] =>
-    applyBacklogStatus(features, readBacklogTasks(undefined), project);
+  const withFinalStatus = (features: Feature[]): Feature[] => finalizeFeatureStatus(features);
 
   /**
    * 판 하나를 그린다 — **판을 보는 모든 길이 이 한 자리를 지난다**(GET 도, 옮긴 뒤의 응답도).
@@ -452,18 +448,17 @@ export function createApp(options: AppOptions = {}): Hono {
       applyReadState(features, readMarks),
       await inProgressFor(project),
     );
-    // T04 — `tickets/T<NN>.md` 신관례의 상태는 문서가 아니라 firstmate 홈 백로그가 SoT(D4).
-    // 홈 미설정·백로그 없음은 readBacklogTasks 가 빈 목록으로 흡수 — 조인 실패는 상태 미표시로만 드러난다.
-    const withBacklog = {
+    // T04 — `tickets/T<NN>.md` 신관례의 상태 단일 출처는 티켓 문서다.
+    const finalized = {
       ...observed,
-      features: applyBacklogStatus(observed.features, readBacklogTasks(undefined), project),
+      features: finalizeFeatureStatus(observed.features),
     };
     // 🔴 선택된 프로젝트의 배지는 여기서 공짜로 정확해진다(T03) — 이 라우트가 이미 같은 계산을
     // 했으므로, 그 결과를 그대로 사이드바 배지로 기억한다. 화면이 고른 프로젝트가 곧 이 라우트를
     // 부르는 프로젝트라, 서버가 "선택" 이라는 세션 상태를 갖지 않아도 같은 효과가 난다.
-    recalcProjectState(proj.path, withBacklog.features);
+    recalcProjectState(proj.path, finalized.features);
     clearPayloadCache();
-    return c.json(FeaturesResponse.parse({ project, ...withBacklog }));
+    return c.json(FeaturesResponse.parse({ project, ...finalized }));
   });
 
   // GET /api/plan/:slug → PlanBoardResponse (`plan` 탭 — 다섯 자리 판, plan-board/02)
@@ -485,8 +480,7 @@ export function createApp(options: AppOptions = {}): Hono {
     try {
       const areas = readBoard(
         project,
-        withBacklogStatus(
-          project,
+        withFinalStatus(
           await withInProgress(project, withReadState(project, await featuresFor(proj.slug, proj.copies, proj.path))),
         ),
       );
@@ -537,7 +531,7 @@ export function createApp(options: AppOptions = {}): Hono {
         // 판을 그리는 규칙은 하나여야 한다. 옮기는 자리와 닫는 자리가 갈리면 화면이 둘을 다르게 본다.
         const areas = readBoard(
           project,
-          withBacklogStatus(project, await withInProgress(project, withReadState(project, features))),
+          withFinalStatus(await withInProgress(project, withReadState(project, features))),
         );
         return c.json(PlanBoardResponse.parse({ project, ...areas }));
       } catch (err) {
@@ -589,7 +583,7 @@ export function createApp(options: AppOptions = {}): Hono {
         // 옮긴 뒤의 판은 **다시 읽어** 만든다 — /move 와 같은 규율이다(INV-1·INV-3).
         const areas = readBoard(
           project,
-          withBacklogStatus(project, await withInProgress(project, withReadState(project, features))),
+          withFinalStatus(await withInProgress(project, withReadState(project, features))),
         );
         return c.json(PlanBoardResponse.parse({ project, ...areas }));
       } catch (err) {

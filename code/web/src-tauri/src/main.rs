@@ -354,7 +354,15 @@ fn spawn_children(cfg: &StackConfig) -> Result<(), String> {
         child: backend,
     });
 
+    // 🔴 프로세스 표시 이름 — node 플래그는 스크립트 경로보다 앞에 와야 한다. 뒤에 두면
+    // vite CLI 가 파싱해 `Unknown option --import` 로 죽는다(실측 2026-09-11).
+    // `--import` 로 제목 모듈을 먼저 올려 `node` 가 아니라 `gootte-front` 로 뜬다
+    // (Activity Monitor·ps, backend 의 server.ts 한 줄과 짝).
+    let title_module = cfg.root.join("code/web/scripts/proc-title.mjs");
     let mut frontend_cmd = Command::new(&node);
+    frontend_cmd
+        .args(["--import", &title_module.to_string_lossy()])
+        .env("GOOTTE_PROC_TITLE", "gootte-front");
     frontend_cmd.arg(&vite_js);
     if cfg.mode == FrontendMode::Preview {
         frontend_cmd.arg("preview");

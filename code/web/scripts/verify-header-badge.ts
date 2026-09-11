@@ -1,23 +1,21 @@
 /**
  * 실물 확인 스크립트(the-header-agrees-with-its-tickets 검증) — 화면이 보는 것과 **같은 판정
- * 자리**를 지난다: readFeatures → applyBacklogStatus. 머리글 한 줄(네 수 + 배지)을 출력한다.
+ * 자리**를 지난다: readFeatures → finalizeFeatureStatus. 머리글 한 줄(네 수 + 배지)을 출력한다.
  * 읽기 전용 — 아무것도 쓰지 않는다(INV-2).
  *
- *   npx tsx scripts/verify-header-badge.ts <관리대상 프로젝트 뿌리> [firstmate 홈]
+ *   npx tsx scripts/verify-header-badge.ts <관리대상 프로젝트 뿌리>
  */
-import { readFeatures, readBacklogTasks } from "../core-io/src/index";
-import { allTickets, applyBacklogStatus } from "../core/src/index";
+import { readFeatures } from "../core-io/src/index";
+import { allTickets, finalizeFeatureStatus } from "../core/src/index";
 
 const root = process.argv[2];
-const home = process.argv[3] ?? null;
 if (!root) {
-  console.error("usage: tsx scripts/verify-header-badge.ts <project-root> [firstmate-home]");
+  console.error("usage: tsx scripts/verify-header-badge.ts <project-root>");
   process.exit(1);
 }
 
-const project = root.split("/").filter(Boolean).pop() ?? root;
 const now = new Date().toISOString();
-const features = applyBacklogStatus(readFeatures([root]), readBacklogTasks(home), project, now);
+const features = finalizeFeatureStatus(readFeatures([root]), now);
 
 for (const f of features) {
   const tickets = allTickets(f);

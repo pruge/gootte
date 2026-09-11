@@ -9,6 +9,10 @@ import { startWatchers, type Watchers } from "./watchers";
 import type { ChangeEvent } from "@gootte/contract";
 import { readSettings, resolveProjects } from "@gootte/core-io";
 
+// 🔴 프로세스 표시 이름 — Activity Monitor·ps 에 `node` 가 아니라 `gootte-server` 로 뜬다.
+// 어느 진입(dev/tauri/prod)으로 띄워도 이 파일이 먼저 돌므로 한 줄로 전부 커버된다.
+process.title = "gootte-server";
+
 /** 로컬 dev/prod 엔트리. PORT env 가 포트를 정한다(기본값은 prod `start` 몫). */
 // dev 포트의 SoT 는 code/web/.ports.* 이고 scripts/dev-backend.sh 가 그 값을 PORT 로 넣어준다 —
 // 격리 사본은 firstmate 가 써 넣은 .ports.worktree 값으로 갈려 main 과 무충돌.
@@ -94,8 +98,8 @@ app.get(
 );
 mountFallback(app);
 
-// 문서·계획·백로그 감시기 → coarse invalidate broadcast (INV-3 웹 실현, plan-board/09 · tauri-desktop-app T03).
-// 셋을 한 함수(startWatchers)로 함께 세운다 — 하나만 세우고 잊는 일이 없게. 어느 하나라도
+// 문서·계획 감시기 → coarse invalidate broadcast (INV-3 웹 실현, plan-board/09).
+// 둘을 한 함수(startWatchers)로 함께 세운다 — 하나만 세우고 잊는 일이 없게. 어느 하나라도
 // 감시 불가면 watch-fallback 신호가 나가고 프론트가 주기 풀스캔으로 갈아탄다.
 // 시작 뿌리는 저장된 설정(`resolveWatchRoots`)이 이긴다 — 명시 `watchRoots` 가 있으면 그것이,
 // 부팅부터 설정값을 본다.
@@ -131,7 +135,7 @@ let watchers: Watchers;
 const server = serve({ fetch: app.fetch, port }, (info) => {
   process.stdout.write(`gootte backend → http://localhost:${info.port}\n`);
   process.stdout.write(`  discover roots: ${roots.join(", ")}\n`);
-  process.stdout.write(`  live: WS /api/live · watcher on(문서·계획·백로그)\n`);
+  process.stdout.write(`  live: WS /api/live · watcher on(문서·계획)\n`);
 });
 injectWebSocket(server);
 // 부팅 사본 구성 재검증(HEAD 비교는 없다 — sameCopies 만, git-removal/T03).

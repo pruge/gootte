@@ -1,8 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import type { Feature, FeatureTicket } from "@gootte/contract";
 import { parseNewTicket, parseTicket } from "../parse/feature";
-import type { BacklogTaskDoc } from "../parse/backlog";
-import { applyBacklogStatus } from "./backlog-join";
+import { finalizeFeatureStatus } from "./finalize-status";
 import { buildFeature, buildFeatures, countOpenFeatures, sortFeatures } from "./features";
 
 /** 티켓 파일 한 장 합성 — 상단 두 줄이 서식의 전부다(triage-labels). */
@@ -307,7 +306,7 @@ describe("buildFeature — 신관례 티켓도 막힘·착수 가능 판정을 �
     expect(t2?.startable).toBe(false);
   });
 
-  it("신관례끼리의 의존도 대기로 판정된다 — 빌드 시점엔 둘 다 백로그 조인 전(pending)이다", () => {
+  it("신관례끼리의 의존도 대기로 판정된다 — 빌드 시점엔 둘 다 확정 전(pending)이다", () => {
     const f = buildFeature(
       docs([], [
         { file: "T01.md", body: "# T01 — a" },
@@ -427,7 +426,7 @@ describe("buildFeatures — 기능을 넘는 markdown 링크 선행(cross-featur
   });
 });
 
-describe("buildFeatures+applyBacklogStatus — 기능을 넘는 링크가 신관례 대상에서도 풀린다(T03)", () => {
+describe("buildFeatures+finalizeFeatureStatus — 기능을 넘는 링크가 신관례 대상에서도 풀린다(T03)", () => {
   const docs = (
     slug: string,
     newTickets: readonly { file: string; body: string }[],
@@ -439,24 +438,7 @@ describe("buildFeatures+applyBacklogStatus — 기능을 넘는 링크가 신관
     newTickets: newTickets.map((t) => parseNewTicket(t.file, t.body)),
   });
 
-  const task = (overrides: Partial<BacklogTaskDoc>): BacklogTaskDoc => ({
-    id: "proj-blocker",
-    checked: false,
-    section: "queued",
-    repo: "proj",
-    url: null,
-    since: null,
-    note: "",
-    
-    
-    ...overrides,
-  });
-  const PARENT = task({
-    id: "proj-blocker",
-    note: "Artifacts: projects/proj/docs/features/blocker-feature/.",
-  });
-
-  it("🔴 다른 기능의 신관례 티켓을 Depends on 으로 건 티켓은, 그 선행이 완료로 조인된 뒤 착수 가능이다", () => {
+  it("🔴 다른 기능의 신관례 티켓을 Depends on 으로 건 티켓은, 그 선행이 완료로 확정된 뒤 착수 가능이다", () => {
     // [T03](../../blocker-feature/tickets/T03.md) 은 예전엔 아예 안 풀렸다(정규식이 issues 만 알았다).
     const built = buildFeatures([
       docs("blocker-feature", [{ file: "T03.md", body: "# T03 — 선행" }]),
@@ -467,7 +449,7 @@ describe("buildFeatures+applyBacklogStatus — 기능을 넘는 링크가 신관
         },
       ]),
     ]);
-    // 조인 전에는 둘 다 pending 이므로 막혀 있다.
+    // 확정 전에는 둘 다 pending 이므로 막혀 있다.
     const waiterBefore = built.find((f) => f.slug === "waiter-feature")!.newTickets?.[0];
     expect(waiterBefore?.startable).toBe(false);
 
@@ -481,17 +463,13 @@ describe("buildFeatures+applyBacklogStatus — 기능을 넘는 링크가 신관
         },
       ]),
     ]);
-    const joined = applyBacklogStatus(
-      builtWithDone,
-      [PARENT, task({ id: "proj-blocker-t03", section: "done", checked: true })],
-      "proj",
-    );
-    const waiter = joined.find((f) => f.slug === "waiter-feature")!.newTickets?.[0];
+    const finalized = finalizeFeatureStatus(builtWithDone);
+    const waiter = finalized.find((f) => f.slug === "waiter-feature")!.newTickets?.[0];
     expect(waiter?.waitingOn).toEqual([]);
     expect(waiter?.startable).toBe(true);
   });
 
-  it("신관례 대상이 아직 미완(Queued)이면 계속 막힌다 — 해제는 완료 뿐이다", () => {
+  it("신관례 대상이 아직 미완이면 계속 막힌다 — 해제는 완료 뿐이다", () => {
     const built = buildFeatures([
       docs("blocker-feature", [{ file: "T03.md", body: "# T03 — 선행" }]),
       docs("waiter-feature", [
@@ -501,12 +479,8 @@ describe("buildFeatures+applyBacklogStatus — 기능을 넘는 링크가 신관
         },
       ]),
     ]);
-    const joined = applyBacklogStatus(
-      built,
-      [PARENT, task({ id: "proj-blocker-t03", section: "queued" })],
-      "proj",
-    );
-    const waiter = joined.find((f) => f.slug === "waiter-feature")!.newTickets?.[0];
+    const finalized = finalizeFeatureStatus(built);
+    const waiter = finalized.find((f) => f.slug === "waiter-feature")!.newTickets?.[0];
     expect(waiter?.waitingOn).toEqual([
       "[T03](../../blocker-feature/tickets/T03.md)",
     ]);

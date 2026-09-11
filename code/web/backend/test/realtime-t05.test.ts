@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { FeaturesResponse, type Feature } from "@gootte/contract";
-import { applyBacklogStatus } from "@gootte/core";
+import { finalizeFeatureStatus } from "@gootte/core";
 import { readFeatures } from "@gootte/core-io";
 import { createApp } from "../src/app";
 import { createLiveHub, type LiveSocket } from "../src/live";
@@ -63,12 +63,11 @@ describe("realtime — 문서 변경(Time: 기록) → 증분 갱신 → 스냅�
     // 방송을 잡는다. 각 `project` alpha 방송 시점에 서빙될 스냅샷 상태를 동기로 찍는다 —
     // 즉시 방송은 아직 낡은 스냅샷(pending)을, 갱신 후 방송은 새 값(done)을 싣는지 본다.
     const servedAtBroadcast: string[] = [];
-    // 스냅샷은 raw readFeatures 출력(status 는 applyBacklogStatus 가 Time: 에서 굴린다) — 캡처 시
-    // 같은 변환을 거쳐 실제 서빙 상태를 본다(Time: → done 은 여기서 계산된다).
+    // 스냅샷은 raw readFeatures 출력 — 캡처 시 같은 확정을 거쳐 실제 서빙 상태를 본다(Time: → done 은 여기서 계산된다).
     const servedStatus = (): string => {
       const snap = snapshotFeatures(dataDir, "alpha", copies);
       if (!snap) return "none";
-      return applyBacklogStatus(snap, [], "", "2026-08-30T00:00:00Z")[0]?.newTickets?.[0]?.status ?? "none";
+      return finalizeFeatureStatus(snap, "2026-08-30T00:00:00Z")[0]?.newTickets?.[0]?.status ?? "none";
     };
     const client: LiveSocket = {
       send: (d) => {
@@ -128,7 +127,7 @@ describe("realtime — 문서 변경(Time: 기록) → 증분 갱신 → 스냅�
     const servedStatus2 = (): string => {
       const snap = snapshotFeatures(dataDir, "work-project", copies);
       if (!snap) return "none";
-      return applyBacklogStatus(snap, [], "", "2026-08-30T00:00:00Z")[0]?.newTickets?.[0]?.status ?? "none";
+      return finalizeFeatureStatus(snap, "2026-08-30T00:00:00Z")[0]?.newTickets?.[0]?.status ?? "none";
     };
     const client: LiveSocket = {
       send: (d) => {

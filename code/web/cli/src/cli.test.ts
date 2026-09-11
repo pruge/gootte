@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, it, expect } from "vitest";
 import {
-  backlogFile,
   discoverProjects,
   readPlacements,
   readSteps,
@@ -345,53 +344,26 @@ describe("cli — step · step --clear · board · next(plan-board/05)", () => {
 });
 
 /**
- * firstmate 홈 백로그 픽스처 — 부모 작업 하나(메모에 `docs/features/<기능>/`)와 자식 티켓 둘.
- * T01 은 done, T02 는 queued — 조인이 얹히면 T01 만 사라져야 한다.
+ * 상태 확정(the-terminal-agrees-with-the-screen T01) — CLI `board`·`next` 가 화면과 **같은**
+ * 판정 자리(`finalizeFeatureStatus`)를 지나는가. 신관례(`tickets/T<NN>.md`) 티켓의 상태 단일 출처는
+ * 티켓 문서의 `Time:` 줄이다 — 확정 없이 CLI 는 이미 끝난 티켓을 미완료로 보고 next 가 다시 내놓는다(spec §문제).
  */
-function backlogWithT01Done(home: string, repo: string, feature: string): void {
-  const parent = `${repo}-plan`;
-  mkdirSync(join(home, "data"), { recursive: true });
-  writeFileSync(
-    backlogFile(home),
-    [
-      "# Backlog",
-      "",
-      "## Done",
-      `- [x] ${parent} - parent https://x/pr/9 (repo: ${repo}) (kind: plan) (merged 2026-08-20)`,
-      `    Artifacts: docs/features/${feature}/`,
-      `- [x] ${parent}-t01 - 첫 티켓 https://x/pr/1 (repo: ${repo}) (kind: ship) (merged 2026-08-21)`,
-      "",
-      "## Queued",
-      `- [ ] ${parent}-t02 - 둘째 티켓 (repo: ${repo})`,
-      "",
-    ].join("\n"),
-  );
-}
-
-/**
- * 백로그 상태 조인(the-terminal-agrees-with-the-screen T01) — CLI `board`·`next` 가 화면과 **같은**
- * 판정 자리(`applyBacklogStatus`)를 지나는가. 신관례(`tickets/T<NN>.md`) 티켓의 상태 단일 출처는
- * firstmate 홈 백로그다 — 조인 없이 CLI 는 이미 끝난 티켓을 미완료로 보고 next 가 다시 내놓는다(spec §문제).
- */
-describe("cli — board·next 에 백로그 조인(T01)", () => {
+describe("cli — board·next 에 상태 확정(T01)", () => {
   let proj: string;
   let dataDir: string;
-  let home: string;
 
   beforeEach(() => {
     proj = mkdtempSync(join(tmpdir(), "gootte-backlog-proj-"));
     dataDir = mkdtempSync(join(tmpdir(), "gootte-backlog-db-"));
-    home = mkdtempSync(join(tmpdir(), "gootte-backlog-home-"));
     w(proj, "AGENTS.md", "# AGENTS\n");
     // T04 — 신관례 티켓은 Time: 줄로 상태 판정. T01은 finishedAt 있음(done), T02는 없음(pending)
     w(proj, "docs/features/g/tickets/T01.md", "# T01 — c\n\n## Depends on\n- nothing\n\n**Time:** started=2026-08-25T14:00:00+09:00 finished=2026-08-25T15:00:00+09:00\n");
     w(proj, "docs/features/g/tickets/T02.md", "# T02 — d\n\n## Depends on\n- nothing\n");
     activate(dataDir, slug(), "g");
-    backlogWithT01Done(home, slug(), "g");
     writeSettings(dataDir, {});
   });
   afterEach(() => {
-    for (const p of [proj, dataDir, home]) rmSync(p, { recursive: true, force: true });
+    for (const p of [proj, dataDir]) rmSync(p, { recursive: true, force: true });
   });
 
   const slug = () => basename(proj);
@@ -406,20 +378,6 @@ describe("cli — board·next 에 백로그 조인(T01)", () => {
   it("board — 🔴 전부 끝난(Time: finishedAt) 신관례 기능은 완료 칸으로 넘어간다(자동 닫힘 같은 자리)", () => {
     // T02 에도 finishedAt 을 넣어 done 으로 만든다.
     w(proj, "docs/features/g/tickets/T02.md", "# T02 — d\n\n## Depends on\n- nothing\n\n**Time:** started=2026-08-25T14:00:00+09:00 finished=2026-08-25T15:00:00+09:00\n");
-    // 백로그도 done 으로 업데이트
-    writeFileSync(
-      backlogFile(home),
-      [
-        "# Backlog",
-        "",
-        "## Done",
-        `- [x] ${slug()}-plan - parent (repo: ${slug()})`,
-        `    Artifacts: docs/features/g/`,
-        `- [x] ${slug()}-plan-t01 - 첫 (repo: ${slug()})`,
-        `- [x] ${slug()}-plan-t02 - 둘째 (repo: ${slug()})`,
-        "",
-      ].join("\n"),
-    );
     const out = boardText([slug()], dataDir, proj);
     expect(out).toContain("## 완료 (1)");
     expect(out).toContain("- g");
@@ -433,26 +391,17 @@ describe("cli — board·next 에 백로그 조인(T01)", () => {
     });
   });
 
-  it("홈 미설정(설정 파일 없음) — 명령이 죽지 않고 조인만 꺼진다(INV-U1)", () => {
+  it("설정 파일 없음 — 명령이 죽지 않는다(INV-U1)", () => {
     const bareDataDir = mkdtempSync(join(tmpdir(), "gootte-bare-db-"));
     try {
       activate(bareDataDir, slug(), "g");
       stepText([slug(), "g/T01", "1"], bareDataDir, proj);
       stepText([slug(), "g/T02", "2"], bareDataDir, proj);
-      // 🔴 T04 — 홈이 없어 백로그 조인이 꺼져도 티켓 문서의 Time: 줄(finishedAt)이 SoT라 T01 은
-      // 여전히 done 이다. 조인이 안 돌아간다고 미완료로 퇴행하지 않는다 — 명령도 안 죽는다.
+      // 🔴 T04 — 티켓 문서의 Time: 줄(finishedAt)이 SoT라 T01 은 여전히 done 이다. 명령도 안 죽는다.
       expect(nextText([slug()], bareDataDir, proj)).toBe("g/T02\td");
     } finally {
       rmSync(bareDataDir, { recursive: true, force: true });
     }
-  });
-
-  it("백로그 파일이 아직 없어도 조용히 조인 없이 지난다", () => {
-    rmSync(backlogFile(home));
-    stepText([slug(), "g/T01", "1"], dataDir, proj);
-    stepText([slug(), "g/T02", "2"], dataDir, proj);
-    // 🔴 T04 — 백로그가 없어도 티켓 문서의 finishedAt 이 SoT 라 T01 은 done 으로 남는다.
-    expect(nextText([slug()], dataDir, proj)).toBe("g/T02\td");
   });
 });
 
@@ -590,7 +539,7 @@ describe("cli — frontier(착수 가능 티켓 목록)", () => {
     expect(lines.some((l) => l.startsWith("gamma\tT01\t"))).toBe(false);
   });
 
-  it("레코드로 완료된 선행은 신관례 티켓을 해제한다 — 백로그 조인 뒤 재판정 회귀", () => {
+  it("레코드로 완료된 선행은 신관례 티켓을 해제한다 — 확정 뒤 재판정 회귀", () => {
     // an-fsm-can-hold-other-fsms/T10 실측: MD 파싱 시점엔 선행이 전부 pending 이라 막혀 보이지만,
     // v2 레코드로 끝나면 frontier 에 들어와야 한다(INV-3).
     w(proj, "docs/features/gamma/tickets/T01.md", "# 막힘\n\n**Blocked by:** T02\n");

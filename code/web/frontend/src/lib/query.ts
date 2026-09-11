@@ -21,14 +21,18 @@ import {
 import { useToast } from "./toast";
 
 const PERSIST_KEY = "gootte-query-cache-v1";
-// 영속 캐시가 앱 재시작(브라우저 리로드)에서 살아남는 보관 기한 — 이 안에서는 GC 되지 않는다.
-const PERSIST_GC = 1000 * 60 * 60 * 24; // 24h
+// 메모리 보관 기한 — 이 안에서는 GC 되지 않는다. 24h 였으나 켜둔 탭의 상주 증가(memory-diet
+// T03)라 10분으로 줄인다. 최신값 공급은 WS invalidate 가 맡으니 stale 걱정은 없다(INV-3).
+const GC_TIME = 1000 * 60 * 10; // 10m
+// 영속 저장본에 싣는 신선도 상한 — 1시간 넘게 안 읽은 쿼리는 저장하지 않는다. 켜둘수록 쌓이는
+// 낡은 프로젝트 캐시가 localStorage 와 다음 기동 힙을 함께 불리는 것을 막는다.
+const PERSIST_FRESH_MS = 1000 * 60 * 60; // 1h
 
 /** 서버상태 SoT = TanStack Query 캐시(INV-1 — 별 스토어 복제 X). 2b WS 가 invalidate 로 확장. */
 export function makeQueryClient(): QueryClient {
   const qc = new QueryClient({
     defaultOptions: {
-      queries: { staleTime: 5_000, gcTime: PERSIST_GC, retry: 1, refetchOnWindowFocus: true },
+      queries: { staleTime: 5_000, gcTime: GC_TIME, retry: 1, refetchOnWindowFocus: false },
     },
   });
   // 🔴 동기 hydrate — 첫 렌더 전에 영속본을 캐시에 앉혀 딱 한 프레임도 빈 화면이 안 뜬다(T07).
@@ -62,15 +66,19 @@ function attachSaver(qc: QueryClient): void {
     timer = setTimeout(() => {
       timer = null;
       try {
+        const cutoff = Date.now() - PERSIST_FRESH_MS;
         const dehydrated = dehydrate(qc, {
           shouldDehydrateQuery: (q) =>
-            q.queryKey[0] !== "featureDoc" && q.state.status === "success" && q.state.data !== undefined,
+            q.queryKey[0] !== "featureDoc" &&
+            q.state.status === "success" &&
+            q.state.data !== undefined &&
+            (q.state.dataUpdatedAt ?? 0) >= cutoff,
         });
         localStorage.setItem(PERSIST_KEY, JSON.stringify(dehydrated));
       } catch {
         // quota 초과 등 — 영속 실패는 치명하지 않다(다음 fetches 가 메운다)
       }
-    }, 500);
+    }, 5000);
   });
 }
 
@@ -93,6 +101,20 @@ export function useProjects() {
   return useQuery({ queryKey: qk.projects, queryFn: fetchProjects });
 }
 
+/**
+ * 넓은 무효화의 한 자리(memory-diet T04) — "전부 다시 읽기" 가 필요할 때(WS 재연결 흡수·
+ * 설정 저장) 이 함수를 쓴다. 인자 없는 `invalidateQueries()` 대신 키 지정으로 좁힌다.
+ *
+ * 닫힌 드로어의 `featureDoc`(보고 있지 않은 문서 본문)은 빼고, **열린 드로어(active)** 의
+ * 문서는 포함한다 — 닫힌 문서는 다음에 열 때 staleTime 으로 다시 읽으므로 stale 이 남지 않고
+ * (INV-3), 큰 본문을 매번 다시 파싱하는 refetch 폭풍만 걷힌다.
+ */
+export function invalidateLiveQueries(qc: QueryClient): Promise<void> {
+  return qc.invalidateQueries({
+    predicate: (q) => q.queryKey[0] !== "featureDoc" || q.isActive(),
+  });
+}
+
 /** 설정(tauri-desktop-app T02) — 감시 루트·firstmate 홈. */
 export function useSettings() {
   return useQuery({ queryKey: qk.settings, queryFn: fetchSettings });
@@ -109,8 +131,8 @@ export function useSaveSettings() {
     mutationFn: saveSettings,
     onSuccess: () => {
       // 설정이 바뀌면 그것을 먹는 전부(프로젝트 발견·기능 목록·판)가 낡는다(INV-3) —
-      // 저장 즉시 적용은 화면이 다시 물어 보는 것으로 완성된다.
-      void qc.invalidateQueries();
+      // 저장 즉시 적용은 화면이 다시 물어 보는 것으로 완성된다. 닫힌 문서는 뺀다(T04).
+      void invalidateLiveQueries(qc);
     },
   });
 }
@@ -125,7 +147,7 @@ export function useBlockedCopies() {
   return useMutation({
     mutationFn: (blockedCopies: string[]) => saveSettings({ blockedCopies }),
     onSuccess: () => {
-      void qc.invalidateQueries();
+      void invalidateLiveQueries(qc);
     },
   });
 }

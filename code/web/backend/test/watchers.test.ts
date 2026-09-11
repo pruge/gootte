@@ -43,8 +43,6 @@ function makeProject(root: string, slug: string, feature: string, tickets: Recor
 describe("startWatchers", () => {
   let root = "";
   let dataDir = "";
-  let home = "";
-  const mates: string[] = [];
   let watchers: Watchers | null = null;
 
   afterEach(async () => {
@@ -52,12 +50,8 @@ describe("startWatchers", () => {
     watchers = null;
     if (root) rmSync(root, { recursive: true, force: true });
     if (dataDir) rmSync(dataDir, { recursive: true, force: true });
-    if (home) rmSync(home, { recursive: true, force: true });
-    for (const m of mates) rmSync(m, { recursive: true, force: true });
-    mates.length = 0;
     root = "";
     dataDir = "";
-    home = "";
     clearDiscoverCache();
   });
 
@@ -79,11 +73,9 @@ describe("startWatchers", () => {
     // 그래서 가짜 감시기를 주입해 fs 없이, 결정적으로 잰다.
     let projectsClosed = false;
     let planClosed = false;
-    let backlogClosed = false;
     watchers = startWatchers({
       roots: [],
       dataDir: "",
-      firstmateHome: "/tmp/어딘가",
       onChange: () => {},
       watchProjectsImpl: () => ({
         async close() {
@@ -95,18 +87,12 @@ describe("startWatchers", () => {
           planClosed = true;
         },
       }),
-      watchBacklogImpl: () => ({
-        async close() {
-          backlogClosed = true;
-        },
-      }),
     });
 
     await watchers.close();
 
     expect(projectsClosed).toBe(true);
     expect(planClosed).toBe(true);
-    expect(backlogClosed).toBe(true);
   });
 
   /** 시작된 가짜 감시기를 전부 기록하는 주입 impl — 닫힘 추적용. */
@@ -130,13 +116,11 @@ describe("startWatchers", () => {
     // 감시기를 세운다 — 먼저 앉은 쪽은 영영 닫히지 않은 채 낡은 뿌리의 신호를 계속 낸다.
     // 호출을 겹쳐 불러 그 누수를 결정적으로 잰다.
     const p = track<typeof import("@gootte/core-io").watchProjects>();
-    const b = track<typeof import("@gootte/core-io").watchBacklog>();
     watchers = startWatchers({
       roots: [],
       dataDir: "",
       onChange: () => {},
       watchProjectsImpl: p.impl,
-      watchBacklogImpl: b.impl,
       watchPlanDbImpl: () => ({
         async close() {},
       }),
@@ -145,56 +129,6 @@ describe("startWatchers", () => {
     await Promise.all([watchers.rebind([]), watchers.rebind([])]);
     expect(p.started.length).toBe(3); // 처음 것 + 재묶음 둘
     expect(p.started.filter((w) => !w.closed)).toEqual([p.started[p.started.length - 1]]);
-
-    await Promise.all([watchers.rebindBacklog(null), watchers.rebindBacklog(null)]);
-    expect(b.started.length).toBe(3);
-    expect(b.started.filter((w) => !w.closed)).toEqual([b.started[b.started.length - 1]]);
-  });
-
-  test("명부에 등록된 세컨드메이트 홈마다 백로그 감시기를 건다(every-home T02)", async () => {
-    root = mkdtempSync(join(tmpdir(), "gootte-watchers-"));
-    const mate1 = mkdtempSync(join(tmpdir(), "gootte-watchers-mate1-"));
-    const mate2 = mkdtempSync(join(tmpdir(), "gootte-watchers-mate2-"));
-    mates.push(mate1, mate2);
-    mkdirSync(join(root, "data"), { recursive: true });
-    // 실물 명부 모양(2026-08-26) — home: 줄이 감시 대상이 된다.
-    writeFileSync(join(root, "data", "secondmates.md"), `home: ${mate1}\nhome: ${mate2}\n`);
-
-    const b = track<typeof import("@gootte/core-io").watchBacklog>();
-    watchers = startWatchers({
-      roots: [],
-      dataDir: "",
-      firstmateHome: root,
-      onChange: () => {},
-      watchProjectsImpl: () => ({ async close() {} }),
-      watchPlanDbImpl: () => ({ async close() {} }),
-      watchBacklogImpl: b.impl,
-    });
-
-    // 지도부 + 세컨드메이트 둘 = 셋. 재묶음으로 null(명부 없음) 이 오면 지도부 자리 하나만.
-    expect(b.started.length).toBe(3);
-    await watchers.rebindBacklog(null);
-    expect(b.started.length).toBe(4);
-    expect(b.started.filter((w) => !w.closed).length).toBe(1);
-  });
-
-  test("세컨드메이트 홈 경로가 사라져도 폴백 신호가 나지 않는다(every-home T02 — 조용히 건너뛴다)", async () => {
-    // 실제 watchBacklog 을 쓴다 — 없는 경로면 생성 중 동기로 onError 를 울리지만 그것은
-    // 세컨드메이트 감시기이고, 폴백 배선은 지도부 감시기에만 연결되어 있다.
-    root = mkdtempSync(join(tmpdir(), "gootte-watchers-"));
-    mkdirSync(join(root, "data"), { recursive: true });
-    writeFileSync(join(root, "data", "secondmates.md"), "home: /사라진/세컨드메이트/홈\n");
-    dataDir = mkdtempSync(join(tmpdir(), "gootte-watchers-db-"));
-    const events: ChangeEvent[] = [];
-    watchers = startWatchers({
-      roots: [],
-      dataDir,
-      firstmateHome: root,
-      onChange: (e) => events.push(e),
-    });
-    await sleep(150);
-
-    expect(events.filter((e) => e.kind === "watch-fallback")).toEqual([]);
   });
 
   /**
@@ -255,70 +189,12 @@ describe("startWatchers", () => {
       ]);
     });
 
-    test("data/ 없는 홈으로 재묶으면 폴백이 유지되고, data/ 가 생긴 뒤의 재묶음에서 회복한다", async () => {
-      // watchBacklog 은 <home>/data/ 가 없으면 **생성 중 동기로** onError 를 울린다. 재묶음이
-      // 그 방금 표시를 덮어 버리면 폴백 폴러가 이르게 내려 조용한 stale(INV-3)이 된다.
-      // git-removal/T10 이후 firstmateHome 은 설정 칸이 아니다 — 백로그 재묶음은
-      // `rebindBacklog`(still-alive API)를 직접 본다.
-      root = mkdtempSync(join(tmpdir(), "gootte-watchers-"));
-      dataDir = mkdtempSync(join(tmpdir(), "gootte-watchers-db-"));
-      home = mkdtempSync(join(tmpdir(), "gootte-watchers-home-")); // 일부러 data/ 를 만들지 않는다
-      makeProject(root, "alpha", "shipped", {});
-      const events: ChangeEvent[] = [];
-      watchers = startWatchers({
-        roots: [root],
-        dataDir,
-        firstmateHome: home,
-        onChange: (e) => events.push(e),
-      });
-      expect(events).toEqual([{ kind: "watch-fallback", active: true }]);
-
-      await watchers.rebindBacklog(home); // data/ 가 아직 없다 — 동기 실패가 도로 표시된다
-      await sleep(100); // 재묶음의 마이크로태스크 뒤처리가 모두 흐른 뒤의 최종 상태를 본다
-      // 동기 실패 위에 시작 뒤 해제가 얹히면 여기서 spurious active:false 가 찍힌다.
-      expect(events).toEqual([{ kind: "watch-fallback", active: true }]);
-
-      mkdirSync(join(home, "data"), { recursive: true }); // 감시 가능해졌다 — 같은 길로 회복하는가
-      await watchers.rebindBacklog(home);
-      await sleep(100);
-      expect(events).toEqual([
-        { kind: "watch-fallback", active: true },
-        { kind: "watch-fallback", active: false },
-      ]);
-    });
-
-    test("다른 소스의 재묶음은 폴백을 덮지 않고, 해당 소스의 재묶음만 회복시킨다", async () => {
-      const events: ChangeEvent[] = [];
-      const p = errorFiringProjects();
-      watchers = startWatchers({
-        roots: [],
-        dataDir,
-        onChange: (e) => events.push(e),
-        watchProjectsImpl: p.impl,
-        watchPlanDbImpl: () => ({ async close() {} }),
-      });
-      p.emitError(); // 문서 감시기 고장
-
-      // 백로그 재묶음으로 문서 고장이 회복된 것처럼 속이면 폴러가 이르게 내려간다(INV-3).
-      await watchers.rebindBacklog(null);
-      expect(events.filter((e) => e.kind === "watch-fallback")).toEqual([
-        { kind: "watch-fallback", active: true },
-      ]);
-
-      await watchers.rebind([]); // 망가진 소스 자체를 재묶음할 때만 회복한다
-      expect(events.filter((e) => e.kind === "watch-fallback")).toEqual([
-        { kind: "watch-fallback", active: true },
-        { kind: "watch-fallback", active: false },
-      ]);
-    });
-
     test("폴백 없던 평시엔 watch-fallback 을 방송하지 않는다", async () => {
       const events: ChangeEvent[] = [];
       dataDir = mkdtempSync(join(tmpdir(), "gootte-watchers-db-"));
       watchers = startWatchers({
         roots: [],
         dataDir,
-        firstmateHome: null,
         onChange: (e) => events.push(e),
       });
       await sleep(300);

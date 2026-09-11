@@ -100,8 +100,9 @@ export const FeatureTicket = z.object({
   // ADR-0002(pause) — 일시중단 구간(ISO 8601 쌍). `gootte pause`/`resume` 이 기록하고,
   // `elapsedPhrase` 가 걸린 시간에서 뺀다. 미재개 구간은 resumedAt 이 null(아직 멈춤).
   pauses: z.array(z.object({ pausedAt: z.string(), resumedAt: z.string().nullable() })).optional(),
-  // T04 — 백로그 조인 실패 여부. 신관례(`tickets/`) 티켓만 해당 — 조인 실패 시 배지 파생에서 null 을 내기 위해 쓴다.
-  // 구관례(`issues/`) 티켓은 백로그 조인을 쓰지 않으므로 항상 false/undefined.
+  // T04 — 상태 확정 실패 여부(예비 칸). 신관례(`tickets/`) 티켓만 해당 — 현재 확정은
+  // 문서 자급이라 항상 false 다. 응답 모양을 깨지 않으려고 칸은 유지한다.
+  // 구관례(`issues/`) 티켓은 확정을 쓰지 않으므로 항상 false/undefined.
   joinFailed: z.boolean().optional(),
 });
 export type FeatureTicket = z.infer<typeof FeatureTicket>;
@@ -134,9 +135,9 @@ export const Feature = z.object({
   title: z.string(), // spec.md 표제(없으면 slug)
   // 기능 수준 상태 셋 — 출처가 관례로 갈린다(the-header-agrees-with-its-tickets D2).
   // 구관례(`issues/`): spec.md 의 손으로 쓴 `Status:` 줄(문서가 SoT) — verbatim.
-  // 신관례(`tickets/`): 티켓 상태에서 파생(applyBacklogStatus 의 deriveHeaderBadge) —
+  // 신관례(`tickets/`): 티켓 상태에서 파생(finalizeFeatureStatus 의 deriveHeaderBadge) —
   // `sourceStatus` 는 계산 라벨("완료"·"처리중"·"남음"), `statusKnown` 은 언제나 true.
-  // 조인 실패면 null/false — 추측하지 않는다(D5). 파생물이라 어디에도 저장하지 않는다(INV-1).
+  // 파생물이라 어디에도 저장하지 않는다(INV-1).
   status: TodoStatus,
   sourceStatus: z.string().nullable().default(null),
   statusKnown: z.boolean(),
@@ -261,8 +262,6 @@ export type FeatureDocResponse = z.infer<typeof FeatureDocResponse>;
  * `projects` = 프로젝트 추가/삭제 → projects 쿼리 invalidate(+서버 discover-cache bust).
  * `plan` = gootte 자기 계획 저장소(`plan.db`)가 바뀌었다(드래그 또는 CLI) → project 는 없다,
  *   파일 워처는 어느 프로젝트인지 모르니(development-order/07) `plan` 쿼리 전부 invalidate.
- * `backlog` = firstmate 홈 백로그 파일이 바뀌었다(tauri-desktop-app T03) → 백로그 조인을 다시
- *   읽어라(T04). 어느 프로젝트인지 모르는 coarse 신호다 — 조인하는 뷰 전부가 다시 읽는다.
  * `ticket` = git 히스토리에서 파생한 티켓 완료(done) 집합이 바뀌었다(ticket-done-from-git T02,
  *   `origin/main` SHA 변경). `projects` 를 안 쓰는 이유는 done 변화가 프로젝트 목록 변경이 아니라
  *   서로 다른 신호라 화면이 얹는 쿼리를 가려야 해서(ticket-done-from-git 검토 3). 수신자는
@@ -275,7 +274,6 @@ export const ChangeEvent = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("project"), project: z.string() }),
   z.object({ kind: z.literal("projects") }),
   z.object({ kind: z.literal("plan") }),
-  z.object({ kind: z.literal("backlog") }),
   z.object({ kind: z.literal("watch-fallback"), active: z.boolean() }),
 ]);
 export type ChangeEvent = z.infer<typeof ChangeEvent>;

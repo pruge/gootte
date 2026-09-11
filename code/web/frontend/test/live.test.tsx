@@ -92,22 +92,6 @@ describe("useLiveSync", () => {
     expect(invalidated(qc, ["plan", "alpha"])).toBe(false);
   });
 
-  it("backlog 메시지(tauri-desktop-app T03) → 전체 invalidate(조인이 어느 뷰에 섞일지 모르는 coarse)", () => {
-    qc.setQueryData(["projects"], []);
-    qc.setQueryData(["plan", "alpha"], 1);
-    qc.setQueryData(["doc", "alpha", "todo", "x"], 1);
-    render(<Harness qc={qc} />);
-    const ws = MockWS.instances[0]!;
-    ws.open();
-
-    expect(invalidated(qc, ["projects"])).toBe(false);
-    ws.emit({ kind: "backlog" });
-    // 백로그 조인(T04)은 어느 프로젝트 줄에 섞일지 모른다 — 결정적 리더가 전부 다시 읽게 한다(INV-4).
-    expect(invalidated(qc, ["projects"])).toBe(true);
-    expect(invalidated(qc, ["plan", "alpha"])).toBe(true);
-    expect(invalidated(qc, ["doc", "alpha", "todo", "x"])).toBe(true);
-  });
-
   it("watch-fallback(tauri-desktop-app T03): active:true → 주기 풀스캔 폴러, active:false → 해제(CPU 안정)", () => {
     vi.useFakeTimers();
     const spy = vi.spyOn(qc, "invalidateQueries");
@@ -143,9 +127,10 @@ describe("useLiveSync", () => {
     expect(invalidated(qc, ["plan", "alpha"])).toBe(false);
   });
 
-  it("끊기면 재연결 + 재연결 open 시 전체 invalidate(놓친 변경 흡수)", () => {
+  it("끊기면 재연결 + 재연결 open 시 놓친 변경 흡수 — 닫힌 문서(featureDoc)는 다시 읽지 않는다(T04)", () => {
     vi.useFakeTimers();
     qc.setQueryData(["plan", "alpha"], 1);
+    qc.setQueryData(["featureDoc", "alpha", "f", "spec.md"], "본문"); // 관찰자 없음 = 닫힌 문서
     render(<Harness qc={qc} />);
     const ws0 = MockWS.instances[0]!;
     ws0.open(); // first open — invalidate 안 함
@@ -153,7 +138,9 @@ describe("useLiveSync", () => {
     vi.advanceTimersByTime(500);
     expect(MockWS.instances.length).toBe(2); // 재연결됨
 
-    MockWS.instances[1]!.open(); // 재연결 open → 전체 invalidate
+    MockWS.instances[1]!.open(); // 재연결 open → 흡수
     expect(invalidated(qc, ["plan", "alpha"])).toBe(true);
+    // 닫힌 문서는 다시 읽지 않는다 — 다음에 열 때 staleTime 으로 읽는다(INV-3).
+    expect(invalidated(qc, ["featureDoc", "alpha", "f", "spec.md"])).toBe(false);
   });
 });

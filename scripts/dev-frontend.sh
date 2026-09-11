@@ -13,4 +13,7 @@ eval "$PORTS_ENV"
 
 cd "$ROOT_DIR"
 export VITE_BACKEND_URL="http://localhost:$BACKEND_PORT"
+# 🔴 프로세스 표시 이름 — dev 서버도 Activity Monitor 에 `gootte-front` 로 뜬다.
+export GOOTTE_PROC_TITLE="gootte-front"
+export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--import $ROOT_DIR/code/web/scripts/proc-title.mjs"
 exec pnpm -C code/web/frontend run dev --port "$FRONTEND_PORT"

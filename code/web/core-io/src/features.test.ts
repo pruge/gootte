@@ -3,8 +3,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applyBacklogStatus } from "@gootte/core";
-import { clearFeatureCache, readFeatures, readFeatureDoc } from "./features";
+import { finalizeFeatureStatus } from "@gootte/core";
+import { clearFeatureCache, folderCacheSize, readFeatures, readFeatureDoc } from "./features";
 
 let repo: string;
 
@@ -212,13 +212,13 @@ describe("readFeatures — docs/features/ 를 읽는다", () => {
 });
 
 describe("readFeatures — 신관례(T04): tickets/·grill.md/design/·wayfinder.md", () => {
-  it("tickets/T<NN>.md 를 newTickets 로 뽑는다 — 파일에 상태가 없다(백로그가 SoT)", () => {
+  it("tickets/T<NN>.md 를 newTickets 로 뽑는다 — 파일에 상태가 없다(문서가 SoT)", () => {
     spec("tauri-desktop-app", "# 데스크톱 앱\n");
-    newTicket("tauri-desktop-app", "T04.md", "# T04 — 신관례 문서 표시 + 백로그 상태 조인\n\n## Goal\n본문\n");
+    newTicket("tauri-desktop-app", "T04.md", "# T04 — 신관례 문서 표시\n\n## Goal\n본문\n");
 
     const [f] = readFeatures([repo]);
     expect(f?.newTickets?.map((t) => [t.num, t.slug, t.path, t.title, t.status, t.docConvention, t.joinFailed])).toEqual([
-      ["04", "T04", "tickets/T04.md", "신관례 문서 표시 + 백로그 상태 조인", "pending", "tickets", false],
+      ["04", "T04", "tickets/T04.md", "신관례 문서 표시", "pending", "tickets", false],
     ]);
   });
 
@@ -247,7 +247,7 @@ describe("readFeatures — 신관례(T04): tickets/·grill.md/design/·wayfinder
     expect(t1?.blockedBy).toEqual([]);
     expect(t1?.startable).toBe(true);
     expect(t2?.blockedBy).toEqual(["01"]);
-    expect(t2?.waitingOn).toEqual(["01"]); // 빌드 시점의 신관례 상태는 백로그 조인 전(pending)
+    expect(t2?.waitingOn).toEqual(["01"]); // 빌드 시점의 신관례 상태는 확정 전(pending)
     expect(t2?.startable).toBe(false);
     expect(t2?.unreadableBlockedBy).toEqual([]);
   });
@@ -461,9 +461,9 @@ function copyDir(root: string, copy: string, slug: string, ticketBody?: string):
 const TICKET_NO_TIME = "# T04 — 티켓\n";
 const ticketWithTime = (started: string, finished?: string): string =>
   `# T04 — 티켓\n\nTime: started=${started}${finished ? ` finished=${finished}` : ""}\n`;
-/** 상태까지 굴려 본다(T04 3단 규칙이 Time 에서 읽는지 확인) — 백로그 없이. */
+/** 상태까지 굴려 본다(T04 3단 규칙이 Time 에서 읽는지 확인). */
 const joined = (features: ReturnType<typeof readFeatures>) =>
-  applyBacklogStatus(features, [], "", "2026-08-30T00:00:00Z")[0]?.newTickets?.[0];
+  finalizeFeatureStatus(features, "2026-08-30T00:00:00Z")[0]?.newTickets?.[0];
 
 describe("readFeatures — 여러 사본 Time: 정방향 병합 (T05)", () => {
   let tmp: string;
@@ -595,5 +595,16 @@ describe("readFeatures — 기능 폴더 단위 캐시 (read-path-redesign/T04)"
     gitc("add", "-A");
     gitc("commit", "-q", "-m", "unrelated");
     expect(readFeatures([repo]).length).toBe(before); // 결과는 같되, 다시 계산된 결과여야 한다
+  });
+
+  it("🔴 항목이 상한을 넘으면 가장 오래된 것부터 버린다 — 버려진 항목은 다시 계산된다(T05)", () => {
+    for (let i = 0; i < 120; i++) feature(`f${String(i).padStart(3, "0")}`, `# 기능 ${i}\n`);
+    const all = readFeatures([repo]).map((f) => f.slug).sort();
+    expect(all.length).toBe(122); // alpha·beta + 120
+    expect(folderCacheSize()).toBeLessThanOrEqual(100);
+    // 버려진 항목도 결과는 정확하다 — 지문 미적중으로 다시 계산될 뿐이다.
+    feature("alpha", "# 알파 고침\n\nStatus: draft\n");
+    expect(titles()["alpha"]).toBe("알파 고침");
+    expect(readFeatures([repo]).length).toBe(122);
   });
 });

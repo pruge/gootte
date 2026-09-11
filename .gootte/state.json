@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updatedAt": "2026-09-09T12:18:05.026Z",
+  "updatedAt": "2026-09-11T04:38:34.269Z",
   "openFeatures": [],
   "tickets": {
     "a-big-document-opens-fast/T01": {
@@ -912,6 +912,42 @@
     "time-records-to-state-store/T08": {
       "startedAt": "2026-09-09T10:36:05+09:00",
       "finishedAt": "2026-09-09T10:56:23+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memory-diet-drop-backlog/T01": {
+      "startedAt": "2026-09-11T13:03:56+09:00",
+      "finishedAt": "2026-09-11T13:06:01+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memory-diet-drop-backlog/T02": {
+      "startedAt": "2026-09-11T13:06:16+09:00",
+      "finishedAt": "2026-09-11T13:13:34+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memory-diet-drop-backlog/T03": {
+      "startedAt": "2026-09-11T13:13:36+09:00",
+      "finishedAt": "2026-09-11T13:15:10+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memory-diet-drop-backlog/T05": {
+      "startedAt": "2026-09-11T13:13:37+09:00",
+      "finishedAt": "2026-09-11T13:15:12+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memory-diet-drop-backlog/T04": {
+      "startedAt": "2026-09-11T13:15:13+09:00",
+      "finishedAt": "2026-09-11T13:16:52+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memory-diet-drop-backlog/T06": {
+      "startedAt": "2026-09-11T13:16:53+09:00",
+      "finishedAt": "2026-09-11T13:38:34+09:00",
       "pauses": [],
       "statusRaw": null
     }

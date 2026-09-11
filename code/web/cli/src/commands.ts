@@ -1,4 +1,4 @@
-import { allTickets, applyBacklogStatus, computeDisplaySteps, computeFrontier, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
+import { allTickets, finalizeFeatureStatus, computeDisplaySteps, computeFrontier, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
 import { type Feature, AREA_LABEL, ALL_AREAS, type BoardAreaId, type TodoStatus } from "@gootte/contract";
 import { basename, dirname, resolve } from "node:path";
 import {
@@ -8,7 +8,6 @@ import {
   effectiveProjectRoots,
   isFirstmateProject,
   migratePlanDb,
-  readBacklogTasks,
   readFeatures,
   readFeaturesWithTime,
   readPlacements,
@@ -192,19 +191,14 @@ export function stepClearText(
 
 
 /**
- * 백로그 상태 조인을 얹은 기능 목록 — 화면(backend `withBacklogStatus`)과 **같은 판정 자리**
- * (`applyBacklogStatus`, core)를 지난다(the-terminal-agrees-with-the-screen T01).
+ * 최종 상태를 확정한 기능 목록 — 화면(backend `withFinalStatus`)과 **같은 판정 자리**
+ * (`finalizeFeatureStatus`, core)를 지난다(the-terminal-agrees-with-the-screen T01).
  *
- * 🔴 신관례(`tickets/T<NN>.md`) 티켓의 상태 단일 출처는 firstmate 홈 백로그다(SoT — 파일에는
- * 상태가 없다). 이 조인 없이 CLI 는 이미 끝난 티켓을 미완료로 보고 `next` 가 다시 내놓는다.
- * firstmate 홈은 기존 설정 저장소(`settings.json` 의 `firstmateHome`, dataDir 는 CLI 기존
- * `planDataDir()` 과 같은 `GOOTTE_DATA_DIR` 규약)에서 읽는다 — 새 설정 칸·새 저장 파일 없다.
- *
- * 홈 미설정·백로그 파일 없음은 `readBacklogTasks` 가 빈 목록으로 흡수하고(INV-U1), 설정 저장소를
- * 못 읽는 것도 **조인만 꺼진다** — 계획 DB 의 고장을 board/next 전체의 죽음으로 전파하지 않는다.
+ * 🔴 신관례(`tickets/T<NN>.md`) 티켓의 상태 단일 출처는 티켓 문서다. 확정 없이 CLI 는
+ * 이미 끝난 티켓을 미완료로 보고 `next` 가 다시 내놓는다.
  */
-function withBacklogStatus(project: string, dataDir: string, features: Feature[]): Feature[] {
-  return applyBacklogStatus(features, readBacklogTasks(undefined), project);
+function withFinalStatus(features: Feature[]): Feature[] {
+  return finalizeFeatureStatus(features);
 }
 
 /**
@@ -217,8 +211,8 @@ function withBacklogStatus(project: string, dataDir: string, features: Feature[]
  * 끝난 카드가 화면을 한 번도 켜지 않고도 완료 칸으로 넘어간다. 판정(`planAutoClose`)은 그대로
  * core 하나뿐이고, 여기는 화면이 지나는 것과 같은 쓰기·재읽기 자리를 지날 뿐이다.
  *
- * 🔴 화면과 같은 자리에서 백로그 상태 조인(`withBacklogStatus`, T01)도 태운다 — 신관례 티켓의
- * 완료가 백로그에서만 오므로, 조인을 안 지나면 자동 닫힘도 영원히 못 일어난다.
+ * 🔴 화면과 같은 자리에서 최종 상태 확정(`withFinalStatus`, T01)도 태운다 — 신관례 티켓의
+ * 완료가 문서에서만 오므로, 확정을 안 지나면 자동 닫힘도 영원히 못 일어난다.
  */
 export function boardText(
   argv: readonly string[],
@@ -259,7 +253,7 @@ export function boardText(
  * 🔴 `board` 와 같이, 자동 닫힘(04)도 같은 자리(`readPlacementsWithAutoClose`)를 지난다 — 다
  * 끝난 기능은 작업 대상을 떠나므로 `computeNext` 가 더 이상 그 티켓을 말하지 않는다.
  *
- * 🔴 `board` 와 같이 백로그 상태 조인(`withBacklogStatus`, T01)도 먼저 태운다 — 그래야 이미 done
+ * 🔴 `board` 와 같이 최종 상태 확정(`withFinalStatus`, T01)도 먼저 태운다 — 그래야 이미 done
  * 인 신관례 티켓이 next 에 다시 나오지 않는다(화면과 같은 상태, spec §결정).
  */
 export function nextText(
@@ -313,8 +307,8 @@ export function featureStateText(
  * 프로젝트 전체에서 상태로 걸러낸 티켓 목록(캡틴 지시 2026-09-09) — 처리중(`working`)과
  * 대기(`pending`). 줄 서식은 캡틴이 정한 그대로 `<기능-slug>\\t<티켓>` 이다.
  *
- * 🔴 판정은 화면과 **같은 자리**를 지난다 — 레코드 조인(`readProjectFeatures`) + 백로그 조인
- * (`withBacklogStatus`) 뒤의 `ticket.status` 만 본다. 여기서 상태를 다시 추정하지 않는다(INV-4).
+ * 🔴 판정은 화면과 **같은 자리**를 지난다 — 레코드 조인(`readProjectFeatures`) + 상태 확정
+ * (`withFinalStatus`) 뒤의 `ticket.status` 만 본다. 여기서 상태를 다시 추정하지 않는다(INV-4).
  */
 function filteredTicketsText(
   argv: readonly string[],
@@ -326,7 +320,7 @@ function filteredTicketsText(
   rejectFlags(argv);
   const project = resolveProjectArg(argv, cwd, `usage: gootte ${cmd} [프로젝트]`);
   const { features } = readProjectFeatures(project, cwd);
-  const joined = withBacklogStatus(project, dataDir, features);
+  const joined = withFinalStatus(features);
   const rows = joined
     .flatMap((f) => allTickets(f).filter((t) => statuses.includes(t.status)).map((t) => `${f.slug}\t${t.slug}`));
   return rows.length > 0 ? rows.join("\n") : "(해당 티켓 없음)";
@@ -346,8 +340,8 @@ export function pendingText(argv: readonly string[], dataDir = defaultPlanDataDi
  * `frontier [프로젝트]` — 착수 가능(대기 + 차단 없음 + 임자 없음) 티켓 목록,
  * `<기능-slug>\t<티켓>\t<제목>` 줄. 프로젝트 안에서 실행하면 인자 생략.
  *
- * 🔴 판정은 core `computeFrontier` 하나뿐이다 — 레코드 조인(`readProjectFeatures`) + 백로그
- * 조인(`withBacklogStatus`) 뒤의 `status`·`startable` 만 본다. 여기서 상태를 다시 추정하지
+ * 🔴 판정은 core `computeFrontier` 하나뿐이다 — 레코드 조인(`readProjectFeatures`) + 상태 확정
+ * (`withFinalStatus`) 뒤의 `status`·`startable` 만 본다. 여기서 상태를 다시 추정하지
  * 않는다(INV-4). `next` 와 달리 계획 DB(작업 대상·단계)를 안 쓴다 — 프로젝트 전체가 대상이다.
  */
 export function frontierText(
@@ -358,7 +352,7 @@ export function frontierText(
   rejectFlags(argv);
   const project = resolveProjectArg(argv, cwd, "usage: gootte frontier [프로젝트]");
   const { features } = readProjectFeatures(project, cwd);
-  const joined = withBacklogStatus(project, dataDir, features);
+  const joined = withFinalStatus(features);
   const rows = computeFrontier(joined);
   if (rows.length === 0) return "(착수 가능 티켓 없음)";
   return rows
