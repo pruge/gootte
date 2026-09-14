@@ -19,3 +19,6 @@ code/web/src-tauri/gen/
 # 테스트 픽스처에 기록되는 파생 상태 — state.json 은 관리대상 .gootte/ 안의 파생물이고,
 # /api/features/:slug 가 픽스처 사본에 쓰는 것이 설계다(git-removal-and-state-store D1).
 code/web/backend/test/fixtures/**/.gootte/
+
+# taskflow 앞문 설정 — 머신마다 워커 경로·모델이 다르니 추적하지 않는다.
+.pi/
