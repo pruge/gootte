@@ -1,7 +1,189 @@
 {
   "version": 2,
-  "updatedAt": "2026-09-11T12:08:40.124Z",
-  "openFeatures": [],
+  "updatedAt": "2026-09-14T05:03:09.585Z",
+  "openFeatures": [
+    {
+      "slug": "memos-live-with-the-project",
+      "title": "memos-live-with-the-project — 메모를 프로젝트와 함께 이동하게 만든다",
+      "status": "pending",
+      "sourceStatus": null,
+      "statusKnown": false,
+      "tickets": [],
+      "docs": [
+        {
+          "kind": "file",
+          "name": "grill.md",
+          "path": "grill.md"
+        },
+        {
+          "kind": "file",
+          "name": "spec.md",
+          "path": "spec.md"
+        },
+        {
+          "kind": "dir",
+          "name": "tickets",
+          "path": "tickets",
+          "children": [
+            {
+              "kind": "file",
+              "name": "T01.md",
+              "path": "tickets/T01.md"
+            },
+            {
+              "kind": "file",
+              "name": "T02.md",
+              "path": "tickets/T02.md"
+            },
+            {
+              "kind": "file",
+              "name": "T03.md",
+              "path": "tickets/T03.md"
+            }
+          ]
+        }
+      ],
+      "newTickets": [
+        {
+          "num": "01",
+          "slug": "T01",
+          "path": "tickets/T01.md",
+          "title": "`gootte memo migrate` — 중앙 메모를 프로젝트 파일로 옮긴다 (읽기는 아직 중앙)",
+          "status": "in_progress",
+          "sourceStatus": null,
+          "statusKnown": true,
+          "blockedBy": [],
+          "unreadableBlockedBy": [],
+          "waitingOn": [],
+          "startable": true,
+          "needsCaptainEye": false,
+          "docConvention": "tickets",
+          "startedAt": "2026-09-14T12:35:52+09:00",
+          "pauses": [],
+          "joinFailed": false
+        },
+        {
+          "num": "02",
+          "slug": "T02",
+          "path": "tickets/T02.md",
+          "title": "읽기·쓰기를 `<프로젝트>/.gootte/memo.json` 으로 전환 (폴백 없음)",
+          "status": "pending",
+          "sourceStatus": null,
+          "statusKnown": true,
+          "blockedBy": [
+            "01"
+          ],
+          "unreadableBlockedBy": [],
+          "waitingOn": [
+            "01"
+          ],
+          "startable": false,
+          "needsCaptainEye": false,
+          "docConvention": "tickets",
+          "joinFailed": false
+        },
+        {
+          "num": "03",
+          "slug": "T03",
+          "path": "tickets/T03.md",
+          "title": "종단 확인: 두 원장이 하나가 됐는가 (캡틴 확인으로 닫는다)",
+          "status": "pending",
+          "sourceStatus": null,
+          "statusKnown": true,
+          "blockedBy": [
+            "02"
+          ],
+          "unreadableBlockedBy": [],
+          "waitingOn": [
+            "02"
+          ],
+          "startable": false,
+          "needsCaptainEye": false,
+          "docConvention": "tickets",
+          "joinFailed": false
+        }
+      ]
+    },
+    {
+      "slug": "memos-read-from-any-session",
+      "title": "memos-read-from-any-session — 어떤 세션에서든 자기 프로젝트 메모를 읽는다",
+      "status": "pending",
+      "sourceStatus": null,
+      "statusKnown": false,
+      "tickets": [],
+      "docs": [
+        {
+          "kind": "file",
+          "name": "grill.md",
+          "path": "grill.md"
+        },
+        {
+          "kind": "file",
+          "name": "spec.md",
+          "path": "spec.md"
+        },
+        {
+          "kind": "dir",
+          "name": "tickets",
+          "path": "tickets",
+          "children": [
+            {
+              "kind": "file",
+              "name": "T01.md",
+              "path": "tickets/T01.md"
+            },
+            {
+              "kind": "file",
+              "name": "T02.md",
+              "path": "tickets/T02.md"
+            }
+          ]
+        }
+      ],
+      "newTickets": [
+        {
+          "num": "01",
+          "slug": "T01",
+          "path": "tickets/T01.md",
+          "title": "`gootte memo [--done|--undone]` — 지금 프로젝트 메모를 어떤 세션에서나 읽는다",
+          "status": "done",
+          "sourceStatus": null,
+          "statusKnown": true,
+          "completedAt": "2026-09-14T12:22:36+09:00",
+          "blockedBy": [],
+          "unreadableBlockedBy": [],
+          "waitingOn": [],
+          "startable": true,
+          "needsCaptainEye": false,
+          "docConvention": "tickets",
+          "startedAt": "2026-09-14T11:40:34+09:00",
+          "finishedAt": "2026-09-14T12:22:36+09:00",
+          "pauses": [],
+          "joinFailed": false
+        },
+        {
+          "num": "02",
+          "slug": "T02",
+          "path": "tickets/T02.md",
+          "title": "캡틴 리뷰: 실제 세션에서 `gootte memo` 로 메모를 읽고 논의할 수 있는가",
+          "status": "pending",
+          "sourceStatus": null,
+          "statusKnown": true,
+          "blockedBy": [
+            "01"
+          ],
+          "unreadableBlockedBy": [],
+          "waitingOn": [
+            "01"
+          ],
+          "startable": false,
+          "needsCaptainEye": false,
+          "docConvention": "tickets",
+          "joinFailed": false
+        }
+      ]
+    }
+  ],
   "tickets": {
     "a-big-document-opens-fast/T01": {
       "startedAt": "2026-09-04T16:07:17+09:00",
@@ -1002,6 +1184,24 @@
     "backend-serves-ui/T04": {
       "startedAt": "2026-09-11T20:46:54+09:00",
       "finishedAt": "2026-09-11T21:08:40+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memos-read-from-any-session/T01": {
+      "startedAt": "2026-09-14T11:40:34+09:00",
+      "finishedAt": "2026-09-14T12:22:36+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memos-live-with-the-project/T01": {
+      "startedAt": "2026-09-14T12:35:52+09:00",
+      "finishedAt": "2026-09-14T14:01:17+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memos-live-with-the-project/T02": {
+      "startedAt": "2026-09-14T14:03:09+09:00",
+      "finishedAt": null,
       "pauses": [],
       "statusRaw": null
     }
