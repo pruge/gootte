@@ -59,6 +59,7 @@ usage() {
   echo "      gootte status <feature-slug>           — 기능의 모든 티켓 상태(프로젝트 안에서. state 도 별칭)" >&2
   echo "      gootte working <project-slug>          — 처리중인 티켓 목록(기능 + 티켓)" >&2
   echo "      gootte pending <project-slug>          — 아직 대기중인 티켓 목록(기능 + 티켓)" >&2
+  echo "      gootte memo [--done|--undone]          — 지금 프로젝트 메모를 읽는다(어떤 세션에서나. 프로젝트 인자 없음)" >&2
   echo "      gootte migrate [--dry-run] <project-slug> — 티켓 시간·상태 기록을 state.json v2 로 이관" >&2
   echo "  TIME: 비우면 지금 / ISO8601 / 상대시간(예 1h30m, 90m, 2h, 1d)" >&2
   echo "  --update: 이미 시작된 티켓의 started= 를 묻지 않고 바로 갱신(start 전용)" >&2
@@ -750,6 +751,13 @@ main() {
       # 티켓 기록 이관(time-records-to-state-store/T06, 캡틴 지시: gootte migrate <프로젝트>).
       [ "${#pos[@]}" -ge 2 ] || usage
       exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" migrate "${pos[@]:1}"
+      ;;
+    memo)
+      # 지금 프로젝트 메모 읽기(memos-read-from-any-session/T01) — TS CLI 위임.
+      # 🔴 working·pending 과 달리 **플래그까지 그대로** 넘긴다("${pos[@]:1}"). `pos[1]` 만 넘기면
+      # `--undone` 이 TS 에 닿지 않아 필터가 조용히 사라진다 — 라우팅 자체가 기능의 일부다(spec §PATH).
+      # 프로젝트는 cwd 로만 정한다(TS 쪽 slugFromCwd) — 셸도 인자를 해석하지 않고 그대로 넘긴다.
+      exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" "$subcmd" "${pos[@]:1}"
       ;;
     working|pending)
       # 처리중·대기 티켓 목록(캡틴 지시 2026-09-09) — TS CLI 위임. status 와 같은 읽기 경로.

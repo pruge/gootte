@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, it, expect } from "vitest";
 import {
+  appendMemo,
   discoverProjects,
+  memosFile,
   readPlacements,
   readSteps,
   upsertTicketRecord,
@@ -13,7 +15,7 @@ import {
 } from "@gootte/core-io";
 import { CliError } from "./args";
 
-import { boardText, discoverText, frontierText, nextText, pendingText, resolveProjectPath, stepClearText, stepText, workingText } from "./commands";
+import { boardText, discoverText, frontierText, memoText, nextText, pendingText, resolveProjectPath, stepClearText, stepText, workingText } from "./commands";
 
 function w(root: string, rel: string, content: string): void {
   const full = join(root, rel);
@@ -560,5 +562,136 @@ describe("cli — frontier(착수 가능 티켓 목록)", () => {
   it("프로젝트 안에서는 인자 생략 가능 — 밖에서는 거절(resolveProjectArg 공용)", () => {
     expect(() => frontierText([], undefined, join(proj, "docs", "features"))).not.toThrow();
     expect(() => frontierText([], undefined, "/")).toThrow(CliError);
+  });
+});
+
+
+describe("cli — memo(지금 프로젝트 메모를 어떤 세션에서나 읽는다, memos-read-from-any-session/T01)", () => {
+  let proj: string;
+  let dataDir: string;
+  beforeEach(() => {
+    proj = mkdtempSync(join(tmpdir(), "gootte-memo-proj-"));
+    dataDir = mkdtempSync(join(tmpdir(), "gootte-memo-data-"));
+    // 발견 표식(AGENTS.md + docs/features/) — slug 유추는 이 둘로만 정해진다(캡틴 지시 2026-09-09).
+    w(proj, "AGENTS.md", "# AGENTS\n");
+    w(proj, "docs/features/alpha/tickets/T01.md", "# T01\n");
+  });
+  afterEach(() => {
+    rmSync(proj, { recursive: true, force: true });
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  const slug = () => basename(proj);
+  /** 저장 순서 = 작성 순서 — 화면과 같은 자리(`appendMemo`)로 심는다. */
+  const seed = (content: string, createdAt: string, done = false): void => {
+    appendMemo(dataDir, slug(), { content, done }, createdAt);
+  };
+  const heads = (text: string): string[] => text.split("\n").filter((l) => l.startsWith("- ["));
+
+  it("AC1 전체 — 헤더 + 항목, 완료·미완료 섞임, 최신먼저", () => {
+    seed("가장 오래된 미완료", "2026-09-01T00:00:00.000Z");
+    seed("중간 완료", "2026-09-02T00:00:00.000Z", true);
+    seed("가장 최신 미완료", "2026-09-03T00:00:00.000Z");
+    expect(memoText([], dataDir, proj)).toBe(
+      [
+        `== ${slug()} · 메모 3건 (완료 1 · 미완료 2) ==`,
+        "- [ ] 2026-09-03 가장 최신 미완료",
+        "- [x] 2026-09-02 중간 완료",
+        "- [ ] 2026-09-01 가장 오래된 미완료",
+      ].join("\n"),
+    );
+  });
+
+  it("AC2 --undone — 미완료 항목만. 헤더 카운트는 전체 유지 + `· 필터: undone`", () => {
+    seed("오래된 미완료", "2026-09-01T00:00:00.000Z");
+    seed("완료", "2026-09-02T00:00:00.000Z", true);
+    seed("최신 미완료", "2026-09-03T00:00:00.000Z");
+    const out = memoText(["--undone"], dataDir, proj);
+    expect(out.split("\n")[0]).toBe(`== ${slug()} · 메모 3건 (완료 1 · 미완료 2) · 필터: undone ==`);
+    expect(heads(out)).toEqual(["- [ ] 2026-09-03 최신 미완료", "- [ ] 2026-09-01 오래된 미완료"]);
+  });
+
+  it("AC3 --done — 완료 항목만", () => {
+    seed("미완료", "2026-09-01T00:00:00.000Z");
+    seed("완료", "2026-09-02T00:00:00.000Z", true);
+    const out = memoText(["--done"], dataDir, proj);
+    expect(heads(out)).toEqual(["- [x] 2026-09-02 완료"]);
+    expect(out).toContain("· 필터: done ==");
+  });
+
+  it("AC4 프로젝트 인자는 사용자 오류로 멈춘다 — 다른 프로젝트로 읽히지 않는다", () => {
+    seed("내 메모", "2026-09-01T00:00:00.000Z");
+    // 남의 slug 를 줘도 그 프로젝트의 파일을 열지 않는다 — 조용히 무시도 하지 않는다.
+    expect(() => memoText(["jinwooauto"], dataDir, proj)).toThrow(CliError);
+    expect(() => memoText(["jinwooauto"], dataDir, proj)).toThrow(/프로젝트 인자를 받지 않는다/);
+    seed("내 메모 둘", "2026-09-02T00:00:00.000Z", true);
+    expect(memoText([], dataDir, proj)).toContain("메모 2건");
+  });
+
+  it("AC4 다른 프로젝트 cwd 는 자기 메모만 — 전체 조회로 새지 않는다", () => {
+    const other = mkdtempSync(join(tmpdir(), "gootte-memo-other-"));
+    try {
+      w(other, "AGENTS.md", "# AGENTS\n");
+      w(other, "docs/features/beta/tickets/T01.md", "# T01\n");
+      appendMemo(dataDir, slug(), { content: "이쪽 생각" }, "2026-09-01T00:00:00.000Z");
+      appendMemo(dataDir, basename(other), { content: "저쪽 생각" }, "2026-09-02T00:00:00.000Z");
+      const mine = memoText([], dataDir, proj);
+      const theirs = memoText([], dataDir, other);
+      expect(mine).toContain("이쪽 생각");
+      expect(mine).not.toContain("저쪽 생각");
+      expect(theirs).toContain(`== ${basename(other)} · 메모 1건`);
+      expect(theirs).toContain("저쪽 생각");
+      expect(theirs).not.toContain("이쪽 생각");
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+
+  it("AC5 메모 파일이 없다 → `메모 없음` 한 줄, 던지지 않는다(지운 것과 고장은 다르다)", () => {
+    expect(memoText([], dataDir, proj)).toBe(`== ${slug()} · 메모 없음 ==`);
+    expect(memoText(["--undone"], dataDir, proj)).toBe(`== ${slug()} · 메모 없음 ==`);
+  });
+
+  it("AC6 --done --undone 는 0 건이 아니라 오류로 끝난다", () => {
+    seed("메모", "2026-09-01T00:00:00.000Z");
+    expect(() => memoText(["--done", "--undone"], dataDir, proj)).toThrow(CliError);
+    expect(() => memoText(["--done", "--undone"], dataDir, proj)).toThrow(/--done 과 --undone 을 같이 쓸 수 없다/);
+  });
+
+  it("모르는 플래그도 사용자 오류 — 조용히 무시하지 않는다", () => {
+    expect(() => memoText(["--all"], dataDir, proj)).toThrow(/--all 는 받지 않는다/);
+  });
+
+  it("AC7 다중 줄 메모는 출력에서 하나의 항목으로 붙는다(들여쓰기 규약)", () => {
+    seed("첫 줄\n둘째 줄 verbatim\n셋째 줄", "2026-09-10T00:00:00.000Z");
+    const out = memoText([], dataDir, proj);
+    expect(out.split("\n")).toEqual([
+      `== ${slug()} · 메모 1건 (완료 0 · 미완료 1) ==`,
+      "- [ ] 2026-09-10 첫 줄",
+      "    둘째 줄 verbatim",
+      "    셋째 줄",
+    ]);
+    expect(heads(out)).toHaveLength(1);
+  });
+
+  it("손상 JSON 은 exit 1 + 원인 — 빈 목록·`메모 없음` 과 구별된다", () => {
+    seed("정상 메모", "2026-09-01T00:00:00.000Z");
+    writeFileSync(memosFile(dataDir, slug()), "{ not json");
+    let err: unknown;
+    try {
+      memoText([], dataDir, proj);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(CliError);
+    const msg = (err as Error).message;
+    expect(msg).toContain("원인");
+    expect(msg).not.toContain("메모 없음");
+  });
+
+  it("프로젝트 안 어디서 쳐도 같은 답, 밖에서는 안내와 함께 거절(slugFromCwd)", () => {
+    seed("메모", "2026-09-01T00:00:00.000Z");
+    expect(memoText([], dataDir, join(proj, "code", "web"))).toBe(memoText([], dataDir, proj));
+    expect(() => memoText([], dataDir, "/")).toThrow(/\(프로젝트 안에서 실행하면 인자를 생략할 수 있다\)/);
   });
 });

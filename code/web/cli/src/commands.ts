@@ -1,5 +1,5 @@
 import { allTickets, finalizeFeatureStatus, computeDisplaySteps, computeFrontier, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
-import { type Feature, AREA_LABEL, ALL_AREAS, type BoardAreaId, type TodoStatus } from "@gootte/contract";
+import { type Feature, type Memo, AREA_LABEL, ALL_AREAS, type BoardAreaId, type TodoStatus } from "@gootte/contract";
 import { basename, dirname, resolve } from "node:path";
 import {
   clearStep,
@@ -7,15 +7,19 @@ import {
   discoverProjects,
   effectiveProjectRoots,
   isFirstmateProject,
+  memosFile,
+  memoListText,
   migratePlanDb,
   readFeatures,
   readFeaturesWithTime,
+  readMemos,
   readPlacements,
   readPlacementsWithAutoClose,
   readSteps,
   writeStep,
+  type MemoFilter,
 } from "@gootte/core-io";
-import { CliError, parseTicketRef } from "./args";
+import { CliError, parseArgs, parseTicketRef } from "./args";
 
 /** CLI 명령 로직(순수 배선). main.ts 가 argv 를 명령별로 넘기고, 여기가 wiring: IO → core → text. */
 
@@ -358,4 +362,52 @@ export function frontierText(
   return rows
     .map((t) => `${t.feature}\t${t.ticket}\t${t.title}${t.needsCaptainEye ? " 👁" : ""}`)
     .join("\n");
+}
+
+/** `memo` 의 사용법 문자열 — 이 명령이 받는 것 전부다(위치 인자는 없다). */
+const MEMO_USAGE = "usage: gootte memo [--done|--undone]";
+
+/**
+ * `memo [--done|--undone]` — **지금 프로젝트(cwd)의 메모만** 읽는다(memos-read-from-any-session/T01).
+ *
+ * 🔴 프로젝트 인자를 받지 않는다(캡틴 지시 2026-09-14) — `start`·`end`·`status` 처럼 세션의
+ * 프로젝트가 전부다. 위치 인자가 하나라도 들어오면 사용자 오류로 멈춘다: 조용히 무시하거나
+ * 그 프로젝트로 읽으면 "다른 프로젝트 메모를 보는 통로" 가 되어 범위와 어긋난다.
+ * (slug 유추 실패 안내만 `resolveProjectArg` 의 문구를 그대로 쓴다 — 인자 허용 규율은 여기서 좁힌다.)
+ *
+ * 판정은 core-io `memo-select` 하나뿐(INV-4) — 여기는 배선만 한다: cwd → slug, 파일 → 목록,
+ * 계산 → 문자열. 고장 난 JSON 을 빈 목록으로 위장하지 않는다(`memo-store` 의 분기를 CLI 도 쓴다).
+ */
+export function memoText(
+  argv: readonly string[],
+  dataDir = defaultPlanDataDir(),
+  cwd: string = process.cwd(),
+): string {
+  const { positional, flags } = parseArgs(argv);
+  if (positional.length > 0) {
+    throw new CliError(`${MEMO_USAGE}\ngootte memo 는 프로젝트 인자를 받지 않는다 — 지금 프로젝트만 봅니다`);
+  }
+  for (const key of Object.keys(flags)) {
+    if (key !== "done" && key !== "undone") throw new CliError(`${MEMO_USAGE}\n--${key} 는 받지 않는다`);
+  }
+  const wantsDone = flags.done !== undefined;
+  const wantsUndone = flags.undone !== undefined;
+  if (wantsDone && wantsUndone) {
+    throw new CliError(`${MEMO_USAGE}\n--done 과 --undone 을 같이 쓸 수 없다`);
+  }
+  const filter: MemoFilter = wantsDone ? "done" : wantsUndone ? "undone" : "all";
+
+  const slug = slugFromCwd(cwd);
+  if (!slug) throw new CliError(`${MEMO_USAGE}\n(프로젝트 안에서 실행하면 인자를 생략할 수 있다)`);
+
+  const file = memosFile(dataDir, slug);
+  let memos: Memo[];
+  try {
+    memos = readMemos(dataDir, slug);
+  } catch (err) {
+    // 지운 것(파일 없음 → 0 건) 과 고장 난 것을 같게 그리지 않는다 — 원인을 내고 exit 1.
+    const cause = err instanceof Error ? err.message : String(err);
+    throw new CliError(`${MEMO_USAGE}\n메모를 읽을 수 없다: ${file}\n  원인: ${cause}`);
+  }
+  return memoListText(slug, memos, filter);
 }

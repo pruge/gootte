@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { defaultPlanDataDir, defaultProjectRoots } from "@gootte/core-io";
 import { CliError } from "./args";
-import { boardText, dbMigrateText, discoverText, featureStateText, frontierText, nextText, pendingText, stepClearText, stepText, workingText } from "./commands";
+import { boardText, dbMigrateText, discoverText, featureStateText, frontierText, memoText, nextText, pendingText, stepClearText, stepText, workingText } from "./commands";
 import { runTimeCommand } from "./time";
 import { migrateTime } from "./migrate-time";
 
@@ -24,6 +24,7 @@ function usage(): number {
   "  working     <프로젝트>  — 처리중인 티켓 목록(기능 + 티켓)",
   "  pending     <프로젝트>  — 아직 대기중인 티켓 목록(기능 + 티켓)",
   "  frontier    [프로젝트]  — 착수 가능(대기+차단 없음+임자 없음) 티켓 목록(기능 + 티켓 + 제목)",
+      "  memo        [--done|--undone]  — 지금 프로젝트 메모를 읽는다(세션용. 프로젝트 인자 없음)",
       "  migrate     [--dry-run] <프로젝트>  — 티켓 시간·상태 기록을 state.json v2 로 이관한다",
       "",
     ].join("\n"),
@@ -70,6 +71,10 @@ function run(argv: string[]): number {
         return 0;
       case "frontier":
         process.stdout.write(frontierText(rest, planDataDir()) + "\n");
+        return 0;
+      case "memo":
+        // 지금 프로젝트(cwd) 메모만 — 인자 규격은 commands.memoText 가 잠근다(T01).
+        process.stdout.write(memoText(rest, planDataDir()) + "\n");
         return 0;
       case "time": {
         // state.json 모드의 시간 기록(T05) — bin/gootte 가 위임한다.
