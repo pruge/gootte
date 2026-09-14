@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updatedAt": "2026-09-14T05:03:09.585Z",
+  "updatedAt": "2026-09-14T06:20:11.230Z",
   "openFeatures": [
     {
       "slug": "memos-live-with-the-project",
@@ -1201,7 +1201,7 @@
     },
     "memos-live-with-the-project/T02": {
       "startedAt": "2026-09-14T14:03:09+09:00",
-      "finishedAt": null,
+      "finishedAt": "2026-09-14T15:20:11+09:00",
       "pauses": [],
       "statusRaw": null
     }
