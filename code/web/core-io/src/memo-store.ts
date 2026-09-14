@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { Memo, type Memo as MemoT, type MemoWriteRequest } from "@gootte/contract";
 
 /**
@@ -18,6 +18,40 @@ export function memosFile(dataDir: string, project: string): string {
 }
 
 /**
+ * 프로젝트 안의 메모 파일 자리 — `<projectDir>/.gootte/memo.json` (memos-live-with-the-project T01).
+ *
+ * 시간·상태 기록(`<projectDir>/.gootte/state.json`)과 **같은 네임스페이스**다: 메모는 사람이 정한
+ * 값이라 저장 자격이 있고(INV-5), 그 저장이 중앙(`~/.gootte`)이 아니라 **저장소와 함께 이동하는
+ * 자리**로 간다 — 클론·기계 사이에 경험이 따라가지 않던 통증의 해법이 이 한 줄이다.
+ * 🔴 읽기·쓰기가 이 함수 하나로만 좌표를 정한다(INV-1 — 두 번째 자리 규칙을 만들지 않는다).
+ * 읽기 전환은 T02(이관 없이 경로를 돌리면 미이관 프로젝트의 메모가 화면에서 사라진다).
+ */
+export function projectMemosFile(projectDir: string): string {
+  return join(projectDir, ".gootte", "memo.json");
+}
+
+/**
+ * 메모 파일 한 장에 통째로 쓴다 — 임시 파일 → rename 으로 반쯤 쓰인 JSON 읽기를 막는다.
+ * **경로 규칙은 `memosFile`·`projectMemosFile` 의 몫**이고 여기는 쓰기만 한다(자리는 하나뿐).
+ * `.gootte/` 처럼 아직 없는 디렉토리는 만든다.
+ */
+export function writeMemoFile(file: string, memos: readonly MemoT[]): void {
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(memos, null, 2)}\n`);
+  renameSync(tmp, file);
+}
+
+/**
+ * 메모 파일 한 장을 지운다(`memo migrate --purge` 의 central 정리).
+ * 🔴 호출 순서는 배선의 규율이다 — **대상 쓰기 성공 뒤에** 부를 것(지우고 쓰면 실패할 때 데이터가
+ * 사라진다, T01 Locked 5). 없는 파일을 지우려는 것은 조용히 넘긴다(멱등).
+ */
+export function removeMemoFile(file: string): void {
+  rmSync(file, { force: true });
+}
+
+/**
  * 프로젝트 메모 목록 — 파일이 없으면 빈 배열(처음이다). JSON 이 망가진 것은 빈 목록으로
  * 위장하지 않고 던진다 — "사용자가 지운 것" 과 "저장소가 고장 난 것" 을 같게 그리면
  * 화면이 거짓말을 한다(settings-store 와 같은 규율).
@@ -28,13 +62,9 @@ export function readMemos(dataDir: string, project: string): MemoT[] {
   return Memo.array().parse(JSON.parse(readFileSync(file, "utf8")));
 }
 
-/** 저장 파일에 기록(통째로 교체) — 임시 파일 → rename 으로 반쯤 쓰인 JSON 읽기를 막는다. */
+/** 저장 파일에 기록(통째로 교체) — 쓰기 규율은 `writeMemoFile` 하나뿐이다. */
 function writeMemosFile(dataDir: string, project: string, memos: readonly MemoT[]): void {
-  const file = memosFile(dataDir, project);
-  mkdirSync(join(dataDir, "memos"), { recursive: true });
-  const tmp = `${file}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(memos, null, 2)}\n`);
-  renameSync(tmp, file);
+  writeMemoFile(memosFile(dataDir, project), memos);
 }
 
 /**

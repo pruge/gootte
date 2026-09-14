@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, it, expect } from "vitest";
@@ -7,15 +7,19 @@ import {
   appendMemo,
   discoverProjects,
   memosFile,
+  projectMemosFile,
+  readMemos,
   readPlacements,
   readSteps,
   upsertTicketRecord,
+  writeMemoFile,
   writePlanMove,
   writeSettings,
 } from "@gootte/core-io";
+import type { Memo } from "@gootte/contract";
 import { CliError } from "./args";
 
-import { boardText, discoverText, frontierText, memoText, nextText, pendingText, resolveProjectPath, stepClearText, stepText, workingText } from "./commands";
+import { boardText, discoverText, frontierText, memoMigrateText, memoText, nextText, pendingText, resolveProjectPath, stepClearText, stepText, workingText } from "./commands";
 
 function w(root: string, rel: string, content: string): void {
   const full = join(root, rel);
@@ -693,5 +697,221 @@ describe("cli — memo(지금 프로젝트 메모를 어떤 세션에서나 읽�
     seed("메모", "2026-09-01T00:00:00.000Z");
     expect(memoText([], dataDir, join(proj, "code", "web"))).toBe(memoText([], dataDir, proj));
     expect(() => memoText([], dataDir, "/")).toThrow(/\(프로젝트 안에서 실행하면 인자를 생략할 수 있다\)/);
+  });
+});
+
+/**
+ * `memo migrate` — central `~/.gootte/memos/<slug>.json` → `<메인 프로젝트>/.gootte/memo.json`
+ * (memos-live-with-the-project/T01).
+ *
+ * 🔴 이 표에서 **읽기 경로는 central 을 본다** — 순서가 강제가 되는 근거다(읽기를 먼저 돌리면
+ * 미이관 프로젝트의 메모가 화면에서 사라진 것처럼 보인다). 그래서 여기엔 두 방향의 가드가 있다:
+ *   - 이관 뒤에도 `memoText`(읽기) 는 central 을 읽는다 → T02 전에는 경로가 안 움직였다.
+ *   - `--purge` 없이 원본이 살아있다 → 기본은 보존, 지우는 일은 명시할 때만(불가역).
+ * 전부 임시 디렉토리 픽스처 — 캡틴의 `~/.gootte` 도, 이 저장소의 `docs/` 도 읽지 않는다.
+ */
+describe("cli — memo migrate(central 을 프로젝트 파일로 옮긴다, T01)", () => {
+  let root: string; // discover 의 뿌리 — 메인 사본이 여기 걸린다
+  let proj: string; // 메인 프로젝트 사본
+  let dataDir: string; // central 의 부모(GOOTTE_DATA 급소)
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "gootte-mig-root-"));
+    proj = join(root, "jinwooauto");
+    dataDir = mkdtempSync(join(tmpdir(), "gootte-mig-data-"));
+    w(proj, "AGENTS.md", "# AGENTS\n");
+    w(proj, "docs/features/alpha/tickets/T01.md", "# T01\n");
+    process.env.GOOTTE_ROOTS = root;
+  });
+  afterEach(() => {
+    delete process.env.GOOTTE_ROOTS;
+    rmSync(root, { recursive: true, force: true });
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  /** central 에 메모를 심는다 — 저장 규약은 화면과 같은 `appendMemo`(순서 = 작성 순서). */
+  const seed = (...contents: string[]): Memo[] =>
+    contents.map((content, i) =>
+      appendMemo(dataDir, "jinwooauto", { content, done: i % 2 === 1 }, `2026-09-0${i + 1}T00:00:00.000Z`),
+    );
+  /** 표식만 있는 두 번째 프로젝트를 뿌리에 심는다(discover 가 slug 로 찾게). */
+  const addProject = (slug: string): string => {
+    const dir = join(root, slug);
+    w(dir, "AGENTS.md", "# AGENTS\n");
+    w(dir, "docs/features/alpha/tickets/T01.md", "# T01\n");
+    return dir;
+  };
+  const targetFile = (): string => projectMemosFile(proj);
+  const cols = (line: string): string[] => line.split("\t");
+  /** 대상 파일 원문을 그대로 읽는다 — 래퍼 객체 금지, `Memo[]` 배열 하나라는 규약도 같이 잰다. */
+  const readRaw = (file: string): Memo[] => {
+    const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
+    expect(Array.isArray(raw)).toBe(true);
+    return raw as Memo[];
+  };
+
+  it("AC1 central → 프로젝트 파일 이관, 원본은 그대로(기본은 보존)", () => {
+    const memos = seed("첫 생각", "둘째 생각\n  들인 줄 verbatim");
+    const out = memoMigrateText(["jinwooauto"], dataDir, proj);
+    expect(cols(out)).toEqual([
+      "jinwooauto",
+      "write",
+      `${memos.length}건`,
+      targetFile(),
+      `원본 유지: ${memosFile(dataDir, "jinwooauto")}`,
+    ]);
+    // 대상은 같은 내용 · 같은 순서 — 요약도 재배열도 없다(INV-4 내용 그대로).
+    expect(readRaw(targetFile())).toEqual(memos);
+    expect(existsSync(memosFile(dataDir, "jinwooauto"))).toBe(true);
+    expect(readMemos(dataDir, "jinwooauto")).toHaveLength(2);
+  });
+
+  it("AC2 재실행 멱등 — `skip` 한 줄, 파일 content 불변", () => {
+    seed("멱등", "둘째");
+    memoMigrateText(["jinwooauto"], dataDir, proj);
+    const before = readFileSync(targetFile(), "utf8");
+    expect(cols(memoMigrateText(["jinwooauto"], dataDir, proj))).toEqual([
+      "jinwooauto",
+      "skip",
+      "2건",
+      targetFile(),
+      `원본 유지: ${memosFile(dataDir, "jinwooauto")}`,
+    ]);
+    expect(readFileSync(targetFile(), "utf8")).toBe(before);
+  });
+
+  it("AC3 대상이 다른 내용을 갖고 있으면 오류로 멈춘다 — 덮어쓰지 않는다, 파일 변경 없음", () => {
+    seed("central 쪽 최신 생각");
+    const other = appendMemo(join(root, "scratch-a"), "jinwooauto", { content: "대상 쪽 다른 생각" }, "2026-09-01T00:00:00.000Z");
+    writeMemoFile(targetFile(), [other]);
+    const before = readFileSync(targetFile(), "utf8");
+    let err: unknown;
+    try {
+      memoMigrateText(["jinwooauto"], dataDir, proj);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(CliError);
+    const msg = (err as Error).message;
+    expect(msg).toContain("이관하지 않았다");
+    expect(msg).toContain("jinwooauto");
+    expect(msg).toContain("다르다"); // 원인 한 줄 — 무엇을 비교해서 틀렸는지 다시 계산하지 않는다
+    expect(readFileSync(targetFile(), "utf8")).toBe(before);
+    expect(readMemos(dataDir, "jinwooauto")).toHaveLength(1); // 원본도 그대로
+  });
+
+  it("AC4 --purge 는 쓰기 성공 **뒤에** central 을 지운다 — 삭제 경로를 출력에 남긴다", () => {
+    const memos = seed("지워질 원본", "둘째");
+    const c = cols(memoMigrateText(["jinwooauto", "--purge"], dataDir, proj));
+    expect(c[1]).toBe("write");
+    expect(c[4]).toBe(`원본 삭제: ${memosFile(dataDir, "jinwooauto")}`);
+    expect(readRaw(targetFile())).toEqual(memos); // 먼저 쓰였고
+    expect(existsSync(memosFile(dataDir, "jinwooauto"))).toBe(false); // 그 뒤에 지워졌다
+  });
+
+  it("AC4 --purge 뒤 재실행 — 원본이 없으니 이관 대상 없음(조용한 되살림 없음)", () => {
+    seed("한 번만");
+    memoMigrateText(["jinwooauto", "--purge"], dataDir, proj);
+    expect(memoMigrateText(["jinwooauto", "--purge"], dataDir, proj)).toContain("(이관 대상 없음)");
+    expect(existsSync(memosFile(dataDir, "jinwooauto"))).toBe(false);
+  });
+
+  it("🔴 --purge 도 충돌을 이기지 못한다 — 판정이 오류면 지우지 않는다(원본이 마지막 사본이다)", () => {
+    seed("central 원본");
+    const other = appendMemo(join(root, "scratch-b"), "jinwooauto", { content: "대상 원고" }, "2026-09-01T00:00:00.000Z");
+    writeMemoFile(targetFile(), [other]);
+    expect(() => memoMigrateText(["jinwooauto", "--purge"], dataDir, proj)).toThrow(CliError);
+    expect(existsSync(memosFile(dataDir, "jinwooauto"))).toBe(true);
+  });
+
+  it("AC5 인자 생략 — 지금 프로젝트(cwd)가 대상이다", () => {
+    seed("cwd 유추 이관");
+    const out = memoMigrateText([], dataDir, join(proj, "docs", "features")); // 하위 디렉토리에서도 같은 답
+    expect(cols(out)).toEqual([
+      "jinwooauto",
+      "write",
+      "1건",
+      targetFile(),
+      `원본 유지: ${memosFile(dataDir, "jinwooauto")}`,
+    ]);
+    expect(existsSync(targetFile())).toBe(true);
+  });
+
+  it("AC5 이관 대상이 없으면 `(이관 대상 없음)` exit 0 — 오류가 아니고 파일을 만들지도 않는다", () => {
+    expect(memoMigrateText(["jinwooauto"], dataDir, proj)).toBe("(이관 대상 없음)");
+    expect(memoMigrateText([], dataDir, proj)).toBe("(이관 대상 없음)");
+    expect(existsSync(targetFile())).toBe(false);
+  });
+
+  it("모르는 플래그·`--purge <값>`·프로젝트 밖 — 모두 사용자 오류로 멈춘다", () => {
+    seed("메모");
+    expect(() => memoMigrateText(["jinwooauto", "--dry-run"], dataDir, proj)).toThrow(/--dry-run 는 받지 않는다/);
+    // parseArgs 가 slug 를 플래그 값으로 삼킨다 — cwd 유추로 조용히 대체하지 않는다.
+    expect(() => memoMigrateText(["--purge", "jinwooauto"], dataDir, proj)).toThrow(/--purge 는 값을 받지 않는다/);
+    expect(() => memoMigrateText([], dataDir, "/")).toThrow(CliError);
+    expect(existsSync(targetFile())).toBe(false);
+  });
+
+  it("여러 프로젝트를 한 번에 — 둘 다 건너간다", () => {
+    const second = addProject("voice-to-iterm");
+    seed("jinwooauto 생각");
+    appendMemo(dataDir, "voice-to-iterm", { content: "voice 생각" }, "2026-09-05T00:00:00.000Z");
+    const out = memoMigrateText(["jinwooauto", "voice-to-iterm"], dataDir, proj);
+    expect(out.split("\n")).toHaveLength(2);
+    expect(existsSync(targetFile())).toBe(true);
+    expect(existsSync(projectMemosFile(second))).toBe(true);
+  });
+
+  it("🔴 충돌이 섞인 배치는 아무것도 쓰지 않는다 — 반쯤 이관된 원장이 남는 것이 제일 위험하다", () => {
+    addProject("memo");
+    seed("jinwooauto 생각");
+    appendMemo(dataDir, "memo", { content: "memo 원본" }, "2026-09-06T00:00:00.000Z");
+    const already = appendMemo(join(root, "scratch-c"), "memo", { content: "memo 대상 원고" }, "2026-09-06T00:00:00.000Z");
+    writeMemoFile(projectMemosFile(join(root, "memo")), [already]);
+    expect(() => memoMigrateText(["jinwooauto", "memo"], dataDir, proj)).toThrow(/메모를 이관하지 않았다/);
+    expect(existsSync(targetFile())).toBe(false); // 앞에 있던 것까지 안 쓴다
+    expect(readRaw(projectMemosFile(join(root, "memo")))[0]!.content).toBe("memo 대상 원고");
+  });
+
+  it("🔴 worktree 사본에서 돌아도 **메인에** 쓴다 — 사본마다 memo.json 이 따로 생기면 안 된다(INV-1)", () => {
+    // 실물 git worktree 를 같은 basename 으로 만든다 — discover 의 대표 경로(copies[0])가
+    // worktree 가 되므로, 메인 승격이 없으면 메모 파일이 그 사본에 따로 생긴다.
+    const wtParent = mkdtempSync(join(tmpdir(), "gootte-mig-wt-"));
+    const wt = join(wtParent, "jinwooauto");
+    try {
+      const git = (args: string[]): void => {
+        execFileSync("git", ["-C", proj, ...args], { stdio: "ignore" });
+      };
+      git(["init", "-q"]);
+      git(["config", "user.email", "crew@example.com"]);
+      git(["config", "user.name", "crew"]);
+      git(["config", "commit.gpgsign", "false"]);
+      git(["symbolic-ref", "HEAD", "refs/heads/main"]);
+      git(["add", "-A"]);
+      git(["commit", "-q", "-m", "seed"]);
+      git(["worktree", "add", "-q", "-b", "mig-wt", wt]);
+
+      seed("메인에 써야 한다");
+      process.env.GOOTTE_ROOTS = `${wtParent}:${root}`;
+      // 전제: discover 대표 경로가 worktree 로 걸린다(승격이 실제로 일하는 자리인지 먼저 확인).
+      expect(resolveProjectPath("jinwooauto", wt)).toBe(wt);
+
+      const written = cols(memoMigrateText(["jinwooauto"], dataDir, wt))[3]!;
+      expect(existsSync(projectMemosFile(wt))).toBe(false); // 사본에는 생기지 않는다
+      expect(realpathSync(written)).toBe(realpathSync(targetFile())); // 메인에 생겼다
+      expect(existsSync(targetFile())).toBe(true);
+    } finally {
+      rmSync(wtParent, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * 🔴 순서 규칙의 뒷편 — 이 표가 끝나도 읽기는 central 이다. T02 가 이 가드를 반대로 뒤집는다.
+   * (읽기를 먼저 돌리면 jinwooauto 의 23건이 "메모 없음" 으로 보이는 것이 이 순서가 강체인 이유다.)
+   */
+  it("🔴 이관 뒤에도 읽기는 central — 이 표는 읽기 경로를 바꾸지 않는다", () => {
+    seed("화면에 보이는 생각");
+    memoMigrateText(["jinwooauto"], dataDir, proj);
+    expect(memoText([], dataDir, proj)).toContain("화면에 보이는 생각");
   });
 });

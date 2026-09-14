@@ -10,3 +10,4 @@ export type { ProjectStateV2, TicketTimeRecord } from "@gootte/contract";
 export * from "./secondmates";
 export * from "./memo-store";
 export * from "./memo-select";
+export * from "./memo-migrate";

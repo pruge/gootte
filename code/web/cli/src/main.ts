@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { defaultPlanDataDir, defaultProjectRoots } from "@gootte/core-io";
 import { CliError } from "./args";
-import { boardText, dbMigrateText, discoverText, featureStateText, frontierText, memoText, nextText, pendingText, stepClearText, stepText, workingText } from "./commands";
+import { boardText, dbMigrateText, discoverText, featureStateText, frontierText, memoMigrateText, memoText, nextText, pendingText, stepClearText, stepText, workingText } from "./commands";
 import { runTimeCommand } from "./time";
 import { migrateTime } from "./migrate-time";
 
@@ -25,6 +25,7 @@ function usage(): number {
   "  pending     <프로젝트>  — 아직 대기중인 티켓 목록(기능 + 티켓)",
   "  frontier    [프로젝트]  — 착수 가능(대기+차단 없음+임자 없음) 티켓 목록(기능 + 티켓 + 제목)",
       "  memo        [--done|--undone]  — 지금 프로젝트 메모를 읽는다(세션용. 프로젝트 인자 없음)",
+      "  memo migrate [프로젝트…] [--purge] — central 메모를 <프로젝트>/.gootte/memo.json 으로 옮긴다(읽기는 아직 중앙)",
       "  migrate     [--dry-run] <프로젝트>  — 티켓 시간·상태 기록을 state.json v2 로 이관한다",
       "",
     ].join("\n"),
@@ -72,10 +73,18 @@ function run(argv: string[]): number {
       case "frontier":
         process.stdout.write(frontierText(rest, planDataDir()) + "\n");
         return 0;
-      case "memo":
+      case "memo": {
+        // 하위 명령 `migrate`(memos-live-with-the-project/T01) 와 읽기를 여기서 갈라 넘긴다.
+        // 🔴 읽기(`memoText`) 는 여전히 central 을 본다 — 이 표에서 읽기 경로를 돌리지 않는다.
+        const [sub, ...more] = rest;
+        if (sub === "migrate") {
+          process.stdout.write(memoMigrateText(more, planDataDir()) + "\n");
+          return 0;
+        }
         // 지금 프로젝트(cwd) 메모만 — 인자 규격은 commands.memoText 가 잠근다(T01).
         process.stdout.write(memoText(rest, planDataDir()) + "\n");
         return 0;
+      }
       case "time": {
         // state.json 모드의 시간 기록(T05) — bin/gootte 가 위임한다.
         process.stdout.write(runTimeCommand(rest) + "\n");

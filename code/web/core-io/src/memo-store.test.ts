@@ -1,8 +1,17 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { memosFile, readMemos, appendMemo, updateMemo, deleteMemo } from "./memo-store";
+import {
+  appendMemo,
+  deleteMemo,
+  memosFile,
+  projectMemosFile,
+  readMemos,
+  removeMemoFile,
+  updateMemo,
+  writeMemoFile,
+} from "./memo-store";
 
 let dataDir: string;
 
@@ -17,6 +26,52 @@ afterEach(() => {
 describe("memosFile", () => {
   test("프로젝트별 JSON 파일 경로를 만든다", () => {
     expect(memosFile(dataDir, "my-project")).toBe(join(dataDir, "memos", "my-project.json"));
+  });
+});
+
+/**
+ * 프로젝트 안 착지 자리(memos-live-with-the-project/T01) — 읽기 전환은 T02 이고, 여기서는
+ * **좌표와 쓰기 규율만** 고정한다.central 면(`memosFile`)은 T02 까지 그대로 살아있어야 한다.
+ */
+describe("projectMemosFile · writeMemoFile · removeMemoFile — 프로젝트 안 메모 파일", () => {
+  let proj: string;
+
+  beforeEach(() => {
+    proj = mkdtempSync(join(tmpdir(), "gootte-memo-proj-"));
+  });
+  afterEach(() => {
+    rmSync(proj, { recursive: true, force: true });
+  });
+
+  test("좌표는 `<프로젝트>/.gootte/memo.json` — 시간 기록과 같은 네임스페이스", () => {
+    expect(projectMemosFile(proj)).toBe(join(proj, ".gootte", "memo.json"));
+  });
+
+  test("없는 `.gootte/` 도 만들어 쓰고, 내용은 `Memo[]` 배열 하나(래퍼 객체 없음)", () => {
+    writeMemoFile(projectMemosFile(proj), [{ id: "1-1", content: "첫 메모", done: false, createdAt: "2026-09-01", updatedAt: "2026-09-01" }]);
+    const raw = JSON.parse(readFileSync(projectMemosFile(proj), "utf8"));
+    expect(Array.isArray(raw)).toBe(true);
+    expect(raw).toEqual([{ id: "1-1", content: "첫 메모", done: false, createdAt: "2026-09-01", updatedAt: "2026-09-01" }]);
+  });
+
+  test("다중 줄 content 는 원문 그대로 돌아온다(INV-4 — 요약하지 않는다)", () => {
+    const memo = { id: "1-1", content: "첫 줄\n  들여쓴 둘째 줄\n", done: true, createdAt: "2026-09-01", updatedAt: "2026-09-01" };
+    const file = projectMemosFile(proj);
+    writeMemoFile(file, [memo]);
+    // 재접합해도 같은 값 — JSON 안의 개행이 살아있고, 후미 공백도 지우지 않는다.
+    expect(JSON.parse(readFileSync(file, "utf8"))[0]!.content).toBe("첫 줄\n  들여쓴 둘째 줄\n");
+  });
+
+  test("지운 파일은 임시 파일로 남지 않는다 — rename 까지 끝난 것만 보인다", () => {
+    const file = projectMemosFile(proj);
+    writeMemoFile(file, []);
+    removeMemoFile(file);
+    expect(existsSync(file)).toBe(false);
+    expect(existsSync(`${file}.tmp`)).toBe(false);
+  });
+
+  test("없는 파일을 지워도 조용하다(멱등) — central 을 두 번 purge 해도 안 터진다", () => {
+    expect(() => removeMemoFile(join(proj, ".gootte", "memo.json"))).not.toThrow();
   });
 });
 

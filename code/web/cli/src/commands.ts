@@ -10,16 +10,21 @@ import {
   memosFile,
   memoListText,
   migratePlanDb,
+  planMemoMigration,
+  projectMemosFile,
   readFeatures,
   readFeaturesWithTime,
   readMemos,
   readPlacements,
   readPlacementsWithAutoClose,
   readSteps,
+  removeMemoFile,
+  writeMemoFile,
   writeStep,
   type MemoFilter,
 } from "@gootte/core-io";
 import { CliError, parseArgs, parseTicketRef } from "./args";
+import { resolveMainRoot } from "./time";
 
 /** CLI 명령 로직(순수 배선). main.ts 가 argv 를 명령별로 넘기고, 여기가 wiring: IO → core → text. */
 
@@ -305,6 +310,92 @@ export function featureStateText(
       return `${t.slug}\t${statusLabel}\t${t.title}`;
     })
     .join("\n");
+}
+
+/** `memo migrate` 의 사용법 — slug 인자를 받는다는 점이 `memo` 읽기와 갈린다. */
+const MEMO_MIGRATE_USAGE = "usage: gootte memo migrate [프로젝트…] [--purge]";
+
+/**
+ * `memo migrate [프로젝트…] [--purge]` — central `~/.gootte/memos/<slug>.json` 을
+ * `<메인 프로젝트>/.gootte/memo.json` 으로 옮긴다(memos-live-with-the-project/T01).
+ *
+ * 🔴 **읽기 경로는 이 표에서 돌리지 않는다** — 쓰는 자리를 만들고 → 이관하고 → 읽기를 돌린다.
+ * 읽기를 먼저 돌리면 이관되지 않은 프로젝트의 메모가 화면에서 사라진 것처럼 보인다(grill Locked 6).
+ * 🔴 순서 두 개가 데이터를 지킨다:
+ *   1) **판정 먼저 전부**, 쓰기는 그 뒤 — 여러 프로젝트를 한 번에 돌릴 때 하나가 충돌이면
+ *      아무것도 쓰지 않는다(조용히 부분 이관된 상태가 남는다).
+ *   2) **purge 는 쓰기 성공 뒤** — 지우고 쓰면 실패할 때 데이터를 잃는다(Locked 5).
+ *      skip(내용이 이미 같음) 뒤의 purge 는 안전하다 — 원장이 같은 값임을 비교로 확인했으므로.
+ *
+ * 대상 좌표는 discover 의 대표 경로(`requireProject(...).path`)를 쓰되, 그 사본이 worktree 면
+ * 시간 기록과 **같은 판**(`resolveMainRoot`)으로 메인으로 승격한다 — spec §메인 사본 규칙.
+ * 사본마다 메모 파일이 따로 생기면 그 자체가 이중 원장이다(INV-1).
+ */
+export function memoMigrateText(
+  argv: readonly string[],
+  dataDir = defaultPlanDataDir(),
+  cwd: string = process.cwd(),
+): string {
+  const { positional, flags } = parseArgs(argv);
+  for (const key of Object.keys(flags)) {
+    if (key !== "purge") throw new CliError(`${MEMO_MIGRATE_USAGE}\n--${key} 는 받지 않는다`);
+  }
+  // `--purge jinwooauto` 처럼 값을 붙이면 parseArgs 가 slug 를 플래그 값으로 삼킨다 — 삼켜진
+  // slug 를 조용히 cwd 유추로 대체하지 않는다(입력과 출력이 같은 단어로 맞물려야 한다).
+  if (typeof flags.purge === "string") {
+    throw new CliError(`${MEMO_MIGRATE_USAGE}\n--purge 는 값을 받지 않는다 — 프로젝트는 앞에 쓴다: memo migrate <프로젝트> --purge`);
+  }
+  const purge = flags.purge === true;
+
+  // slug: 인자 우선, 없으면 cwd 유추. 여러 개를 한 번에 돌려도 된다(한 프로젝트 = 한 줄 출력).
+  // 🔴 유추는 **메인 사본**에서 한다 — worktree 디렉토리 이름을 slug 로 쓰면 사본마다 메모가
+  // 따로 갈라진다(이중 원장, INV-1). 판정은 시간 기록과 같은 `resolveMainRoot` 하나뿐이다.
+  const slugs: string[] = [];
+  if (positional.length > 0) {
+    for (const s of new Set(positional)) slugs.push(s);
+  } else {
+    const inferred = slugFromCwd(resolveMainRoot(cwd));
+    if (!inferred) throw new CliError(`${MEMO_MIGRATE_USAGE}\n(프로젝트 안에서 실행하면 인자를 생략할 수 있다)`);
+    slugs.push(inferred);
+  }
+
+  // ── 1) 판정 — side effect 0. 하나라도 충돌이면 **아무것도 쓰지 않는다**(부분 이관 금지). ──
+  const jobs = slugs.map((slug) => {
+    const centralFile = memosFile(dataDir, slug);
+    // 🔴 discover 의 대표 경로가 worktree 사본이어도 메인에 쓴다(시간 기록과 같은 판).
+    const projectFile = projectMemosFile(resolveMainRoot(requireProject(slug, cwd).path));
+    return { slug, centralFile, projectFile, plan: planMemoMigration({ centralFile, projectFile }) };
+  });
+  const blocked = jobs.flatMap((j) => (j.plan.action === "error" ? [`${j.slug}\t${j.plan.reason}`] : []));
+  if (blocked.length > 0) {
+    throw new CliError([`메모를 이관하지 않았다 — 충돌 ${blocked.length}건, 쓴 파일 없음:`].concat(blocked).join("\n"));
+  }
+
+  // ── 2) 적용 — 여기 도달하면 충돌은 없다(위에서 전부 멈췄다) ─────────────────────
+  if (jobs.every((j) => j.plan.action === "none")) return "(이관 대상 없음)";
+
+  const lines: string[] = [];
+  for (const job of jobs) {
+    const plan = job.plan;
+    if (plan.action === "none") {
+      lines.push(`${job.slug}\t(이관 대상 없음)\t${job.centralFile}`);
+      continue;
+    }
+    if (plan.action === "error") continue; // 도달 불가 — 판정 단계에서 이미 CliError 로 멈춘다
+    // 🔴 순서가 데이터를 지킨다: 쓰기 **뒤에** 지운다. 지우고 쓰면 실패할 때 원본이 사라진다(Locked 5).
+    if (plan.action === "write") writeMemoFile(job.projectFile, plan.memos);
+    if (purge) removeMemoFile(job.centralFile);
+    lines.push(
+      [
+        job.slug,
+        plan.action,
+        `${plan.memos.length}건`,
+        job.projectFile,
+        purge ? `원본 삭제: ${job.centralFile}` : `원본 유지: ${job.centralFile}`,
+      ].join("\t"),
+    );
+  }
+  return lines.join("\n");
 }
 
 /**

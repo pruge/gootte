@@ -6,7 +6,7 @@
 #
 # 사용: pnpm test:ports  (= bash scripts/tests/ports.test.sh && bash scripts/tests/gootte-wrapper.test.sh)
 #
-# case 4~8 은 `bin/gootte` 의 memo 라우팅(PATH 진입점)을 잰다 — 가짜 npx 로 인자 전달만 본다.
+# case 4~9 는 `bin/gootte` 의 memo 라우팅(PATH 진입점)을 잰다 — 가짜 npx 로 인자 전달만 본다.
 
 set -euo pipefail
 
@@ -121,5 +121,16 @@ if run_path nope-memo-route >/dev/null 2>&1; then
 fi
 if [ -f "$NPX_ARGV" ]; then fail "case 8: 거부됐어야 할 명령이 TS 로 넘어감"; fi
 echo "✅ case 8 (memo 외 명령 거부는 그대로) OK"
+
+# case 9: `memo migrate` 는 **셸을 지나 TS 까지** 그대로 간다(memos-live-with-the-project/T01).
+# 하위 명령은 셸이 해석하지 않는다 — slug·플래그 순서를 셸에서 손대면 TS 의 사용자 오류 규율이
+# 무너진다(예: `--purge` 를 셸이 삼키면 원본이 조용히 남는다). 여기는 도착 자체만 잰다.
+run_path memo migrate jinwooauto --purge || fail "case 9: 'gootte memo migrate … --purge' 실패"
+grep -q 'code/web/cli/src/main.ts' "$NPX_ARGV" || fail "case 9: TS 진입점에 안 넘김"
+tail -3 "$NPX_ARGV" > "$TMP_DIR/tail3"
+[ "$(sed -n 1p "$TMP_DIR/tail3")" = "migrate" ]      || fail "case 9: 하위 명령이 도착하지 않음 — $(tr '\n' '|' < "$NPX_ARGV")"
+[ "$(sed -n 2p "$TMP_DIR/tail3")" = "jinwooauto" ]   || fail "case 9: slug 가 도착하지 않음"
+[ "$(sed -n 3p "$TMP_DIR/tail3")" = "--purge" ]      || fail "case 9: --purge 가 도착하지 않음"
+echo "✅ case 9 (memo migrate 의 slug·--purge 가 TS 계층까지 통과) OK"
 
 echo "✅ scripts/gootte.sh 전체 통과"
