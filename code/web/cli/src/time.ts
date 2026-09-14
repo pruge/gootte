@@ -75,24 +75,46 @@ function parseRelative(specRaw: string): number {
 /**
  * 메인 프로젝트 루트 해소 — cwd 가 worktree 면 config.json 으로, 없으면 git 으로 추론해 생성.
  * 🔴 생성하는 파일은 자기 `.gootte/` 네임스페이스 안이다(INV-2 예외).
+ *
+ * 🔴 **읽기 전용 경로(`gootte memo` 같은)는 이 함수를 쓰지 않는다** — 추론에 성공하면
+ * config.json 을 **쓰기** 때문이다. 그 자리는 순수 판독 `mainRootOf` 가 갖는다(memos-live-with-the-project/T02
+ * Locked 3: 빈 목록을 읽는 실행이 사본을 더럽히면 안 된다).
  */
 export function resolveMainRoot(cwd: string = process.cwd()): string {
-  const config = join(cwd, ".gootte", "config.json");
-  if (existsSync(config)) {
-    try {
-      const mainProject = (JSON.parse(readFileSync(config, "utf8")) as { mainProject?: string }).mainProject;
-      if (mainProject && existsSync(mainProject)) return mainProject;
-    } catch {
-      // 깨진 config — 아래 추론으로 회복한다
-    }
-  }
+  const cached = readMainRootConfig(cwd);
+  if (cached) return cached;
   const main = inferMainRoot(cwd);
   if (main !== null) {
     mkdirSync(join(cwd, ".gootte"), { recursive: true });
-    writeFileSync(config, JSON.stringify({ mainProject: main }, null, 2) + "\n");
+    writeFileSync(
+      join(cwd, ".gootte", "config.json"),
+      JSON.stringify({ mainProject: main }, null, 2) + "\n",
+    );
     return main;
   }
   return cwd; // 메인에서 실행 — 자기 state.json 이 곧 대상
+}
+
+/**
+ * 메인 프로젝트 루트 **판독**(side effect 0) — config.json 이 있으면 그것, 없으면 git 으로
+ * 추론하되 **쓰지는 않는다**. 그래도 없으면 여기가 메인이다.
+ * 읽기 경로가 같은 규칙을 두 번째로 발명하지 않게 여기가 그 규칙의 자리다(INV-1).
+ */
+export function mainRootOf(cwd: string = process.cwd()): string {
+  return readMainRootConfig(cwd) ?? inferMainRoot(cwd) ?? cwd;
+}
+
+/** `<cwd>/.gootte/config.json` 의 `mainProject` — 없거나 깨졌거나 대상이 없으면 null. */
+function readMainRootConfig(cwd: string): string | null {
+  const config = join(cwd, ".gootte", "config.json");
+  if (!existsSync(config)) return null;
+  try {
+    const mainProject = (JSON.parse(readFileSync(config, "utf8")) as { mainProject?: string }).mainProject;
+    if (mainProject && existsSync(mainProject)) return mainProject;
+  } catch {
+    // 깨진 config — 아래 추론으로 회복한다
+  }
+  return null;
 }
 
 /** worktree(`.git` 이 파일)면 git-common-dir 의 부모로 메인을 추론한다(B3). 메인이면 null. */

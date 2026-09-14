@@ -25,7 +25,7 @@ function usage(): number {
   "  pending     <프로젝트>  — 아직 대기중인 티켓 목록(기능 + 티켓)",
   "  frontier    [프로젝트]  — 착수 가능(대기+차단 없음+임자 없음) 티켓 목록(기능 + 티켓 + 제목)",
       "  memo        [--done|--undone]  — 지금 프로젝트 메모를 읽는다(세션용. 프로젝트 인자 없음)",
-      "  memo migrate [프로젝트…] [--purge] — central 메모를 <프로젝트>/.gootte/memo.json 으로 옮긴다(읽기는 아직 중앙)",
+      "  memo migrate [프로젝트…] [--purge] — central 메모를 <프로젝트>/.gootte/memo.json 으로 옮긴다(읽기는 이미 그 파일을 본다)",
       "  migrate     [--dry-run] <프로젝트>  — 티켓 시간·상태 기록을 state.json v2 로 이관한다",
       "",
     ].join("\n"),
@@ -75,14 +75,16 @@ function run(argv: string[]): number {
         return 0;
       case "memo": {
         // 하위 명령 `migrate`(memos-live-with-the-project/T01) 와 읽기를 여기서 갈라 넘긴다.
-        // 🔴 읽기(`memoText`) 는 여전히 central 을 본다 — 이 표에서 읽기 경로를 돌리지 않는다.
+        // 🔴 읽기(`memoText`) 는 T02 부터 **`<메인 프로젝트>/.gootte/memo.json`** 을 본다 — central 을
+        // 읽는 폴백은 없다(이중 원장 방지). 계획 저장소(`planDataDir()`)는 이관 명령의 원본 좌표로만 산다.
         const [sub, ...more] = rest;
         if (sub === "migrate") {
           process.stdout.write(memoMigrateText(more, planDataDir()) + "\n");
           return 0;
         }
         // 지금 프로젝트(cwd) 메모만 — 인자 규격은 commands.memoText 가 잠근다(T01).
-        process.stdout.write(memoText(rest, planDataDir()) + "\n");
+        // 🔴 `dataDir` 를 넘기지 않는다: 읽기 경로에 중앙 좌표가 들어서도 될 자리는 없다(T02).
+        process.stdout.write(memoText(rest, process.cwd()) + "\n");
         return 0;
       }
       case "time": {

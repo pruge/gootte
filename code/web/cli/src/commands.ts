@@ -6,12 +6,12 @@ import {
   defaultPlanDataDir,
   discoverProjects,
   effectiveProjectRoots,
+  centralMemosFile,
   isFirstmateProject,
   memosFile,
   memoListText,
   migratePlanDb,
   planMemoMigration,
-  projectMemosFile,
   readFeatures,
   readFeaturesWithTime,
   readMemos,
@@ -24,7 +24,7 @@ import {
   type MemoFilter,
 } from "@gootte/core-io";
 import { CliError, parseArgs, parseTicketRef } from "./args";
-import { resolveMainRoot } from "./time";
+import { mainRootOf, resolveMainRoot } from "./time";
 
 /** CLI 명령 로직(순수 배선). main.ts 가 argv 를 명령별로 넘기고, 여기가 wiring: IO → core → text. */
 
@@ -70,20 +70,33 @@ function requireProjectPath(project: string, cwd: string): string[] {
 }
 
 /**
+ * cwd → 프로젝트 **루트** 유추 — 조상을 올라가 발견 표식(AGENTS.md + docs/features)으로 자기
+ * 프로젝트를 찾는다. 못 찾으면 null.
+ *
+ * 🔴 slug 가 아니라 경로를 돌려준다 — 메모는 경로(`.gootte/memo.json`)에서 읽고, 표시할 slug 는
+ * 그 경로의 basename 이다. worktree 사본이면 여기서 끝이 아니라 `mainRootOf` 가 한 번 더 올라가
+ * 메인에 닿는다(memos-live-with-the-project/T02).
+ */
+function projectRootFromCwd(cwd: string): string | null {
+  let cur = resolve(cwd);
+  for (let guard = 0; guard < 32; guard++) {
+    if (isFirstmateProject(cur)) return cur;
+    const parent = dirname(cur);
+    if (parent === cur) return null;
+    cur = parent;
+  }
+  return null;
+}
+
+/**
  * cwd → 프로젝트 slug 유추 — 조상을 올라가 **발견 표식**(AGENTS.md + docs/features, 캡틴 지시
  * 2026-09-09: "project 명을 주입하는 것이 없어야 한다")으로 자기 프로젝트를 찾는다.
  * 🔴 discover 목록 대신 **직접 표식 검사**로 올라간다 — cwd 가 깊어도(code/web 등) 뿌리를 찾는다.
  * 프로젝트 안 어디서 실행해도 같은 답. 못 찾으면 null.
  */
 function slugFromCwd(cwd: string): string | null {
-  let cur = resolve(cwd);
-  for (let guard = 0; guard < 32; guard++) {
-    if (isFirstmateProject(cur)) return basename(cur);
-    const parent = dirname(cur);
-    if (parent === cur) return null;
-    cur = parent;
-  }
-  return null;
+  const root = projectRootFromCwd(cwd);
+  return root ? basename(root) : null;
 }
 
 /** `<프로젝트>` 인자 해소 — 생략하면 cwd 유추(캡틴 지시 2026-09-09). 있으면 기존대로. */
@@ -319,8 +332,10 @@ const MEMO_MIGRATE_USAGE = "usage: gootte memo migrate [프로젝트…] [--purg
  * `memo migrate [프로젝트…] [--purge]` — central `~/.gootte/memos/<slug>.json` 을
  * `<메인 프로젝트>/.gootte/memo.json` 으로 옮긴다(memos-live-with-the-project/T01).
  *
- * 🔴 **읽기 경로는 이 표에서 돌리지 않는다** — 쓰는 자리를 만들고 → 이관하고 → 읽기를 돌린다.
- * 읽기를 먼저 돌리면 이관되지 않은 프로젝트의 메모가 화면에서 사라진 것처럼 보인다(grill Locked 6).
+ * 🔴 읽기 경로는 T02 에서 **이 명령이 놓은 자리**로 돌아갔다 — 화면과 `gootte memo` 가 같은
+ * `<메인 프로젝트>/.gootte/memo.json` 을 읽는다. 순서가 강제가 필요한 이유는 그대로다: 이관을
+ * 먼저 끝내지 않으면 미이관 프로젝트의 메모가 0건으로 보인다(grill Locked 6). 그래서 여기는
+ * 아직 central 을 **읽는다**(옮길 원본으로) — 그 읽기는 이 명령 안에만 있다.
  * 🔴 순서 두 개가 데이터를 지킨다:
  *   1) **판정 먼저 전부**, 쓰기는 그 뒤 — 여러 프로젝트를 한 번에 돌릴 때 하나가 충돌이면
  *      아무것도 쓰지 않는다(조용히 부분 이관된 상태가 남는다).
@@ -361,9 +376,9 @@ export function memoMigrateText(
 
   // ── 1) 판정 — side effect 0. 하나라도 충돌이면 **아무것도 쓰지 않는다**(부분 이관 금지). ──
   const jobs = slugs.map((slug) => {
-    const centralFile = memosFile(dataDir, slug);
+    const centralFile = centralMemosFile(dataDir, slug);
     // 🔴 discover 의 대표 경로가 worktree 사본이어도 메인에 쓴다(시간 기록과 같은 판).
-    const projectFile = projectMemosFile(resolveMainRoot(requireProject(slug, cwd).path));
+    const projectFile = memosFile(resolveMainRoot(requireProject(slug, cwd).path));
     return { slug, centralFile, projectFile, plan: planMemoMigration({ centralFile, projectFile }) };
   });
   const blocked = jobs.flatMap((j) => (j.plan.action === "error" ? [`${j.slug}\t${j.plan.reason}`] : []));
@@ -461,19 +476,21 @@ const MEMO_USAGE = "usage: gootte memo [--done|--undone]";
 /**
  * `memo [--done|--undone]` — **지금 프로젝트(cwd)의 메모만** 읽는다(memos-read-from-any-session/T01).
  *
+ * 🔴 자리 해소가 T02 에서 움직였다: central(`GOOTTE_DATA_DIR/memos/<slug>.json`) 이 아니라
+ * **`<메인 프로젝트>/.gootte/memo.json`** 을 읽는다. 인자에서 `dataDir` 가 빠진 것이 그 사실의
+ * 선언이다 — 읽기 경로에 중앙 저장소를 넘기는 자리가 있으면 누군가는 언젠가 그것을 읽는다.
+ * 메인 해소는 이관(T01)과 **같은 판**: cwd → `resolveMainRoot`(worktree 면 메인 승격) → slug.
+ * 그래서 worktree 사본에서 쳐도 메인 사본과 같은 답이 나온다(INV-1 — 사본마다 다른 원장 금지).
+ *
  * 🔴 프로젝트 인자를 받지 않는다(캡틴 지시 2026-09-14) — `start`·`end`·`status` 처럼 세션의
  * 프로젝트가 전부다. 위치 인자가 하나라도 들어오면 사용자 오류로 멈춘다: 조용히 무시하거나
  * 그 프로젝트로 읽으면 "다른 프로젝트 메모를 보는 통로" 가 되어 범위와 어긋난다.
- * (slug 유추 실패 안내만 `resolveProjectArg` 의 문구를 그대로 쓴다 — 인자 허용 규율은 여기서 좁힌다.)
  *
- * 판정은 core-io `memo-select` 하나뿐(INV-4) — 여기는 배선만 한다: cwd → slug, 파일 → 목록,
- * 계산 → 문자열. 고장 난 JSON 을 빈 목록으로 위장하지 않는다(`memo-store` 의 분기를 CLI 도 쓴다).
+ * 판정은 core-io `memo-select` 하나뿐(INV-4) — 여기는 배선만 한다: cwd → 프로젝트 경로,
+ * 파일 → 목록, 계산 → 문자열. 고장 난 JSON 을 빈 목록으로 위장하지 않는다(`memo-store` 의
+ * 분기를 CLI 도 쓴다).
  */
-export function memoText(
-  argv: readonly string[],
-  dataDir = defaultPlanDataDir(),
-  cwd: string = process.cwd(),
-): string {
+export function memoText(argv: readonly string[], cwd: string = process.cwd()): string {
   const { positional, flags } = parseArgs(argv);
   if (positional.length > 0) {
     throw new CliError(`${MEMO_USAGE}\ngootte memo 는 프로젝트 인자를 받지 않는다 — 지금 프로젝트만 봅니다`);
@@ -488,13 +505,19 @@ export function memoText(
   }
   const filter: MemoFilter = wantsDone ? "done" : wantsUndone ? "undone" : "all";
 
-  const slug = slugFromCwd(cwd);
-  if (!slug) throw new CliError(`${MEMO_USAGE}\n(프로젝트 안에서 실행하면 인자를 생략할 수 있다)`);
+  const projectRoot = projectRootFromCwd(cwd);
+  if (!projectRoot) throw new CliError(`${MEMO_USAGE}\n(프로젝트 안에서 실행하면 인자를 생략할 수 있다)`);
 
-  const file = memosFile(dataDir, slug);
+  // 🔴 cwd 가 worktree 사본 안이면 **메인 사본**으로 올라간 뒤의 slug 가 원장 키다(T01 과 같은 판) —
+  // 격리 사본 디렉토리 이름을 slug 로 쓰면 사본마다 메모가 따로 갈라진다(INV-1).
+  // `mainRootOf` 는 판독만 한다: 읽기가 `.gootte/` 를 만들지 않는다(Locked 3).
+  const projectDir = mainRootOf(projectRoot);
+  const slug = basename(projectDir);
+
+  const file = memosFile(projectDir);
   let memos: Memo[];
   try {
-    memos = readMemos(dataDir, slug);
+    memos = readMemos(projectDir);
   } catch (err) {
     // 지운 것(파일 없음 → 0 건) 과 고장 난 것을 같게 그리지 않는다 — 원인을 내고 exit 1.
     const cause = err instanceof Error ? err.message : String(err);

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -22,6 +23,9 @@ import {
   PlanBoardResponse,
   SettingsResponse,
   ApiError,
+  Memo,
+  MemosResponse,
+  MemoDeleteResponse,
   type Project,
 } from "@gootte/contract";
 
@@ -1685,6 +1689,216 @@ describe("설정 PUT → onProjectsChange", () => {
       await put({ projects: null }); // 지움
       expect(seen.length).toBe(2);
     } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * `/api/memos/:slug` — 읽기·쓰기의 원장이 **`<메인 프로젝트>/.gootte/memo.json`** 이다
+ * (memos-live-with-the-project/T02). 화면 쪽에서 폴백 없음의 얼굴을 직접 잰다:
+ *
+ * - central(`dataDir/memos/<slug>.json`) 에 데이터가 남아 있어도 응답은 **0건** — 그 파일은
+ *   이관 원본일 뿐 읽는 자리가 아니다. central 을 읽는 순간 이중 원장이자 미이관 프로젝트를
+ *   이관된 척 그리는 거짓이다(grill Locked 5).
+ * - 저장이 **그 프로젝트의 파일**에 닿고, `dataDir` 는 아무것도 받아 쓰지 않는다.
+ * - 읽기(GET)는 사본을 더럽히지 않는다 — `.gootte/` 자체가 생기면 실패(Locked 3).
+ * - 프로젝트를 못 찾으면 404 를 유지하고, 응답 `project` 는 slug 그대로(경로 노출 금지).
+ */
+describe("memos API — 원장은 프로젝트 파일, central 은 읽지 않는다(T02)", () => {
+  /** 임시 관리대상 프로젝트 하나 — 메모가 착지할 사본. */
+  function makeProject(slug = "memoproj"): { root: string; dir: string } {
+    const root = mkdtempSync(join(tmpdir(), "gootte-memo-api-"));
+    const dir = join(root, slug);
+    mkdirSync(join(dir, "docs", "features", "alpha"), { recursive: true });
+    writeFileSync(join(dir, "AGENTS.md"), "# AGENTS\n");
+    writeFileSync(join(dir, "docs", "features", "alpha", "spec.md"), "# alpha\n");
+    return { root, dir };
+  }
+
+  const memoJson = (n: number, content: string) => ({
+    id: `178827743576${n}-1`,
+    content,
+    done: false,
+    createdAt: `2026-09-0${n}T00:00:00.000Z`,
+    updatedAt: `2026-09-0${n}T00:00:00.000Z`,
+  });
+
+  /** central 자리에 원본을 놓는다(이관 전 상태의 그림). 읽히면 지는 시험이다. */
+  function putCentral(dataDir: string, slug: string, memos: unknown[]): string {
+    const file = join(dataDir, "memos", `${slug}.json`);
+    mkdirSync(join(dataDir, "memos"), { recursive: true });
+    writeFileSync(file, `${JSON.stringify(memos, null, 2)}\n`);
+    return file;
+  }
+
+  test("AC3 central 에만 데이터가 있는 미이관 프로젝트 → 0건(폴백 없음의 얼굴)", async () => {
+    const { root, dir } = makeProject();
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-memo-api-data-"));
+    try {
+      const central = putCentral(dataDir, "memoproj", [memoJson(1, "중앙에만 있는 생각")]);
+      const app = createApp({ roots: [root], treehouse: NO_TREEHOUSE, dataDir });
+      const res = await app.request("/api/memos/memoproj");
+      expect(res.status).toBe(200);
+      const body = MemosResponse.parse(await res.json());
+      expect(body.memos).toEqual([]); // 🴴 central 을 몰래 읽으면 1건이 보인다 → 이 가드가 잡는다
+      expect(body.project).toBe("memoproj"); // slug 그대로 — 경로를 화면에 흘리지 않는다(Locked 5)
+      // 그리고 읽기가 central 에도 프로젝트에도 아무것도 쓰지 않았다.
+      expect(JSON.parse(readFileSync(central, "utf8"))).toHaveLength(1);
+      expect(existsSync(join(dir, ".gootte"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("AC2 저장 → `<프로젝트>/.gootte/memo.json` 에 붙고, central 은 그대로(손대지 않음)", async () => {
+    const { root, dir } = makeProject();
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-memo-api-data-"));
+    try {
+      const central = putCentral(dataDir, "memoproj", [memoJson(9, "옛 central 원본")]);
+      const centralBefore = readFileSync(central, "utf8");
+      const app = createApp({
+        roots: [root],
+        treehouse: NO_TREEHOUSE,
+        dataDir,
+        now: () => "2026-09-14 10:00",
+      });
+
+      const res = await app.request("/api/memos/memoproj", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: "화면에서 쓴 새 메모" }),
+      });
+      expect(res.status).toBe(200);
+      const created = Memo.parse(await res.json());
+      expect(created.content).toBe("화면에서 쓴 새 메모");
+
+      // 프로젝트 파일에 닿았는가 — 저장이 `.gootte/` 를 만드는 유일한 통로다(Locked 3).
+      const projectFile = join(dir, ".gootte", "memo.json");
+      expect(existsSync(projectFile)).toBe(true);
+      const stored = JSON.parse(readFileSync(projectFile, "utf8"));
+      expect(Array.isArray(stored)).toBe(true); // 래퍼 객체 없이 Memo[] 배열 하나
+      expect(stored.map((m: { content: string }) => m.content)).toEqual(["화면에서 쓴 새 메모"]);
+      // central 은 읽지도 쓰지도 않았다 — 원본은 그대로다.
+      expect(readFileSync(central, "utf8")).toBe(centralBefore);
+
+      // 그리고 그 값이 GET 에 곧장 보인다(INV-3 — 같은 자리를 읽는다).
+      const body = MemosResponse.parse(await (await app.request("/api/memos/memoproj")).json());
+      expect(body.memos.map((m) => m.id)).toEqual([created.id]);
+
+      // 고치기·지우기도 같은 파일 지난다.
+      const put = await app.request(`/api/memos/memoproj/${created.id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: "화면에서 고친 메모", done: true }),
+      });
+      expect(Memo.parse(await put.json())).toMatchObject({ content: "화면에서 고친 메모", done: true });
+      expect(
+        JSON.parse(readFileSync(projectFile, "utf8")).map((m: { content: string }) => m.content),
+      ).toEqual(["화면에서 고친 메모"]);
+
+      const del = await app.request(`/api/memos/memoproj/${created.id}`, { method: "DELETE" });
+      expect(MemoDeleteResponse.parse(await del.json())).toEqual({ ok: true });
+      expect(JSON.parse(readFileSync(projectFile, "utf8"))).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("프로젝트 미해소 → 404(읽기·쓰기 모두), 없는 메모 id → 404", async () => {
+    const { root } = makeProject();
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-memo-api-data-"));
+    try {
+      const app = createApp({ roots: [root], treehouse: NO_TREEHOUSE, dataDir });
+      expect((await app.request("/api/memos/nosuchproject")).status).toBe(404);
+      expect(
+        (
+          await app.request("/api/memos/nosuchproject", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ content: "x" }),
+          })
+        ).status,
+      ).toBe(404);
+      // discover 목록에 없는 프로젝트는 파일이 있어도 404 — central 로 되살리지 않는다. — central 로 되살리지 않는다.
+      expect(ApiError.parse(await (await app.request("/api/memos/nosuchproject")).json())).toEqual({
+        error: "프로젝트 없음: nosuchproject",
+      });
+      // 살아있는 프로젝트의 없는 id 는 404, 지움도 404.
+      await app.request("/api/memos/memoproj", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: "한 장" }),
+      });
+      expect((await app.request("/api/memos/memoproj/nope-id", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ content: "x" }) })).status).toBe(404);
+      expect((await app.request("/api/memos/memoproj/nope-id", { method: "DELETE" })).status).toBe(404);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("망가진 저장소 → 500 + 원인(빈 목록으로 위장하지 않는다), 지운 것은 0건", async () => {
+    const { root, dir } = makeProject();
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-memo-api-data-"));
+    try {
+      mkdirSync(join(dir, ".gootte"), { recursive: true });
+      writeFileSync(join(dir, ".gootte", "memo.json"), "{ not json");
+      const app = createApp({ roots: [root], treehouse: NO_TREEHOUSE, dataDir });
+      const res = await app.request("/api/memos/memoproj");
+      expect(res.status).toBe(500);
+      expect(ApiError.parse(await res.json()).error).toBeTruthy();
+      // 파일이 **없는** 것은 0건(200) — 고장과 구별된다(Locked 4).
+      rmSync(join(dir, ".gootte"), { recursive: true, force: true });
+      const empty = await app.request("/api/memos/memoproj");
+      expect(empty.status).toBe(200);
+      expect(MemosResponse.parse(await empty.json()).memos).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("🔴 사본이 둘이어도 **대표 경로 하나**에만 쓴다 — 사본마다 원장이 생기면 지는 시험(INV-1)", async () => {
+    // discover 는 같은 slug 의 사본을 하나로 묶고 `path` 를 대표로 세운다. 화면은 그 대표
+    // 경로에서만 읽고 쓴다 — 두 번째 사본에 같은 이름의 파일이 생기는 순간 이중 원장이다.
+    const rootA = mkdtempSync(join(tmpdir(), "gootte-memo-api-a-"));
+    const rootB = mkdtempSync(join(tmpdir(), "gootte-memo-api-b-"));
+    const dataDir = mkdtempSync(join(tmpdir(), "gootte-memo-api-data-"));
+    const makeCopy = (root: string) => {
+      const dir = join(root, "dupproj");
+      mkdirSync(join(dir, "docs", "features"), { recursive: true });
+      writeFileSync(join(dir, "AGENTS.md"), "# AGENTS\n");
+      return dir;
+    };
+    try {
+      const first = makeCopy(rootA);
+      const second = makeCopy(rootB);
+      const app = createApp({ roots: [rootA, rootB], treehouse: NO_TREEHOUSE, dataDir });
+      // 대표 해소 확인(전제): discover 의 `path` 는 첫 사본이다.
+      clearDiscoverCache();
+      const proj = getProjects([rootA, rootB]).find((x) => x.slug === "dupproj")!;
+      expect(proj.copies).toEqual([first, second]);
+      expect(proj.path).toBe(first);
+
+      const res = await app.request("/api/memos/dupproj", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: "대표에 쓴 메모" }),
+      });
+      expect(res.status).toBe(200);
+
+      expect(JSON.parse(readFileSync(join(first, ".gootte", "memo.json"), "utf8"))).toHaveLength(1);
+      // 🔴 두 번째 사본에는 아무것도 생기지 않는다.
+      expect(existsSync(join(second, ".gootte"))).toBe(false);
+      // 읽기도 같은 대표를 지난다 — 다른 사본의 값이 섞이지 않는다.
+      const body = MemosResponse.parse(await (await app.request("/api/memos/dupproj")).json());
+      expect(body.memos.map((m) => m.content)).toEqual(["대표에 쓴 메모"]);
+    } finally {
+      rmSync(rootA, { recursive: true, force: true });
+      rmSync(rootB, { recursive: true, force: true });
       rmSync(dataDir, { recursive: true, force: true });
     }
   });

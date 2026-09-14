@@ -34,6 +34,11 @@
   처리중 표시를 티켓 파일에 적어 넣는 것도 여기 포함된다.
   (위 INV-1 예외로 gootte 는 v2 프로젝트에서 시간 명령이 **자기 `.gootte/state.json` 에만** 쓴다 —
   MD 편집은 이제 없다. 산출물은 이미 `.gootte/` 네임스페이스 안이다.)
+  🔴 같은 네임스페이스에 **메모**도 산다(`memos-live-with-the-project`, 캡틴 승인 2026-09-14):
+  `<프로젝트>/.gootte/memo.json` — 예전 central(`GOOTTE_DATA_DIR/memos/`) 은 이관 원본일 뿐
+  **읽지 않는다**(폴백 = 이중 원장). 시간 기록과 같은 계보의 예외라 문서 금지선이 여기서도
+  그대로다 — `.gootte/` 밖의 관리대상 파일에는 한 글자도 쓰지 않는다.
+  (`docs/features/memos-live-with-the-project/adr/0001-memos-live-in-the-project.md`)
 - **INV-3 — stale 뷰 금지.** 뷰는 **항상 현재 SoT 를 반영**한다(실시간 체크·재계산).
 - **INV-4 — read-path 는 결정적·LLM-free.** 할일 목록·막힘 해제·처리중 판정은 전부 계산이다.
   산문 "왜" 는 요약하지 말고 **verbatim 릴레이** — 지능(왜 판단)은 write-time 에 캡처되고,
@@ -43,6 +48,8 @@
   막힘 · 착수 가능 여부 · 처리중 · 임자 · 제목.
   🔴 위 INV-1 예외에 따라 **티켓 시간 기록(started/finished/pauses)과 폐기 원문은 저장한다** —
   행위의 기록이라 원본 재생성이 불가능한 INV-5 값으로 갈린다(2026-09-09 개정).
+  🔴 **사람의 메모도 INV-5 의 저장 대상이다** — 자리가 central 이 아니라 `<프로젝트>/.gootte/memo.json`
+  이다. 값이 아니라 **좌표**가 바뀐 것이라 저장 자격의 판정은 그대로다(2026-09-14).
   판단 기준 한 줄: **다른 어디에도 없는 것만 저장할 자격이 있다.**
   (`docs/features/development-order/` · `docs/features/time-records-to-state-store/`)
 

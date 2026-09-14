@@ -636,11 +636,11 @@ export function createApp(options: AppOptions = {}): Hono {
     broadcast,
   }));
 
-  // ── 메모 (memo-pad) — memo.ts 로 분리 ──
+  // ── 메모 (memo-pad) — memo.ts 로 분리. 저장 자리는 `<메인 프로젝트>/.gootte/memo.json` 이라
+  // 계획 저장소(`dataDir`)를 넘기지 않는다 — 라우트가 slug 를 프로젝트 경로로 해소해 쓴다(T02).
   app.route("/", createMemoRoutes({
     resolveSlug,
     effectiveRoots,
-    dataDir,
     now,
   }));
 
