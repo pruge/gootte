@@ -33,7 +33,7 @@ describe("DocDrawer — 마크다운을 서식대로 렌더링한다(티켓 01 �
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("제목·목록·표가 서식대로 뜬다", () => {
+  it("제목·목록·표가 서식대로 뜬다", async () => {
     const content = [
       "# 제목",
       "",
@@ -46,7 +46,7 @@ describe("DocDrawer — 마크다운을 서식대로 렌더링한다(티켓 01 �
     ].join("\n");
     renderDrawer({ featureSlug: "auth-login", path: "spec.md", seed: { path: "spec.md", content } });
 
-    expect(screen.getByRole("heading", { level: 1, name: "제목" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "제목" })).toBeInTheDocument();
     expect(screen.getByText("하나")).toBeInTheDocument();
     expect(screen.getByText("둘")).toBeInTheDocument();
     const table = screen.getByRole("table");
@@ -55,14 +55,14 @@ describe("DocDrawer — 마크다운을 서식대로 렌더링한다(티켓 01 �
     expect(screen.getByRole("cell", { name: "a" })).toBeInTheDocument();
   });
 
-  it("🔴 다이어그램 코드블록은 되살리지 않는다 — 코드블록으로 남는다", () => {
+  it("🔴 다이어그램 코드블록은 되살리지 않는다 — 코드블록으로 남는다", async () => {
     const content = ["```mermaid", "graph TD; A-->B;", "```"].join("\n");
     renderDrawer({ featureSlug: "auth-login", path: "spec.md", seed: { path: "spec.md", content } });
 
     // svg/diagram 컨테이너가 아니라 <pre><code> 그대로.
+    const code = await screen.findByText(/graph TD/);
+    expect(code.closest("pre")).toBeTruthy();
     expect(screen.queryByRole("img")).toBeNull();
-    const code = document.querySelector("pre code")!;
-    expect(code).toBeTruthy();
     expect(code.textContent).toContain("graph TD; A-->B;");
     expect(code.className).toContain("language-mermaid");
   });
@@ -168,10 +168,10 @@ function renderApp(initialView: string | null = null) {
 }
 
 describe("DocDrawer — 열린 문서는 URL 에 실린다(F8, 티켓 01 §설계 4)", () => {
-  it("URL 에 문서를 실은 채 새로고침하면 그 문서가 열린 채로 뜬다", () => {
+  it("URL 에 문서를 실은 채 새로고침하면 그 문서가 열린 채로 뜬다", async () => {
     renderApp("auth-login/spec.md");
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "사양" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "사양" })).toBeInTheDocument();
   });
 
   it("닫으면 포커스가 눌렀던 자리로 돌아온다", () => {

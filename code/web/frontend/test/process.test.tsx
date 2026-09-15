@@ -237,7 +237,7 @@ describe("ProcessView — 2컬럼(1:2) 읽기 화면(process-two-column/T01)", (
 
     fireEvent.click(within(menu).getByRole("menuitem", { name: /0001-x\.md/ }));
     const drawer = await screen.findByRole("dialog", { name: "adr/0001-x.md" });
-    expect(within(drawer).getByRole("heading", { name: "결정 하나" })).toBeInTheDocument();
+    expect(await within(drawer).findByRole("heading", { name: "결정 하나" })).toBeInTheDocument();
   });
 
   it("🔴 안 읽은 티켓 줄에 표시가 뜬다 — features 탭과 같은 표시(unread-tickets-show-themselves/02)", () => {
@@ -282,7 +282,7 @@ describe("ProcessView — 2컬럼(1:2) 읽기 화면(process-two-column/T01)", (
     fireEvent.click(screen.getByRole("button", { name: /세션 발급/ }));
 
     const drawer = await screen.findByRole("dialog", { name: "issues/01-x.md" });
-    expect(within(drawer).getByRole("heading", { name: "01 — 세션 발급" })).toBeInTheDocument();
+    expect(await within(drawer).findByRole("heading", { name: "01 — 세션 발급" })).toBeInTheDocument();
   });
 });
 

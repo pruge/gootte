@@ -527,7 +527,7 @@ describe("PlanView — 카드 머리 아이콘 둘과 이동 대화상자(plan-b
     clickIcon("auth-login 제목", /문서 열기/);
 
     const drawer = await screen.findByRole("dialog", { name: "spec.md" });
-    expect(within(drawer).getByRole("heading", { name: "auth-login" })).toBeInTheDocument();
+    expect(await within(drawer).findByRole("heading", { name: "auth-login" })).toBeInTheDocument();
     // 🔴 카드는 그대로 있다 — 탭이 바뀌었다면 이 카드는 화면에서 사라졌을 것이다.
     expect(screen.getByRole("article", { name: "auth-login 제목" })).toBeInTheDocument();
   });
@@ -577,7 +577,7 @@ describe("PlanView — 카드 머리 아이콘 둘과 이동 대화상자(plan-b
 
     fireEvent.click(within(menu).getByRole("menuitem", { name: /0001-x\.md/ }));
     const drawer = await screen.findByRole("dialog", { name: "adr/0001-x.md" });
-    expect(within(drawer).getByRole("heading", { name: "결정 하나" })).toBeInTheDocument();
+    expect(await within(drawer).findByRole("heading", { name: "결정 하나" })).toBeInTheDocument();
     // 🔴 plan 탭에 머문다 — 카드가 그대로 있다.
     expect(screen.getByRole("article", { name: "auth-login 제목" })).toBeInTheDocument();
   });
@@ -915,7 +915,7 @@ describe("PlanView — 카드 대화상자에서 티켓 원문을 연다", () =>
     fireEvent.click(within(opened).getByRole("button", { name: /세션 발급/ }));
 
     const drawer = await screen.findByRole("dialog", { name: "issues/01-x.md" });
-    expect(within(drawer).getByRole("heading", { name: "01 — 세션 발급" })).toBeInTheDocument();
+    expect(await within(drawer).findByRole("heading", { name: "01 — 세션 발급" })).toBeInTheDocument();
     // 🔴 탭은 그대로 plan 이다 — 문서 아이콘(03)과 달리 판을 떠나지 않는다.
     expect(screen.getByRole("article", { name: "auth-login 제목" })).toBeInTheDocument();
   });
@@ -954,7 +954,7 @@ describe("PlanView — 카드 대화상자에서 티켓 원문을 연다", () =>
     fireEvent.click(within(opened).getByRole("button", { name: /신관례 티켓/ }));
 
     const drawer = await screen.findByRole("dialog", { name: "tickets/T01.md" });
-    expect(within(drawer).getByRole("heading", { name: "T01 — 신관례 티켓" })).toBeInTheDocument();
+    expect(await within(drawer).findByRole("heading", { name: "T01 — 신관례 티켓" })).toBeInTheDocument();
   });
 
   it("드로어를 닫으면 카드 대화상자로 그대로 돌아온다", async () => {
