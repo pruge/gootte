@@ -1,5 +1,5 @@
 import { allTickets, finalizeFeatureStatus, computeDisplaySteps, computeFrontier, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
-import { type Feature, type Memo, AREA_LABEL, ALL_AREAS, type BoardAreaId, type TodoStatus } from "@gootte/contract";
+import { type Feature, type FeatureTicket, type Memo, AREA_LABEL, ALL_AREAS, type BoardAreaId, type TodoStatus } from "@gootte/contract";
 import { basename, dirname, resolve } from "node:path";
 import {
   clearStep,
@@ -420,30 +420,143 @@ export function memoMigrateText(
  * 🔴 판정은 화면과 **같은 자리**를 지난다 — 레코드 조인(`readProjectFeatures`) + 상태 확정
  * (`withFinalStatus`) 뒤의 `ticket.status` 만 본다. 여기서 상태를 다시 추정하지 않는다(INV-4).
  */
-function filteredTicketsText(
-  argv: readonly string[],
-  statuses: readonly TodoStatus[],
-  cmd: string,
-  dataDir = defaultPlanDataDir(),
-  cwd: string = process.cwd(),
-): string {
-  rejectFlags(argv);
-  const project = resolveProjectArg(argv, cwd, `usage: gootte ${cmd} [프로젝트]`);
+const STATUS_USAGE = "usage: gootte status [기능] [--working|--pending]";
+
+/** CJK(전각) 문자를 2칸으로 세는 표시 폭 — 한글 제목이 섞인 열을 맞춘다. */
+function displayWidth(s: string): number {
+  let w = 0;
+  for (const ch of s) {
+    const c = ch.codePointAt(0) ?? 0;
+    const wide =
+      (c >= 0x1100 && c <= 0x115f) ||
+      (c >= 0x2e80 && c <= 0xa4cf) ||
+      (c >= 0xac00 && c <= 0xd7a3) ||
+      (c >= 0xf900 && c <= 0xfaff) ||
+      (c >= 0xfe30 && c <= 0xfe4f) ||
+      (c >= 0xff00 && c <= 0xff60) ||
+      (c >= 0xffe0 && c <= 0xffe6);
+    w += wide ? 2 : 1;
+  }
+  return w;
+}
+
+function padEndW(s: string, width: number): string {
+  const pad = width - displayWidth(s);
+  return pad > 0 ? s + " ".repeat(pad) : s;
+}
+
+const isPaused = (t: FeatureTicket): boolean =>
+  t.status === "in_progress" && (t.pauses?.some((p) => p.resumedAt === null) ?? false);
+
+/** 작업중 줄의 꼬리말 — 경과 시간(+ 일시중단). */
+const workingNote = (t: FeatureTicket): string => {
+  const base = t.elapsed ?? "진행 중";
+  return isPaused(t) ? `${base} · 일시중단` : base;
+};
+
+/** 대기 줄의 꼬리말 — 착수 가능한가, 아니면 무엇을 기다리는가. */
+const pendingNote = (t: FeatureTicket): string =>
+  t.waitingOn.length > 0 ? `⛔ ${t.waitingOn.join(", ")} 대기` : "착수 가능";
+
+const statusLabel = (t: FeatureTicket): string =>
+  t.status === "in_progress" ? "작업중" : t.status === "done" ? "완료" : t.status === "dropped" ? "취소" : "대기";
+
+interface FlatRow {
+  ref: string;
+  title: string;
+  note: string;
+}
+
+/** 한 섹션(작업중/대기중) — 머리글 + 정렬된 줄들. 비면 `(없음)`. */
+function section(title: string, rows: readonly FlatRow[]): string[] {
+  const header = `■ ${title} (${rows.length})`;
+  if (rows.length === 0) return [header, "  (없음)"];
+  const refW = Math.max(...rows.map((r) => displayWidth(r.ref)));
+  const titW = Math.max(...rows.map((r) => displayWidth(r.title)));
+  return [header, ...rows.map((r) => `  ${padEndW(r.ref, refW)}  ${padEndW(r.title, titW)}  ${r.note}`)];
+}
+
+const isOpen = (t: FeatureTicket): boolean => t.status === "pending" || t.status === "in_progress";
+
+/** 기능 머리글 — 제목이 이미 슬러그로 시작하면(사양 H1 관례) 그대로, 아니면 `슬러그 — 제목`. */
+const featureHeader = (f: Feature): string => (f.title.startsWith(f.slug) ? f.title : `${f.slug} — ${f.title}`);
+
+/** 기능 하나의 남은(열린) 카드 블록 — 머리글 + 들여쓴 줄. 열린 게 없으면 빈 배열. */
+function remainingBlock(f: Feature): string[] {
+  const open = allTickets(f).filter(isOpen);
+  if (open.length === 0) return [];
+  const refW = Math.max(...open.map((t) => displayWidth(t.slug)));
+  const titW = Math.max(...open.map((t) => displayWidth(t.title)));
+  const rows = open.map((t) => {
+    const note = t.status === "in_progress" ? "작업중" : `대기 (${pendingNote(t)})`;
+    return `    ${padEndW(t.slug, refW)}  ${padEndW(t.title, titW)}  ${note}`;
+  });
+  return [`  ${featureHeader(f)}`, ...rows];
+}
+
+/** 기능 하나의 상세 — 모든 티켓(완료·취소 포함). `gootte status <기능>`. */
+function featureDetail(f: Feature): string {
+  const tickets = allTickets(f);
+  if (tickets.length === 0) return `${featureHeader(f)}\n  (티켓 없음)`;
+  const refW = Math.max(...tickets.map((t) => displayWidth(t.slug)));
+  const titW = Math.max(...tickets.map((t) => displayWidth(t.title)));
+  const rows = tickets.map((t) => {
+    const extra = t.status === "in_progress" ? `  ${workingNote(t)}` : "";
+    return `  ${padEndW(t.slug, refW)}  ${padEndW(t.title, titW)}  ${statusLabel(t)}${extra}`;
+  });
+  return [featureHeader(f), ...rows].join("\n");
+}
+
+/**
+ * `gootte status [기능] [--working|--pending]` — 한 명령으로 통합한 현황(측기기를 cwd 로 유추).
+ * 인자가 기능이면 그 기능의 모든 티켓, 없으면 작업중/대기중 + 기능별 남은 카드.
+ * `--working`/`--pending` 는 전체 뷰의 평면 목록만 걸러 보여 준다. 판정은 전부 core(`withFinalStatus`) —
+ * 여기서 상태를 다시 추정하지 않는다(INV-4).
+ */
+export function statusText(argv: readonly string[], dataDir = defaultPlanDataDir(), cwd: string = process.cwd()): string {
+  const flags = argv.filter((a) => a.startsWith("--"));
+  const positional = argv.filter((a) => !a.startsWith("--"));
+  const bad = flags.find((f) => f !== "--working" && f !== "--pending");
+  if (bad) throw new CliError(`${bad} 는 받지 않는다\n${STATUS_USAGE}`);
+  const wantWorking = flags.includes("--working");
+  const wantPending = flags.includes("--pending");
+  if (wantWorking && wantPending) throw new CliError(`--working 와 --pending 는 함께 쓸 수 없다\n${STATUS_USAGE}`);
+  const featureSlug = positional[0];
+  if (featureSlug && (wantWorking || wantPending))
+    throw new CliError(`기능을 지정하면 --working/--pending 는 쓸 수 없다\n${STATUS_USAGE}`);
+
+  const project = resolveProjectArg([], cwd, STATUS_USAGE);
   const { features } = readProjectFeatures(project, cwd);
   const joined = withFinalStatus(features);
-  const rows = joined
-    .flatMap((f) => allTickets(f).filter((t) => statuses.includes(t.status)).map((t) => `${f.slug}\t${t.slug}`));
-  return rows.length > 0 ? rows.join("\n") : "(해당 티켓 없음)";
-}
 
-/** 처리중 티켓 목록 — `gootte working [프로젝트]`. 프로젝트 안에서 실행하면 인자 생략. */
-export function workingText(argv: readonly string[], dataDir = defaultPlanDataDir(), cwd: string = process.cwd()): string {
-  return filteredTicketsText(argv, ["in_progress"], "working", dataDir, cwd);
-}
+  if (featureSlug) {
+    const f = joined.find((x) => x.slug === featureSlug);
+    if (!f) throw new CliError(`기능 없음: ${featureSlug}`);
+    return featureDetail(f);
+  }
 
-/** 대기 티켓 목록 — `gootte pending [프로젝트]`. 프로젝트 안에서 실행하면 인자 생략. */
-export function pendingText(argv: readonly string[], dataDir = defaultPlanDataDir(), cwd: string = process.cwd()): string {
-  return filteredTicketsText(argv, ["pending"], "pending", dataDir, cwd);
+  const rowsFor = (status: TodoStatus, note: (t: FeatureTicket) => string): FlatRow[] =>
+    joined.flatMap((f) =>
+      allTickets(f)
+        .filter((t) => t.status === status)
+        .map((t) => ({ ref: `${f.slug}/${t.slug}`, title: t.title, note: note(t) })),
+    );
+  const working = rowsFor("in_progress", workingNote);
+  const pending = rowsFor("pending", pendingNote);
+
+  if (wantWorking) return section("작업중", working).join("\n");
+  if (wantPending) return section("대기중", pending).join("\n");
+
+  const remaining = joined.flatMap(remainingBlock);
+  const blocks: string[] = [
+    ...section("작업중", working),
+    "",
+    ...section("대기중", pending),
+    "",
+    "■ 기능별 남은 카드",
+    ...(remaining.length > 0 ? remaining : ["  (없음)"]),
+  ];
+  return blocks.join("\n");
 }
 
 /**

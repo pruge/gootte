@@ -56,9 +56,7 @@ usage() {
   echo "      gootte resume [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte end    [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte drop   [--at <TIME>] <feature-slug> <ticket>" >&2
-  echo "      gootte status <feature-slug>           — 기능의 모든 티켓 상태(프로젝트 안에서. state 도 별칭)" >&2
-  echo "      gootte working <project-slug>          — 처리중인 티켓 목록(기능 + 티켓)" >&2
-  echo "      gootte pending <project-slug>          — 아직 대기중인 티켓 목록(기능 + 티켓)" >&2
+  echo "      gootte status [feature-slug] [--working|--pending]  — 현황(state 별칭). 기능을 주면 그 기능만, 안 주면 작업중/대기중 + 기능별 남은 카드" >&2
   echo "      gootte memo [--done|--undone]          — 지금 프로젝트 메모를 읽는다(어떤 세션에서나. 프로젝트 인자 없음)" >&2
   echo "      gootte migrate [--dry-run] <project-slug> — 티켓 시간·상태 기록을 state.json v2 로 이관" >&2
   echo "  TIME: 비우면 지금 / ISO8601 / 상대시간(예 1h30m, 90m, 2h, 1d)" >&2
@@ -724,7 +722,7 @@ main() {
 
   # 시간 기록 명령은 bash에서 직접 처리
   case "$subcmd" in
-    start|cancel|pause|resume|end|drop|status|state)
+    start|cancel|pause|resume|end|drop)
       # 기존 로직 실행
       [ "${#pos[@]}" -ge 2 ] || usage
       case "$subcmd" in
@@ -736,15 +734,6 @@ main() {
         drop)
           [ "${#pos[@]}" -le 3 ] || usage
           cmd_drop "$at" "${pos[1]}" "${pos[2]:-}" ;;
-        status|state)
-          [ "${#pos[@]}" -eq 2 ] || usage
-          # 🔴 TS 경로는 cwd 프로젝트가 아니라 **이 스크립트의 저장소**(GOOTTE_HOME)다 —
-          # 다른 프로젝트(jinwooauto 등)의 cwd 에서 불러도 main.ts 를 찾게(전역 심링크 포함).
-          local root
-          root="$(resolve_root)"
-          GOOTTE_ROOTS="${GOOTTE_ROOTS:-$(dirname "$root")}" \
-            npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" status "$(basename "$root")" "${pos[1]}"
-          ;;
       esac
       ;;
     migrate|migrate-time)
@@ -759,16 +748,12 @@ main() {
       # 프로젝트는 cwd 로만 정한다(TS 쪽 slugFromCwd) — 셸도 인자를 해석하지 않고 그대로 넘긴다.
       exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" "$subcmd" "${pos[@]:1}"
       ;;
-    working|pending)
-      # 처리중·대기 티켓 목록(캡틴 지시 2026-09-09) — TS CLI 위임. status 와 같은 읽기 경로.
-      # 🔴 <프로젝트> 생략 가능(캡틴 지시 2026-09-09) — cwd 조상에서 프로젝트를 유추한다(TS 몫).
-      local root
-      root="$(resolve_root)"
-      if [ -n "${pos[1]:-}" ]; then
-        GOOTTE_ROOTS="${GOOTTE_ROOTS:-$(dirname "$root")}" exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" "$subcmd" "${pos[1]}"
-      else
-        exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" "$subcmd"
-      fi
+    status|state)
+      # 현황 통합(status-cli-redesign) — TS CLI 위임. status 와 같은 읽기 경로.
+      # 프로젝트는 cwd 로 유추(TS slugFromCwd), 기능/플래그(--working|--pending)는 그대로 넘긴다.
+      # memo 처럼 위치인자 뒤 플래그까지 통째로 넘겨야 필터가 TS 에 닿는다.
+      GOOTTE_ROOTS="${GOOTTE_ROOTS:-$(dirname "$(resolve_root)")}" \
+        exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" status "${pos[@]:1}"
       ;;
     *)
       # 그 외 명령은 pnpm gootte 로만 접근 — bin 에서 처리하지 않음

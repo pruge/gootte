@@ -19,7 +19,7 @@ import {
 import type { Memo } from "@gootte/contract";
 import { CliError } from "./args";
 
-import { boardText, discoverText, frontierText, memoMigrateText, memoText, nextText, pendingText, resolveProjectPath, stepClearText, stepText, workingText } from "./commands";
+import { boardText, discoverText, frontierText, memoMigrateText, memoText, nextText, resolveProjectPath, statusText, stepClearText, stepText } from "./commands";
 
 function w(root: string, rel: string, content: string): void {
   const full = join(root, rel);
@@ -467,11 +467,12 @@ describe("cli — resolveProjectPath 는 GOOTTE_ROOTS 도 본다(T02)", () => {
   });
 });
 
-describe("cli — working · pending(처리중·대기 티켓 목록, 캡틴 지시 2026-09-09)", () => {
+describe("cli — status(현황 통합, status-cli-redesign)", () => {
   let proj: string;
   beforeEach(() => {
-    proj = mkdtempSync(join(tmpdir(), "gootte-wp-"));
+    proj = mkdtempSync(join(tmpdir(), "gootte-status-"));
     w(proj, "AGENTS.md", "# AGENTS\n");
+    w(proj, "docs/features/alpha/spec.md", "# 알파 기능\n");
     w(proj, "docs/features/alpha/tickets/T01.md", "# T01 — 시작함\n");
     w(proj, "docs/features/alpha/tickets/T02.md", "# T02 — 안 함\n");
     w(proj, "docs/features/alpha/tickets/T03.md", "# T03 — 끝남\n");
@@ -479,40 +480,65 @@ describe("cli — working · pending(처리중·대기 티켓 목록, 캡틴 지
   });
   afterEach(() => rmSync(proj, { recursive: true, force: true }));
 
-  const slug = () => basename(proj);
-
-  it("처리중 — started 만 있는 레코드(진행 중)만 실린다", () => {
+  const seed = () => {
     upsertTicketRecord(proj, "alpha/T01", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: null });
     upsertTicketRecord(proj, "alpha/T03", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: "2026-09-09T10:00:00+09:00" });
     upsertTicketRecord(proj, "beta/T01", { startedAt: null, finishedAt: null, statusRaw: "wontfix (2026-09-01)" });
-    expect(workingText([slug()], undefined, proj)).toBe("alpha\tT01");
+  };
+
+  it("--working — 작업중 섹션에 진행 중 티켓만(<기능>/<티켓>)", () => {
+    seed();
+    const out = statusText(["--working"], undefined, proj);
+    expect(out).toContain("■ 작업중 (1)");
+    expect(out).toContain("alpha/T01");
+    expect(out).not.toContain("alpha/T02");
+    expect(out).not.toContain("alpha/T03");
   });
 
-  it("대기 — 레코드 없는 티켓(미시작)이 실린다. done·dropped·처리중은 아니다", () => {
-    upsertTicketRecord(proj, "alpha/T01", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: null });
-    upsertTicketRecord(proj, "alpha/T03", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: "2026-09-09T10:00:00+09:00" });
-    upsertTicketRecord(proj, "beta/T01", { startedAt: null, finishedAt: null, statusRaw: "wontfix (2026-09-01)" });
-    expect(pendingText([slug()], undefined, proj)).toBe("alpha\tT02");
+  it("--pending — 대기 섹션에 미시작 티켓만. done·dropped·처리중은 아니다", () => {
+    seed();
+    const out = statusText(["--pending"], undefined, proj);
+    expect(out).toContain("■ 대기중 (1)");
+    expect(out).toContain("alpha/T02");
+    expect(out).not.toContain("alpha/T01");
   });
 
-  it("줄 서식 — <기능-slug>\\t<티켓>(캡틴이 정한 형식)", () => {
-    upsertTicketRecord(proj, "alpha/T01", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: null });
-    upsertTicketRecord(proj, "beta/T02", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: null });
-    w(proj, "docs/features/beta/tickets/T02.md", "# B02\n");
-    expect(workingText([slug()], undefined, proj)).toBe("alpha\tT01\nbeta\tT02");
+  it("인자 없음 — 작업중/대기중 + 기능별 남은 카드 세 섹션이 다 나온다", () => {
+    seed();
+    const out = statusText([], undefined, proj);
+    expect(out).toContain("■ 작업중");
+    expect(out).toContain("■ 대기중");
+    expect(out).toContain("■ 기능별 남은 카드");
+    expect(out).toContain("alpha —"); // 기능별 블록 머리글
   });
 
-  it("프로젝트 밖에서 인자 생략하면 거절 — 안에서는 생략 가능(캡틴 지시 2026-09-09)", () => {
-    // cwd = 임시 프로젝트 안 → 유추 성공. 프로젝트 밖 cwd 를 주면 거절한다.
-    expect(() => workingText([], undefined, join(proj, "docs", "features"))).not.toThrow(); // 안
-    expect(() => workingText([], undefined, "/")).toThrow(CliError); // 밖
+  it("기능 인자 — 그 기능의 모든 티켓(완료 포함)만", () => {
+    seed();
+    const out = statusText(["alpha"], undefined, proj);
+    expect(out).toContain("alpha —");
+    expect(out).toContain("작업중");
+    expect(out).toContain("대기");
+    expect(out).toContain("완료");
+    expect(out).not.toContain("beta"); // 다른 기능은 안 나온다
+  });
+
+  it("--working 와 --pending 동시 사용은 거절", () => {
+    expect(() => statusText(["--working", "--pending"], undefined, proj)).toThrow(CliError);
+  });
+
+  it("기능 인자와 --working/--pending 동시 사용은 거절", () => {
+    expect(() => statusText(["alpha", "--working"], undefined, proj)).toThrow(CliError);
+  });
+
+  it("프로젝트 밖에서 인자 생략하면 거절 — 안에서는 생략 가능", () => {
+    expect(() => statusText([], undefined, join(proj, "docs", "features"))).not.toThrow(); // 안
+    expect(() => statusText([], undefined, "/")).toThrow(CliError); // 밖
   });
 
   it("MD 모드(레코드 없는 프로젝트)에서도 MD Time 줄 기준으로 읽는다 — 폴백 회귀", () => {
-    // 🔴 처리중은 Time 기록에서만 나온다 — `Status: claimed` 은 pending 사상(계약 Q3)이라
-    // 이 목록에 실리지 않는다. started= 만 있고 finished= 가 없으면 in_progress 이다.
     w(proj, "docs/features/gamma/tickets/T01.md", "# G01\n\n**Time:** started=2026-09-09T09:00:00+09:00\n");
-    expect(workingText([slug()], undefined, proj)).toBe("gamma\tT01");
+    const out = statusText(["--working"], undefined, proj);
+    expect(out).toContain("gamma/T01");
   });
 });
 

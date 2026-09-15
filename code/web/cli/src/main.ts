@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { defaultPlanDataDir, defaultProjectRoots } from "@gootte/core-io";
 import { CliError } from "./args";
-import { boardText, dbMigrateText, discoverText, featureStateText, frontierText, memoMigrateText, memoText, nextText, pendingText, stepClearText, stepText, workingText } from "./commands";
+import { boardText, dbMigrateText, discoverText, featureStateText, frontierText, memoMigrateText, memoText, nextText, statusText, stepClearText, stepText } from "./commands";
 import { runTimeCommand } from "./time";
 import { migrateTime } from "./migrate-time";
 
@@ -19,10 +19,8 @@ function usage(): number {
       "  step        <프로젝트> <기능>/<티켓> <N>  — 단계를 매긴다",
       "  step --clear <프로젝트> <기능>/<티켓>      — 단계를 뗀다",
       "  board       <프로젝트>  — 다섯 칸 현황을 읽는다(읽기 전용)",
-      "  status      <프로젝트> <기능>  — 기능의 모든 티켓 상태",
+      "  status      [기능] [--working|--pending]  — 현황(state 별칭). 기능을 주면 그 기능만, 안 주면 작업중/대기중 + 기능별 남은 카드",
       "  next        <프로젝트>  — 작업 대상의 표시 1단계 티켓만 말한다",
-  "  working     <프로젝트>  — 처리중인 티켓 목록(기능 + 티켓)",
-  "  pending     <프로젝트>  — 아직 대기중인 티켓 목록(기능 + 티켓)",
   "  frontier    [프로젝트]  — 착수 가능(대기+차단 없음+임자 없음) 티켓 목록(기능 + 티켓 + 제목)",
       "  memo        [--done|--undone]  — 지금 프로젝트 메모를 읽는다(세션용. 프로젝트 인자 없음)",
       "  memo migrate [프로젝트…] [--purge] — central 메모를 <프로젝트>/.gootte/memo.json 으로 옮긴다(읽기는 이미 그 파일을 본다)",
@@ -64,12 +62,7 @@ function run(argv: string[]): number {
       case "next":
         process.stdout.write(nextText(rest, planDataDir()) + "\n");
         return 0;
-      case "working":
-        process.stdout.write(workingText(rest, planDataDir()) + "\n");
-        return 0;
-      case "pending":
-        process.stdout.write(pendingText(rest, planDataDir()) + "\n");
-        return 0;
+
       case "frontier":
         process.stdout.write(frontierText(rest, planDataDir()) + "\n");
         return 0;
@@ -114,8 +107,9 @@ function run(argv: string[]): number {
         }
         return usage();
       }
-      case "status": {
-        process.stdout.write(featureStateText(rest, planDataDir()) + "\n");
+      case "status":
+      case "state": {
+        process.stdout.write(statusText(rest, planDataDir()) + "\n");
         return 0;
       }
       default:
