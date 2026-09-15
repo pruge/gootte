@@ -424,7 +424,7 @@ export function ProcessView({ project }: ProcessViewProps) {
                       setTicketDoc({ feature: current.slug, path: t.path })
                     }
                     onTimeAction={(action) =>
-                      recordTime({ feature: current.slug, ticket: t.num, action })
+                      recordTime({ feature: current.slug, ticket: t.slug, action })
                     }
                   />
                 ))}

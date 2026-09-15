@@ -18,8 +18,8 @@ const planError = (err: unknown): string => (err instanceof Error ? err.message 
 const slugParam = z.object({ slug: z.string().min(1) });
 const TimeAction = z.object({ feature: z.string().min(1), ticket: z.string().min(1), action: z.enum(["start", "pause", "resume", "end"]) });
 
-/** `bin/gootte` CLI 절대 경로 — 이 파일에서 ../.. 으로 코드 루트를 찾아 bin/ 으로. */
-const gootteBin = join(resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".."), "bin", "gootte");
+/** `bin/gootte` CLI 절대 경로 — routes(1)/src(2)/backend(3)/web(4)/code(5) 를 올라 저장소 뿌리의 bin/ 으로. */
+const gootteBin = join(resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", ".."), "bin", "gootte");
 
 /**
  * 그 사본에 티켓 파일이 실재하는가 — 신관례(`tickets/T<NN>.md`)와 구관례(`issues/<NN>-*.md`)
