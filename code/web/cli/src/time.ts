@@ -1,11 +1,11 @@
 /**
  * 시간 기록 — state.json 모드(bin/gootte 가 v2 state.json 을 발견해 위임, T05).
  *
- * 🔴 검증 규칙은 bash(bin/gootte cmd_start/end/pause/resume/cancel/drop)의 승계다 —
+ * 🔴 검증 규칙은 bash(bin/gootte cmd_start/end/pause/resume/reset/drop)의 승계다 —
  * 어긋나면 화면과 터미널이 다른 말을 한다(the-terminal-agrees-with-the-screen):
- * - 끝난 티켓의 start 금지 / 미시작 티켓의 end·cancel 금지
+ * - 끝난 티켓의 start 금지(단 --force 는 덮어쓰기) / 미시작 티켓의 end·reset 금지
  * - 일시중단 중 end 금지(resume 먼저) / 재개 안 된 pause 상태에서 pause 재금지
- * - cancel 은 레코드 삭제(MD Time: 줄 삭제의 대응물) / drop 은 statusRaw wontfix
+ * - reset 은 레코드 삭제(MD Time: 줄 삭제의 대응물, cancel 은 별칭) / drop 은 statusRaw wontfix
  *
  * 🔴 레코드는 **메인 프로젝트**의 state.json 에 기록한다(D4) — cwd 가 worktree 면
  * `.gootte/config.json`(`mainProject`)으로 메인을 찾고, 없으면 `.git` 이 파일인
@@ -177,9 +177,11 @@ function requireStarted(rec: TicketTimeRecord | undefined, what: string): Ticket
 /** 시간 명령 실행 — main.ts 가 `time <cmd> <기능> <티켓> [--at <TIME>]` 형태로 넘긴다. */
 export function runTimeCommand(argv: readonly string[], cwd: string = process.cwd()): string {
   const [cmd, feature, ticketRaw] = argv;
-  if (!cmd || !feature || !ticketRaw) throw new CliError("usage: gootte time <start|pause|resume|end|cancel|drop> <기능> <티켓> [--at <TIME>]");
+  if (!cmd || !feature || !ticketRaw) throw new CliError("usage: gootte time <start|pause|resume|end|reset|cancel|drop> <기능> <티켓> [--at <TIME>] [--force]");
   const atFlag = argv.indexOf("--at");
   const at = atFlag >= 0 ? argv[atFlag + 1] : undefined;
+  // --update 는 --force 의 별칭(bash CLI 승계)
+  const force = argv.includes("--force") || argv.includes("--update");
   const root = resolveMainRoot(cwd);
   const t = target(root, feature, ticketRaw);
   const now = new Date();
@@ -189,11 +191,17 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
     case "start": {
       const existing = tCurrent(t.key);
       if (existing) {
+        // --force 면 묻지 않고 새 시작으로 덮어쓴다 — 시작됨·끝남 모두 교체한다.
+        if (force) {
+          upsertTicketRecord(root, t.key, { startedAt: resolveTime(at, now), finishedAt: null, pauses: [] });
+          recalcBadge(root);
+          return `${t.key} 시작 기록`;
+        }
         if (existing.finishedAt !== null) {
           throw new CliError(`이미 끝난 티켓의 시작 시간은 바꿀 수 없습니다: ${t.key}`);
         }
         if (existing.startedAt !== null) {
-          throw new CliError(`이미 시작된 티켓입니다: ${t.key} (--at 갱신은 bash CLI --update 사용)`);
+          throw new CliError(`이미 시작된 티켓입니다: ${t.key} (--force 로 덮어쓰기)`);
         }
       }
       // start 는 처음 기록이다 — 빈 레코드를 명시해 만든다(기존 흔적이 있으면 위에서 걸렀다).
@@ -233,12 +241,11 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
       recalcBadge(root);
       return `${t.key} 완료 기록`;
     }
+    case "reset":
     case "cancel": {
-      const rec = requireStarted(tCurrent(t.key), t.key);
-      if (rec.finishedAt !== null) throw new CliError(`이미 끝난 티켓은 취소할 수 없습니다: ${t.key}`);
-      if (rec.pauses.some((p) => p.resumedAt === null)) {
-        throw new CliError(`이미 작업을 시작(paused 있음)한 티켓은 취소할 수 없습니다: ${t.key}`);
-      }
+      // reset 은 처음 상태로 되돌린다 — 시작·일시중단·완료 여부와 무관하게 기록을 삭제한다.
+      // cancel 은 같은 동작의 별칭(기존 스크립트 호환). 기록이 없으면 오타 방지용 오류.
+      requireStarted(tCurrent(t.key), t.key);
       removeTicketRecord(root, t.key); // MD Time: 줄 삭제의 대응물
       recalcBadge(root);
       return `${t.key} 시작 취소(레코드 삭제)`;

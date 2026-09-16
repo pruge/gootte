@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # bin/gootte — 독립 bash CLI. gootte TS 모노레포의 워크스페이스 패키지를 전혀 참조하지 않는다.
 #
-# gootte cancel [--at <TIME>] <feature-slug> <ticket> # Time: 줄을 통째로 삭제 — 시작 취소
-# gootte start  [--at <TIME>] [--update] <feature-slug> <ticket> # 티켓 문서에 **Time:** started=<ISO> 삽입
-#                                                             # 이미 시작된 티켓이면 확인(또는 --update) 후 started= 를 갱신
+# gootte reset [--at <TIME>] <feature-slug> <ticket> # Time: 줄을 통째로 삭제 — 처음 상태로 되돌림(cancel 은 별칭)
+# gootte start  [--at <TIME>] [--force] <feature-slug> <ticket> # 티켓 문서에 **Time:** started=<ISO> 삽입
+#                                                             # 이미 시작된 티켓이면 확인(또는 --force) 후 started= 를 갱신
+#                                                             # --force 면 끝난 티켓도 Time: 줄 통째로 교체. --update 는 --force 별칭
 # gootte pause  [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 paused=<ISO> 추가(일시 중단)
 # gootte resume [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 resumed=<ISO> 추가(재개)
 # gootte end    [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 finished=<ISO> 추가
@@ -50,8 +51,8 @@ if grep -q '^gitdir: ' "$GOOTTE_HOME/.git" 2>/dev/null; then
 fi
 
 usage() {
-  echo "사용법: gootte start  [--at <TIME>] [--update] <feature-slug> <ticket>" >&2
-  echo "      gootte cancel [--at <TIME>] <feature-slug> <ticket>" >&2
+  echo "사용법: gootte start  [--at <TIME>] [--force] <feature-slug> <ticket>" >&2
+  echo "      gootte reset [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte pause  [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte resume [--at <TIME>] <feature-slug> <ticket>" >&2
   echo "      gootte end    [--at <TIME>] <feature-slug> <ticket>" >&2
@@ -60,7 +61,8 @@ usage() {
   echo "      gootte memo [--done|--undone]          — 지금 프로젝트 메모를 읽는다(어떤 세션에서나. 프로젝트 인자 없음)" >&2
   echo "      gootte migrate [--dry-run] <project-slug> — 티켓 시간·상태 기록을 state.json v2 로 이관" >&2
   echo "  TIME: 비우면 지금 / ISO8601 / 상대시간(예 1h30m, 90m, 2h, 1d)" >&2
-  echo "  --update: 이미 시작된 티켓의 started= 를 묻지 않고 바로 갱신(start 전용)" >&2
+  echo "  --force: start 는 묻지 않고 새 시작으로 덮어씀(끝난 티켓도 Time: 줄 교체). --update/-u 는 별칭" >&2
+  echo "  cancel: reset 의 별칭(같은 동작)" >&2
   echo "" >&2
   echo "기록 위치(time-records-to-state-store): state.json v2 프로젝트는 레코드로," >&2
   echo "기록 흔적이 있는 옛 프로젝트는 MD Time:/Status: 줄로 간다(새 프로젝트는 자동 v2)." >&2
@@ -247,7 +249,7 @@ find_header_block_end_line_no() {
 
 cmd_start() {
   local at="$1"
-  local update="${2:-0}"
+  local force="${2:-0}"
   local feature_slug="$3"
   local ticket_raw="$4"
   local ticket_norm
@@ -260,21 +262,31 @@ cmd_start() {
   if [ -n "$existing_line_no" ]; then
     local existing_line
     existing_line="$(sed -n "${existing_line_no}p" "$file")"
+    local iso
+    iso="$(resolve_time "$at")" || exit 1
+    # --force 면 묻지 않고 Time: 줄 통째로 교체 — 끝난 티켓의 finished= 가 있어도 교체한다.
+    if [ "$force" = "1" ]; then
+      local tmp
+      tmp="$(mktemp)"
+      awk -v n="$existing_line_no" -v iso="$iso" '
+        NR == n { print "**Time:** started=" iso; next }
+        { print }
+      ' "$file" > "$tmp"
+      mv "$tmp" "$file"
+      echo "gootte: $file 의 Time: 줄을 **Time:** started=$iso 로 교체함(--force)"
+      return
+    fi
     if printf '%s' "$existing_line" | grep -q 'finished='; then
       echo "gootte: 이미 끝난 티켓의 시작 시간은 바꿀 수 없습니다: $file" >&2
       exit 1
     fi
-    local iso
-    iso="$(resolve_time "$at")" || exit 1
-    # --update 플래그면 묻지 않고 바로, 아니면 확인 후 started= 를 갱신한다.
-    if [ "$update" != "1" ]; then
-      printf 'gootte: 이미 시작된 티켓입니다. 시작 시간을 %s 로 변경할까요? [y/N] ' "$iso" >&2
-      read -r ans
-      case "$ans" in
-        y|Y|yes|Yes|YES) ;;
-        *) echo "gootte: 변경하지 않았습니다" >&2; exit 1 ;;
-      esac
-    fi
+    # --force 는 위에서 조기 반환했으므로 여기서는 확인 후 started= 를 갱신한다.
+    printf 'gootte: 이미 시작된 티켓입니다. 시작 시간을 %s 로 변경할까요? [y/N] ' "$iso" >&2
+    read -r ans
+    case "$ans" in
+      y|Y|yes|Yes|YES) ;;
+      *) echo "gootte: 변경하지 않았습니다" >&2; exit 1 ;;
+    esac
     local tmp
     tmp="$(mktemp)"
     if printf '%s' "$existing_line" | grep -q 'started='; then
@@ -397,9 +409,10 @@ os.rename(tmp, state_file)
 PYEOF
 }
 
-# gootte cancel <feature-slug> <ticket> — Time: 줄을 통째로 삭제(시작 취소).
-# finished= 나 paused= 가 있으면 거절한다 — 이미 진행된 작업은 취소할 수 없다.
-cmd_cancel() {
+# gootte reset <feature-slug> <ticket> — Time: 줄을 통째로 삭제(처음 상태로 되돌림).
+# 시작·일시중단·완료 여부와 무관하게 삭제한다. 기록이 없을 때만 거절한다(오타 방지).
+# cancel 은 같은 동작의 별칭(기존 스크립트 호환).
+cmd_reset() {
   local feature_slug="$1"
   local ticket_raw="$2"
   local ticket_norm
@@ -411,17 +424,6 @@ cmd_cancel() {
   existing_line_no="$(find_time_line_no "$file")"
   if [ -z "$existing_line_no" ]; then
     echo "gootte: 시작되지 않은 티켓입니다(Time: 줄이 없음): $file" >&2
-    exit 1
-  fi
-
-  local existing_line
-  existing_line="$(sed -n "${existing_line_no}p" "$file")"
-  if printf '%s' "$existing_line" | grep -q 'finished='; then
-    echo "gootte: 이미 끝난 티켓은 취소할 수 없습니다: $file" >&2
-    exit 1
-  fi
-  if printf '%s' "$existing_line" | grep -q 'paused='; then
-    echo "gootte: 이미 작업을 시작(paused 있음)한 티켓은 취소할 수 없습니다: $file" >&2
     exit 1
   fi
 
@@ -437,6 +439,11 @@ cmd_cancel() {
 
   echo "gootte: $file 의 Time: 줄이 삭제됨(시작 취소)"
   sync_main_state
+}
+
+# cancel — reset 의 별칭
+cmd_cancel() {
+  cmd_reset "$@"
 }
 
 # 공통: Time 줄을 찾고 시작 상태 검증 — `cmd_pause`/`cmd_resume`/`cmd_end` 가 쓴다.
@@ -671,7 +678,7 @@ main() {
     usage
   fi
   local at=""
-  local update=0
+  local force=0
   local -a pos=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -679,7 +686,7 @@ main() {
         [ "$#" -ge 2 ] || { echo "gootte: --at 에 시간이 필요합니다" >&2; exit 1; }
         at="$2"; shift 2 ;;
       --at=*) at="${1#--at=}"; shift ;;
-      --update|-u) update=1; shift ;;
+      --force|--update|-u) force=1; shift ;; # --update 는 --force 의 별칭
       --help|-h) usage ;;
       *) pos+=("$1"); shift ;;
     esac
@@ -696,7 +703,7 @@ main() {
   # `gootte migrate <프로젝트>` 이다. 흔적 판정은 티켓 파일(tickets/·issues/)만 본다 —
   # spec.md 의 기능 수준 `Status:` 는 MD SoT 로 남으므로 흔적이 아니다.
   case "$subcmd" in
-    start|pause|resume|end|cancel|drop)
+    start|pause|resume|end|reset|cancel|drop)
       # 🔴 모드 판정은 **메인 프로젝트** 기준이다(D4 — 레코드는 메인 state.json 에 산다).
       # cwd 가 worktree 면 .git gitdir 에서 메인을 찾는다 — 그렇지 않으면 worktree 워커의
       # 기록이 worktree state.json 부재로 MD 모드로 새어 v2 대시보드에서 안 보인다(실측 버그).
@@ -715,6 +722,7 @@ main() {
         # 🔴 TS 진입은 **GOOTTE_HOME**(심링크·gootte worktree 가 해소된 도구 저장소)의 코드다.
         local -a ts_args=(time "$subcmd" "${pos[@]:1}")
         [ -n "$at" ] && ts_args+=(--at "$at")
+        [ "$force" = "1" ] && ts_args+=(--force)
         exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" "${ts_args[@]}"
       fi
       ;;
@@ -722,12 +730,12 @@ main() {
 
   # 시간 기록 명령은 bash에서 직접 처리
   case "$subcmd" in
-    start|cancel|pause|resume|end|drop)
+    start|reset|cancel|pause|resume|end|drop)
       # 기존 로직 실행
       [ "${#pos[@]}" -ge 2 ] || usage
       case "$subcmd" in
-        start)  cmd_start  "$at" "$update" "${pos[1]}" "${pos[2]}" ;;
-        cancel) cmd_cancel "${pos[1]}" "${pos[2]}" ;;
+        start)  cmd_start  "$at" "$force" "${pos[1]}" "${pos[2]}" ;;
+        reset|cancel) cmd_reset "${pos[1]}" "${pos[2]}" ;;
         pause)  cmd_pause  "$at" "${pos[1]}" "${pos[2]}" ;;
         resume) cmd_resume "$at" "${pos[1]}" "${pos[2]}" ;;
         end)    cmd_end    "$at" "${pos[1]}" "${pos[2]}" ;;
