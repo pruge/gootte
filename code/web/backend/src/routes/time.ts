@@ -6,10 +6,12 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import type { ApiError } from "@gootte/contract";
+import type { TicketTimeRecord } from "@gootte/contract";
 import {
   readFeatures,
   extraWorktreeRoots,
   joinTimeRecords,
+  upsertTicketRecord,
 } from "@gootte/core-io";
 import { recordProjectScan } from "../snapshot";
 
@@ -92,7 +94,19 @@ export function createTimeRoutes(deps: TimeRouteDeps): Hono {
     if (!proj) return c.json({ error: `프로젝트 없음: ${slug}` } satisfies ApiError, 404);
     try {
       const target = pickTimeTarget(proj, feature, ticket, action, withWorktrees, bbWorktrees);
-      execFileSync(gootteBin, [action, feature, ticket], { cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      // 🔴 start 액션은 확인 다이얼로그가 나오는데, 백엔드에선 stdin이 없으니 --force 로 생략한다.
+      // finished 티켓의 start 변경을 막는 CLI 판정은 여전히 적용된다.
+      // ⚠️ args: [command, --force, feature, ticket] — --force는 명령어 뒤에 와야 함
+      const gootteArgs = action === "start" ? [ action, "--force", feature, ticket ] : [ action, feature, ticket ];
+      execFileSync(gootteBin, gootteArgs, { cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      // 🔴 CLI는 MD 파일만 건드린다. state.json 도 갱신해야 이후 readFeatures 가
+      // 최신 startedAt/완료 상태를 본다 — 없으면 joinTimeRecords 가 낡은 state.json
+      // 값으로 오버라이트해 UI가 처리중으로 안 바뀐다(실제 결함 2026-09-17).
+      if (action === "start") {
+        upsertTicketRecord(proj.path, `${feature}/${ticket}`, { startedAt: new Date().toISOString() });
+      } else if (action === "end") {
+        upsertTicketRecord(proj.path, `${feature}/${ticket}`, { finishedAt: new Date().toISOString() });
+      }
       const all = withWorktrees(proj.copies);
       // 🔴 레코드 조인 뒤의 값을 스냅샷에 기록한다(T03) — 기록 직후 화면·스냅샷·state.json 이
       // 같은 값을 보게(INV-3). bin/gootte 가 state.json 모드면 레코드가 방금 바뀌었으므로 특히 중요.

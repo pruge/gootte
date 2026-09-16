@@ -314,6 +314,9 @@ export function useRecordTime(project: string) {
       toast.show(`${label[req.action]} 기록됨 — ${req.feature}/${req.ticket}`);
     },
     onError: (err, req) => {
+      // 실패해도 상태를 다시 읽어 UI가 반영한다 — CLI가 거절한 경우도 포함.
+      void qc.invalidateQueries({ queryKey: ["plan", project] });
+      void qc.invalidateQueries({ queryKey: ["features", project] });
       toast.show(
         `${label[req.action]} 실패 — ${err instanceof Error ? err.message : String(err)}`,
         "error",
