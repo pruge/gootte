@@ -62,10 +62,57 @@ describe("runTimeCommand — 기록 흐름", () => {
     expect(rec("beta/01")?.startedAt).not.toBeNull();
   });
 
-  test("cancel 은 레코드를 삭제한다 — MD Time: 줄 삭제의 대응물", () => {
+  test("reset 은 레코드를 삭제한다 — MD Time: 줄 삭제의 대응물", () => {
+    run("start", "alpha", "T01");
+    run("reset", "alpha", "T01");
+    expect(rec("alpha/T01")).toBeUndefined();
+  });
+
+  test("cancel 은 reset 과 동일하게 동작한다(별칭)", () => {
     run("start", "alpha", "T01");
     run("cancel", "alpha", "T01");
     expect(rec("alpha/T01")).toBeUndefined();
+  });
+
+  test("reset 은 일시중단 중인 티켓의 기록도 지운다", () => {
+    run("start", "alpha", "T01");
+    run("pause", "alpha", "T01");
+    run("reset", "alpha", "T01");
+    expect(rec("alpha/T01")).toBeUndefined();
+  });
+
+  test("reset 은 끝난 티켓의 기록도 지운다", () => {
+    run("start", "alpha", "T01");
+    run("end", "alpha", "T01");
+    run("reset", "alpha", "T01");
+    expect(rec("alpha/T01")).toBeUndefined();
+  });
+
+  test("start --force 는 시작된 티켓을 새 시작 시간으로 덮어쓴다", () => {
+    run("start", "alpha", "T01", "--at", "2026-09-09T09:00:00+09:00");
+    run("start", "alpha", "T01", "--at", "2026-09-10T09:00:00+09:00", "--force");
+    const r = rec("alpha/T01")!;
+    expect(r.startedAt).toBe("2026-09-10T09:00:00+09:00");
+    expect(r.finishedAt).toBeNull();
+    expect(r.pauses).toEqual([]);
+  });
+
+  test("start --force 는 끝난 티켓도 새 시작으로 덮어쓴다(finishedAt=null·pauses=[])", () => {
+    run("start", "alpha", "T01", "--at", "2026-09-09T09:00:00+09:00");
+    run("pause", "alpha", "T01", "--at", "2026-09-09T10:00:00+09:00");
+    run("resume", "alpha", "T01", "--at", "2026-09-09T11:00:00+09:00");
+    run("end", "alpha", "T01", "--at", "2026-09-09T12:00:00+09:00");
+    run("start", "alpha", "T01", "--at", "2026-09-10T09:00:00+09:00", "--force");
+    const r = rec("alpha/T01")!;
+    expect(r.startedAt).toBe("2026-09-10T09:00:00+09:00");
+    expect(r.finishedAt).toBeNull();
+    expect(r.pauses).toEqual([]);
+  });
+
+  test("start --update 는 --force 의 별칭이다", () => {
+    run("start", "alpha", "T01", "--at", "2026-09-09T09:00:00+09:00");
+    run("start", "alpha", "T01", "--at", "2026-09-10T09:00:00+09:00", "--update");
+    expect(rec("alpha/T01")?.startedAt).toBe("2026-09-10T09:00:00+09:00");
   });
 
   test("drop 은 statusRaw 를 wontfix 로 — 시작·완료 기록은 보존", () => {
@@ -88,7 +135,11 @@ describe("runTimeCommand — bash 규칙 승계(위반은 오류)", () => {
     expectCliError(() => run("end", "alpha", "T01"), "시작되지 않은 티켓입니다");
   });
 
-  test("미시작 cancel 금지", () => {
+  test("미시작 reset 금지", () => {
+    expectCliError(() => run("reset", "alpha", "T01"), "시작되지 않은 티켓입니다");
+  });
+
+  test("미시작 cancel 금지(별칭도 같은 오류)", () => {
     expectCliError(() => run("cancel", "alpha", "T01"), "시작되지 않은 티켓입니다");
   });
 
@@ -120,16 +171,18 @@ describe("runTimeCommand — bash 규칙 승계(위반은 오류)", () => {
     expectCliError(() => run("pause", "alpha", "T01"), "이미 일시중단된 티켓입니다");
   });
 
-  test("끝난 티켓 cancel 금지", () => {
+  test("끝난 티켓도 reset 으로 기록 삭제", () => {
     run("start", "alpha", "T01");
     run("end", "alpha", "T01");
-    expectCliError(() => run("cancel", "alpha", "T01"), "이미 끝난 티켓은 취소할 수 없습니다");
+    run("reset", "alpha", "T01");
+    expect(rec("alpha/T01")).toBeUndefined();
   });
 
-  test("일시중단 중 cancel 금지", () => {
+  test("일시중단 중에도 cancel 별칭으로 기록 삭제", () => {
     run("start", "alpha", "T01");
     run("pause", "alpha", "T01");
-    expectCliError(() => run("cancel", "alpha", "T01"), "취소할 수 없습니다");
+    run("cancel", "alpha", "T01");
+    expect(rec("alpha/T01")).toBeUndefined();
   });
 
   test("이미 폐기된 티켓 drop 재금지", () => {

@@ -278,58 +278,86 @@ TIME13="$(grep -n '^\*\*Time:\*\*' "$TICKET13" | head -1 | cut -d: -f1)"
   || fail "case13: Blocked by 문단 둘째 줄이 깨짐"
 echo "✅ case 13 (다중 줄 **Blocked by:** 문단 → 빈 줄 + **Time:** 을 문단 끝에 삽입, 문단 보존) OK"
 
-# case 14: cancel — start 로 기록된 Time: 줄을 통째로 삭제(시작 취소)
+# case 14: reset — start 로 기록된 Time: 줄을 통째로 삭제(처음 상태로 되돌림)
 FIXTURE14="$TMP_DIR/case14"
-make_fixture "$FIXTURE14" "my-feature" "T10.md" "# T10 — cancel" "" "Status: ready-for-agent" "" "## Goal" "" "Body."
+make_fixture "$FIXTURE14" "my-feature" "T10.md" "# T10 — reset" "" "Status: ready-for-agent" "" "## Goal" "" "Body."
 TICKET14="$FIXTURE14/docs/features/my-feature/tickets/T10.md"
 (cd "$FIXTURE14" && "$GOOTTE_BIN" start my-feature T10) >"$TMP_DIR/case14s.out" 2>"$TMP_DIR/case14s.err" \
   || fail "case14: start 실패: $(cat "$TMP_DIR/case14s.err")"
 grep -q '^\*\*Time:\*\* started=' "$TICKET14" || fail "case14: start 로 Time 줄이 안 생김"
-(cd "$FIXTURE14" && "$GOOTTE_BIN" cancel my-feature T10) >"$TMP_DIR/case14.out" 2>"$TMP_DIR/case14.err" \
-  || fail "case14: cancel 실패: $(cat "$TMP_DIR/case14.err")"
+(cd "$FIXTURE14" && "$GOOTTE_BIN" reset my-feature T10) >"$TMP_DIR/case14.out" 2>"$TMP_DIR/case14.err" \
+  || fail "case14: reset 실패: $(cat "$TMP_DIR/case14.err")"
 # Time 줄이 사라지고, 그 앞 빈 줄도 사라져 제목 → 빈 줄 → Status: 순서로 돌아간다
 if grep -qiE '^\*{0,2}time:' "$TICKET14"; then
-  fail "case14: cancel 후 Time 줄이 남아 있음"
+  fail "case14: reset 후 Time 줄이 남아 있음"
 fi
-[ "$(sed -n '1p' "$TICKET14")" = '# T10 — cancel' ] || fail "case14: 제목 줄이 깨짐"
+[ "$(sed -n '1p' "$TICKET14")" = '# T10 — reset' ] || fail "case14: 제목 줄이 깨짐"
 [ "$(sed -n '3p' "$TICKET14")" = 'Status: ready-for-agent' ] || fail "case14: Status: 줄이 깨짐"
-echo "✅ case 14 (cancel → Time 줄 + 앞 빈 줄 삭제, 파일 정리) OK"
+echo "✅ case 14 (reset → Time 줄 + 앞 빈 줄 삭제, 파일 정리) OK"
 
-# case 15: cancel 후 다시 start 가능 — 시작 전 상태로 돌아갔다는 뜻
+# case 14b: cancel 은 reset 의 별칭 — 같은 동작
+(cd "$FIXTURE14" && "$GOOTTE_BIN" start my-feature T10) >"$TMP_DIR/case14b-s.out" 2>"$TMP_DIR/case14b-s.err" \
+  || fail "case14b: start 실패"
+(cd "$FIXTURE14" && "$GOOTTE_BIN" cancel my-feature T10) >"$TMP_DIR/case14b.out" 2>"$TMP_DIR/case14b.err" \
+  || fail "case14b: cancel(별칭) 실패: $(cat "$TMP_DIR/case14b.err")"
+if grep -qiE '^\*{0,2}time:' "$TICKET14"; then
+  fail "case14b: cancel 후 Time 줄이 남아 있음"
+fi
+echo "✅ case 14b (cancel 별칭 → reset 과 동일) OK"
+
+# case 15: reset 후 다시 start 가능 — 시작 전 상태로 돌아갔다는 뜻
 (cd "$FIXTURE14" && "$GOOTTE_BIN" start my-feature T10) >"$TMP_DIR/case15.out" 2>"$TMP_DIR/case15.err" \
-  || fail "case15: cancel 후 재 start 실패: $(cat "$TMP_DIR/case15.err")"
+  || fail "case15: reset 후 재 start 실패: $(cat "$TMP_DIR/case15.err")"
 grep -q '^\*\*Time:\*\* started=' "$TICKET14" || fail "case15: 재 start 로 Time 줄이 안 생김"
-echo "✅ case 15 (cancel → 재 start 가능) OK"
+echo "✅ case 15 (reset → 재 start 가능) OK"
 
-# case 16: 시작 안 된 티켓에 cancel → 에러, 파일 안 바뀜
+# case 16: 시작 안 된 티켓에 reset → 에러, 파일 안 바뀜
 FIXTURE16="$TMP_DIR/case16"
-make_fixture "$FIXTURE16" "my-feature" "T11.md" "# T11 — cancel 전" "" "## Goal" "" "Body."
+make_fixture "$FIXTURE16" "my-feature" "T11.md" "# T11 — reset 전" "" "## Goal" "" "Body."
 TICKET16="$FIXTURE16/docs/features/my-feature/tickets/T11.md"
 BEFORE_CASE16="$(cat "$TICKET16")"
-if (cd "$FIXTURE16" && "$GOOTTE_BIN" cancel my-feature T11) >"$TMP_DIR/case16.out" 2>"$TMP_DIR/case16.err"; then
-  fail "case16: 시작 안 된 티켓에 cancel 이 성공하면 안 됨"
+if (cd "$FIXTURE16" && "$GOOTTE_BIN" reset my-feature T11) >"$TMP_DIR/case16.out" 2>"$TMP_DIR/case16.err"; then
+  fail "case16: 시작 안 된 티켓에 reset 이 성공하면 안 됨"
 fi
 [ -s "$TMP_DIR/case16.err" ] || fail "case16: stderr 에 에러 메시지가 없음"
 AFTER_CASE16="$(cat "$TICKET16")"
 [ "$BEFORE_CASE16" = "$AFTER_CASE16" ] || fail "case16: 실패했는데 파일이 바뀜"
-echo "✅ case 16 (시작 안 된 티켓 → cancel 에러, 파일 불변) OK"
+# 별칭 cancel 도 같은 오류
+if (cd "$FIXTURE16" && "$GOOTTE_BIN" cancel my-feature T11) >"$TMP_DIR/case16b.out" 2>"$TMP_DIR/case16b.err"; then
+  fail "case16: 시작 안 된 티켓에 cancel(별칭) 이 성공하면 안 됨"
+fi
+echo "✅ case 16 (시작 안 된 티켓 → reset/cancel 에러, 파일 불변) OK"
 
-# case 17: finished= 있는 티켓에 cancel → 에러(완료는 취소할 수 없다)
+# case 17: finished= 있는 티켓에 reset → Time: 줄 삭제(처음 상태로 되돌림)
 FIXTURE17="$TMP_DIR/case17"
-make_fixture "$FIXTURE17" "my-feature" "T12.md" "# T12 — 끝난 cancel" "" "## Goal" "" "Body."
+make_fixture "$FIXTURE17" "my-feature" "T12.md" "# T12 — 끝난 reset" "" "## Goal" "" "Body."
 TICKET17="$FIXTURE17/docs/features/my-feature/tickets/T12.md"
 (cd "$FIXTURE17" && "$GOOTTE_BIN" start my-feature T12) >"$TMP_DIR/case17s.out" 2>"$TMP_DIR/case17s.err" \
   || fail "case17: start 실패"
 (cd "$FIXTURE17" && "$GOOTTE_BIN" end my-feature T12) >"$TMP_DIR/case17e.out" 2>"$TMP_DIR/case17e.err" \
   || fail "case17: end 실패"
-BEFORE_CASE17="$(cat "$TICKET17")"
-if (cd "$FIXTURE17" && "$GOOTTE_BIN" cancel my-feature T12) >"$TMP_DIR/case17.out" 2>"$TMP_DIR/case17.err"; then
-  fail "case17: finished= 있는 티켓에 cancel 이 성공하면 안 됨"
+grep -q 'finished=' "$TICKET17" || fail "case17: end 로 finished= 가 안 생김"
+(cd "$FIXTURE17" && "$GOOTTE_BIN" reset my-feature T12) >"$TMP_DIR/case17.out" 2>"$TMP_DIR/case17.err" \
+  || fail "case17: 끝난 티켓의 reset 실패: $(cat "$TMP_DIR/case17.err")"
+if grep -qiE '^\*{0,2}time:' "$TICKET17"; then
+  fail "case17: reset 후 Time 줄이 남아 있음"
 fi
-[ -s "$TMP_DIR/case17.err" ] || fail "case17: stderr 에 에러 메시지가 없음"
-AFTER_CASE17="$(cat "$TICKET17")"
-[ "$BEFORE_CASE17" = "$AFTER_CASE17" ] || fail "case17: 실패했는데 파일이 바뀜"
-echo "✅ case 17 (finished= 있는 티켓 → cancel 에러, 파일 불변) OK"
+echo "✅ case 17 (finished= 있는 티켓 → reset 으로 기록 삭제) OK"
+
+# case 17b: 일시중단 중인 티켓에 reset → Time: 줄 삭제
+FIXTURE17B="$TMP_DIR/case17b"
+make_fixture "$FIXTURE17B" "my-feature" "T12.md" "# T12 — 중단 중 reset" "" "## Goal" "" "Body."
+TICKET17B="$FIXTURE17B/docs/features/my-feature/tickets/T12.md"
+(cd "$FIXTURE17B" && "$GOOTTE_BIN" start my-feature T12) >"$TMP_DIR/case17b-s.out" 2>"$TMP_DIR/case17b-s.err" \
+  || fail "case17b: start 실패"
+(cd "$FIXTURE17B" && "$GOOTTE_BIN" pause my-feature T12) >"$TMP_DIR/case17b-p.out" 2>"$TMP_DIR/case17b-p.err" \
+  || fail "case17b: pause 실패"
+(cd "$FIXTURE17B" && "$GOOTTE_BIN" reset my-feature T12) >"$TMP_DIR/case17b.out" 2>"$TMP_DIR/case17b.err" \
+  || fail "case17b: 일시중단 중 reset 실패: $(cat "$TMP_DIR/case17b.err")"
+if grep -qiE '^\*{0,2}time:' "$TICKET17B"; then
+  fail "case17b: reset 후 Time 줄이 남아 있음"
+fi
+echo "✅ case 17b (일시중단 중 → reset 으로 기록 삭제) OK"
 
 # case 18: 이미 시작된 티켓에 start --update → started= 를 새 시각으로 갱신(묻지 않음)
 FIXTURE18="$TMP_DIR/case18"
@@ -343,6 +371,22 @@ grep -q 'started=2026-09-01T09:00:00+09:00' "$TICKET18" || fail "case18: 첫 sta
 grep -q 'started=2026-09-02T10:00:00+09:00' "$TICKET18" || fail "case18: --update 로 started= 가 안 바뀜"
 [ "$(grep -c 'started=' "$TICKET18")" -eq 1 ] || fail "case18: started= 가 두 개 생김(중복 삽입)"
 echo "✅ case 18 (start --update → started= 갱신, 중복 없음) OK"
+
+# case 18b: 끝난 티켓에 start --force → Time: 줄을 **Time:** started=<새 시각> 으로 통째로 교체
+FIXTURE18B="$TMP_DIR/case18b"
+make_fixture "$FIXTURE18B" "my-feature" "T13.md" "# T13 — start force" "" "## Goal" "" "Body."
+TICKET18B="$FIXTURE18B/docs/features/my-feature/tickets/T13.md"
+(cd "$FIXTURE18B" && "$GOOTTE_BIN" start --at 2026-09-01T09:00:00+09:00 my-feature T13) \
+  >"$TMP_DIR/case18b-s.out" 2>"$TMP_DIR/case18b-s.err" || fail "case18b: start 실패"
+(cd "$FIXTURE18B" && "$GOOTTE_BIN" end --at 2026-09-01T10:00:00+09:00 my-feature T13) \
+  >"$TMP_DIR/case18b-e.out" 2>"$TMP_DIR/case18b-e.err" || fail "case18b: end 실패"
+(cd "$FIXTURE18B" && "$GOOTTE_BIN" start --force --at 2026-09-02T10:00:00+09:00 my-feature T13) \
+  >"$TMP_DIR/case18b.out" 2>"$TMP_DIR/case18b.err" || fail "case18b: start --force 실패: $(cat "$TMP_DIR/case18b.err")"
+grep -q '^\*\*Time:\*\* started=2026-09-02T10:00:00+09:00$' "$TICKET18B" || fail "case18b: --force 로 Time 줄이 통째로 교체되지 않음: $(cat "$TICKET18B")"
+if grep -q 'finished=' "$TICKET18B"; then
+  fail "case18b: --force 후 finished= 가 남아 있음"
+fi
+echo "✅ case 18b (start --force → 끝난 티켓의 Time 줄 통째로 교체) OK"
 
 # case 19: 이미 시작된 티켓에 start (확인 yes) → started= 갱신
 FIXTURE19="$TMP_DIR/case19"
@@ -369,4 +413,4 @@ printf 'n\n' | (cd "$FIXTURE20" && "$GOOTTE_BIN" start --at 2026-09-02T10:00:00+
 [ "$BEFORE_CASE20" = "$(cat "$TICKET20")" ] || fail "case20: 확인(no) 인데 파일이 바뀜"
 echo "✅ case 20 (start → 확인 no → 변경 없음) OK"
 
-echo "✅ scripts/tests/gootte-time.test.sh 전체 통과 (구관례·--at·pause/resume·cancel·start-update 포함)"
+echo "✅ scripts/tests/gootte-time.test.sh 전체 통과 (구관례·--at·pause/resume·reset/cancel·start-force 포함)"
