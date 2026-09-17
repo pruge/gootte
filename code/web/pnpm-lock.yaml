@@ -26,6 +26,9 @@ importers:
 
   backend:
     dependencies:
+      '@gootte/cli':
+        specifier: workspace:*
+        version: link:../cli
       '@gootte/contract':
         specifier: workspace:*
         version: link:../contract

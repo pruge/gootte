@@ -11,6 +11,7 @@
     "start": "tsx src/server.ts"
   },
   "dependencies": {
+    "@gootte/cli": "workspace:*",
     "@gootte/contract": "workspace:*",
     "@gootte/core": "workspace:*",
     "@gootte/core-io": "workspace:*",

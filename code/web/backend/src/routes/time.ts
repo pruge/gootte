@@ -10,12 +10,24 @@ import type { TicketTimeRecord } from "@gootte/contract";
 import {
   readFeatures,
   extraWorktreeRoots,
+  hasTimeRecords,
   joinTimeRecords,
-  upsertTicketRecord,
 } from "@gootte/core-io";
+import { runTimeCommand } from "@gootte/cli";
 import { recordProjectScan } from "../snapshot";
 
 const planError = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+/** bash `bin/gootte` argv — flags 는 명령어 **뒤·위치인자 앞**(그 스크립트의 usage:
+ *  `gootte start [--at <TIME>] [--force] <feature> <ticket>`). */
+const bashArgs = (action: string, feature: string, ticket: string): string[] =>
+  action === "start" ? [action, "--force", feature, ticket] : [action, feature, ticket];
+
+/** `runTimeCommand` argv — 위치인자가 **먼저**, flags 는 뒤(그 함수의 usage:
+ *  `time <cmd> <기능> <티켓> [--at <TIME>] [--force]`). 두 규약이 반대라 하나로 합치면
+ *  `--force` 가 feature 자리에 앉아 "티켓 파일을 찾을 수 없습니다" 로 죽는다. */
+const tsArgs = (action: string, feature: string, ticket: string): string[] =>
+  action === "start" ? [action, feature, ticket, "--force"] : [action, feature, ticket];
 
 const slugParam = z.object({ slug: z.string().min(1) });
 const TimeAction = z.object({ feature: z.string().min(1), ticket: z.string().min(1), action: z.enum(["start", "pause", "resume", "end"]) });
@@ -93,19 +105,19 @@ export function createTimeRoutes(deps: TimeRouteDeps): Hono {
     const proj = resolveSlug(effectiveRoots(), slug);
     if (!proj) return c.json({ error: `프로젝트 없음: ${slug}` } satisfies ApiError, 404);
     try {
-      const target = pickTimeTarget(proj, feature, ticket, action, withWorktrees, bbWorktrees);
-      // 🔴 start 액션은 확인 다이얼로그가 나오는데, 백엔드에선 stdin이 없으니 --force 로 생략한다.
-      // finished 티켓의 start 변경을 막는 CLI 판정은 여전히 적용된다.
-      // ⚠️ args: [command, --force, feature, ticket] — --force는 명령어 뒤에 와야 함
-      const gootteArgs = action === "start" ? [ action, "--force", feature, ticket ] : [ action, feature, ticket ];
-      execFileSync(gootteBin, gootteArgs, { cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-      // 🔴 CLI는 MD 파일만 건드린다. state.json 도 갱신해야 이후 readFeatures 가
-      // 최신 startedAt/완료 상태를 본다 — 없으면 joinTimeRecords 가 낡은 state.json
-      // 값으로 오버라이트해 UI가 처리중으로 안 바뀐다(실제 결함 2026-09-17).
-      if (action === "start") {
-        upsertTicketRecord(proj.path, `${feature}/${ticket}`, { startedAt: new Date().toISOString() });
-      } else if (action === "end") {
-        upsertTicketRecord(proj.path, `${feature}/${ticket}`, { finishedAt: new Date().toISOString() });
+      // 🔴 모드 이분법(D2)이 **프로세스 경계**를 정한다 — 읽기 경로(time-records-join)와 같은 판이다.
+      //    레코드 모드(state.json v2) 프로젝트의 시간 기록 권위는 상태 저장소다: MD 를 쓰는 bash CLI 를
+      //    거치면 안 된다. 종전에는 항상 `bin/gootte` 를 exec 했는데, 그 스크립트의 레코드 모드 위임이
+      //    `command -v npx` 에 걸려 있어 데스크톱 앱의 GUI PATH(`/usr/bin:/bin:…`)에서는 조용히
+      //    MD 경로로 떨어졌다 — 레코드 모드 MD 에는 `Time:` 줄이 없으므로 종료 버튼이
+      //    "시작되지 않은 티켓입니다(Time: 줄이 없음)" 로 죽었다(실측 2026-09-17).
+      //    레코드 경로는 CLI 와 **같은 구현**을 in-process 로 부른다 — 검증 규칙 복제가 없다.
+      if (hasTimeRecords(proj.path)) {
+        runTimeCommand(tsArgs(action, feature, ticket), proj.path);
+      } else {
+        // MD 모드 — MD 가 SoT 다. bash CLI 가 MD 를 직접 쓴다(이 경로는 npx 가 필요 없다).
+        const target = pickTimeTarget(proj, feature, ticket, action, withWorktrees, bbWorktrees);
+        execFileSync(gootteBin, bashArgs(action, feature, ticket), { cwd: target, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
       }
       const all = withWorktrees(proj.copies);
       // 🔴 레코드 조인 뒤의 값을 스냅샷에 기록한다(T03) — 기록 직후 화면·스냅샷·state.json 이
