@@ -182,7 +182,7 @@ describe("parseBlockedBy", () => {
   });
 
   it("🔴 산문 속 번호를 이 기능의 번호로 읽지 않는다 — 문구 그대로 싣는다(INV-4)", () => {
-    // 실제 서식(firstmate-migration/06): 다른 기능의 티켓을 산문으로 가리킨다.
+    // 실제 서식(archived/firstmate-migration/06): 다른 기능의 티켓을 산문으로 가리킨다.
     expect(
       parseBlockedBy(ticket("ready-for-agent", "03, 04, 그리고 **자매 기능 `other` 의 티켓 01**")),
     ).toEqual(["03", "04", "그리고 **자매 기능 `other` 의 티켓 01**"]);

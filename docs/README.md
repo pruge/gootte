@@ -46,5 +46,4 @@ docs/features/<기능-slug>/
 
 ---
 
-`mermaid/` 는 은퇴한 표면이다 — 제품 표면과 함께 걷어내는 중이며
-(`features/firstmate-migration/issues/04-remove-mermaid.md`), 새로 쓰지 않는다.
+`mermaid/` 는 은퇴한 표면이다 — 제품 표면과 함께 걷어내는 중이며, 새로 쓰지 않는다.
