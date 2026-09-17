@@ -1,20 +1,15 @@
 {
   "version": 2,
-  "updatedAt": "2026-09-14T06:20:11.230Z",
+  "updatedAt": "2026-09-17T01:04:22.812Z",
   "openFeatures": [
     {
-      "slug": "memos-live-with-the-project",
-      "title": "memos-live-with-the-project — 메모를 프로젝트와 함께 이동하게 만든다",
+      "slug": "process-two-column",
+      "title": "process-two-column — steps 탭을 2컬럼(1:2)으로 다시 그린다",
       "status": "pending",
-      "sourceStatus": null,
-      "statusKnown": false,
+      "sourceStatus": "ready-for-agent",
+      "statusKnown": true,
       "tickets": [],
       "docs": [
-        {
-          "kind": "file",
-          "name": "grill.md",
-          "path": "grill.md"
-        },
         {
           "kind": "file",
           "name": "spec.md",
@@ -29,16 +24,6 @@
               "kind": "file",
               "name": "T01.md",
               "path": "tickets/T01.md"
-            },
-            {
-              "kind": "file",
-              "name": "T02.md",
-              "path": "tickets/T02.md"
-            },
-            {
-              "kind": "file",
-              "name": "T03.md",
-              "path": "tickets/T03.md"
             }
           ]
         }
@@ -48,7 +33,7 @@
           "num": "01",
           "slug": "T01",
           "path": "tickets/T01.md",
-          "title": "`gootte memo migrate` — 중앙 메모를 프로젝트 파일로 옮긴다 (읽기는 아직 중앙)",
+          "title": "steps 탭 2컬럼(1:2): feature 목록 + 선택된 feature 의 tickets",
           "status": "in_progress",
           "sourceStatus": null,
           "statusKnown": true,
@@ -58,128 +43,9 @@
           "startable": true,
           "needsCaptainEye": false,
           "docConvention": "tickets",
-          "startedAt": "2026-09-14T12:35:52+09:00",
-          "pauses": [],
-          "joinFailed": false
-        },
-        {
-          "num": "02",
-          "slug": "T02",
-          "path": "tickets/T02.md",
-          "title": "읽기·쓰기를 `<프로젝트>/.gootte/memo.json` 으로 전환 (폴백 없음)",
-          "status": "pending",
-          "sourceStatus": null,
-          "statusKnown": true,
-          "blockedBy": [
-            "01"
-          ],
-          "unreadableBlockedBy": [],
-          "waitingOn": [
-            "01"
-          ],
-          "startable": false,
-          "needsCaptainEye": false,
-          "docConvention": "tickets",
-          "joinFailed": false
-        },
-        {
-          "num": "03",
-          "slug": "T03",
-          "path": "tickets/T03.md",
-          "title": "종단 확인: 두 원장이 하나가 됐는가 (캡틴 확인으로 닫는다)",
-          "status": "pending",
-          "sourceStatus": null,
-          "statusKnown": true,
-          "blockedBy": [
-            "02"
-          ],
-          "unreadableBlockedBy": [],
-          "waitingOn": [
-            "02"
-          ],
-          "startable": false,
-          "needsCaptainEye": false,
-          "docConvention": "tickets",
-          "joinFailed": false
-        }
-      ]
-    },
-    {
-      "slug": "memos-read-from-any-session",
-      "title": "memos-read-from-any-session — 어떤 세션에서든 자기 프로젝트 메모를 읽는다",
-      "status": "pending",
-      "sourceStatus": null,
-      "statusKnown": false,
-      "tickets": [],
-      "docs": [
-        {
-          "kind": "file",
-          "name": "grill.md",
-          "path": "grill.md"
-        },
-        {
-          "kind": "file",
-          "name": "spec.md",
-          "path": "spec.md"
-        },
-        {
-          "kind": "dir",
-          "name": "tickets",
-          "path": "tickets",
-          "children": [
-            {
-              "kind": "file",
-              "name": "T01.md",
-              "path": "tickets/T01.md"
-            },
-            {
-              "kind": "file",
-              "name": "T02.md",
-              "path": "tickets/T02.md"
-            }
-          ]
-        }
-      ],
-      "newTickets": [
-        {
-          "num": "01",
-          "slug": "T01",
-          "path": "tickets/T01.md",
-          "title": "`gootte memo [--done|--undone]` — 지금 프로젝트 메모를 어떤 세션에서나 읽는다",
-          "status": "done",
-          "sourceStatus": null,
-          "statusKnown": true,
-          "completedAt": "2026-09-14T12:22:36+09:00",
-          "blockedBy": [],
-          "unreadableBlockedBy": [],
-          "waitingOn": [],
-          "startable": true,
-          "needsCaptainEye": false,
-          "docConvention": "tickets",
-          "startedAt": "2026-09-14T11:40:34+09:00",
-          "finishedAt": "2026-09-14T12:22:36+09:00",
-          "pauses": [],
-          "joinFailed": false
-        },
-        {
-          "num": "02",
-          "slug": "T02",
-          "path": "tickets/T02.md",
-          "title": "캡틴 리뷰: 실제 세션에서 `gootte memo` 로 메모를 읽고 논의할 수 있는가",
-          "status": "pending",
-          "sourceStatus": null,
-          "statusKnown": true,
-          "blockedBy": [
-            "01"
-          ],
-          "unreadableBlockedBy": [],
-          "waitingOn": [
-            "01"
-          ],
-          "startable": false,
-          "needsCaptainEye": false,
-          "docConvention": "tickets",
-          "joinFailed": false
+          "joinFailed": false,
+          "startedAt": "2026-09-17T07:50:42+09:00",
+          "pauses": []
         }
       ]
     }
@@ -756,8 +622,8 @@
       "statusRaw": "resolved (2026-08-14 07:35)"
     },
     "process-two-column/T01": {
-      "startedAt": "2026-08-31T19:51:54+09:00",
-      "finishedAt": "2026-08-31T19:59:09+09:00",
+      "startedAt": "2026-09-17T07:50:42+09:00",
+      "finishedAt": null,
       "pauses": [],
       "statusRaw": null
     },
@@ -1202,6 +1068,35 @@
     "memos-live-with-the-project/T02": {
       "startedAt": "2026-09-14T14:03:09+09:00",
       "finishedAt": "2026-09-14T15:20:11+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memos-read-from-any-session/02": {
+      "startedAt": "2026-09-16T07:41:01+09:00",
+      "finishedAt": null,
+      "pauses": [],
+      "statusRaw": null
+    },
+    "memos-read-from-any-session/T02": {
+      "startedAt": "2026-09-16T07:47:37+09:00",
+      "finishedAt": "2026-09-16T07:47:49+09:00",
+      "pauses": [
+        {
+          "pausedAt": "2026-09-16T07:47:44+09:00",
+          "resumedAt": "2026-09-16T07:47:47+09:00"
+        }
+      ],
+      "statusRaw": null
+    },
+    "memos-live-with-the-project/T03": {
+      "startedAt": "2026-09-16T07:48:03+09:00",
+      "finishedAt": "2026-09-16T07:48:05+09:00",
+      "pauses": [],
+      "statusRaw": null
+    },
+    "demo-start-check/T01": {
+      "startedAt": "2026-09-17T10:04:13+09:00",
+      "finishedAt": "2026-09-17T10:04:22+09:00",
       "pauses": [],
       "statusRaw": null
     }
