@@ -1,8 +1,7 @@
 /**
- * 시간 기록 — state.json 모드(bin/gootte 가 v2 state.json 을 발견해 위임, T05).
+ * 시간 기록 — state.json v2 레코드에만 쓴다(유일한 구현, T05).
  *
- * 🔴 검증 규칙은 bash(bin/gootte cmd_start/end/pause/resume/reset/drop)의 승계다 —
- * 어긋나면 화면과 터미널이 다른 말을 한다(the-terminal-agrees-with-the-screen):
+ * 🔴 검증 규칙(옛 bash CLI 에서 승계 — 어긋나면 화면과 터미널이 다른 말을 한다):
  * - 끝난 티켓의 start 금지(단 --force 는 덮어쓰기) / 미시작 티켓의 end·reset 금지
  * - 일시중단 중 end 금지(resume 먼저) / 재개 안 된 pause 상태에서 pause 재금지
  * - reset 은 레코드 삭제(MD Time: 줄 삭제의 대응물, cancel 은 별칭) / drop 은 statusRaw wontfix
@@ -147,19 +146,22 @@ interface TimeTarget {
 }
 
 function target(root: string, feature: string, ticket: string): TimeTarget {
-  const key = `${feature}/${ticket}`;
+  // 🔴 키는 항상 파일 basename 과 일치해야 조인(`timeRecordKey`)에 닿는다.
+  // "03"·"T03" 같은 번호 인자는 실물 파일명으로 정규화한다 — 날것("f/03")으로 기록하면
+  // 티켓 슬러그("T03")와 어긋나 pending 으로 남는다(구관례 완전 정리 과정에서 발견).
   const num = ticket.replace(/^T/i, "");
   const ticketsFile = join(root, "docs", "features", feature, "tickets", `T${num}.md`);
+  if (existsSync(ticketsFile)) return { root, key: `${feature}/T${num}` };
   const issuesDir = join(root, "docs", "features", feature, "issues");
-  const exists =
-    existsSync(ticketsFile) ||
-    (existsSync(issuesDir) && readdirSync(issuesDir).some((f) => f.startsWith(num) && f.endsWith(".md")));
-  if (!exists) {
-    throw new CliError(
-      `티켓 파일을 찾을 수 없습니다:\n  신관례: ${ticketsFile}\n  구관례: ${issuesDir}/${num}-*.md`,
-    );
+  if (existsSync(issuesDir)) {
+    const hit = readdirSync(issuesDir)
+      .filter((f) => f.startsWith(num) && f.endsWith(".md"))
+      .sort()[0];
+    if (hit) return { root, key: `${feature}/${hit.replace(/\.md$/i, "")}` };
   }
-  return { root, key };
+  throw new CliError(
+    `티켓 파일을 찾을 수 없습니다:\n  신관례: ${ticketsFile}\n  구관례: ${issuesDir}/${num}-*.md`,
+  );
 }
 
 /** 지금 레코드를 다시 읽는다 — 명령마다 파일이 바뀌므로(target 스냅샷 금지). */
@@ -174,14 +176,32 @@ function requireStarted(rec: TicketTimeRecord | undefined, what: string): Ticket
   return rec;
 }
 
-/** 시간 명령 실행 — main.ts 가 `time <cmd> <기능> <티켓> [--at <TIME>]` 형태로 넘긴다. */
+/** 시간 명령 실행 — `time <cmd> <기능> <티켓> [--at <TIME>] [--force]` 또는 bare 동사.
+ * 🔴 플래그 위치에 관대하다: 설치된 번들(`gootte start --at 1h f T01`)처럼 플래그가
+ * 먼저 와도 된다. 진입점마다 순서를 맞추지 않고 여기 한 곳에서 걷어낸다(INV-1). */
 export function runTimeCommand(argv: readonly string[], cwd: string = process.cwd()): string {
-  const [cmd, feature, ticketRaw] = argv;
+  const pos: string[] = [];
+  let at: string | undefined;
+  let force = false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--at") {
+      at = argv[i + 1];
+      i++;
+      continue;
+    }
+    if (a.startsWith("--at=")) {
+      at = a.slice("--at=".length);
+      continue;
+    }
+    if (a === "--force" || a === "--update" || a === "-u") {
+      force = true; // --update·-u 는 --force 의 별칭(bash CLI 승계)
+      continue;
+    }
+    pos.push(a);
+  }
+  const [cmd, feature, ticketRaw] = pos;
   if (!cmd || !feature || !ticketRaw) throw new CliError("usage: gootte time <start|pause|resume|end|reset|cancel|drop> <기능> <티켓> [--at <TIME>] [--force]");
-  const atFlag = argv.indexOf("--at");
-  const at = atFlag >= 0 ? argv[atFlag + 1] : undefined;
-  // --update 는 --force 의 별칭(bash CLI 승계)
-  const force = argv.includes("--force") || argv.includes("--update");
   const root = resolveMainRoot(cwd);
   const t = target(root, feature, ticketRaw);
   const now = new Date();

@@ -24,7 +24,7 @@ function usage(): number {
   "  frontier    [프로젝트]  — 착수 가능(대기+차단 없음+임자 없음) 티켓 목록(기능 + 티켓 + 제목)",
       "  memo        [--done|--undone]  — 지금 프로젝트 메모를 읽는다(세션용. 프로젝트 인자 없음)",
       "  memo migrate [프로젝트…] [--purge] — central 메모를 <프로젝트>/.gootte/memo.json 으로 옮긴다(읽기는 이미 그 파일을 본다)",
-      "  migrate     [--dry-run] <프로젝트>  — 티켓 시간·상태 기록을 state.json v2 로 이관한다",
+      "  migrate     [--dry-run] [--strip] <프로젝트>  — 티켓 시간·상태 기록을 state.json v2 로 이관한다",
       "",
     ].join("\n"),
   );
@@ -80,19 +80,29 @@ function run(argv: string[]): number {
         process.stdout.write(memoText(rest, process.cwd()) + "\n");
         return 0;
       }
-      case "time": {
-        // state.json 모드의 시간 기록(T05) — bin/gootte 가 위임한다.
-        process.stdout.write(runTimeCommand(rest) + "\n");
+      case "time":
+      case "start":
+      case "pause":
+      case "resume":
+      case "end":
+      case "reset":
+      case "cancel":
+      case "drop": {
+        // state.json 모드의 시간 기록 — `time <cmd> …` 형태와 bare 동사(`gootte start …`)
+        // 둘 다 받는다. 후자는 npm 설치본에서 런처 없이 직접 칠 때 쓴다(bin/gootte 도 같은 곳으로 낸다).
+        const args = cmd === "time" ? rest : [cmd, ...rest];
+        process.stdout.write(runTimeCommand(args) + "\n");
         return 0;
       }
       case "migrate":
       case "migrate-time": {
-        // MD Time:/Status: 줄 → state.json v2 레코드(T06, 캡틴 지시 2026-09-09: `gootte migrate
-        // <프로젝트>`). MD 줄은 삭제하지 않는다. `migrate-time` 은 옛 이름 별칭이다.
+        // MD Time:/Status: 줄 → state.json v2 레코드. `--strip` 을 주면 이관 뒤
+        // 메인 경로 티켓 파일의 MD 줄까지 지운다(레코드 백업 확보가 전제). `migrate-time` 은 옛 이름 별칭이다.
         const report = migrateTime(rest);
+        const stripBits = report.strip ? ` · 정리 ${report.strippedFiles}파일/${report.strippedLines}줄` : "";
         process.stdout.write(
           [
-            `${report.dryRun ? "[dry-run] " : ""}${report.project} 이관: 검사 ${report.scanned} · 기록 ${report.migrated} · 생략(무기록) ${report.skipped} · 사본병합 ${report.multiCopy}`,
+            `${report.dryRun ? "[dry-run] " : ""}${report.project} 이관: 검사 ${report.scanned} · 기록 ${report.migrated} · 생략(무기록) ${report.skipped} · 사본병합 ${report.multiCopy}${stripBits}`,
             ...report.details,
             "",
           ].join("\n"),

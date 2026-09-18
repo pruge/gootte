@@ -10,8 +10,6 @@
 🔗 [10](10-a-closed-card-comes-back-when-work-appears.md) 이 완료 칸에 세운 것을 **넓히고,
 그 안전장치 하나를 캡틴 지시로 걷어낸다.**
 
-**Status:** resolved (2026-08-13 13:51)
-
 ## 캡틴 지시 (원문)
 
 > **"gootte에서 작업대상/대기 영역을 제외한 곳에 있는 카드는 새로운 ticket이 들어오면,**

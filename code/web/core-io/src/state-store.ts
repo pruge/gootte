@@ -63,10 +63,10 @@ export function readState(projectDir: string): { version: 2; updatedAt: string; 
 }
 
 /**
- * v2 모드 판정 — state.json 의 **원문 version 이 2** 인가. 이 프로젝트의 티켓 기록은
- * 레코드가 권위다(D2). 🔴 v1(배지 전용) 파일은 모드를 켜지 않는다 — 배지 경로만으로
- * 레코드 권위가 켜지면 레코드 없는 v2 가 MD 기반 판정을 지워 버린다(이중 SoT 위반).
- * v2 승격은 `migrate-time`(T06)이 레코드를 쓰는 시점에만 일어난다.
+ * 이관 여부 판정 — state.json 의 **원문 version 이 2** 인가.
+ * 🔴 읽기 경로의 모드 gate 가 아니다(게이트는 제거됨 — 조인이 항상 권위다).
+ * `gootte migrate --dry-run`·이관 프롬프트에서 "미이관 프로젝트"를 가려내는
+ * 도구용 술어로만 쓴다. v1(배지 전용) 파일은 true 가 아니다.
  */
 export function hasTimeRecords(projectDir: string): boolean {
   const file = stateFile(projectDir);
@@ -154,9 +154,9 @@ function writeBadgeV1(projectDir: string, openFeatures: Feature[]): void {
  * 구관례 기능은 티켓이 전부 끝나도 pending인 채 남는다 — 그 값으로 거르면 완료된
  * 기능이 배지에 남는다(실제 결함 2026-09-08).
  *
- * 🔴 **v1 스키마를 유지한다**(tickets 가 없으면) — 배지 경로만으로 v2 모드가 켜지면
- * 레코드 없는 v2 파일이 MD 기반 판정을 지워 버린다(D2 이중 SoT 위반). v2 전환은
- * `migrate-time`(T06)이 레코드를 기록할 때 명시적으로 일어난다.
+ * 🔴 **v1 스키마를 유지한다**(tickets 가 없으면) — v1(배지 전용) 파일이 있는 프로젝트는
+ * 아직 MD 이관 전이다. 배지 경로만으로 v2 모드가 켜지면 안 된다 — v2 승격은
+ * `gootte migrate` 가 레코드를 기록할 때 명시적으로 일어난다.
  */
 export function recalcProjectState(projectDir: string, features: Feature[]): void {
   // 🔴 원문 version 을 직접 본다 — readStateDoc 은 v1 을 v2 로 승격해 돌려주므로 그 값을

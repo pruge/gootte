@@ -6,8 +6,6 @@
 
 **Blocked by:** 없음 — 지금 착수 가능
 
-**Status:** resolved (2026-08-11)
-
 ## 🔴 실제로 숨은 티켓 (2026-08-11 실측)
 
 관리대상 jinwooauto 의 `catalog-registry/03` 은 막힘이 없고 오늘 시작할 수 있다.

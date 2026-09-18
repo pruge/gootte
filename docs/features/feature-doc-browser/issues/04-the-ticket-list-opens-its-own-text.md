@@ -5,8 +5,6 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능**
 
-**Status:** resolved (2026-08-12 20:53)
-
 ## 캡틴 지시 (2026-08-12)
 
 > feature 카드에서 check각 issues와 1:1로 대응대는 것을 몰랐다.

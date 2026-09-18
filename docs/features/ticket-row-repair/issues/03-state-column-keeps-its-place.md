@@ -5,8 +5,6 @@
 
 **Blocked by:** 없음 — 지금 착수 가능([01](01-in-progress-means-now.md) · [02](02-date-keeps-its-place.md) 착지 완료)
 
-**Status:** resolved (2026-08-09)
-
 ## 캡틴 지시 (2026-08-09)
 
 > gootte에 check 목록에 착수가능 문구 부분도 자리잡아두자. 착수가능|진행중 두개로만 하자. 더 필요한가?

@@ -12,6 +12,7 @@ import {
   parseStatusLine,
   parseTicket,
   parseTimeLine,
+  stripLegacyTimeStatusLines,
 } from "./feature";
 
 /** 티켓 파일 한 장 합성 — 상단 두 줄이 서식의 전부다(triage-labels). */
@@ -708,5 +709,29 @@ describe("parseTicket — 구관례(issues/) 티켓의 Time: 줄도 읽는다(T0
     const doc = parseTicket("01-x.md", ticket("ready-for-agent"));
     expect(doc.startedAt).toBeNull();
     expect(doc.finishedAt).toBeNull();
+  });
+});
+
+describe("stripLegacyTimeStatusLines — 파서가 읽던 줄만 지운다", () => {
+  it("Time:/Status: 줄을 지우고 줄 번호를 돌려준다", () => {
+    const { content, removed } = stripLegacyTimeStatusLines(
+      ["# T01", "", "**Time:** started=2026-08-01T09:00:00+09:00", "", "**Status:** resolved (2026-08-08)", "", "## Goal"].join("\n"),
+    );
+    expect(removed).toEqual([3, 5]);
+    expect(content).toBe(["# T01", "", "", "", "## Goal"].join("\n")); // 줄만 뺀다(빈 줄 정리 없음)
+  });
+
+  it("펜스 안 예시·Blocked by: 는 살린다", () => {
+    const { content, removed } = stripLegacyTimeStatusLines(
+      ["# T01", "", "**Blocked by:** 없음", "", "```md", "**Time:** started=2000-01-01T00:00:00+09:00", "```", "", "Time: 산문에서 시간을 논함"].join("\n"),
+    );
+    expect(removed).toEqual([9]); // 펜스 밖 `Time:` 으로 시작하는 줄만
+    expect(content).toContain("**Blocked by:** 없음");
+    expect(content).toContain("**Time:** started=2000-01-01T00:00:00+09:00");
+  });
+
+  it("지울 줄이 없으면 원문 그대로·빈 목록", () => {
+    const src = "# T01\n\n## Goal\n";
+    expect(stripLegacyTimeStatusLines(src)).toEqual({ content: src, removed: [] });
   });
 });

@@ -1,11 +1,11 @@
 /**
  * 실물 확인 스크립트(the-header-agrees-with-its-tickets 검증) — 화면이 보는 것과 **같은 판정
- * 자리**를 지난다: readFeatures → finalizeFeatureStatus. 머리글 한 줄(네 수 + 배지)을 출력한다.
+ * 자리**를 지난다: readFeaturesWithTime → finalizeFeatureStatus. 머리글 한 줄(네 수 + 배지)을 출력한다.
  * 읽기 전용 — 아무것도 쓰지 않는다(INV-2).
  *
  *   npx tsx scripts/verify-header-badge.ts <관리대상 프로젝트 뿌리>
  */
-import { readFeatures } from "../core-io/src/index";
+import { readFeaturesWithTime } from "../core-io/src/index";
 import { allTickets, finalizeFeatureStatus } from "../core/src/index";
 
 const root = process.argv[2];
@@ -15,7 +15,7 @@ if (!root) {
 }
 
 const now = new Date().toISOString();
-const features = finalizeFeatureStatus(readFeatures([root]), now);
+const features = finalizeFeatureStatus(readFeaturesWithTime([root], root), now);
 
 for (const f of features) {
   const tickets = allTickets(f);

@@ -57,9 +57,25 @@ describe("runTimeCommand — 기록 흐름", () => {
     expect(r.finishedAt).toBe("2026-09-09T12:00:00+09:00");
   });
 
-  test("구관례(issues/) 티켓에도 기록한다", () => {
+  test("구관례(issues/) 티켓에도 기록한다 — 키는 파일 basename 이다", () => {
     run("start", "beta", "01");
-    expect(rec("beta/01")?.startedAt).not.toBeNull();
+    // 🔴 "01" 인자는 실물 파일명("01-a")으로 정규화된다 — 날것("beta/01")으로 기록하면
+    // 조인 슬러그와 어긋나 pending 으로 남는다. 번호·T번호·정식 슬러그 셋 다 같은 키다.
+    expect(rec("beta/01-a")?.startedAt).not.toBeNull();
+    expect(rec("beta/01")).toBeUndefined();
+  });
+
+  test("번호 인자(03)는 T번호(T03)로 정규화된다", () => {
+    run("start", "alpha", "03", "--at", "2026-09-09T09:00:00+09:00");
+    expect(rec("alpha/T03")?.startedAt).toBe("2026-09-09T09:00:00+09:00");
+    expect(rec("alpha/03")).toBeUndefined();
+  });
+
+  test("플래그가 먼저 와도 된다 — 설치본 bare 동사 순서에 관대하다", () => {
+    run("--at", "2026-09-09T09:00:00+09:00", "start", "alpha", "T01");
+    expect(rec("alpha/T01")?.startedAt).toBe("2026-09-09T09:00:00+09:00");
+    run("--force", "--at", "2026-09-10T10:00:00+09:00", "start", "alpha", "T01");
+    expect(rec("alpha/T01")?.startedAt).toBe("2026-09-10T10:00:00+09:00");
   });
 
   test("reset 은 레코드를 삭제한다 — MD Time: 줄 삭제의 대응물", () => {

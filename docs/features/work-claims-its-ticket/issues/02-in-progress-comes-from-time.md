@@ -2,8 +2,6 @@
 
 **Blocked by:** 없음 — 즉시 착수 가능
 
-**Status:** resolved (2026-09-02)
-
 ## What to build
 
 **처리중(`in_progress`) 판정의 근거를 바꾼다.** 지금은 **격리 사본 관측**이 만든다 —

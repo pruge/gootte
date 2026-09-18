@@ -119,8 +119,8 @@ describe("migrateTime — 이관", () => {
     );
     writeFileSync(join(root, "docs/features/alpha/tickets/T02.md"), "# T02\n\n**Status:** wontfix\n");
     migrateTime([slug], root);
-    // 이관 뒤: MD 파싱 결과(폴백 경로)와 레코드 조인 결과(권위 경로)가 같아야 한다 — 이것이
-    // 나중의 MD 줄 삭제가 안전하다는 증명이다(T06 재파싱 대조).
+    // 이관 뒤 레코드 조인 결과는 MD 원문과 같은 값을 말한다 — 이것이
+    // 나중의 MD 줄 삭제가 안전한 이유다(값은 레코드에 이미 있다).
     const mdView = readFeatures([root]);
     const joined = joinTimeRecords(readFeatures([root]), root);
     const viaAll = readFeaturesWithTime([root], root);
@@ -132,5 +132,76 @@ describe("migrateTime — 이관", () => {
     const recDrop = viaAll[0]!.newTickets!.find((t) => t.slug === "T02")!;
     expect(recDrop.status).toBe("dropped"); // statusRaw wontfix → dropped(읽기 경로 해석)
     expect(migrate).toBeDefined();
+  });
+});
+
+describe("migrateTime --strip — 레거시 줄 정리", () => {
+  const seed = (): string => {
+    const slug = nameProject("gootte-mig");
+    writeFileSync(
+      join(root, "docs/features/alpha/tickets/T01.md"),
+      "# T01\n\n**Time:** started=2026-09-01T09:00:00+09:00 finished=2026-09-02T10:00:00+09:00\n\n**Blocked by:** 없음\n",
+    );
+    writeFileSync(join(root, "docs/features/alpha/issues/01-a.md"), "# 01\n\n**Status:** resolved (2026-08-08)\n");
+    writeFileSync(
+      join(root, "docs/features/beta/tickets/T01.md"),
+      "# T01 — 예시 인용\n\n```md\n**Time:** started=2000-01-01T00:00:00+09:00\n```\n",
+    );
+    return slug;
+  };
+
+  test("--strip — 레코드 기록 뒤 MD 줄을 지운다(펜스 안 예시·Blocked by: 유지)", () => {
+    const slug = seed();
+    const report = migrateTime([slug, "--strip"], root);
+    expect(report.migrated).toBe(2);
+    expect(report.strippedFiles).toBe(2);
+    expect(report.strippedLines).toBe(2);
+    const t01 = require("node:fs").readFileSync(join(root, "docs/features/alpha/tickets/T01.md"), "utf8") as string;
+    expect(t01).not.toContain("Time:");
+    expect(t01).toContain("**Blocked by:** 없음"); // 지우면 안 된다
+    const issue = require("node:fs").readFileSync(join(root, "docs/features/alpha/issues/01-a.md"), "utf8") as string;
+    expect(issue).not.toContain("Status:");
+    const fenced = require("node:fs").readFileSync(join(root, "docs/features/beta/tickets/T01.md"), "utf8") as string;
+    expect(fenced).toContain("**Time:** started=2000-01-01T00:00:00+09:00"); // 펜스 안은 예시다
+    // 값은 레코드에 있다 — 지운 뒤에도 판정이 같다
+    expect(readTicketRecords(root)["alpha/T01"]?.finishedAt).toBe("2026-09-02T10:00:00+09:00");
+    expect(readTicketRecords(root)["alpha/01-a"]?.statusRaw).toBe("resolved (2026-08-08)");
+  });
+
+  test("--strip --dry-run — 미리보기만, 파일은 그대로", () => {
+    const slug = seed();
+    const before = require("node:fs").readFileSync(join(root, "docs/features/alpha/tickets/T01.md"), "utf8");
+    const report = migrateTime(["--dry-run", "--strip", slug], root);
+    expect(report.strippedFiles).toBe(2);
+    expect(report.strippedLines).toBe(2);
+    expect(require("node:fs").readFileSync(join(root, "docs/features/alpha/tickets/T01.md"), "utf8")).toBe(before);
+    expect(hasTimeRecords(root)).toBe(false);
+  });
+
+  test("--strip 단독 재실행 — 이미 지워졌으면 0건(멱등)", () => {
+    const slug = seed();
+    migrateTime([slug, "--strip"], root);
+    const again = migrateTime([slug, "--strip"], root);
+    expect(again.strippedFiles).toBe(0);
+    expect(again.strippedLines).toBe(0);
+  });
+
+  test("--strip — 값이 없는 빈 줄은 레코드 없이도 정리한다", () => {
+    const slug = nameProject("gootte-mig");
+    writeFileSync(join(root, "docs/features/alpha/tickets/T01.md"), "# T01\n\nTime:\n");
+    const report = migrateTime([slug, "--strip"], root);
+    expect(report.migrated).toBe(0);
+    expect(report.strippedFiles).toBe(1);
+    expect(report.strippedLines).toBe(1);
+    expect(require("node:fs").readFileSync(join(root, "docs/features/alpha/tickets/T01.md"), "utf8")).toBe("# T01\n\n");
+  });
+
+  test("--strip — 지울 줄이 없으면 0건 성공(멱등의 얼굴)", () => {
+    const slug = nameProject("gootte-mig");
+    writeFileSync(join(root, "docs/features/alpha/tickets/T01.md"), "# T01\n");
+    const report = migrateTime([slug, "--strip"], root);
+    expect(report.strippedFiles).toBe(0);
+    expect(report.strippedLines).toBe(0);
+    expect(require("node:fs").readFileSync(join(root, "docs/features/alpha/tickets/T01.md"), "utf8")).toBe("# T01\n");
   });
 });

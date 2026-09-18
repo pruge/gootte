@@ -5,8 +5,6 @@
 
 **Blocked by:** 없음 — 지금 착수 가능
 
-**Status:** resolved (2026-08-09)
-
 ## 캡틴 지시 (2026-08-09)
 
 > gootte에서 feature카드안에 check의 목록이 issues의 목록 시작 위치가 다르다. 맞춰줘.

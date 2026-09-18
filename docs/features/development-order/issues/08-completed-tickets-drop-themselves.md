@@ -6,8 +6,6 @@ gootte 계획(`ticket_order`)에서 그 티켓 줄이 **자동으로 지워진�
 
 **Blocked by:** [07](07-plan-changes-push-live.md) — 워처·push 경로가 먼저 있어야 한다
 
-**Status:** resolved (2026-08-11)
-
 ## 캡틴 지시 (2026-08-11, 원문)
 
 > "완료 처리하면, 자동으로 인지하잖아. 그럼 자동으로 drop 을 호출하면 되지 않아?"

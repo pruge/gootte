@@ -1,37 +1,26 @@
 #!/usr/bin/env bash
-# bin/gootte — 독립 bash CLI. gootte TS 모노레포의 워크스페이스 패키지를 전혀 참조하지 않는다.
+# bin/gootte — TS CLI(`code/web/cli`)의 얇은 런처. 시간·상태 기록은 레코드(`state.json` v2) 전용이다.
 #
-# gootte reset [--at <TIME>] <feature-slug> <ticket> # Time: 줄을 통째로 삭제 — 처음 상태로 되돌림(cancel 은 별칭)
-# gootte start  [--at <TIME>] [--force] <feature-slug> <ticket> # 티켓 문서에 **Time:** started=<ISO> 삽입
-#                                                             # 이미 시작된 티켓이면 확인(또는 --force) 후 started= 를 갱신
-#                                                             # --force 면 끝난 티켓도 Time: 줄 통째로 교체. --update 는 --force 별칭
-# gootte pause  [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 paused=<ISO> 추가(일시 중단)
-# gootte resume [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 resumed=<ISO> 추가(재개)
-# gootte end    [--at <TIME>] <feature-slug> <ticket> # 같은 줄에 finished=<ISO> 추가
-# gootte drop  [--at <TIME>] <feature-slug> [<ticket>] # Status: 줄을 wontfix (<날짜>) 로 갱신(폐기)
-#                                                   티켓 생략 시 그 기능의 티켓 전부를 폐기
+#   gootte start [--at <TIME>] [--force] <feature-slug> <ticket>
+#   gootte end [--at <TIME>] <feature-slug> <ticket>
+#   gootte pause|resume|reset|cancel|drop [...] (같은 인자 규율)
+#   gootte migrate [--dry-run] [--strip] <project-slug>
+#   gootte memo|status|board|next|... (그대로 TS 에 전달)
 #
-#   TIME: 비우면 지금. ISO8601(예 2026-08-29T15:00:00+09:00) 또는 상대시간
-#         (예 1h30m, 90m, 2h, 1d, 1h30m ago) — "지금으로부터 뒤" 로 푼다.
+# 🔴 MD(`Time:`/`Status:` 줄) 읽기·쓰기 코드는 제거됨(구관례 완전 정리) — 이 스크립트는
+# 티켓 문서를 절대 건드리지 않고 TS 에 위임만 한다. 번역하는 것은 시간 동사 7개뿐이다.
 #
-# md 파일만 cat/sed/grep/awk 로 직접 읽고 쓴다. 커밋은 하지 않는다(grill D3).
+# 실행 우선순위:
+#   1) `$GOOTTE_HOME/code/web/cli/dist/gootte.cjs` 가 있으면 `node` 로 직접 실행한다.
+#      npx/tsx/체크아웃 원본이 없어도 돈다 — GUI PATH·오프라인·타 기계(npm 설치본) 공통 경로다.
+#   2) 없으면(dev 체크아웃) `npx tsx src/main.ts` 폴백 — npx 가 없으면 실패로 죽는다.
 #
-# 이 스크립트가 찾는 경로는 실행 위치(cwd) 기준이다 — <프로젝트> 인자는 받지 않는다.
-# git 루트가 있으면 그 루트, 없으면 cwd 를 기준으로 티켓을 찾는다. 두 관례를 본다:
-#   - 신관례: docs/features/<feature-slug>/tickets/T<NN>.md  (**Time:** 줄 기록)
-#   - 구관례: docs/features/<feature-slug>/issues/<NN>-*.md  (**Time:** 줄 기록)
-# drop 은 두 관례 모두에서 **Status:** 줄을 갱신한다.
-#
-# 🔴 **Time:** / **Status:** 굵은 표기는 장식이 아니다 — 제목 뒤에 이어 쓰는 줄(특히 다중 줄
-# **Blocked by:** 문단 뒤)이 본문에 붙어 읽히지 않게, Blocked by 와 같은 표기로 세운다. 파서는
-# 굵은/일반 둘 다 읽는다(core `STATUS_LINE`·`TIME_LINE` 의 `(?:\*\*)?`).
+# GOOTTE_HOME 을 환경으로 고정할 수 있다(기본: 이 스크립트가 사는 저장소 루트 — 심링크·
+# gootte worktree 해소 포함). npm 으로 설치한 `gootte` 바이너리는 dist 번들 그 자체라
+# 이 스크립트를 거치지 않는다.
 
 set -euo pipefail
 
-# 🔴 이 스크립트가 사는 **저장소 루트** — 전역 심링크(npm link 등)로 불려도 심링크를 풀어 찾는다
-# (실제 결함 2026-09-09: 전역 gootte 로 위임하면 BASH_SOURCE 의 dirname/.. 가 node prefix 로
-# 잡혀 ERR_MODULE_NOT_FOUND). macOS readlink 는 -f 가 없으므로 루프로 튼다. 세 위임 지점이
-# 이 한 값을 쓴다(단일 소스).
 SELF="${BASH_SOURCE[0]}"
 while [ -L "$SELF" ]; do
   TARGET="$(readlink "$SELF")"
@@ -40,39 +29,29 @@ while [ -L "$SELF" ]; do
     *) SELF="$(cd "$(dirname "$SELF")" && pwd)/$TARGET" ;;
   esac
 done
-GOOTTE_HOME="$(cd "$(dirname "$SELF")/.." && pwd)"
-# 🔴 GOOTTE_HOME 자신이 gootte 저장소의 **worktree** 면(그 안의 bin/gootte 는 실파일) node_modules·
-# 미커밋 코드가 없다 — .git gitdir 에서 메인 gootte 저장소로 승격한다. cwd 가 *다른* 프로젝트의
-# worktree 일 때는 건드리지 않는다(도구 코드는 어디까지나 도구 저장소 것 — 실측 버그 2026-09-09:
-# 대상 프로젝트 메인의 main.ts 를 찾아 ERR_MODULE_NOT_FOUND).
-if grep -q '^gitdir: ' "$GOOTTE_HOME/.git" 2>/dev/null; then
-  MAIN_OF_TOOL="$(sed -n 's|^gitdir: \(.*\)/\.git/worktrees/.*|\1|p' "$GOOTTE_HOME/.git" | head -1)"
-  [ -n "$MAIN_OF_TOOL" ] && GOOTTE_HOME="$MAIN_OF_TOOL"
+if [ -z "${GOOTTE_HOME:-}" ]; then
+  GOOTTE_HOME="$(cd "$(dirname "$SELF")/.." && pwd)"
+  # 🔴 GOOTTE_HOME 자신이 gootte 저장소의 **worktree** 면(그 안의 bin/gootte 는 실파일)
+  # node_modules·미커밋 코드가 없다 — .git gitdir 에서 메인 gootte 저장소로 승격한다.
+  if grep -q '^gitdir: ' "$GOOTTE_HOME/.git" 2>/dev/null; then
+    MAIN_OF_TOOL="$(sed -n 's|^gitdir: \(.*\)/\.git/worktrees/.*|\1|p' "$GOOTTE_HOME/.git" | head -1)"
+    [ -n "$MAIN_OF_TOOL" ] && GOOTTE_HOME="$MAIN_OF_TOOL"
+  fi
 fi
 
 usage() {
-  echo "사용법: gootte start  [--at <TIME>] [--force] <feature-slug> <ticket>" >&2
-  echo "      gootte reset [--at <TIME>] <feature-slug> <ticket>" >&2
-  echo "      gootte pause  [--at <TIME>] <feature-slug> <ticket>" >&2
-  echo "      gootte resume [--at <TIME>] <feature-slug> <ticket>" >&2
-  echo "      gootte end    [--at <TIME>] <feature-slug> <ticket>" >&2
-  echo "      gootte drop   [--at <TIME>] <feature-slug> <ticket>" >&2
-  echo "      gootte status [feature-slug] [--working|--pending]  — 현황(state 별칭). 기능을 주면 그 기능만, 안 주면 작업중/대기중 + 기능별 남은 카드" >&2
-  echo "      gootte memo [--done|--undone]          — 지금 프로젝트 메모를 읽는다(어떤 세션에서나. 프로젝트 인자 없음)" >&2
-  echo "      gootte migrate [--dry-run] <project-slug> — 티켓 시간·상태 기록을 state.json v2 로 이관" >&2
+  echo "사용법: gootte start [--at <TIME>] [--force] <feature-slug> <ticket>" >&2
+  echo "      gootte end|pause|resume|reset|cancel|drop [--at <TIME>] <feature-slug> <ticket>" >&2
+  echo "      gootte migrate [--dry-run] [--strip] <project-slug>" >&2
+  echo "      gootte memo|status|board|next|... (그대로 전달)" >&2
   echo "  TIME: 비우면 지금 / ISO8601 / 상대시간(예 1h30m, 90m, 2h, 1d)" >&2
-  echo "  --force: start 는 묻지 않고 새 시작으로 덮어씀(끝난 티켓도 Time: 줄 교체). --update/-u 는 별칭" >&2
-  echo "  cancel: reset 의 별칭(같은 동작)" >&2
-  echo "" >&2
-  echo "기록 위치(time-records-to-state-store): state.json v2 프로젝트는 레코드로," >&2
-  echo "기록 흔적이 있는 옛 프로젝트는 MD Time:/Status: 줄로 간다(새 프로젝트는 자동 v2)." >&2
-  echo "" >&2
-  echo "그 외 명령(discover/db/step/board/next 등)은:" >&2
-  echo "  pnpm gootte <command> ..." >&2
+  echo "  --force: start 는 묻지 않고 새 시작으로 덮어씀. --update/-u 는 별칭" >&2
+  echo "  기록 위치: <프로젝트>/.gootte/state.json (v2 레코드) — 문서는 건드리지 않는다." >&2
   exit 1
 }
 
 # 실행 위치 기준 프로젝트 루트를 찾는다: git 루트가 있으면 그것, 없으면 cwd.
+# status/state 의 GOOTTE_ROOTS 기본값에만 쓴다.
 resolve_root() {
   local git_root
   if git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
@@ -82,694 +61,65 @@ resolve_root() {
   fi
 }
 
-# "T01" 또는 "01" 을 "T01" 로 정규화한다.
-normalize_ticket() {
-  local raw="$1"
-  local num="${raw#T}"
-  num="${num#t}"
-  if ! [[ "$num" =~ ^[0-9]+$ ]]; then
-    echo "gootte: 티켓 번호가 잘못됐습니다: $raw" >&2
-    exit 1
-  fi
-  # 10# prefix — bash 의 printf %d 가 08/09 를 8진수로 오인해 잘못된 8진수 경고+00 을 내는 것을 막는다.
-  printf 'T%02d' "$((10#$num))"
-}
-
-# epoch 초를 ISO 8601(콜론 포함 오프셋)으로 낸다: 2026-08-29T10:30:00+09:00
-fmt_epoch() {
-  local raw
-  raw="$(date -r "$1" +%Y-%m-%dT%H:%M:%S%z)"
-  # %z 는 +0900 형태 — 마지막 두 자리 앞에 콜론을 넣어 +09:00 으로 만든다.
-  printf '%s%s:%s\n' "${raw:0:19}" "${raw:19:3}" "${raw:22:2}"
-}
-
-# "1h30m" / "90m" / "2h" / "3d" / "45m" / "30s" 형태의 상대 시간을 지금으로부터 뺀 epoch 초로 푼다.
-# 선택: 뒤에 " ago" 가 붙거나 앞에 "-" 가 붙어도 같게 본다. 소수는 지원하지 않는다(정수 단위만).
-parse_relative() {
-  local spec="$1"
-  spec="${spec,,}"          # 소문자
-  spec="${spec% ago}"       # 뒤 " ago" 제거
-  spec="${spec#-}"          # 앞 "-" 제거
-  local total=0 rest="$spec" num unit
-  if [ -z "$rest" ]; then
-    echo "gootte: 시간 표현이 비어있습니다: $1" >&2
-    return 1
-  fi
-  while [[ "$rest" =~ ^([0-9]+)([smhd])(.*)$ ]]; do
-    num="${BASH_REMATCH[1]}"; unit="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[3]}"
-    case "$unit" in
-      s) total=$((total + num)) ;;
-      m) total=$((total + num * 60)) ;;
-      h) total=$((total + num * 3600)) ;;
-      d) total=$((total + num * 86400)) ;;
-    esac
-  done
-  if [ -n "$rest" ]; then
-    echo "gootte: 이해 못한 시간 표현: $1 (예: 1h30m, 90m, 2h, 1d)" >&2
-    return 1
-  fi
-  local now_ep
-  now_ep="$(date +%s)"
-  echo $((now_ep - total))
-}
-
-# TIME 인자를 시각으로 풀는다 — 비면 지금, 'T' 가 들어가면 ISO8601 그대로, 그 외엔 상대 시간.
-resolve_time() {
-  local arg="${1:-}"
-  if [ -z "$arg" ]; then
-    fmt_epoch "$(date +%s)"
-    return
-  fi
-  if [[ "$arg" == *T* ]]; then
-    printf '%s\n' "$arg"
-    return
-  fi
-  local ep
-  if ! ep="$(parse_relative "$arg")"; then
-    return 1
-  fi
-  fmt_epoch "$ep"
-}
-
-# drop 이 기록할 폐기일 — `YYYY-MM-DD HH:MM`(triage-labels 의 resolved 와 평행한 현지 시각).
-# 비면 지금, ISO8601 은 오프셋 콜론을 벗겨 epoch 로, 그 외엔 상대시간으로 푼다.
-resolve_drop_date() {
-  local arg="${1:-}"
-  local ep
-  if [ -z "$arg" ]; then
-    ep="$(date +%s)"
-  elif [[ "$arg" == *T* ]]; then
-    local iso="${arg/%:00/00}"   # +09:00 → +0900 (BSD date 가 원함)
-    ep="$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$iso" "+%s" 2>/dev/null)" \
-      || ep="$(date +%s)"
-  else
-    ep="$(parse_relative "$arg")" || ep="$(date +%s)"
-  fi
-  date -r "$ep" +"%Y-%m-%d %H:%M"
-}
-
-resolve_ticket_file() {
-  local feature_slug="$1"
-  local ticket_norm="$2"
-  local root
-  root="$(resolve_root)"
-  # 신관례: tickets/T<NN>.md
-  local tickets_file="$root/docs/features/$feature_slug/tickets/$ticket_norm.md"
-  if [ -f "$tickets_file" ]; then
-    printf '%s\n' "$tickets_file"
-    return
-  fi
-  # 구관례: issues/<NN>-*.md (번호만 쓴다 — 파일명은 T 접두가 없다)
-  local num="${ticket_norm#T}"
-  local issues_file
-  issues_file="$(ls "$root"/docs/features/"$feature_slug"/issues/"$num"-*.md 2>/dev/null | head -1)"
-  if [ -n "$issues_file" ] && [ -f "$issues_file" ]; then
-    printf '%s\n' "$issues_file"
-    return
-  fi
-  echo "gootte: 티켓 파일을 찾을 수 없습니다:" >&2
-  echo "  신관례: $tickets_file" >&2
-  echo "  구관례: $root/docs/features/$feature_slug/issues/${num}-*.md" >&2
-  exit 1
-}
-
-# 파일에서 "Time:" / "**Time:**" 줄 번호를 찾는다(없으면 아무것도 출력하지 않는다).
-find_time_line_no() {
-  local file="$1"
-  grep -niE '^\*{0,2}time:' "$file" | head -1 | cut -d: -f1 || true
-}
-
-# 제목 뒤, 본문 앞의 메타데이터 블록(연속된 Status:/Time:/Blocked by: 줄) 마지막 줄 번호를 찾는다.
-# 그 블록이 없으면 제목 줄 번호를 돌려준다.
-find_header_block_end_line_no() {
-  local file="$1"
-  local title_line
-  title_line="$(grep -n '^# ' "$file" | head -1 | cut -d: -f1)"
-  if [ -z "$title_line" ]; then
-    echo "gootte: 티켓 파일에 제목(# ...) 줄이 없습니다: $file" >&2
-    exit 1
-  fi
-  local total_lines
-  total_lines="$(wc -l < "$file" | tr -d ' ')"
-  # 메타데이터 키 줄과, 그 키가 시작한 문단의 연속 줄(다중 줄 `**Blocked by:**` 값 등)을
-  # 블록의 일부로 센다. 빈 줄은 건너뛰되 그 다음 키 줄이 더 있으면 이어서 센다.
-  # (실물 티켓은 보통 제목 뒤에 빈 줄 → Status: → 빈 줄 → 본문 순서다.)
-  local last="$title_line"
-  local in_paragraph=0
-  local i=$((title_line + 1))
-  while [ "$i" -le "$total_lines" ]; do
-    local content
-    content="$(sed -n "${i}p" "$file")"
-    case "$content" in
-      # 메타데이터 키 줄만 블록 연장 — 임의의 `**` 굵은 줄은 안 됨(`**What to build:**` 처럼
-      # 산문 문단이 `**` 로 줄을 이을 수 있어서). 빈 줄은 건너뛰되 last 는 갱신하지 않는다.
-      Status:*|Time:*|Blocked\ by:*|\*\*Status:*|**Time:*|**Blocked\ by:*|\*\*Needs\ Captain\ Eye:*)
-        last="$i"
-        in_paragraph=1
-        i=$((i + 1))
-        ;;
-      '')
-        in_paragraph=0
-        i=$((i + 1))
-        ;;
-      *)
-        # 키 줄이 시작한 문단의 연속 줄 — Time: 을 문단 중간에 끼워 넣지 않도록 블록을 잇는다
-        # (실제 결함 2026-09-01: 다중 줄 **Blocked by:** 문단의 2번째 줄에서 멈춰 끼어들었다).
-        if [ "$in_paragraph" -eq 1 ] && [[ "$content" != '#'* ]]; then
-          last="$i"
-          i=$((i + 1))
-        else
-          break
-        fi
-        ;;
-    esac
-  done
-  printf '%s\n' "$last"
-}
-
-cmd_start() {
-  local at="$1"
-  local force="${2:-0}"
-  local feature_slug="$3"
-  local ticket_raw="$4"
-  local ticket_norm
-  ticket_norm="$(normalize_ticket "$ticket_raw")"
-  local file
-  file="$(resolve_ticket_file "$feature_slug" "$ticket_norm")"
-
-  local existing_line_no
-  existing_line_no="$(find_time_line_no "$file")"
-  if [ -n "$existing_line_no" ]; then
-    local existing_line
-    existing_line="$(sed -n "${existing_line_no}p" "$file")"
-    local iso
-    iso="$(resolve_time "$at")" || exit 1
-    # --force 면 묻지 않고 Time: 줄 통째로 교체 — 끝난 티켓의 finished= 가 있어도 교체한다.
-    if [ "$force" = "1" ]; then
-      local tmp
-      tmp="$(mktemp)"
-      awk -v n="$existing_line_no" -v iso="$iso" '
-        NR == n { print "**Time:** started=" iso; next }
-        { print }
-      ' "$file" > "$tmp"
-      mv "$tmp" "$file"
-      echo "gootte: $file 의 Time: 줄을 **Time:** started=$iso 로 교체함(--force)"
-      return
-    fi
-    if printf '%s' "$existing_line" | grep -q 'finished='; then
-      echo "gootte: 이미 끝난 티켓의 시작 시간은 바꿀 수 없습니다: $file" >&2
-      exit 1
-    fi
-    # --force 는 위에서 조기 반환했으므로 여기서는 확인 후 started= 를 갱신한다.
-    printf 'gootte: 이미 시작된 티켓입니다. 시작 시간을 %s 로 변경할까요? [y/N] ' "$iso" >&2
-    read -r ans
-    case "$ans" in
-      y|Y|yes|Yes|YES) ;;
-      *) echo "gootte: 변경하지 않았습니다" >&2; exit 1 ;;
-    esac
-    local tmp
-    tmp="$(mktemp)"
-    if printf '%s' "$existing_line" | grep -q 'started='; then
-      # started=<이전> → started=<새 값> — 그 뒤 토큰(paused 등)은 그대로 둔다.
-      awk -v n="$existing_line_no" -v iso="$iso" '
-        NR == n {
-          sub(/started=[^ ]+/, "started=" iso)
-          print
-          next
-        }
-        { print }
-      ' "$file" > "$tmp"
-    else
-      # 🔴 Time: 줄은 있으나 started= 가 없는 경우 — 줄 끝에 삽입.
-      awk -v n="$existing_line_no" -v iso="$iso" '
-        NR == n { print $0 " started=" iso; next }
-        { print }
-      ' "$file" > "$tmp"
-    fi
-    mv "$tmp" "$file"
-    echo "gootte: $file 의 started= 를 $iso 로 변경함"
-    return
-  fi
-
-  local insert_after
-  insert_after="$(find_header_block_end_line_no "$file")"
-  local iso
-  iso="$(resolve_time "$at")" || exit 1
-
-  # 두 관례 모두 굵은 **Time:** — Blocked by 와 같은 표기로 본문에 붙어 읽히지 않게 한다.
-  local time_label="**Time:**"
-
-  local tmp
-  tmp="$(mktemp)"
-  # 🔴 Time 줄 **앞에 빈 줄**을 세운다 — `**Blocked by:**` 문단(특히 다중 줄) 바로 뒤에 이어 쓰면
-  # md 렌더링에서 문단에 붙어 한 줄로 보인다(캡틴 보고 2026-09-01). 한 줄 띄워 자기 문단을 만든다.
-  awk -v n="$insert_after" -v line="$time_label started=$iso" '
-    { print }
-    NR == n { print ""; print line }
-  ' "$file" > "$tmp"
-  mv "$tmp" "$file"
-
-  echo "gootte: $file 에 $time_label started=$iso 기록됨"
-  sync_main_state
-}
-
-# T12/T04 — 사본(worktree)에서 기록하면 메인 프로젝트의 state.json 배지를 갱신한다.
-#
-# 🔴 start 만이 아니라 **모든 기록 명령** 뒤에 호출한다 — end 로 티켓이 끝나도 메인 배지가
-# 안 줄면 stale 뷰다(INV-3, 캡틴 결함 신고 2026-09-04 와 같은 계열).
-# 🔴 배지 판정은 **티켓 기준**이다 — core `countOpenFeatures`("done 도 dropped 도 아닌
-# 티켓이 하나라도 있는 기능 수", 티켓 0개 기능은 미집계)와 같은 술어. 예전의 spec.md
-# `Status:` 기준은 (1) 티켓 기준 판정과 불일치했고 (2) 원문 어휘(resolved/wontfix)가 아닌
-# 사상 값(done/dropped)을 찾아 항상 pending 으로 세는 이중 결함이었다(2026-09-09 수정).
-# 파생 캐시 근사다 — 정밀 판정은 백엔드가 다음 읽기에서 다시 한다.
-sync_main_state() {
-  local config_file=".gootte/config.json"
-  [ -f "$config_file" ] || return 0
-  command -v python3 &>/dev/null || return 0
-  local main_project
-  main_project="$(python3 -c "import json; print(json.load(open('$config_file')).get('mainProject',''))" 2>/dev/null || true)"
-  [ -n "$main_project" ] && [ -d "$main_project" ] || return 0
-  python3 - "$main_project" <<'PYEOF' 2>/dev/null || true
-import json, os, re, sys
-from datetime import datetime
-
-main = sys.argv[1]
-features_dir = os.path.join(main, 'docs', 'features')
-if not os.path.isdir(features_dir):
-    sys.exit(0)
-
-TIME_RE = re.compile(r'^[ \t]*(?:\*\*)?Time:(?:\*\*)?[ \t]*(.*)$', re.M)
-STATUS_RE = re.compile(r'^[ \t]*(?:\*\*)?Status:(?:\*\*)?[ \t]*(.*)$', re.M)
-TICKET_NEW = re.compile(r'^T\d+\.md$', re.I)
-
-def open_work(text):
-    """이 티켓에 남은 일이 있는가 — done 도 dropped 도 아니면 참(해석은 원문 어휘 기준)."""
-    m = STATUS_RE.search(text)
-    if m:
-        raw = re.split(r'[\s(]', m.group(1).strip(), 1)[0]
-        if raw == 'resolved':   # → done
-            return False
-        if raw == 'wontfix':    # → dropped
-            return False
-        return True             # 알 수 없는 원문도 pending 쪽 — 남은 일 있다
-    t = TIME_RE.search(text)
-    if t:
-        return 'finished=' not in t.group(1)  # started 만 있으면 진행 중 = 남은 일
-    return True                 # Status: 도 Time: 도 없으면 미시작
-
-open_features = []
-for slug in sorted(os.listdir(features_dir)):
-    feat_dir = os.path.join(features_dir, slug)
-    if not os.path.isdir(feat_dir):
-        continue
-    files = []
-    issues_dir = os.path.join(feat_dir, 'issues')
-    if os.path.isdir(issues_dir):
-        files += [os.path.join(issues_dir, f) for f in sorted(os.listdir(issues_dir)) if f.endswith('.md')]
-    tickets_dir = os.path.join(feat_dir, 'tickets')
-    if os.path.isdir(tickets_dir):
-        files += [os.path.join(tickets_dir, f) for f in sorted(os.listdir(tickets_dir)) if TICKET_NEW.match(f)]
-    # 🔴 티켓 0개인 기능은 "남은 일 있음" 이 아니다 — 착수할 것이 없다(countOpenFeatures 동일).
-    if files and any(open_work(open(p, encoding='utf-8').read()) for p in files):
-        open_features.append({'slug': slug})
-
-state = {
-    'version': 1,
-    'updatedAt': datetime.now().isoformat(),
-    'openFeatures': open_features,
-}
-state_dir = os.path.join(main, '.gootte')
-os.makedirs(state_dir, exist_ok=True)
-state_file = os.path.join(state_dir, 'state.json')
-tmp = state_file + '.tmp'
-with open(tmp, 'w') as f:
-    json.dump(state, f, indent=2)
-    f.write('\n')
-os.rename(tmp, state_file)
-PYEOF
-}
-
-# gootte reset <feature-slug> <ticket> — Time: 줄을 통째로 삭제(처음 상태로 되돌림).
-# 시작·일시중단·완료 여부와 무관하게 삭제한다. 기록이 없을 때만 거절한다(오타 방지).
-# cancel 은 같은 동작의 별칭(기존 스크립트 호환).
-cmd_reset() {
-  local feature_slug="$1"
-  local ticket_raw="$2"
-  local ticket_norm
-  ticket_norm="$(normalize_ticket "$ticket_raw")"
-  local file
-  file="$(resolve_ticket_file "$feature_slug" "$ticket_norm")"
-
-  local existing_line_no
-  existing_line_no="$(find_time_line_no "$file")"
-  if [ -z "$existing_line_no" ]; then
-    echo "gootte: 시작되지 않은 티켓입니다(Time: 줄이 없음): $file" >&2
-    exit 1
-  fi
-
-  # Time: 줄과 그 앞의 빈 줄을 제거한다
-  local tmp
-  tmp="$(mktemp)"
-  awk -v n="$existing_line_no" '
-    NR == n - 1 && $0 == "" { next }
-    NR == n { next }
-    { print }
-  ' "$file" > "$tmp"
-  mv "$tmp" "$file"
-
-  echo "gootte: $file 의 Time: 줄이 삭제됨(시작 취소)"
-  sync_main_state
-}
-
-# cancel — reset 의 별칭
-cmd_cancel() {
-  cmd_reset "$@"
-}
-
-# 공통: Time 줄을 찾고 시작 상태 검증 — `cmd_pause`/`cmd_resume`/`cmd_end` 가 쓴다.
-time_state() {
-  local file="$1"
-  local existing_line_no
-  existing_line_no="$(find_time_line_no "$file")"
-  if [ -z "$existing_line_no" ]; then
-    echo "gootte: 시작되지 않은 티켓입니다(Time: 줄이 없음): $file" >&2
-    exit 1
-  fi
-  local existing_line
-  existing_line="$(sed -n "${existing_line_no}p" "$file")"
-  local state=0
-  if printf '%s' "$existing_line" | grep -q 'finished='; then
-    state=1
-  elif printf '%s' "$existing_line" | grep -q 'resumed=' \
-    && [ "$(printf '%s' "$existing_line" | grep -o 'resumed=' | wc -l | tr -d ' ')" -gt \
-         "$(printf '%s' "$existing_line" | grep -o 'paused=' | wc -l | tr -d ' ')" ]; then
-    state=0  # resumed 가 paused 보다 많으면 — 일시중단이 해제된 상태(진행 중)
-  elif printf '%s' "$existing_line" | grep -q 'paused=' \
-    && [ "$(printf '%s' "$existing_line" | grep -o 'paused=' | wc -l | tr -d ' ')" -gt \
-         "$(printf '%s' "$existing_line" | grep -o 'resumed=' | wc -l | tr -d ' ')" ]; then
-    state=2  # paused 가 resumed 보다 많으면 — 일시중단 중
-  fi
-  printf '%s|%s|%s\n' "$existing_line_no" "$existing_line" "$state"
-}
-
-# Time 줄의 끝에 ` <key>=<iso>` 를 덧붙인다. key= started|paused|resumed|finished
-append_time_token() {
-  local file="$1" key="$2" iso="$3"
-  local existing_line_no
-  existing_line_no="$(find_time_line_no "$file")"
-  local existing_line
-  existing_line="$(sed -n "${existing_line_no}p" "$file")"
-  local new_line="$existing_line $key=$iso"
-  local tmp
-  tmp="$(mktemp)"
-  awk -v n="$existing_line_no" -v line="$new_line" '
-    NR == n { print line; next }
-    { print }
-  ' "$file" > "$tmp"
-  mv "$tmp" "$file"
-  echo "gootte: $file 에 $key=$iso 기록됨"
-  sync_main_state
-}
-
-cmd_pause() {
-  local at="$1"
-  local feature_slug="$2"
-  local ticket_raw="$3"
-  local ticket_norm
-  ticket_norm="$(normalize_ticket "$ticket_raw")"
-  local file
-  file="$(resolve_ticket_file "$feature_slug" "$ticket_norm")"
-  local st
-  st="$(time_state "$file")"
-  local state="${st##*|}"
-  if [ "$state" = "2" ]; then
-    echo "gootte: 이미 일시중단된 티켓입니다: $file" >&2
-    exit 1
-  fi
-  local iso
-  iso="$(resolve_time "$at")" || exit 1
-  append_time_token "$file" "paused" "$iso"
-}
-
-cmd_resume() {
-  local at="$1"
-  local feature_slug="$2"
-  local ticket_raw="$3"
-  local ticket_norm
-  ticket_norm="$(normalize_ticket "$ticket_raw")"
-  local file
-  file="$(resolve_ticket_file "$feature_slug" "$ticket_norm")"
-  local st
-  st="$(time_state "$file")"
-  local state="${st##*|}"
-  if [ "$state" != "2" ]; then
-    echo "gootte: 일시중단 상태가 아닙니다(시작 전이거나 이미 재개됨): $file" >&2
-    exit 1
-  fi
-  local iso
-  iso="$(resolve_time "$at")" || exit 1
-  append_time_token "$file" "resumed" "$iso"
-}
-
-cmd_end() {
-  local at="$1"
-  local feature_slug="$2"
-  local ticket_raw="$3"
-  local ticket_norm
-  ticket_norm="$(normalize_ticket "$ticket_raw")"
-  local file
-  file="$(resolve_ticket_file "$feature_slug" "$ticket_norm")"
-  local st
-  st="$(time_state "$file")"
-  local state="${st##*|}"
-  if [ "$state" = "1" ]; then
-    echo "gootte: 이미 끝난 티켓입니다(finished= 가 이미 있음): $file" >&2
-    exit 1
-  fi
-  if [ "$state" = "2" ]; then
-    echo "gootte: 일시중단 상태입니다 — resume 먼저: $file" >&2
-    exit 1
-  fi
-  local existing_line_no="${st%%|*}"
-  local existing_line
-  existing_line="$(printf '%s' "$st" | cut -d'|' -f2)"
-  local iso
-  iso="$(resolve_time "$at")" || exit 1
-  local new_line="$existing_line finished=$iso"
-
-  local tmp
-  tmp="$(mktemp)"
-  awk -v n="$existing_line_no" -v line="$new_line" '
-    NR == n { print line; next }
-    { print }
-  ' "$file" > "$tmp"
-  mv "$tmp" "$file"
-
-  # 🔴 구관례(issues/) 티켓만 — `end` = 완료이므로 `**Status:**` 줄을 `resolved (완료일)` 로 갱신한다
-  # (ready-for-agent 등으로 남아 있던 것이 그대로 방치되는 것을 막는다). 이미 resolved 면 건너뛴다.
-  # 신관례(tickets/) 는 done 을 Time: 줄에서 파생하므로 여기서 Status: 를 쓰지 않는다(drop 만 쓴다).
-  if [[ "$file" == */issues/* ]]; then
-    local status_line_no
-    status_line_no="$(grep -niE '^\*{0,2}status:' "$file" | head -1 | cut -d: -f1 || true)"
-    if [ -n "$status_line_no" ]; then
-      local cur_status
-      cur_status="$(sed -n "${status_line_no}p" "$file")"
-      if ! printf '%s' "$cur_status" | grep -qi 'resolved'; then
-        local done_date
-        done_date="$(resolve_drop_date "$at")" || done_date="$(date +%Y-%m-%d\ %H:%M)"
-        local tmp2
-        tmp2="$(mktemp)"
-        # 🔴 재기록하는 **Status:** 앞에도 빈 줄이 없으면 넣는다 — 문단에 붙어 보이지 않게.
-        awk -v n="$status_line_no" -v d="$done_date" \
-          '{ if (NR == n) { if (prev != "") print ""; print "**Status:** resolved (" d ")"; next } print; prev = $0 }' "$file" > "$tmp2"
-        mv "$tmp2" "$file"
-        echo "gootte: $file 의 **Status:** 를 resolved ($done_date) 로 갱신함"
-      fi
-    fi
-  fi
-
-  echo "gootte: $file 에 finished=$iso 기록됨"
-  sync_main_state
-}
-
-# 한 티켓 파일 하나를 폐기 — Status: 줄을 `wontfix (<날짜>)` 로 갱신(문서가 SoT, gootte 는 dropped 로 읽음).
-# 반환: 0 = 갱신함, 1 = 이미 wontfix 라 건너뜀.
-drop_file() {
-  local file="$1" drop_date="$2"
-  local existing_line_no
-  existing_line_no="$(grep -niE '^\*{0,2}status:' "$file" | head -1 | cut -d: -f1 || true)"
-  if [ -n "$existing_line_no" ]; then
-    local existing_line
-    existing_line="$(sed -n "${existing_line_no}p" "$file")"
-    if printf '%s' "$existing_line" | grep -qiE 'wontfix'; then
-      echo "gootte: 이미 폐기됨(건너뜀): $file" >&2
-      return 1
-    fi
-  fi
-  # 두 관례 모두 굵은 **Status:** — Blocked by 와 같은 표기로 본문에 붙어 읽히지 않게 한다.
-  # 기존 줄이 일반 `Status:` 여도 **Status:** 로 덮어 쓴다(파서는 둘 다 읽는다).
-  local new_line="**Status:** wontfix ($drop_date)"
-  local tmp
-  tmp="$(mktemp)"
-  if [ -n "$existing_line_no" ]; then
-    # 🔴 **Status:** 앞에 빈 줄이 없으면 넣는다 — md 렌더링에서 문단에 붙어 보이지 않게.
-    awk -v n="$existing_line_no" -v line="$new_line" '
-      { if (NR == n) { if (prev != "") print ""; print line; next } print; prev = $0 }
-    ' "$file" > "$tmp"
-  else
-    local insert_after
-    insert_after="$(find_header_block_end_line_no "$file")"
-    # 🔴 새로 삽입하는 **Status:** 앞에 빈 줄을 세운다.
-    awk -v n="$insert_after" -v line="$new_line" '{ print } NR == n { print ""; print line }' "$file" > "$tmp"
-  fi
-  mv "$tmp" "$file"
-  echo "gootte: $file 에 $new_line 기록됨"
-  return 0
-}
-
-# 한 기능 폴더의 모든 티켓 파일 경로(구관례 issues/<NN>-*.md + 신관례 tickets/T<NN>.md)를 줄별로 출력.
-list_feature_tickets() {
-  local root="$1" feature_slug="$2"
-  local dir="$root/docs/features/$feature_slug"
-  [ -d "$dir" ] || return 0
-  local f
-  shopt -s nullglob
-  for f in "$dir"/issues/[0-9]*-*.md; do [ -f "$f" ] && printf '%s\n' "$f"; done
-  for f in "$dir"/tickets/T[0-9]*.md; do [ -f "$f" ] && printf '%s\n' "$f"; done
-  shopt -u nullglob
-}
-
-# 티켓 하나 또는 기능 전체를 폐기한다.
-#   gootte drop <기능> <티켓>  → 한 티켓
-#   gootte drop <기능>         → 그 기능의 티켓 전부(issues/ + tickets/)
-cmd_drop() {
-  local at="$1"
-  local feature_slug="$2"
-  local ticket_raw="${3:-}"
-  local ticket_norm=""
-  [ -n "$ticket_raw" ] && ticket_norm="$(normalize_ticket "$ticket_raw")"
-  local drop_date
-  drop_date="$(resolve_drop_date "$at")" || exit 1
-
-  if [ -n "$ticket_raw" ]; then
-    local file
-    file="$(resolve_ticket_file "$feature_slug" "$ticket_norm")"
-    drop_file "$file" "$drop_date"   # 이미 폐기됐으면 exit 1(단일 모드에선 에러)
-  else
-    local root
-    root="$(resolve_root)"
-    local dir="$root/docs/features/$feature_slug"
-    if [ ! -d "$dir" ]; then
-      echo "gootte: 기능을 찾을 수 없습니다: $dir" >&2
-      exit 1
-    fi
-    local count=0 f
-    while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      if drop_file "$f" "$drop_date"; then count=$((count + 1)); fi
-    done < <(list_feature_tickets "$root" "$feature_slug")
-    echo "gootte: $feature_slug 기능의 티켓 $count 개를 폐기 처리함"
-  fi
-  sync_main_state
-}
-
 main() {
   if [ "$#" -lt 1 ]; then
     usage
   fi
-  local at=""
-  local force=0
-  local -a pos=()
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --at)
-        [ "$#" -ge 2 ] || { echo "gootte: --at 에 시간이 필요합니다" >&2; exit 1; }
-        at="$2"; shift 2 ;;
-      --at=*) at="${1#--at=}"; shift ;;
-      --force|--update|-u) force=1; shift ;; # --update 는 --force 의 별칭
-      --help|-h) usage ;;
-      *) pos+=("$1"); shift ;;
-    esac
-  done
-  [ "${#pos[@]}" -ge 1 ] || usage
-  local subcmd="${pos[0]}"
-
-  # 시간 기록 모드 판정(time-records-to-state-store, 캡틴 결정 2026-09-09: 새 프로젝트 자동 v2).
-  # 🔴 위임하는 경우:
-  #   1) cwd 의 state.json 이 version 2 — 이미 레코드 권위 모드다.
-  #   2) **티켓 파일에 gootte 기록 흔적이 하나도 없는 새 프로젝트** — 처음부터 레코드 모드로
-  #      시작한다(MD `Time:` 줄을 아예 만들지 않는다).
-  # 옛 프로젝트(기록 흔적이 있는 티켓이 하나라도)는 MD 모드를 유지한다 — 그쪽 기록의 이관은
-  # `gootte migrate <프로젝트>` 이다. 흔적 판정은 티켓 파일(tickets/·issues/)만 본다 —
-  # spec.md 의 기능 수준 `Status:` 는 MD SoT 로 남으므로 흔적이 아니다.
-  case "$subcmd" in
-    start|pause|resume|end|reset|cancel|drop)
-      # 🔴 모드 판정은 **메인 프로젝트** 기준이다(D4 — 레코드는 메인 state.json 에 산다).
-      # cwd 가 worktree 면 .git gitdir 에서 메인을 찾는다 — 그렇지 않으면 worktree 워커의
-      # 기록이 worktree state.json 부재로 MD 모드로 새어 v2 대시보드에서 안 보인다(실측 버그).
-      local main_root="$PWD"
-      if grep -q '^gitdir: .*/\.git/worktrees/' .git 2>/dev/null; then
-        main_root="$(sed -n 's|^gitdir: \(.*\)/\.git/worktrees/.*|\1|p' .git | head -1)"
-      fi
-      local main_state="$main_root/.gootte/state.json"
-      local delegate=0
-      if [ -f "$main_state" ] && grep -Eq '"version":[[:space:]]*2' "$main_state" 2>/dev/null; then
-        delegate=1
-      elif [ ! -f "$main_state" ] && [ -z "$(grep -rlE '^[[:space:]]*(\*\*)?(Time|Status):' "$main_root/docs/features/"*/tickets "$main_root/docs/features/"*/issues 2>/dev/null)" ]; then
-        delegate=1 # 기록 흔적 없는 새 프로젝트 — 레코드 모드로 자동 시작
-      fi
-      if [ "$delegate" = "1" ] && command -v npx &>/dev/null; then
-        # 🔴 TS 진입은 **GOOTTE_HOME**(심링크·gootte worktree 가 해소된 도구 저장소)의 코드다.
-        local -a ts_args=(time "$subcmd" "${pos[@]:1}")
-        [ -n "$at" ] && ts_args+=(--at "$at")
-        [ "$force" = "1" ] && ts_args+=(--force)
-        exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" "${ts_args[@]}"
-      fi
-      ;;
+  case "${1:-}" in
+    --help|-h) usage ;;
   esac
 
-  # 시간 기록 명령은 bash에서 직접 처리
-  case "$subcmd" in
-    start|reset|cancel|pause|resume|end|drop)
-      # 기존 로직 실행
+  command -v node &>/dev/null || { echo "gootte: node 가 필요합니다(PATH 확인)" >&2; exit 1; }
+
+  local bundle="$GOOTTE_HOME/code/web/cli/dist/gootte.cjs"
+  local ts_src="$GOOTTE_HOME/code/web/cli/src/main.ts"
+
+  # 시간 동사 7개만 `time` 하위 명령으로 번역한다. --at/--force 는 TS 가 위치인자
+  # 뒤에서 받으므로 뒤로 보낸다(옛 bash 파서와 같은 규약). 그 외 명령은 verbatim 전달 —
+  # 거부·사용법 판정은 TS 몫이다(셸에서 삼키면 필터가 조용히 사라진다).
+  local -a args=()
+  case "$1" in
+    start|pause|resume|end|reset|cancel|drop)
+      local subcmd="$1"
+      shift
+      local at=""
+      local force=0
+      local -a pos=()
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --at)
+            [ "$#" -ge 2 ] || { echo "gootte: --at 에 시간이 필요합니다" >&2; exit 1; }
+            at="$2"; shift 2 ;;
+          --at=*) at="${1#--at=}"; shift ;;
+          --force|--update|-u) force=1; shift ;;
+          *) pos+=("$1"); shift ;;
+        esac
+      done
       [ "${#pos[@]}" -ge 2 ] || usage
-      case "$subcmd" in
-        start)  cmd_start  "$at" "$force" "${pos[1]}" "${pos[2]}" ;;
-        reset|cancel) cmd_reset "${pos[1]}" "${pos[2]}" ;;
-        pause)  cmd_pause  "$at" "${pos[1]}" "${pos[2]}" ;;
-        resume) cmd_resume "$at" "${pos[1]}" "${pos[2]}" ;;
-        end)    cmd_end    "$at" "${pos[1]}" "${pos[2]}" ;;
-        drop)
-          [ "${#pos[@]}" -le 3 ] || usage
-          cmd_drop "$at" "${pos[1]}" "${pos[2]:-}" ;;
-      esac
-      ;;
-    migrate|migrate-time)
-      # 티켓 기록 이관(time-records-to-state-store/T06, 캡틴 지시: gootte migrate <프로젝트>).
-      [ "${#pos[@]}" -ge 2 ] || usage
-      exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" migrate "${pos[@]:1}"
-      ;;
-    memo)
-      # 지금 프로젝트 메모 읽기(memos-read-from-any-session/T01) — TS CLI 위임.
-      # 🔴 working·pending 과 달리 **플래그까지 그대로** 넘긴다("${pos[@]:1}"). `pos[1]` 만 넘기면
-      # `--undone` 이 TS 에 닿지 않아 필터가 조용히 사라진다 — 라우팅 자체가 기능의 일부다(spec §PATH).
-      # 프로젝트는 cwd 로만 정한다(TS 쪽 slugFromCwd) — 셸도 인자를 해석하지 않고 그대로 넘긴다.
-      exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" "$subcmd" "${pos[@]:1}"
+      args=(time "$subcmd" "${pos[@]}")
+      [ -n "$at" ] && args+=(--at "$at")
+      [ "$force" = "1" ] && args+=(--force)
       ;;
     status|state)
-      # 현황 통합(status-cli-redesign) — TS CLI 위임. status 와 같은 읽기 경로.
-      # 프로젝트는 cwd 로 유추(TS slugFromCwd), 기능/플래그(--working|--pending)는 그대로 넘긴다.
-      # memo 처럼 위치인자 뒤 플래그까지 통째로 넘겨야 필터가 TS 에 닿는다.
-      GOOTTE_ROOTS="${GOOTTE_ROOTS:-$(dirname "$(resolve_root)")}" \
-        exec npx --yes tsx "$GOOTTE_HOME/code/web/cli/src/main.ts" status "${pos[@]:1}"
+      # 현황 통합 — GOOTTE_ROOTS 기본값(옛 규약 유지)만 셸이 채우고 나머지는 그대로 넘긴다.
+      if [ -z "${GOOTTE_ROOTS:-}" ]; then
+        GOOTTE_ROOTS="$(dirname "$(resolve_root)")"
+        export GOOTTE_ROOTS
+      fi
+      args=("$@")
       ;;
     *)
-      # 그 외 명령은 pnpm gootte 로만 접근 — bin 에서 처리하지 않음
-      echo "gootte: 알 수 없는 명령: $subcmd" >&2
-      echo "시간/상태 명령만 지원됩니다. 그 외 명령은 'pnpm gootte <command>' 로 실행하세요." >&2
-      usage
+      args=("$@")
       ;;
   esac
+
+  if [ -f "$bundle" ]; then
+    exec node "$bundle" "${args[@]}"
+  fi
+  # dev 폴백 — 체크아웃 원본으로 돈다. npx 가 없으면 실패로 죽는다(MD 폴백은 없다).
+  [ -f "$ts_src" ] || { echo "gootte: 도구 코드를 찾을 수 없습니다: $GOOTTE_HOME (GOOTTE_HOME 확인 또는 dist 빌드)" >&2; exit 1; }
+  command -v npx &>/dev/null || { echo "gootte: dist 번들이 없고 npx 도 찾을 수 없습니다 — MD에 기록하지 않고 중단합니다(PATH 확인 또는 pnpm --filter @gootte/cli build)" >&2; exit 1; }
+  exec npx --yes tsx "$ts_src" "${args[@]}"
 }
 
 main "$@"

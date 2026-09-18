@@ -34,6 +34,7 @@ import {
   readPlacements,
   readReadMarks,
   readSteps,
+  upsertTicketRecord,
   writeStep,
 } from "@gootte/core-io";
 import { createApp } from "../src/app";
@@ -71,6 +72,27 @@ const NO_TREEHOUSE = join(FIXTURES, "..", "no-treehouse");
 // show-themselves/01), 주입하지 않으면 이 기계의 실제 `~/.gootte` 를 오염시킨다.
 const DATA_DIR = mkdtempSync(join(tmpdir(), "gootte-app-data-"));
 const APP = { roots, treehouse: NO_TREEHOUSE, dataDir: DATA_DIR };
+
+/**
+ * 🔴 픽스처 사본 + 레코드 시딩(구관례 완전 정리 뒤의 표준 하니스).
+ * 시간·상태는 레코드(`state.json` v2)만 본다 — MD `Time:`/`Status:` 줄을 읽히게 할 수
+ * 없으므로, 상태가 필요한 테스트는 사본에 `upsertTicketRecord` 로 심는다.
+ * FIXTURES 원본에는 절대 쓰지 않는다(사본 간 레코드 오염 방지) — 항상 temp 복사본이다.
+ */
+function copyFixtures(): string {
+  const root = mkdtempSync(join(tmpdir(), "gootte-app-"));
+  cpSync(FIXTURES, root, { recursive: true });
+  return root;
+}
+const alphaOf = (root: string): string => join(root, "alpha");
+const seedRecord = (
+  alpha: string,
+  key: string,
+  started: string | null = "2026-09-02T09:00:00+09:00",
+  finished: string | null = null,
+): void => {
+  upsertTicketRecord(alpha, key, { startedAt: started, finishedAt: finished });
+};
 
 /** 격리된 계획 저장소로 한 번 부른다 — 테스트마다 새 디렉토리라 읽음 기록이 섞이지 않는다. */
 function withDataDir<T>(fn: (dataDir: string) => Promise<T> | T): Promise<T> | T {
@@ -180,9 +202,13 @@ describe("GET /api/projects", () => {
     expect(before).toBeGreaterThan(0);
 
     // 남은 티켓을 전부 완료로 바꾼다 — 배지는 줄어야 한다.
-    const issues = join(root, "alpha", "docs", "features", "auth-login", "issues");
-    for (const f of readdirSync(issues)) {
-      writeFileSync(join(issues, f), `# ${f}\n\n**Status:** resolved (2026-09-04)\n`);
+    // 🔴 완료는 레코드로 적는다(MD Status: 줄은 읽히지 않는다).
+    const alpha = join(root, "alpha");
+    for (const key of ["auth-login/01-session", "auth-login/02-screen", "auth-login/03-social"]) {
+      upsertTicketRecord(alpha, key, {
+        startedAt: "2026-09-02T09:00:00+09:00",
+        finishedAt: "2026-09-04T10:00:00+09:00",
+      });
     }
     clearDiscoverCache();
     // 🔴 updateProjectSnapshot 은 readFeatures 의 per-folder 캐시를 우회해 항상 재계산한다.
@@ -261,72 +287,99 @@ describe("GET /api/projects — T01 사본 묶기", () => {
   });
 });
 
-// fixture alpha 의 docs/features/auth-login — 01 resolved · 02 blocked by 01 · 03 알 수 없는 상태
+// fixture alpha 의 docs/features/auth-login — 01 done(레코드) · 02 blocked by 01 · 03 pending
 describe("GET /api/features/:slug", () => {
   test("FeaturesResponse envelope — 기능별 티켓 + 계산된 막힘 해제", async () => {
-    const app = createApp(APP);
-    const res = await app.request("/api/features/alpha");
-    expect(res.status).toBe(200);
-    const body = FeaturesResponse.parse(await res.json());
-    expect(body.project).toBe("alpha");
-    const f = body.features.find((x) => x.slug === "auth-login");
-    expect(f?.title).toBe("auth-login — 로그인");
-    expect(f?.tickets.map((t) => t.num)).toEqual(["01", "02", "03"]);
-    // 01 완료 → 02 착수 가능(계산). 02 미완 → 03 은 02 를 기다린다.
-    expect(f?.tickets[0]?.completedAt).toBe("2026-08-08");
-    expect(f?.tickets[1]?.startable).toBe(true);
-    expect(f?.tickets[2]?.startable).toBe(false);
-    expect(f?.tickets[2]?.waitingOn).toEqual(["02"]);
+    const root = copyFixtures();
+    try {
+      // 01 완료(레코드 finished) → 02 착수 가능(계산). 02 미완 → 03 은 02 를 기다린다.
+      seedRecord(alphaOf(root), "auth-login/01-session", "2026-09-02T09:00:00+09:00", "2026-08-08T10:00:00+09:00");
+      const app = createApp({ roots: [root], treehouse: NO_TREEHOUSE, dataDir: DATA_DIR });
+      const res = await app.request("/api/features/alpha");
+      expect(res.status).toBe(200);
+      const body = FeaturesResponse.parse(await res.json());
+      expect(body.project).toBe("alpha");
+      const f = body.features.find((x) => x.slug === "auth-login");
+      expect(f?.title).toBe("auth-login — 로그인");
+      expect(f?.tickets.map((t) => t.num)).toEqual(["01", "02", "03"]);
+      expect(f?.tickets[0]?.completedAt).toBe("2026-08-08T10:00:00+09:00");
+      expect(f?.tickets[1]?.startable).toBe(true);
+      expect(f?.tickets[2]?.startable).toBe(false);
+      expect(f?.tickets[2]?.waitingOn).toEqual(["02"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("🔴 알 수 없는 상태의 티켓도 응답에 남고 원문이 실려 나온다", async () => {
-    const app = createApp(APP);
-    const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
-    const t = body.features.find((f) => f.slug === "auth-login")?.tickets[2];
-    expect(t?.statusKnown).toBe(false);
-    expect(t?.sourceStatus).toBe("진행중");
-    expect(t?.status).toBe("pending");
+    const root = copyFixtures();
+    try {
+      // 원문(statusRaw "진행중")은 레코드로 싣는다 — MD Status: 줄은 읽히지 않는다.
+      upsertTicketRecord(alphaOf(root), "auth-login/03-social", { startedAt: null, finishedAt: null, statusRaw: "진행중" });
+      const app = createApp({ roots: [root], treehouse: NO_TREEHOUSE, dataDir: DATA_DIR });
+      const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
+      const t = body.features.find((f) => f.slug === "auth-login")?.tickets[2];
+      expect(t?.statusKnown).toBe(false);
+      expect(t?.sourceStatus).toBe("진행중");
+      expect(t?.status).toBe("pending");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
-  test("🔴 Time(started=) 기록이 있는 티켓은 관측 없이도 처리중이다(ADR 0001)", async () => {
-    const app = createApp(APP);
-    const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
-    // 02-screen 에는 Time: started= 가 fixture 에 적혀 있다(ADR 0001: 처리중은 Time 기록으로만)
-    const t = body.features
-      .find((f) => f.slug === "auth-login")
-      ?.tickets.find((x) => x.slug === "02-screen");
-    expect(t?.status).toBe("in_progress");
-    // 다른 티켓(01-session Time 없음, 03-06 등)은 처리중이 아니다
-    for (const f of body.features)
-      for (const t of f.tickets)
-        if (t.path !== "issues/02-screen.md") {
-          expect(t.status).not.toBe("in_progress");
-        }
+  test("🔴 started 레코드가 있는 티켓은 관측 없이도 처리중이다(ADR 0001)", async () => {
+    const root = copyFixtures();
+    try {
+      // 02-screen 의 started 레코드가 처리중을 만든다(ADR 0001: 처리중은 Time 기록으로만)
+      seedRecord(alphaOf(root), "auth-login/02-screen");
+      const app = createApp({ roots: [root], treehouse: NO_TREEHOUSE, dataDir: DATA_DIR });
+      const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
+      const t = body.features
+        .find((f) => f.slug === "auth-login")
+        ?.tickets.find((x) => x.slug === "02-screen");
+      expect(t?.status).toBe("in_progress");
+      // 다른 티켓(레코드 없음)은 처리중이 아니다
+      for (const f of body.features)
+        for (const t of f.tickets)
+          if (t.path !== "issues/02-screen.md") {
+            expect(t.status).not.toBe("in_progress");
+          }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
-  test("격리 사본 뿌리가 없어도 응답은 산다 — Time 기록이 처리중을 만든다", async () => {
-    const app = createApp(APP);
-    const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
-    // 02-screen 의 Time(started=) 기록이 처리중을 만든다(ADR 0001) — 관측 없이도
-    expect(body.inProgress).toMatchObject({
-      root: NO_TREEHOUSE,
-      rootExists: false,
-      copies: 0,
-      working: 0,
-      tickets: 1,
-    });
-    expect(body.inProgress.unreadable).toEqual([]);
+  test("격리 사본 뿌리가 없어도 응답은 산다 — started 레코드가 처리중을 만든다", async () => {
+    const root = copyFixtures();
+    try {
+      seedRecord(alphaOf(root), "auth-login/02-screen");
+      const app = createApp({ roots: [root], treehouse: NO_TREEHOUSE, dataDir: DATA_DIR });
+      const body = FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
+      // 02-screen 의 started 레코드가 처리중을 만든다(ADR 0001) — 관측 없이도
+      expect(body.inProgress).toMatchObject({
+        root: NO_TREEHOUSE,
+        rootExists: false,
+        copies: 0,
+        working: 0,
+        tickets: 1,
+      });
+      expect(body.inProgress.unreadable).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("작업중 사본이 있으면 처리중이 실리고, 사본 수가 실린다", async () =>
     withDataDir(async (dataDir) => {
       // dataDir 를 안 주입하면 이 기계의 실제 ~/.gootte 를 읽는다(파일 상단 주석과 같은 근거) —
       // 이 테스트만 빠져 있었다(2026-08-25 발견, 실제 host 상태에 따라 죽는 test 오염).
+      const root = copyFixtures();
+      seedRecord(alphaOf(root), "auth-login/02-screen");
       const th = makeTreehouse();
       try {
         const body = FeaturesResponse.parse(
           await (
-            await createApp({ roots, treehouse: th, dataDir }).request("/api/features/alpha")
+            await createApp({ roots: [root], treehouse: th, dataDir }).request("/api/features/alpha")
           ).json(),
         );
         const t = body.features
@@ -339,6 +392,7 @@ describe("GET /api/features/:slug", () => {
         expect(body.inProgress).toMatchObject({ rootExists: true, working: 2, tickets: 1 });
       } finally {
         rmSync(th, { recursive: true, force: true });
+        rmSync(root, { recursive: true, force: true });
       }
     }));
 
@@ -467,11 +521,12 @@ describe("GET /api/features/:slug — T04 신관례", () => {
         // 같은 프로젝트를 계속 찾게 하려면 그 아래로 옮겨 심어야 한다(실물 배치와 같은 모양).
         relocateUnderHomeProjects(projectRoot, home);
 
-        // T04 — done 출처는 티켓 문서의 finishedAt 이다. 티켓 문서에 Time: 줄을 넣어 done 으로 만든다.
-        writeFileSync(
-          join(home, "projects", "widget", "docs", "features", "tauri-desktop-app", "tickets", "T04.md"),
-          "# T04 — 신관례 문서 표시\n\n**Time:** started=2026-08-25T12:00:00+09:00 finished=2026-08-25T13:00:00+09:00\n",
-        );
+        // T04 — done 출처는 레코드의 finishedAt 이다. finished 레코드를 심으면 done 이 된다.
+        // (MD Time: 줄은 읽히지 않는다 — 구관례 완전 정리)
+        upsertTicketRecord(join(home, "projects", "widget"), "tauri-desktop-app/T04", {
+          startedAt: "2026-08-25T12:00:00+09:00",
+          finishedAt: "2026-08-25T13:00:00+09:00",
+        });
         // 프로젝트 설정을 갱신해 새 경로에서 프로젝트를 발견하게 한다.
         await app.request("/api/settings", {
           method: "PUT",
@@ -899,16 +954,19 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
 
   test("🔴 작업중 사본이 있으면 계획 판 티켓도 처리중을 말한다(status-colors-tell-apart/02, spec H6)", () =>
     withDataDir(async (dataDir) => {
+      const root = copyFixtures();
+      seedRecord(alphaOf(root), "auth-login/02-screen");
       const th = makeTreehouse();
       try {
         const body = PlanBoardResponse.parse(
-          await (await createApp({ roots, treehouse: th, dataDir }).request("/api/plan/alpha")).json(),
+          await (await createApp({ roots: [root], treehouse: th, dataDir }).request("/api/plan/alpha")).json(),
         );
         const card = body.waiting.find((c) => c.feature.slug === "auth-login");
         const t = card?.feature.tickets.find((x) => x.slug === "02-screen");
         expect(t?.status).toBe("in_progress");
       } finally {
         rmSync(th, { recursive: true, force: true });
+        rmSync(root, { recursive: true, force: true });
       }
     }));
 
@@ -1016,13 +1074,24 @@ describe("GET /api/plan/:slug — 다섯 자리 판", () => {
 
     test("🔴 작업 대상으로 올라오면 의존에서 단계를 계산해 심는다 — 끝난 티켓에는 행이 없다(T02/D2)", () =>
       withDataDir(async (dataDir) => {
-        await post(dataDir, { features: ["auth-login"], area: "active", index: 0 });
-        // fixture: 01(resolved) → 02 → 03. 끝난 01 에는 행이 없고(D2), 남은 02 는
-        // 완료된 선행(01)이 풀려 1단계가 된다. 03 은 02 다음인 2단계.
-        expect(readSteps(dataDir, "alpha")).toEqual([
-          { feature: "auth-login", ticket: "02-screen", step: 1 },
-          { feature: "auth-login", ticket: "03-social", step: 2 },
-        ]);
+        const root = copyFixtures();
+        try {
+          // 01 done(레코드) → 02 → 03. 끝난 01 에는 행이 없고(D2), 남은 02 는
+          // 완료된 선행(01)이 풀려 1단계가 된다. 03 은 02 다음인 2단계.
+          seedRecord(alphaOf(root), "auth-login/01-session", "2026-09-02T09:00:00+09:00", "2026-09-03T10:00:00+09:00");
+          const localApp = createApp({ roots: [root], treehouse: NO_TREEHOUSE, dataDir, now: () => NOW });
+          await localApp.request("/api/plan/alpha/move", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ features: ["auth-login"], area: "active", index: 0 }),
+          });
+          expect(readSteps(dataDir, "alpha")).toEqual([
+            { feature: "auth-login", ticket: "02-screen", step: 1 },
+            { feature: "auth-login", ticket: "03-social", step: 2 },
+          ]);
+        } finally {
+          rmSync(root, { recursive: true, force: true });
+        }
       }));
 
     test("🔴 작업 대상을 떠나면 그 단계 행이 사라진다", () =>
@@ -1296,9 +1365,20 @@ describe("slug 해소 (W1 — T01 묶기 이후)", () => {
 describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸으로 간다(plan-board/04)", () => {
   const NOW = "2026-08-12 17:40";
 
-  /** 티켓 파일 한 장 — 상단 두 줄이 서식의 전부다(관리대상 `docs/agents/triage-labels.md`). */
-  const ticket = (num: string, status: string): string =>
-    [`# ${num} — 티켓 ${num}`, "", "**Blocked by:** 없음 — 즉시 착수 가능", `**Status:** ${status}`, ""].join("\n");
+  /** 티켓 파일 한 장 — 머리글은 `Blocked by:` 뿐이다. 시간·상태는 레코드로 심는다(아래). */
+  const ticket = (num: string): string =>
+    [`# ${num} — 티켓 ${num}`, "", "**Blocked by:** 없음 — 즉시 착수 가능", ""].join("\n");
+
+  /** 레코드 시드 — `upsertTicketRecord` 에 그대로 넘긴다. 키는 파일 basename(확장자 제외). */
+  type RecSeed = { startedAt?: string | null; finishedAt?: string | null; statusRaw?: string | null };
+  const DONE = (finished: string): RecSeed => ({ startedAt: "2026-08-08T09:00:00+09:00", finishedAt: finished });
+  // 🔴 상태는 레코드다(MD Status: 줄은 읽히지 않는다 — 구관례 완전 정리). 기능명별로 고정 시딩한다.
+  const RECS_BY_FEATURE: Record<string, Record<string, RecSeed>> = {
+    shipped: { "01-a": DONE("2026-08-08T10:00:00+09:00"), "02-b": DONE("2026-08-09T10:00:00+09:00") },
+    half: { "01-a": DONE("2026-08-08T10:00:00+09:00") },
+    mixed: { "01-a": DONE("2026-08-08T10:00:00+09:00"), "02-b": { statusRaw: "wontfix" } },
+    wontfix: { "01-a": { statusRaw: "wontfix" } },
+  };
 
   /** 관리대상 하나를 임시 디렉토리에 합성한다 — 뿌리 `AGENTS.md` + `docs/features/`(discover 조건). */
   const withProject = <T>(
@@ -1314,6 +1394,13 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
       mkdirSync(join(dir, "issues"), { recursive: true });
       writeFileSync(join(dir, "spec.md"), `# ${feature} — 제목\n`);
       for (const [file, body] of Object.entries(tickets)) writeFileSync(join(dir, "issues", file), body);
+      for (const [file, r] of Object.entries(RECS_BY_FEATURE[feature] ?? {})) {
+        upsertTicketRecord(projectRoot, `${feature}/${file}`, {
+          startedAt: r.startedAt ?? null,
+          finishedAt: r.finishedAt ?? null,
+          ...(r.statusRaw !== undefined ? { statusRaw: r.statusRaw } : {}),
+        });
+      }
     }
     const dataDir = mkdtempSync(join(tmpdir(), "gootte-app-close-db-"));
     const done = () => {
@@ -1331,8 +1418,8 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     }
   };
 
-  const ALL_DONE = { "01-a.md": ticket("01", "resolved (2026-08-08)"), "02-b.md": ticket("02", "resolved (2026-08-09)") };
-  const HALF = { "01-a.md": ticket("01", "resolved (2026-08-08)"), "02-b.md": ticket("02", "ready-for-agent") };
+  const FILES_ALL_DONE = { "01-a.md": ticket("01"), "02-b.md": ticket("02") };
+  const FILES_HALF = { "01-a.md": ticket("01"), "02-b.md": ticket("02") };
 
   const get = async (ctx: { roots: string[]; dataDir: string }, now = NOW) =>
     PlanBoardResponse.parse(
@@ -1348,7 +1435,7 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     });
 
   test("🔴 상자가 전부 채워진 기능은 처음 본 순간 완료 칸으로 간다 — 아무도 gootte 에 알리지 않았다", () =>
-    withProject({ shipped: ALL_DONE }, async (ctx) => {
+    withProject({ shipped: FILES_ALL_DONE }, async (ctx) => {
       const body = await get(ctx);
       expect(body.done.map((c) => c.feature.slug)).toEqual(["shipped"]);
       expect(body.waiting).toEqual([]);
@@ -1357,7 +1444,7 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     }));
 
   test("일부만 완료면 그대로 대기에 남는다 — 빈 상자가 하나라도 있으면 닫히지 않는다", () =>
-    withProject({ half: HALF }, async (ctx) => {
+    withProject({ half: FILES_HALF }, async (ctx) => {
       const body = await get(ctx);
       expect(body.waiting.map((c) => c.feature.slug)).toEqual(["half"]);
       expect(body.done).toEqual([]);
@@ -1372,7 +1459,7 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
 
   test("🔴 폐기와 완료가 섞인 기능도 닫힌다 — 뒤집힘(plan-board/12, 캡틴 결정 2026-08-14)", () =>
     withProject(
-      { mixed: { "01-a.md": ticket("01", "resolved (2026-08-08)"), "02-b.md": ticket("02", "wontfix") } },
+      { mixed: { "01-a.md": ticket("01"), "02-b.md": ticket("02") } },
       async (ctx) => {
         const body = await get(ctx);
         expect(body.done.map((c) => c.feature.slug)).toEqual(["mixed"]);
@@ -1381,7 +1468,7 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     ));
 
   test("🔴 폐기뿐인 기능도 닫힌다", () =>
-    withProject({ wontfix: { "01-a.md": ticket("01", "wontfix") } }, async (ctx) => {
+    withProject({ wontfix: { "01-a.md": ticket("01") } }, async (ctx) => {
       const body = await get(ctx);
       expect(body.done.map((c) => c.feature.slug)).toEqual(["wontfix"]);
       // 🔴 전부 폐기로 닫힌 카드는 닫힌 날짜가 없다 — 지어내지 않는다.
@@ -1389,14 +1476,14 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     }));
 
   test("🔴 저절로 닫힌 카드는 다시 봐도 closed_at 이 없다 — 볼 때마다 다시 쓰지 않는다", () =>
-    withProject({ shipped: ALL_DONE }, async (ctx) => {
+    withProject({ shipped: FILES_ALL_DONE }, async (ctx) => {
       await get(ctx);
       const again = await get(ctx, "2026-08-13 09:00");
       expect(again.done[0]?.closedAt).toBeNull();
     }));
 
   test("🔴 캡틴이 손으로 정한 자리(예약·폐기)는 덮지 않는다 — 기계가 몰래 옮기지 않는다", () =>
-    withProject({ shipped: ALL_DONE }, async (ctx) => {
+    withProject({ shipped: FILES_ALL_DONE }, async (ctx) => {
       await post(ctx, { features: ["shipped"], area: "reserved", index: 0 });
       const body = await get(ctx);
       expect(body.reserved.map((c) => c.feature.slug)).toEqual(["shipped"]);
@@ -1404,7 +1491,7 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     }));
 
   test("작업 대상에 올린 완료 기능은 그 자리에서 닫히고 단계 행이 남지 않는다(INV-B6)", () =>
-    withProject({ shipped: ALL_DONE }, async (ctx) => {
+    withProject({ shipped: FILES_ALL_DONE }, async (ctx) => {
       const body = PlanBoardResponse.parse(
         await (await post(ctx, { features: ["shipped"], area: "active", index: 0 })).json(),
       );
@@ -1414,7 +1501,7 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     }));
 
   test("🔴 계획 DB 에 쓰는 것은 자리뿐 — 체크 상태도 닫은 시각도 저장되지 않는다(INV-5, 06)", () =>
-    withProject({ shipped: ALL_DONE }, async (ctx) => {
+    withProject({ shipped: FILES_ALL_DONE }, async (ctx) => {
       await get(ctx);
       expect(readPlacements(ctx.dataDir, "beta")).toEqual([
         { feature: "shipped", area: "done", seq: 0, closedAt: null },
@@ -1422,19 +1509,19 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     }));
 
   test("🔴 저절로 닫아도 관리대상에는 한 글자도 쓰지 않는다(INV-2)", () =>
-    withProject({ shipped: ALL_DONE }, async (ctx) => {
+    withProject({ shipped: FILES_ALL_DONE }, async (ctx) => {
       const before = treeSnapshot(ctx.projectRoot);
       await get(ctx);
       expect(treeSnapshot(ctx.projectRoot)).toEqual(before);
     }));
 
   test("🔴 저절로 닫힌 기능에 안 읽은 티켓이 더 붙으면 대기로 돌아온다(plan-board/11, INV-B8)", () =>
-    withProject({ shipped: ALL_DONE }, async (ctx) => {
+    withProject({ shipped: FILES_ALL_DONE }, async (ctx) => {
       await get(ctx); // 있던 티켓을 읽음으로 깐다(첫 화면, spec §첫 화면이 통째로 초록이면 안 된다).
       // 규율을 어겨 안 읽은 티켓 한 장이 더 붙었다(spec §닫힌 기능에는 티켓을 더하지 않는다) — 그래도 할 일이다.
       writeFileSync(
         join(ctx.projectRoot, "docs", "features", "shipped", "issues", "03-late.md"),
-        ticket("03", "ready-for-agent"),
+        ticket("03"),
       );
       // 🔴 문서를 직접 고쳤다 = T05 감시 신호가 날려 스냅샷을 갱신한다. 테스트는 감시기를 안 돌리니
       // 그 갱신을 여기서 흉내낸다(T07 — plan 보드는 스냅샷에서 서빙하므로).
@@ -1448,7 +1535,7 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     }));
 
   test("🔴 캡틴이 손으로 완료에 내려둔 카드도 안 읽은 티켓이 붙으면 대기로 올라온다 — 10 의 반대, 캡틴 결정(plan-board/11)", () =>
-    withProject({ shipped: ALL_DONE }, async (ctx) => {
+    withProject({ shipped: FILES_ALL_DONE }, async (ctx) => {
       await get(ctx); // 있던 티켓을 읽음으로 깐다.
       // 캡틴이 손으로 옮긴다 — 완료가 아닌 자리를 거쳐야 closed_at 이 찍힌다(closedAtFor).
       await post(ctx, { features: ["shipped"], area: "reserved", index: 0 });
@@ -1456,7 +1543,7 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
       // 규율을 어겨 안 읽은 티켓 한 장이 더 붙었다 — 손으로 닫았어도 이제는 대기로 올라온다.
       writeFileSync(
         join(ctx.projectRoot, "docs", "features", "shipped", "issues", "03-late.md"),
-        ticket("03", "ready-for-agent"),
+        ticket("03"),
       );
       // 🔴 문서를 직접 고쳤다 = T05 감시 신호가 날려 스냅샷을 갱신한다. 테스트는 감시기를 안 돌리니
       // 그 갱신을 여기서 흉내낸다(T07 — plan 보드는 스냅샷에서 서빙하므로).
@@ -1467,7 +1554,7 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     }));
 
   test("🔴 다 읽은 카드는 안 끝난 티켓을 안고 있어도 그 자리에 그대로다 — 예약·폐기 칸이 비워지지 않는다(plan-board/11)", () =>
-    withProject({ half: HALF }, async (ctx) => {
+    withProject({ half: FILES_HALF }, async (ctx) => {
       // 캡틴이 옮긴다 — 이 read 가 지금 있는 티켓(하나는 done, 하나는 미완)을 읽음으로 깐다.
       await post(ctx, { features: ["half"], area: "reserved", index: 0 });
       const body = await get(ctx);
@@ -1476,12 +1563,14 @@ describe("자동 닫힘 — 상자가 전부 채워지면 카드가 완료 칸�
     }));
 
   test("🔴 폐기 티켓만 새로 붙으면 완료 칸에 그대로 머문다 — 폐기는 할 일이 아니다", () =>
-    withProject({ shipped: ALL_DONE }, async (ctx) => {
+    withProject({ shipped: FILES_ALL_DONE }, async (ctx) => {
       await get(ctx);
       writeFileSync(
         join(ctx.projectRoot, "docs", "features", "shipped", "issues", "03-late.md"),
-        ticket("03", "wontfix"),
+        ticket("03"),
       );
+      // 🔴 폐기 판정도 레코드다 — MD Status: 줄은 읽히지 않는다.
+      upsertTicketRecord(ctx.projectRoot, "shipped/03-late", { statusRaw: "wontfix" });
       const body = await get(ctx, "2026-08-13 09:00");
       expect(body.done.map((c) => c.feature.slug)).toEqual(["shipped"]);
       expect(body.waiting).toEqual([]);

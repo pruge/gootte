@@ -431,6 +431,48 @@ export function parseTimeLine(content: string): TimeLine {
   return { raw, startedAt, finishedAt, pauses };
 }
 
+// 지울 줄의 표기 — 파서(STATUS_LINE·TIME_LINE)가 구조로 읽을 수 있던 줄과 같은 집합:
+// 펜스 밖 + `Time:`/`Status:`(굵게·일반). `Blocked by:`·본문 산문은 여기에 걸리지 않는다.
+const LEGACY_STRIP_LINE = /^[ \t]*(?:\*\*)?(?:Time|Status):(?:\*\*)?[ \t]*.*$/;
+
+/**
+ * 이관용 레거시 줄 제거 — 티켓 MD 의 `Time:`/`Status:` 줄을 지운다(구관례 완전 정리).
+ * 파서가 구조로 읽던 줄만 지운다: 펜스 안 예시는 살리고(`withoutFencedCode` 와 같은 펜스 규칙),
+ * 줄 자체만 뺀다(앞뒤 빈 줄은 손대지 않는다 — gootte 본 이전과 바이트로 같은 모양).
+ * 순수 함수 — 파일 걷기·쓰기·순서는 CLI(`migrate --strip`) 몫. dry-run 미리보기도 이걸로.
+ * @returns 바뀐 내용과 지운 줄 번호(1-based, 원문 기준 — 검수용 릴레이).
+ */
+export function stripLegacyTimeStatusLines(content: string): { content: string; removed: number[] } {
+  const removed: number[] = [];
+  const kept: string[] = [];
+  let fenceChar = "";
+  let fenceLen = 0;
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const marker = /^[ \t]*(`{3,}|~{3,})/.exec(line);
+    if (fenceChar === "") {
+      if (marker) {
+        const mark = marker[1] ?? "";
+        fenceChar = mark.charAt(0);
+        fenceLen = mark.length;
+        kept.push(line);
+        continue;
+      }
+      if (LEGACY_STRIP_LINE.test(line)) {
+        removed.push(i + 1);
+        continue;
+      }
+      kept.push(line);
+    } else {
+      kept.push(line);
+      const close = new RegExp(`^[ \\t]*\\${fenceChar}{${fenceLen},}[ \\t]*$`).test(line);
+      if (close) fenceChar = "";
+    }
+  }
+  return { content: kept.join("\n"), removed };
+}
+
 // ── 신관례 `## Depends on` 절(T01) ────────────────────────────────────────────
 
 // 옛 관례는 한 줄(`**Blocked by:** 01, 02`)이지만 신관례는 **여러 줄 목록**이다 —

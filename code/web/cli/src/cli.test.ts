@@ -211,8 +211,13 @@ describe("cli — step · step --clear · board · next(plan-board/05)", () => {
     w(
       proj,
       "docs/features/done-feature/issues/01-x.md",
-      "# 01 — x\n\n**Status:** resolved (2026-08-01)\n\n**Blocked by:** 없음\n",
+      "# 01 — x\n\n**Blocked by:** 없음\n",
     );
+    // 완료 판정은 레코드다 — MD Status: 줄은 읽히지 않는다.
+    upsertTicketRecord(proj, "done-feature/01-x", {
+      startedAt: "2026-08-01T09:00:00+09:00",
+      finishedAt: "2026-08-01T10:00:00+09:00",
+    });
     activate(dataDir, slug(), "done-feature");
 
     const out = boardText([slug()], dataDir, proj);
@@ -351,8 +356,8 @@ describe("cli — step · step --clear · board · next(plan-board/05)", () => {
 
 /**
  * 상태 확정(the-terminal-agrees-with-the-screen T01) — CLI `board`·`next` 가 화면과 **같은**
- * 판정 자리(`finalizeFeatureStatus`)를 지나는가. 신관례(`tickets/T<NN>.md`) 티켓의 상태 단일 출처는
- * 티켓 문서의 `Time:` 줄이다 — 확정 없이 CLI 는 이미 끝난 티켓을 미완료로 보고 next 가 다시 내놓는다(spec §문제).
+ * 판정 자리(`finalizeFeatureStatus`)를 지나는가. 티켓 상태의 단일 출처는
+ * 레코드(`state.json` v2)다 — 확정 없이 CLI 는 이미 끝난 티켓을 미완료로 보고 next 가 다시 내놓는다(spec §문제).
  */
 describe("cli — board·next 에 상태 확정(T01)", () => {
   let proj: string;
@@ -362,9 +367,14 @@ describe("cli — board·next 에 상태 확정(T01)", () => {
     proj = mkdtempSync(join(tmpdir(), "gootte-backlog-proj-"));
     dataDir = mkdtempSync(join(tmpdir(), "gootte-backlog-db-"));
     w(proj, "AGENTS.md", "# AGENTS\n");
-    // T04 — 신관례 티켓은 Time: 줄로 상태 판정. T01은 finishedAt 있음(done), T02는 없음(pending)
-    w(proj, "docs/features/g/tickets/T01.md", "# T01 — c\n\n## Depends on\n- nothing\n\n**Time:** started=2026-08-25T14:00:00+09:00 finished=2026-08-25T15:00:00+09:00\n");
+    // 상태 판정은 레코드다 — T01은 finished 레코드(done), T02는 기록 없음(pending).
+    // 문서의 Time: 줄은 읽히지 않는다(구관례 완전 정리).
+    w(proj, "docs/features/g/tickets/T01.md", "# T01 — c\n\n## Depends on\n- nothing\n");
     w(proj, "docs/features/g/tickets/T02.md", "# T02 — d\n\n## Depends on\n- nothing\n");
+    upsertTicketRecord(proj, "g/T01", {
+      startedAt: "2026-08-25T14:00:00+09:00",
+      finishedAt: "2026-08-25T15:00:00+09:00",
+    });
     activate(dataDir, slug(), "g");
     writeSettings(dataDir, {});
   });
@@ -374,16 +384,19 @@ describe("cli — board·next 에 상태 확정(T01)", () => {
 
   const slug = () => basename(proj);
 
-  it("next — 🔴 Time: 줄에 finishedAt 있는 신관례 티켓을 내보내지 않는다", () => {
+  it("next — 🔴 레코드에 finishedAt 있는 신관례 티켓을 내보내지 않는다", () => {
     stepText([slug(), "g/T01", "1"], dataDir, proj);
     stepText([slug(), "g/T02", "2"], dataDir, proj);
-    // T01 에는 finishedAt 이 있으므로 done 으로 판정 — next 에서 제외된다.
+    // T01 에는 finished 레코드가 있으므로 done 으로 판정 — next 에서 제외된다.
     expect(nextText([slug()], dataDir, proj)).toBe("g/T02\td");
   });
 
-  it("board — 🔴 전부 끝난(Time: finishedAt) 신관례 기능은 완료 칸으로 넘어간다(자동 닫힘 같은 자리)", () => {
-    // T02 에도 finishedAt 을 넣어 done 으로 만든다.
-    w(proj, "docs/features/g/tickets/T02.md", "# T02 — d\n\n## Depends on\n- nothing\n\n**Time:** started=2026-08-25T14:00:00+09:00 finished=2026-08-25T15:00:00+09:00\n");
+  it("board — 🔴 전부 끝난(레코드 finished) 신관례 기능은 완료 칸으로 넘어간다(자동 닫힘 같은 자리)", () => {
+    // T02 에도 finished 레코드를 넣어 done 으로 만든다.
+    upsertTicketRecord(proj, "g/T02", {
+      startedAt: "2026-08-25T14:00:00+09:00",
+      finishedAt: "2026-08-25T15:00:00+09:00",
+    });
     const out = boardText([slug()], dataDir, proj);
     expect(out).toContain("## 완료 (1)");
     expect(out).toContain("- g");
@@ -403,7 +416,7 @@ describe("cli — board·next 에 상태 확정(T01)", () => {
       activate(bareDataDir, slug(), "g");
       stepText([slug(), "g/T01", "1"], bareDataDir, proj);
       stepText([slug(), "g/T02", "2"], bareDataDir, proj);
-      // 🔴 T04 — 티켓 문서의 Time: 줄(finishedAt)이 SoT라 T01 은 여전히 done 이다. 명령도 안 죽는다.
+      // 🔴 레코드(finished)가 SoT라 T01 은 여전히 done 이다. 명령도 안 죽는다.
       expect(nextText([slug()], bareDataDir, proj)).toBe("g/T02\td");
     } finally {
       rmSync(bareDataDir, { recursive: true, force: true });
@@ -535,10 +548,11 @@ describe("cli — status(현황 통합, status-cli-redesign)", () => {
     expect(() => statusText([], undefined, "/")).toThrow(CliError); // 밖
   });
 
-  it("MD 모드(레코드 없는 프로젝트)에서도 MD Time 줄 기준으로 읽는다 — 폴백 회귀", () => {
+  it("MD Time 줄만으로는 작업중이 아니다 — 레코드가 있어야 작업중이다", () => {
     w(proj, "docs/features/gamma/tickets/T01.md", "# G01\n\n**Time:** started=2026-09-09T09:00:00+09:00\n");
-    const out = statusText(["--working"], undefined, proj);
-    expect(out).toContain("gamma/T01");
+    expect(statusText(["--working"], undefined, proj)).toBe("■ 작업중 (0)\n  (없음)");
+    upsertTicketRecord(proj, "gamma/T01", { startedAt: "2026-09-09T09:00:00+09:00", finishedAt: null });
+    expect(statusText(["--working"], undefined, proj)).toContain("gamma/T01");
   });
 });
 

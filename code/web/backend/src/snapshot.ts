@@ -242,7 +242,7 @@ export interface SnapshotRevalidationResult {
  *
  * 변경 직후 즉시 밀린 첫 방송은 아직 낡은 스냅샷을 본 틈을 이 두 번째 방송이 메운다(실시간 갱신
  * 공백 제거, 캡틴 실측 2026-08-29). 한 프로젝트의 연속 변경은 debounce 로 하나의 재계산으로 뭉친다.
-  * 🔴 갱신 신호일 뿐 — 완료/시작 여부 판정은 이 스케줄러가 아니라 문서의 `Time:` 줄이 정한다(T04/ADR-0001).
+  * 🔴 갱신 신호일 뿐 — 완료/시작 여부 판정은 레코드(`state.json` v2)가 정한다(조인). 이 스케줄러는
   * 변경 감지용 사본 구성 비교는 `snapshotNeedsRefresh`/`recordProjectScan` 으로 충분하다. */
 export function createProjectUpdateScheduler(opts: {
   dataDir: string;

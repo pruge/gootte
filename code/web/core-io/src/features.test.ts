@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { finalizeFeatureStatus } from "@gootte/core";
-import { clearFeatureCache, folderCacheSize, readFeatures, readFeatureDoc } from "./features";
+import { clearFeatureCache, folderCacheSize, joinTimeRecords, readFeatures, readFeatureDoc } from "./features";
+import { upsertTicketRecord } from "./state-store";
 
 let repo: string;
 
@@ -446,8 +447,8 @@ function spec2(root: string, slug: string, body: string): void {
   writeFileSync(join(dir, "spec.md"), body);
 }
 
-// ── T05 — 여러 사본의 `Time:` 줄을 정방향으로 합친다 ──
-/** 사본 하나를 plain 디렉토리에 합성(git 미사용 — git 병합 로직과 독립적으로 Time 병합만 본다). */
+// ── 시간·상태의 권위는 레코드다 — 원시 읽기는 사본을 합치되 Time 병합을 하지 않는다 ──
+/** 사본 하나를 plain 디렉토리에 합성(git 미사용 — 사본 합집합 규칙만 본다). */
 function copyDir(root: string, copy: string, slug: string, ticketBody?: string): string {
   const dir = join(root, copy, "docs", "features", slug);
   mkdirSync(dir, { recursive: true });
@@ -461,32 +462,43 @@ function copyDir(root: string, copy: string, slug: string, ticketBody?: string):
 const TICKET_NO_TIME = "# T04 — 티켓\n";
 const ticketWithTime = (started: string, finished?: string): string =>
   `# T04 — 티켓\n\nTime: started=${started}${finished ? ` finished=${finished}` : ""}\n`;
-/** 상태까지 굴려 본다(T04 3단 규칙이 Time 에서 읽는지 확인). */
+/** 상태까지 굴려 본다(원시 파싱이 Time 에서 읽는지 확인 — 권위는 joinTimeRecords 다). */
 const joined = (features: ReturnType<typeof readFeatures>) =>
   finalizeFeatureStatus(features, "2026-08-30T00:00:00Z")[0]?.newTickets?.[0];
 
-describe("readFeatures — 여러 사본 Time: 정방향 병합 (T05)", () => {
+describe("readFeatures — 사본 합집합에 Time 병합 없음(레코드가 권위)", () => {
   let tmp: string;
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "gootte-time-merge-"));
   });
   afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
-  it("AC1 — main 에 Time: 없고 2nd 에 finished 있으면 화면은 완료(버그 수정)", () => {
-    const a = copyDir(tmp, "main", "f", TICKET_NO_TIME);
-    const b = copyDir(tmp, "secondmate", "f", ticketWithTime("2026-08-29T10:00:00+09:00", "2026-08-29T11:00:00+09:00"));
-    const t = readFeatures([a, b])[0]?.newTickets?.[0];
-    expect(t?.startedAt).toBe("2026-08-29T10:00:00+09:00");
-    expect(t?.finishedAt).toBe("2026-08-29T11:00:00+09:00");
-    expect(joined(readFeatures([a, b]))?.status).toBe("done");
-  });
-
-  it("AC2 — 그 반대(main 에 있고 2nd 에 없음)도 화면은 완료", () => {
+  it("원시 읽기는 마지막 사본 승리 — 사본 간 Time 병합을 하지 않는다", () => {
     const a = copyDir(tmp, "main", "f", ticketWithTime("2026-08-29T10:00:00+09:00", "2026-08-29T11:00:00+09:00"));
     const b = copyDir(tmp, "secondmate", "f", TICKET_NO_TIME);
     const t = readFeatures([a, b])[0]?.newTickets?.[0];
+    expect(t?.finishedAt).toBeUndefined(); // 마지막 사본에 Time 줄이 없으면 없음이다
+    const swapped = readFeatures([b, a])[0]?.newTickets?.[0];
+    expect(swapped?.finishedAt).toBe("2026-08-29T11:00:00+09:00");
+  });
+
+  it("진실은 joinTimeRecords — 사본 구성과 무관하게 레코드가 이긴다", () => {
+    const a = copyDir(tmp, "main", "f", TICKET_NO_TIME);
+    const b = copyDir(tmp, "secondmate", "f", ticketWithTime("2026-08-29T10:00:00+09:00", "2026-08-29T11:00:00+09:00"));
+    upsertTicketRecord(a, "f/T04", {
+      startedAt: "2026-08-29T10:00:00+09:00",
+      finishedAt: "2026-08-29T11:00:00+09:00",
+    });
+    const t = joinTimeRecords(readFeatures([a, b]), a)[0]?.newTickets?.[0];
+    expect(t?.status).toBe("done");
     expect(t?.finishedAt).toBe("2026-08-29T11:00:00+09:00");
-    expect(joined(readFeatures([a, b]))?.status).toBe("done");
+  });
+
+  it("레코드 없으면 pending — MD Time 줄이 있어도 무시된다", () => {
+    const a = copyDir(tmp, "main", "f", ticketWithTime("2026-08-29T10:00:00+09:00", "2026-08-29T11:00:00+09:00"));
+    const t = joinTimeRecords(readFeatures([a]), a)[0]?.newTickets?.[0];
+    expect(t?.status).toBe("pending");
+    expect(t?.startedAt).toBeUndefined();
   });
 
   it("AC3 — 두 사본 다 없으면 pending(문서 자급: 막히지 않으면 착수 가능), 한쪽만 startedAt 이면 in_progress", () => {
@@ -501,13 +513,12 @@ describe("readFeatures — 여러 사본 Time: 정방향 병합 (T05)", () => {
     expect(joined(readFeatures([a, c]))?.status).toBe("in_progress");
   });
 
-  it("정방향 전용 — 2nd 가 시작하고 main 이 끝냈어도 둘 다 반영(없음으로 안 사라진다)", () => {
+  it("사본별 값이 달라도 원시 읽기는 합치지 않는다 — 진실은 레코드다", () => {
     const a = copyDir(tmp, "main", "f", ticketWithTime("2026-08-29T08:00:00+09:00", "2026-08-29T12:00:00+09:00"));
     const b = copyDir(tmp, "secondmate", "f", ticketWithTime("2026-08-29T09:00:00+09:00"));
     const t = readFeatures([a, b])[0]?.newTickets?.[0];
-    expect(t?.startedAt).toBe("2026-08-29T08:00:00+09:00"); // main 의 시작이 더 빠르다
-    expect(t?.finishedAt).toBe("2026-08-29T12:00:00+09:00"); // main 의 끝이 더 늦다
-    expect(joined(readFeatures([a, b]))?.status).toBe("done");
+    expect(t?.startedAt).toBe("2026-08-29T09:00:00+09:00"); // 마지막 사본 승리(병합 없음)
+    expect(t?.finishedAt).toBeUndefined();
   });
 
   it("🔴 명시적 Status: wontfix 는 Time 재파생에 덮이지 않는다 — started 만 있어도 dropped(실제 결함 2026-08-31)", () => {

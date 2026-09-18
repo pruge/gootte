@@ -11,8 +11,6 @@
 
 **Blocked by:** [04](04-the-captain-drags-to-change-the-order.md) — 버튼이 드래그 화면 위에 산다
 
-**Status:** resolved (2026-08-11)
-
 ## 캡틴 지시 (2026-08-11, 원문)
 
 > a.ticket1 -> b.tiket1 -> a.tiket2 가 되는 경우도 있는데. 그때는 네가 자동으로인지 하여 의견을 말했으면한다.

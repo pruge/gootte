@@ -520,7 +520,9 @@ export function createApp(options: AppOptions = {}): Hono {
       if (!proj) return c.json(notFound(slug), 404);
       const project = basename(proj.path);
       try {
-        const features = readFeatures(withWorktrees(proj.copies));
+        // 🔴 레코드 조인을 탄다 — v2 프로젝트의 시간·상태 권위는 state.json 레코드다(D2).
+        // 조인 없이 MD를 보면 삭제된 Time:/Status: 줄이 "미시작 pending"으로 오판된다.
+        const features = joinTimeRecords(readFeatures(withWorktrees(proj.copies)), proj.path);
         const known = new Set(features.map((f) => f.slug));
         const missing = move.features.filter((f) => !known.has(f));
         if (missing.length > 0) {
@@ -567,7 +569,8 @@ export function createApp(options: AppOptions = {}): Hono {
       if (!proj) return c.json(notFound(slug), 404);
       const project = basename(proj.path);
       try {
-        const features = readFeatures(proj.copies);
+        // 🔴 레코드 조인을 탄다 — /move 와 같은 이유다(D2, MD 시간 줄은 이미 삭제됐다).
+        const features = joinTimeRecords(readFeatures(proj.copies), proj.path);
         const f = features.find((x) => x.slug === feature);
         if (!f) return c.json({ error: `문서가 없는 기능입니다: ${feature}` } satisfies ApiError, 400);
         if (!allTickets(f).some((t) => t.slug === ticket)) {
@@ -631,7 +634,6 @@ export function createApp(options: AppOptions = {}): Hono {
     resolveSlug,
     effectiveRoots,
     withWorktrees,
-    bbWorktrees,
     dataDir,
     broadcast,
   }));

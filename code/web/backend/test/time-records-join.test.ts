@@ -10,8 +10,10 @@ import { joinTimeRecords, readFeatures, readTicketRecords, upsertTicketRecord } 
 
 /**
  * 시간·상태 레코드 조인(T03) — 읽기 소비처가 레코드를 지나는가.
- * 🔴 모드는 프로젝트 단위 이분법(D2): v2 state.json 이 있으면 레코드가 권위
- * (MD Time:/Status: 줄은 무시), 없으면 MD 파싱 그대로. 회귀 가드가 이 티켓의 본질이다.
+ * 🔴 단일 모드(구관례 완전 정리): 레코드(`state.json` v2)가 **항상** 권위다.
+ * state.json 이 없어도 조인은 돌고, 레코드 없는 티켓은 미시작 pending 이다 —
+ * MD `Time:`/`Status:` 줄은 어떤 경우에도 읽히지 않는다. 미이관 프로젝트는
+ * `gootte migrate` + `migrate --strip` 으로 이관해야 한다.
  */
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "roots");
@@ -62,15 +64,15 @@ const features = async (): Promise<FeaturesResponse> => {
   return FeaturesResponse.parse(await (await app.request("/api/features/alpha")).json());
 };
 
-describe("읽기 조인 — 레코드가 권위다(D2)", () => {
-  test("v2 없는 프로젝트는 MD 파싱 그대로다 — 폴백 회귀 가드", async () => {
+describe("읽기 조인 — 레코드가 항상 권위다", () => {
+  test("state.json 없는 프로젝트도 MD 줄은 읽히지 않는다 — 전부 pending(이관 필요)", async () => {
     setup(false);
     const body = await features();
     const f = body.features.find((x) => x.slug === "auth-login")!;
     const t = f.tickets.find((x) => x.slug === "01-session"); // 구관례 issues/ — MD Status: resolved
-    expect(t?.status).toBe("done");
-    expect(t?.sourceStatus).toBe("resolved");
-    expect(t?.startedAt).toBeUndefined(); // MD Time: 줄이 없는 티켓
+    expect(t?.status).toBe("pending"); // MD Status: 줄은 무시된다
+    expect(t?.sourceStatus).toBeNull();
+    expect(t?.startedAt).toBeUndefined();
   });
 
   test("v2 프로젝트는 레코드가 권위다 — 레코드 없는 티켓은 미시작 pending(MD 줄 무시)", async () => {

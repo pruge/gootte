@@ -8,8 +8,6 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능.**
 
-**Status:** resolved (2026-08-13 12:49)
-
 🔗 **캡틴 지시로 [plan-board/10](../../plan-board/issues/10-a-closed-card-comes-back-when-work-appears.md)
 과 한 작업자가 함께 맡는다.** 서로 막지 않으니 순서는 작업자가 정해도 된다.
 🔴 **다만 이 기능의 카드는 지금 완료 칸에 있다** — 01 이 끝나 저절로 닫혔고 그 위에 이 티켓이

@@ -7,8 +7,6 @@ planner 는 **새로 등록된 것만** 읽고, 그만큼 낡은 다른 티켓�
 **Blocked by:** [01](01-the-plan-is-written-down-and-read-back.md) — 저장 자리가 먼저 있어야 한다
 🟢 **02·03·04 와는 안 겹친다 — 나란히 진행 가능**
 
-**Status:** resolved (2026-08-11)
-
 ## 캡틴 지시 (2026-08-11, 원문)
 
 > ticket 개발중에 다른 것을 포함해서 개발되는경우도 있어. 이때는 다른 ticket의 내용이 stale해지는경우가 있지.

@@ -274,7 +274,7 @@ describe("watchProjects — worktree 와 커밋도 본다 (read-path-redesign/T0
   });
 
   it("🔴 커밋(HEAD 변경)만으로는 신호가 나지 않는다 — 축 2(커밋 감시)는 git-removal/T04 에서 삭제됐다", async () => {
-    // 커밋이 티켓 상태를 바꾸는 길은 **문서 파일 자체**뿐이다(Time: 줄이 SoT) — 문서 감시(축 1)가
+    // 티켓 상태를 바꾸는 길은 **레코드 쓰기 + 문서 변경**(재스캔 방아쇠)뿐이다 — 문서 감시(축 1)가
     // 그것을 본다. 문서 밖 파일만 바뀌는 커밋은 다시 계산할 뷰가 없으므로 조용히 무시하는 것이 맞다.
     root = mkdtempSync(join(tmpdir(), "gootte-watch-git-"));
     const proj = join(root, "alpha");

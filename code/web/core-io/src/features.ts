@@ -1,8 +1,8 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join, resolve, sep } from "node:path";
-import type { Feature, FeatureDocNode, TodoStatus } from "@gootte/contract";
-import { applyTimeRecords, buildFeatures, isTicketDoc, parseFeatureSpec, parseNewTicket, parseTicket, parseTimeLine, type FeatureDocs, type TimeLine, type TimePause } from "@gootte/core";
-import { hasTimeRecords, readTicketRecords } from "./state-store";
+import type { Feature, FeatureDocNode } from "@gootte/contract";
+import { applyTimeRecords, buildFeatures, isTicketDoc, parseFeatureSpec, parseNewTicket, parseTicket, type FeatureDocs } from "@gootte/core";
+import { readTicketRecords } from "./state-store";
 // 🔴 T01 — git 제거. 추적 제외·갈라짐·나중 판 비교 전부 삭제.
 
 /**
@@ -119,87 +119,24 @@ function resolveFile(
   return { content: participants[participants.length - 1]!.content };
 }
 
-/**
- * 🔴 T05 — 사본별 `Time:` 줄 **정방향** 병합. 문서 전체의 "나중 판"(`resolveFile`)과는 별개로,
- * `startedAt`/`finishedAt` 만 이 규칙을 따른다:
- * - 어느 사본이든 값이 있으면 그 값을 쓴다(없는 사본이 있는 사본의 값을 지우지 못한다).
- * - 여러 사본이 서로 다른 값을 둘 다 갖고 있으면 가장 완전한 관측 쪽으로 기운다 —
- *   가장 먼저 시작한 시각을 `startedAt`, 가장 나중에 끝난 시각을 `finishedAt` 으로(안전쪽).
- * 판정은 순수·결정적(INV-4). 완료/시작 여부 자체는 `joinTicket`(T04)가 정하므로 여기선 값만 모은다.
+/** 한 slug 의 여러 사본을 하나의 `FeatureDocs` 로 합친다.
+ *
+ * 🔴 시간·상태는 여기서 파생하지 않는다 — `parseTicket`/`parseNewTicket` 이 읽은
+ * MD 값은 뼈대일 뿐, 권위는 `joinTimeRecords` 가 얹는 레코드(`state.json` v2)다.
+ * 레코드가 있으면 이기고, 없으면 미시작 pending 으로 정규화된다(resetTicket).
+ * MD `Time:`/`Status:` 줄을 읽는 파서는 `migrate --strip` 대상 판정(이관 도구)에만 쓴다.
  */
-function mergeTicketTimes(
-  times: TimeLine[],
-): { startedAt: string | null; finishedAt: string | null; pauses: TimePause[] } {
-  const started: string[] = [];
-  const finished: string[] = [];
-  // 사본별 pauses 를 전부 모은다 — 한 사본이 paused 만 기록하고 다른 사본이 resumed 를 기록해도
-  // 짝이 맞는 쌍이 여기서 완성될 수 있다(정방향 병합과 같은 규율, ADR-0002).
-  const pauseMarks: { pausedAt: string; resumedAt: string | null }[] = [];
-  for (const t of times) {
-    if (t.startedAt) started.push(t.startedAt);
-    if (t.finishedAt) finished.push(t.finishedAt);
-    for (const p of t.pauses) pauseMarks.push(p);
-  }
-  // 값을 정렬해 쌍으로 묶는다 — 단일 사본이라면 이미 순서대로지만, 병합이면 시각순이 맞다.
-  pauseMarks.sort((a, b) => cmpTime(a.pausedAt, b.pausedAt));
-  const pauses: TimePause[] = [];
-  let open: string | null = null;
-  for (const mark of pauseMarks) {
-    if (mark.resumedAt === null) {
-      open = mark.pausedAt;
-    } else if (open !== null) {
-      pauses.push({ pausedAt: open, resumedAt: mark.resumedAt });
-      open = null;
-    } else {
-      pauses.push(mark); // 짝 없는 resumed(열린 paused 가 없음) — 그대로 담는다
-    }
-  }
-  if (open !== null) pauses.push({ pausedAt: open, resumedAt: null });
-  // 값이 하나도 없으면 둘 다 null — "없음" 은 값이 있는 쪽에 밀린다(역방향 갱신은 금지).
-  return {
-    startedAt: started.length > 0 ? earliest(started) : null,
-    finishedAt: finished.length > 0 ? latest(finished) : null,
-    pauses,
-  };
-}
-
-/** ISO 8601 시각 중 가장 빠른 것. `Date.parse` 가 되지 않으면 원문 사전순으로 fallback(지어내지 않음). */
-function earliest(xs: string[]): string {
-  return xs.reduce((best, x) => (cmpTime(x, best) < 0 ? x : best));
-}
-/** ISO 8601 시각 중 가장 늦은 것. */
-function latest(xs: string[]): string {
-  return xs.reduce((best, x) => (cmpTime(x, best) > 0 ? x : best));
-}
-
-/** Time 줄 병합 후 상태 재파생 — core `parseNewTicket` 와 같은 로직. */
-function deriveStatusFromTime(startedAt: string | null, finishedAt: string | null): TodoStatus {
-  if (finishedAt) return "done";
-  if (startedAt) return "in_progress";
-  return "pending";
-}
-function cmpTime(a: string, b: string): number {
-  const pa = Date.parse(a);
-  const pb = Date.parse(b);
-  if (!Number.isNaN(pa) && !Number.isNaN(pb)) return pa - pb;
-  // `gootte` 가 기록하는 `+09:00` 식 오프셋을 `Date.parse` 가 못 읽을 극단 상황 대비 — 사전순은 결정적.
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-/** 한 slug 의 여러 사본을 하나의 `FeatureDocs` 로 합친다. */
 function mergeSlug(parts: CopySlug[], slug: string): FeatureDocs {
   const allPaths = new Set<string>();
   for (const p of parts) for (const k of p.files.keys()) allPaths.add(k);
 
   const contentByPath = new Map<string, string>();
-  const participantsByPath = new Map<string, { copy: string; index: number; content: string }[]>();
   for (const path of allPaths) {
     const participants = parts
       .filter((p) => p.files.has(path))
       .map((p) => ({ copy: p.copy, index: p.index, content: p.files.get(path)! }));
     const res = resolveFile(participants);
     contentByPath.set(path, res.content);
-    participantsByPath.set(path, participants);
   }
 
   const specContent = contentByPath.get("spec.md") ?? null;
@@ -209,32 +146,10 @@ function mergeSlug(parts: CopySlug[], slug: string): FeatureDocs {
   // (단일 사본에서 지금과 바이트로 동일해야 한다, T02 AC7).
   const tickets = [...allPaths]
     .filter((p) => /^issues\//.test(p) && isTicketDoc(p))
-    .map((p) => {
-      const parsed = parseTicket(basename(p), contentByPath.get(p)!);
-      // 🔴 T05 — 구관례(`issues/`) 티켓도 `Time:` 줄을 사본 전체에서 정방향 병합한다. `resolveFile` 이
-      // `Time:` 없는 사본(예: treehouse 격리 복사본)을 "나중 판" 으로 골라도, 값이 있는 사본(firstmate
-      // 메인) 쪽이 이겨야 한다(신관례 `tickets/` 와 같은 규칙). 어느 사본이든 값이 있으면 그 값이 사라지지 않는다.
-      const times = (participantsByPath.get(p) ?? []).map((x) => parseTimeLine(x.content));
-      return { ...parsed, ...mergeTicketTimes(times) };
-    });
+    .map((p) => parseTicket(basename(p), contentByPath.get(p)!));
   const newTickets = [...allPaths]
     .filter((p) => /^tickets\//.test(p) && isTicketDoc(p))
-    .map((p) => {
-      const merged = parseNewTicket(basename(p), contentByPath.get(p)!);
-      // 🔴 T05 — `Time:` 줄은 사본 전체의 "나중 판" 결정(`resolveFile`)과 **별개**로 정방향 병합한다.
-      // 어떤 사본이든 값을 기록하면 그 값은 다른 사본에 없다는 이유로 사라지지 않는다(
-      // "있다가 없어지는" 갱신 금지, 정방향 전용). 사본별로 각각 읽어 값이 있는 쪽이 이긴다.
-      const times = (participantsByPath.get(p) ?? []).map((x) => parseTimeLine(x.content));
-      const mergedTimes = mergeTicketTimes(times);
-      // 🔴 상태 재파생은 **명시적 `Status:` 줄이 없을 때만** Time 줄로 한다. `Status: wontfix` 같은
-      // 명시 상태는 문서가 말하는 최종값이라 Time 이 병합돼도 그것을 덮지 않는다(실제 결함 2026-08-31:
-      // wontfix 티켓이 started 만 있어 in_progress 로 보였다). `sourceStatus` 가 곧 명시 줄 유무다.
-      const derivedStatus =
-        merged.sourceStatus === null
-          ? deriveStatusFromTime(mergedTimes.startedAt, mergedTimes.finishedAt)
-          : merged.status;
-      return { ...merged, ...mergedTimes, status: derivedStatus };
-    });
+    .map((p) => parseNewTicket(basename(p), contentByPath.get(p)!));
   const tree = mergeDocTrees(parts.map((p) => p.tree));
   return { slug, spec, tickets, tree, newTickets };
 }
@@ -402,13 +317,14 @@ export function readFeatures(copies: string[]): Feature[] {
 }
 
 /**
- * 기존 기능 목록에 시간·상태 레코드를 얹는 조인 — **모드 판정의 유일한 자리**(T03).
- * v2 state.json 이 있으면 레코드가 권위(`applyTimeRecords`), 없으면 원본 그대로(폴백).
- * 이미 계산된 목록(스냅샷 히트·워커 결과)을 서빙 직전에 조인할 때 쓴다.
- * 🔴 `projectDir` 는 대표 경로(`proj.path`) — 레코드는 메인에만 있다(D4).
+ * 기존 기능 목록에 시간·상태 레코드를 얹는 조인 — **서빙 경로의 의무 관문**.
+ * 레코드(`state.json` v2 `tickets` 맵)가 **항상** 권위(`applyTimeRecords`)다:
+ * 레코드가 있으면 MD 파싱값을 이기고, 없으면 미시작 pending 으로 정규화한다.
+ * 🔴 모드 분기는 없다 — MD-only 프로젝트는 전부 pending 으로 보이므로
+ * `gootte migrate` + `migrate --strip` 으로 이관해야 한다.
+ * `projectDir` 는 대표 경로(`proj.path`) — 레코드는 메인에만 있다(D4).
  */
 export function joinTimeRecords(features: Feature[], projectDir: string): Feature[] {
-  if (!hasTimeRecords(projectDir)) return features;
   return applyTimeRecords(features, readTicketRecords(projectDir));
 }
 

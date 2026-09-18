@@ -5,17 +5,15 @@
 > | 무엇 | `Status:` 를 쓰나 |
 > |---|---|
 > | `spec.md` (기능 명세) | ✅ **그렇다.** 아래 아홉 값이 그대로 걸린다 |
-> | 옛 관례 티켓 `issues/<NN>-*.md` | ✅ 그렇다 — 완료의 SoT 가 `Status: resolved (날짜)` 다 |
+> | 옛 관례 티켓 `issues/<NN>-*.md` | 🔴 아니다 — 시간·상태는 레코드다(MD 줄은 읽히지 않는다) |
 > | **지금 관례 티켓 `tickets/T<NN>.md`** | 🔴 **아니다 — 손으로 쓰지 않는다.** 완료는 gootte 기록이 정한다 |
 >
-> 🔴 **기록 위치(time-records-to-state-store, 2026-09-09)** — v2 프로젝트(이 저장소)는 티켓 시간·상태
-> 기록이 `<프로젝트>/.gootte/state.json` v2 의 `tickets` 맵에 있다. `gootte drop` 이 쓰는 `wontfix`
-> 원문도 MD 줄이 아니라 레코드 `statusRaw` 로 간다. MD `Status:`/`Time:` 줄은 미이관 프로젝트의
-> 폴백으로만 읽힌다. v2 가 없는 프로젝트는 아래 설명대로 MD 줄이 SoT다.
+> 🔴 **기록 위치** — 티켓 시간·상태 기록은 `<프로젝트>/.gootte/state.json` v2 의
+> `tickets` 맵에 있다. `gootte drop` 이 쓰는 `wontfix` 원문도 MD 줄이 아니라 레코드
+> `statusRaw` 로 간다. MD `Status:`/`Time:` 줄은 읽히지 않는다 — 미이관 프로젝트는
+> `gootte migrate` + `migrate --strip` 으로 이관한다.
 >
-> 신관례 티켓에서 `Status:` 줄이 나오는 경우는 **`gootte drop` 이 쓴 `wontfix (날짜)`** 하나뿐이다.
-> (2026-09-04 실측: 신관례 67장 중 `Status:` 를 가진 것은 8장이고 전부 신관례 전환 이전에 손으로
-> 적힌 `resolved` 다 — 남겨 두되 새로 쓰지 않는다.)
+> 티켓 파일에 `Status:` 줄이 남아 있는 경우는 **이관 전 잔재**뿐이다(새로 쓰지 않는다).
 >
 > 자세한 것은 [`issue-tracker.md`](issue-tracker.md) §완료는 gootte 가 적는다.
 

@@ -7,7 +7,7 @@ description: gootte 의 dev 서버(backend/frontend/tauri)를 띄우거나 내�
 
 ## 🔴 세 가지만 지키면 사고가 안 난다
 
-1. **캡틴 사본(`~/Documents/ai2/firstmate2/projects/gootte`, backend 8804 · frontend 5304)의
+1. **캡틴 사본(`~/Documents/ai2/gootte`, backend 8804 · frontend 5304)의
    dev 서버를 죽이거나 재시작하거나 포트를 헤집지 않는다.**
    그 반대로, **격리 사본의 작업자는 자기 포트로 자기 서버를 스스로 띄우고 자기 것만 내린다.**
    🔴 *"dev 서버는 사용자가 띄운다"* 를 **캡틴이 대신 띄워 준다**는 뜻으로 읽지 마라 —

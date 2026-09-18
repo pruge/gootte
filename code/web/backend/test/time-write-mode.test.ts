@@ -8,13 +8,13 @@ import { clearDiscoverCache } from "../src/discover-cache";
 import { clearSnapshot } from "../src/snapshot";
 
 /**
- * 시간 기록 **쓰기** 경로의 모드 이분법(D2) — 읽기는 time-records-join.test.ts 가 지킨다.
+ * 시간 기록 **쓰기** 경로 — 단일 모드(구관례 완전 정리).
+ * POST /api/projects/:slug/time 은 항상 레코드(`state.json` v2)에 쓰고,
+ * 티켓 문서를 절대 건드리지 않는다. MD 분기·bash 위임은 제거됨.
  *
- * 🔴 실제 결함(2026-09-17): 데스크톱 앱이 띄운 백엔드는 GUI PATH(`/usr/bin:/bin:…`)를 물려받는데,
- * `bin/gootte` 의 레코드 모드 위임이 `command -v npx` 에 걸려 있어 PATH 에 npx 가 없으면 **조용히
- * MD 경로로 떨어진다**. 레코드 모드 프로젝트의 MD 에는 Time: 줄이 없으므로(SoT 는 state.json)
- * 종료 버튼이 "시작되지 않은 티켓입니다(Time: 줄이 없음)" 로 죽었다.
- * 그래서 이 테스트는 PATH 를 앱과 같은 값으로 좁혀서 돈다 — 그게 결함의 조건이다.
+ * 🔴 옛 결함(2026-09-17) 회귀 가드: 데스크톱 앱의 GUI PATH 에는 npx 가 없어
+ * bash 위임이 조용히 MD 경로로 떨어졌었다. 백엔드는 이제 셸을 거치지 않으므로
+ * PATH 를 앱과 같은 값으로 좁혀서 돈다 — 좁은 PATH 에서도 기록이 성공해야 한다.
  */
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "roots");
@@ -45,17 +45,17 @@ const projectDir = () => join(root, "alpha");
 const ticketFile = () => join(projectDir(), "docs", "features", "auth-login", "tickets", `${TICKET}.md`);
 const stateFile = () => join(projectDir(), ".gootte", "state.json");
 
-function setup(mode: "records" | "md", record?: { startedAt?: string | null; finishedAt?: string | null }): void {
+function setup(record?: { startedAt?: string | null; finishedAt?: string | null }): void {
   root = mkdtempSync(join(tmpdir(), "gootte-tw-"));
   cpSync(FIXTURES, root, { recursive: true });
   dataDir = mkdtempSync(join(tmpdir(), "gootte-tw-data-"));
-  // 픽스처의 v1 파일은 배지 전용이라 모드를 켜지 않는다 — 지우고 필요한 모드만 세운다.
+  // 픽스처의 state 파일을 지우고 필요한 레코드만 세운다 — 없으면 stateless 시작이다.
   rmSync(join(projectDir(), ".gootte"), { recursive: true, force: true });
   mkdirSync(join(projectDir(), "docs", "features", "auth-login", "tickets"), { recursive: true });
   writeFileSync(ticketFile(), `# ${TICKET} — 화면\n\n## Goal\n\n로그인 화면.\n`);
-  if (mode === "records") {
-    // 레코드가 권위인 프로젝트. MD 에는 Time: 줄이 없다 — 새 gootte 는 문서에 안 쓴다.
-    upsertTicketRecord(projectDir(), `auth-login/${TICKET}`, record ?? { startedAt: null, finishedAt: null });
+  if (record !== undefined) {
+    // 레코드가 권위인 프로젝트. MD 에는 Time: 줄이 없다 — gootte 는 문서에 안 쓴다.
+    upsertTicketRecord(projectDir(), `auth-login/${TICKET}`, record);
   }
 }
 
@@ -69,9 +69,9 @@ const postTime = async (action: string) => {
   return { status: res.status, body: (await res.json()) as { ok?: boolean; error?: string } };
 };
 
-describe("쓰기 경로 — 모드가 프로세스 경계를 정한다", () => {
-  test("레코드 모드 + 앱 PATH(npx 없음): end 가 레코드에 완료를 쓴다", async () => {
-    setup("records", { startedAt: "2026-09-17T07:00:00+09:00", finishedAt: null });
+describe("쓰기 경로 — 항상 레코드, 문서는 손대지 않는다", () => {
+  test("좁은 PATH(npx 없음): end 가 레코드에 완료를 쓴다", async () => {
+    setup({ startedAt: "2026-09-17T07:00:00+09:00", finishedAt: null });
     const { status, body } = await postTime("end");
     expect(body.error ?? "").not.toContain("Time: 줄이 없음");
     expect(status).toBe(200);
@@ -79,8 +79,8 @@ describe("쓰기 경로 — 모드가 프로세스 경계를 정한다", () => {
     expect(rec.tickets[`auth-login/${TICKET}`].finishedAt).toBeTruthy();
   });
 
-  test("레코드 모드: start 는 문서에 Time: 줄을 만들지 않는다 — 레코드가 SoT 다", async () => {
-    setup("records");
+  test("start 는 문서에 Time: 줄을 만들지 않는다 — 레코드가 SoT 다", async () => {
+    setup({ startedAt: null, finishedAt: null });
     const before = readFileSync(ticketFile(), "utf8");
     const { status } = await postTime("start");
     expect(status).toBe(200);
@@ -90,15 +90,27 @@ describe("쓰기 경로 — 모드가 프로세스 경계를 정한다", () => {
     expect(rec.tickets[`auth-login/${TICKET}`].startedAt).toBeTruthy();
   });
 
-  test("MD 모드: start 는 여전히 문서에 Time: 줄을 쓴다 — 옛 프로젝트를 깨지 않는다", async () => {
-    setup("md");
+  test("state.json 없는 프로젝트에 start → 쓰기로 v2 승격(문서는 그대로)", async () => {
+    setup();
+    expect(existsSync(stateFile())).toBe(false);
     const before = readFileSync(ticketFile(), "utf8");
     const { status, body } = await postTime("start");
     expect(body.error ?? "").toBe("");
     expect(status).toBe(200);
-    expect(readFileSync(ticketFile(), "utf8")).toContain("Time:");
-    expect(before).not.toContain("Time:");
-    // MD 모드 프로젝트를 클릭 한 번으로 v2 로 승격시키지 않는다 — 전환은 migrate-time 의 몫이다(D2).
-    expect(existsSync(stateFile())).toBe(false);
+    expect(readFileSync(ticketFile(), "utf8")).toBe(before);
+    expect(existsSync(stateFile())).toBe(true);
+    const rec = JSON.parse(readFileSync(stateFile(), "utf8"));
+    expect(rec.tickets[`auth-login/${TICKET}`].startedAt).toBeTruthy();
+  });
+
+  test("MD Time: 줄이 남아 있어도 start 는 그 줄을 읽지도 고치지도 않는다", async () => {
+    setup();
+    writeFileSync(ticketFile(), `# ${TICKET} — 화면\n\n**Time:** started=2026-08-01T09:00:00+09:00\n\n## Goal\n\n로그인 화면.\n`);
+    const before = readFileSync(ticketFile(), "utf8");
+    const { status } = await postTime("start");
+    expect(status).toBe(200);
+    expect(readFileSync(ticketFile(), "utf8")).toBe(before); // 좀비 줄 그대로 — 권위가 아니라 흔적이다
+    const rec = JSON.parse(readFileSync(stateFile(), "utf8"));
+    expect(rec.tickets[`auth-login/${TICKET}`].startedAt).toBeTruthy();
   });
 });

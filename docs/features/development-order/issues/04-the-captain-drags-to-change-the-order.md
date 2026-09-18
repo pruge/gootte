@@ -9,8 +9,6 @@
 
 **Blocked by:** [03](03-the-plan-tab-shows-the-whole-order.md) — 끌 화면이 먼저 있어야 한다
 
-**Status:** resolved (2026-08-11)
-
 ## 캡틴 지시 (2026-08-11, 원문)
 
 > 내가 드래그해서 순서를 변경할수 있다.

@@ -59,7 +59,7 @@ importers:
         version: 22.20.1
 
   cli:
-    dependencies:
+    devDependencies:
       '@gootte/contract':
         specifier: workspace:*
         version: link:../contract
@@ -69,10 +69,12 @@ importers:
       '@gootte/core-io':
         specifier: workspace:*
         version: link:../core-io
-    devDependencies:
       '@types/node':
         specifier: ^22.9.0
         version: 22.20.1
+      esbuild:
+        specifier: 0.28.1
+        version: 0.28.1
 
   contract:
     dependencies:

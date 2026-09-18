@@ -6,8 +6,6 @@
 
 **Blocked by:** [04](04-the-captain-drags-to-change-the-order.md) — 쓰기 경로가 먼저 있어야 한다
 
-**Status:** resolved (2026-08-11)
-
 ## 캡틴 지시 (2026-08-11, 원문)
 
 > "db를 수정하면 실시간 반영이 되어야하지 않아? 매번 refresh해야해?"

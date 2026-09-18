@@ -1,19 +1,22 @@
 /**
- * `gootte migrate-time [--dry-run] [프로젝트]` — MD `Time:`/`Status:` 줄을
+ * `gootte migrate [--dry-run] [--strip] [프로젝트]` — MD `Time:`/`Status:` 줄을
  * state.json v2 레코드로 이관한다(time-records-to-state-store/T06).
  *
- * 🔴 **MD 줄은 삭제하지 않는다**(캡틴 결정 2026-09-09) — 이관 후 실물 검증을 거친 뒤
- * 별도 기능에서 일괄 삭제한다. 이 명령은 읽기 파서(parseTimeLine·parseStatusLine)를
- * 그대로 쓰므로 "레코드 읽기 = MD 읽기"가 보증되면 나중의 삭제가 안전해진다.
+ * 🔴 기본은 기록만 쓰고 MD 줄은 남긴다 — `--strip` 을 줘야 지운다. `--strip` 은
+ * 레코드가 백업으로 확보된 뒤에만 돈다: 이번 실행에서 1건이라도 기록했거나 이미
+ * v2(state.json)인 경우만. 둘 다 아니면 기록 없이 삭제가 되므로 거부한다.
+ * strip 대상은 메인 프로젝트 경로(`proj.path`)의 티켓 파일만 — worktree 사본은
+ * 읽기 경로가 무시하므로 손대지 않는다(다음 동기화에 따라온다).
+ * 펜스 안 예시·`Blocked by:` 는 살린다(`stripLegacyTimeStatusLines`).
  *
  * 🔴 사본이 여럿이면 `mergeTicketTimes`와 같은 규칙(earliest started / latest finished /
  * pause 짝맞춤)으로 합친다 — MD 계층의 병합 지식이 레코드로 **한 번** 승계된다.
  * 멱등하다 — 재실행해도 같은 값이 같은 키로 기록될 뿐 늘지 않는다.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { discoverProjects, effectiveProjectRoots, readFeaturesWithTime, writeTicketRecords, recalcProjectState } from "@gootte/core-io";
-import { isTicketDoc, parseStatusLine, parseTimeLine, type TimeLine } from "@gootte/core";
+import { discoverProjects, effectiveProjectRoots, readFeaturesWithTime, readTicketRecords, writeTicketRecords, recalcProjectState } from "@gootte/core-io";
+import { isTicketDoc, parseStatusLine, parseTimeLine, stripLegacyTimeStatusLines, type TimeLine } from "@gootte/core";
 import type { TicketTimeRecord } from "@gootte/contract";
 import { CliError } from "./args";
 import { requireProject, resolveProjectArg } from "./commands";
@@ -22,10 +25,13 @@ export interface MigrateReport {
   project: string;
   root: string;
   dryRun: boolean;
+  strip: boolean;
   scanned: number; // 본 티켓 파일 수
   migrated: number; // 레코드가 생긴(값이 하나라도 있는) 티켓 수
   skipped: number; // 값이 전혀 없는 티켓(레코드 없음 = 미시작)
   multiCopy: number; // 사본 병합이 일어난 티켓
+  strippedFiles: number; // Time:/Status: 줄을 지운 파일 수(strip 시)
+  strippedLines: number; // 지운 줄 수(strip 시)
   records: Record<string, TicketTimeRecord>;
   details: string[]; // 티켓별 한 줄 요청(INV-4 릴레이)
 }
@@ -82,6 +88,7 @@ export function migrateTime(
   extraRoots: string[] = [],
 ): MigrateReport {
   const dryRun = argv.includes("--dry-run");
+  const strip = argv.includes("--strip");
   // 🔴 `<프로젝트>` 생략 시 cwd 유추(캡틴 지시 2026-09-09) — commands.ts 의 공용 해소 하나.
   const project = resolveProjectArg(argv.filter((a) => !a.startsWith("--")), cwd, "usage: gootte migrate [--dry-run] [프로젝트]");
 
@@ -164,5 +171,51 @@ export function migrateTime(
     recalcProjectState(proj.path, readFeaturesWithTime(proj.copies, proj.path));
   }
 
-  return { project, root: proj.path, dryRun, scanned, migrated, skipped: scanned - migrated, multiCopy, records, details };
+  // --strip: 메인 경로의 티켓 파일에서 Time:/Status: 줄을 지운다.
+  // 🔴 백업 전제 — 지울 줄에 값이 있으면 그 티켓 키의 레코드가 있어야 한다(방금 썼거나 기존 v2).
+  // 스캔과 같은 키 규약(`<기능>/<슬러그>`)으로 대조한다. 2-phase(전수 대조 후 쓰기) —
+  // 어긋나면 한 줄도 안 건드리고 전체를 거부한다(fail-closed).
+  let strippedFiles = 0;
+  let strippedLines = 0;
+  if (strip) {
+    const backed = dryRun ? records : readTicketRecords(proj.path);
+    const items: { file: string; rel: string; content: string; removed: number[]; backed: boolean }[] = [];
+    for (const featureSlug of readdirSync(mainFeatures).sort()) {
+      for (const dir of ["tickets", "issues"]) {
+        const abs = join(mainFeatures, featureSlug, dir);
+        if (!existsSync(abs)) continue;
+        for (const name of readdirSync(abs).sort()) {
+          const rel = `${dir}/${name}`;
+          if (!isTicketDoc(rel)) continue;
+          const file = join(abs, name);
+          const raw = readFileSync(file, "utf8");
+          const { content, removed } = stripLegacyTimeStatusLines(raw);
+          if (removed.length === 0) continue;
+          const key = `${featureSlug}/${rel.replace(/\.md$/i, "").replace(/^(issues|tickets)\//, "")}`;
+          const lines = raw.split("\n");
+          const valued = removed.some((n) => {
+            const line = lines[n - 1] ?? "";
+            const t = parseTimeLine(line);
+            const s = parseStatusLine(line);
+            return t.startedAt !== null || t.finishedAt !== null || t.pauses.length > 0 || s.rest !== null;
+          });
+          items.push({ file, rel: `${featureSlug}/${rel}`, content, removed, backed: !valued || backed[key] !== undefined });
+        }
+      }
+    }
+    const unbacked = items.filter((it) => !it.backed);
+    if (!dryRun && unbacked.length > 0) {
+      throw new CliError(
+        `정리 거부: 다음 줄의 값은 레코드에 없습니다(값 손실, 한 줄도 안 건드림) — 먼저 확인하세요:\n  ${unbacked.map((it) => `${it.rel} (줄 ${it.removed.join(", ")})`).join("\n  ")}`,
+      );
+    }
+    for (const it of items) {
+      strippedFiles += 1;
+      strippedLines += it.removed.length;
+      details.push(`- ${it.rel} — ${dryRun ? "정리 예정" : "정리"} ${it.removed.length}줄(줄 ${it.removed.join(", ")})`);
+      if (!dryRun) writeFileSync(it.file, it.content);
+    }
+  }
+
+  return { project, root: proj.path, dryRun, strip, scanned, migrated, skipped: scanned - migrated, multiCopy, strippedFiles, strippedLines, records, details };
 }

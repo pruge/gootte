@@ -2,8 +2,6 @@
 
 **Blocked by:** 🟢 **없음 — 지금 착수 가능.**
 
-**Status:** resolved (2026-09-02)
-
 ## What to build
 
 **기능 이름(feature 명)이 검색 범위에 있는지 확정하고, 없으면 넣는다.** 화면의 기능 카드에
