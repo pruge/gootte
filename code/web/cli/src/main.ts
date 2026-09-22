@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
-import { defaultPlanDataDir, defaultProjectRoots } from "@gootte/core-io";
+import { defaultPlanDataDir } from "@gootte/core-io";
 import { CliError } from "./args";
-import { boardText, dbMigrateText, discoverText, featureStateText, frontierText, memoMigrateText, memoText, nextText, statusText, stepClearText, stepText } from "./commands";
+import { boardText, dbMigrateText, discoverText, featureStateText, frontierText, memoMigrateText, memoText, nextText, projectRoots, statusText, stepClearText, stepText } from "./commands";
 import { runTimeCommand } from "./time";
 import { migrateTime } from "./migrate-time";
 
@@ -36,8 +36,9 @@ function run(argv: string[]): number {
   try {
     switch (cmd) {
       case "discover": {
+        // 뿌리 생략 시 화면과 같은 자리(`projectRoots`) — 설정 `projects` 가 권위다.
         const targets =
-          rest.length > 0 ? rest.map((r) => resolve(r)) : [process.cwd(), ...defaultProjectRoots()];
+          rest.length > 0 ? rest.map((r) => resolve(r)) : [process.cwd(), ...projectRoots()];
         process.stdout.write(discoverText(targets) + "\n");
         return 0;
       }

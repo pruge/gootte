@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { readTicketRecords, hasTimeRecords, readState } from "@gootte/core-io";
 import { migrateTime } from "./migrate-time";
 
@@ -11,6 +11,20 @@ import { migrateTime } from "./migrate-time";
  */
 
 let root: string;
+
+/**
+ * 🔴 테스트는 **개발자 기계의** `~/.gootte/settings.json` 을 읽지 않는다 — 이제 CLI 의 프로젝트
+ * 뿌리(`projectRoots`)가 그 설정을 본다. 빈 임시 dataDir 로 고정해 결과가 기계마다 같게 한다.
+ */
+const ISOLATED_DATA_DIR = mkdtempSync(join(tmpdir(), "gootte-mig-data-"));
+beforeAll(() => {
+  if (!process.env.GOOTTE_DATA_DIR) process.env.GOOTTE_DATA_DIR = ISOLATED_DATA_DIR;
+});
+afterAll(() => {
+  if (process.env.GOOTTE_DATA_DIR === ISOLATED_DATA_DIR) delete process.env.GOOTTE_DATA_DIR;
+  rmSync(ISOLATED_DATA_DIR, { recursive: true, force: true });
+});
+
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "gootte-mig-"));
   mkdirSync(join(root, "docs/features/alpha/tickets"), { recursive: true });

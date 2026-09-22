@@ -18,6 +18,7 @@ import {
   readPlacements,
   readPlacementsWithAutoClose,
   readSteps,
+  resolveProjects,
   removeMemoFile,
   writeMemoFile,
   writeStep,
@@ -41,12 +42,35 @@ export function discoverText(roots: string[]): string {
 }
 
 /**
+ * CLI 가 보는 프로젝트 뿌리 — **화면(백엔드)과 같은 출처**를 쓴다.
+ *
+ * 🔴 `settings.json` 의 `projects`(사람이 화면에서 정한 값)가 있으면 그것이 권위고, 없으면 env
+ * `GOOTTE_ROOTS` → 플랫폼 기본값으로 떨어진다 — 백엔드 `effectiveRoots`(backend/src/app.ts)와
+ * **같은 `resolveProjects` 한 자리**(INV-1).
+ *
+ * 이 자리가 없으면 터미널은 기본값(`~/Documents/ai2/projects`)만 보고 화면은 설정값을 봐서,
+ * 같은 프로젝트를 두고 "찾음/없음"이 갈린다(the-terminal-agrees-with-the-screen — 캡틴 실측
+ * 2026-09-18: 화면은 `~/Documents/ai2` 를 보는데 터미널은 없는 폴더를 봤다).
+ * 설정 파일이 깨져도 던지지 않고 env·기본값으로 떨어진다 — 읽기 경로를 죽이지 않는다.
+ */
+export function projectRoots(): string[] {
+  try {
+    return resolveProjects(
+      process.env.GOOTTE_DATA_DIR?.trim() || defaultPlanDataDir(),
+      effectiveProjectRoots(),
+    );
+  } catch {
+    return effectiveProjectRoots();
+  }
+}
+
+/**
  * 프로젝트 slug → 저장소 경로. `discover` 와 같은 뿌리에서 찾는다 — cwd 최우선(크루가 자기 작업
- * 사본을 먼저 본다), 그 뒤는 env `GOOTTE_ROOTS`(콜론 구분), 없으면 기본 뿌리(T02) — 백엔드
- * `effectiveRoots`(backend/src/app.ts)와 **같은 규약**을 core-io `effectiveProjectRoots` 하나로 쓴다.
+ * 사본을 먼저 본다), 그 뒤는 `projectRoots()`(설정 `projects` → env `GOOTTE_ROOTS` → 기본 뿌리) —
+ * 백엔드 `effectiveRoots`(backend/src/app.ts)와 **같은 자리**를 쓴다.
  */
 export function resolveProjectPath(project: string, cwd: string = process.cwd()): string | null {
-  const found = discoverProjects([cwd, ...effectiveProjectRoots()]);
+  const found = discoverProjects([cwd, ...projectRoots()]);
   return found.find((p) => p.slug === project)?.path ?? null;
 }
 
@@ -114,7 +138,7 @@ export function resolveProjectArg(argv: readonly string[], cwd: string, usage: s
  */
 /** 프로젝트 해소 공용 — discover + 조상 폴백(캡틴 지시 2026-09-09). migrate-time 도 쓴다. */
 export function requireProject(project: string, cwd: string): { copies: string[]; path: string } {
-  const found = discoverProjects([cwd, ...effectiveProjectRoots()]);
+  const found = discoverProjects([cwd, ...projectRoots()]);
   const p = found.find((x) => x.slug === project);
   if (p) return { copies: p.copies, path: p.path };
   // 🔴 cwd 가 프로젝트 **안**이면(예: code/web) 조상을 올려 발견 표식으로 찾는다 —

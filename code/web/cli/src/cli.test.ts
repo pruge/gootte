@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { afterEach, beforeAll, beforeEach, describe, it, expect } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, it, expect } from "vitest";
 import {
   appendMemo,
   centralMemosFile,
@@ -20,6 +20,19 @@ import type { Memo } from "@gootte/contract";
 import { CliError } from "./args";
 
 import { boardText, discoverText, frontierText, memoMigrateText, memoText, nextText, resolveProjectPath, statusText, stepClearText, stepText } from "./commands";
+
+/**
+ * 🔴 테스트는 **개발자 기계의** `~/.gootte/settings.json` 을 읽지 않는다 — 이제 CLI 의 프로젝트
+ * 뿌리(`projectRoots`)가 그 설정을 본다. 빈 임시 dataDir 로 고정해 결과가 기계마다 같게 한다.
+ */
+const ISOLATED_DATA_DIR = mkdtempSync(join(tmpdir(), "gootte-cli-data-"));
+beforeAll(() => {
+  if (!process.env.GOOTTE_DATA_DIR) process.env.GOOTTE_DATA_DIR = ISOLATED_DATA_DIR;
+});
+afterAll(() => {
+  if (process.env.GOOTTE_DATA_DIR === ISOLATED_DATA_DIR) delete process.env.GOOTTE_DATA_DIR;
+  rmSync(ISOLATED_DATA_DIR, { recursive: true, force: true });
+});
 
 function w(root: string, rel: string, content: string): void {
   const full = join(root, rel);
@@ -477,6 +490,68 @@ describe("cli — resolveProjectPath 는 GOOTTE_ROOTS 도 본다(T02)", () => {
     withEnv(undefined, () => {
       expect(resolveProjectPath("ghost-proj-nowhere", "/nonexistent-cwd")).toBeNull();
     });
+  });
+});
+
+/**
+ * 캡틴 지시 2026-09-18 — 터미널도 **화면과 같은 설정**(`settings.json` 의 `projects`)을 본다.
+ * `defaultProjectRoots()`(`~/Documents/ai2/projects`)가 없는 기계에서 화면은 찾는데 터미널만
+ * "프로젝트 없음" 이던 결함의 회귀 가드 — 화면(백엔드)은 같은 `resolveProjects` 를 이미 쓴다.
+ */
+describe("cli — 프로젝트 뿌리는 화면(settings.json)과 같은 출처를 본다", () => {
+  function projectDir(dir: string): string {
+    mkdirSync(join(dir, "docs", "features"), { recursive: true });
+    writeFileSync(join(dir, "AGENTS.md"), "# AGENTS\n");
+    return dir;
+  }
+
+  /** 설정·env 를 바꿔 끼고 되돌린다 — 다른 시험이 기계 상태를 물려받지 않게. */
+  function withSettings<T>(dataDir: string, envRoot: string, fn: () => T): T {
+    const prevData = process.env.GOOTTE_DATA_DIR;
+    const prevRoots = process.env.GOOTTE_ROOTS;
+    process.env.GOOTTE_DATA_DIR = dataDir;
+    process.env.GOOTTE_ROOTS = envRoot;
+    try {
+      return fn();
+    } finally {
+      if (prevData === undefined) delete process.env.GOOTTE_DATA_DIR;
+      else process.env.GOOTTE_DATA_DIR = prevData;
+      if (prevRoots === undefined) delete process.env.GOOTTE_ROOTS;
+      else process.env.GOOTTE_ROOTS = prevRoots;
+    }
+  }
+
+  it("설정 projects 가 env·기본값을 이긴다 — 화면이 보는 프로젝트를 터미널도 본다", () => {
+    const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "gootte-settings-data-")));
+    const configured = realpathSync(mkdtempSync(join(tmpdir(), "gootte-settings-conf-")));
+    const envRoot = realpathSync(mkdtempSync(join(tmpdir(), "gootte-settings-env-")));
+    const p = projectDir(join(configured, "proj-screen"));
+    writeSettings(dataDir, { projects: [configured] });
+    try {
+      // env 뿌리에는 그 프로젝트가 없다 — 설정이 이겼다는 것만이 이 결과를 만든다.
+      withSettings(dataDir, envRoot, () => {
+        expect(resolveProjectPath("proj-screen", "/nonexistent-cwd")).toBe(p);
+      });
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(configured, { recursive: true, force: true });
+      rmSync(envRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("설정 projects 가 빈 배열이면 그것이 권위다 — env 로 되돌아가지 않는다(D6)", () => {
+    const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "gootte-settings-empty-")));
+    const envRoot = realpathSync(mkdtempSync(join(tmpdir(), "gootte-settings-env2-")));
+    projectDir(join(envRoot, "proj-env"));
+    writeSettings(dataDir, { projects: [] });
+    try {
+      withSettings(dataDir, envRoot, () => {
+        expect(resolveProjectPath("proj-env", "/nonexistent-cwd")).toBeNull();
+      });
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(envRoot, { recursive: true, force: true });
+    }
   });
 });
 

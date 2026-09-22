@@ -15,11 +15,11 @@
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { discoverProjects, effectiveProjectRoots, readFeaturesWithTime, readTicketRecords, writeTicketRecords, recalcProjectState } from "@gootte/core-io";
+import { discoverProjects, readFeaturesWithTime, readTicketRecords, writeTicketRecords, recalcProjectState } from "@gootte/core-io";
 import { isTicketDoc, parseStatusLine, parseTimeLine, stripLegacyTimeStatusLines, type TimeLine } from "@gootte/core";
 import type { TicketTimeRecord } from "@gootte/contract";
 import { CliError } from "./args";
-import { requireProject, resolveProjectArg } from "./commands";
+import { projectRoots, requireProject, resolveProjectArg } from "./commands";
 
 export interface MigrateReport {
   project: string;
@@ -92,7 +92,9 @@ export function migrateTime(
   // 🔴 `<프로젝트>` 생략 시 cwd 유추(캡틴 지시 2026-09-09) — commands.ts 의 공용 해소 하나.
   const project = resolveProjectArg(argv.filter((a) => !a.startsWith("--")), cwd, "usage: gootte migrate [--dry-run] [프로젝트]");
 
-  const found = discoverProjects([cwd, ...effectiveProjectRoots(), ...extraRoots]);
+  // 🔴 뿌리는 화면과 같은 자리(`projectRoots`) — 설정 `projects` 가 권위다. 이관도 터미널에서
+  // 프로젝트 밖 cwd 로 돌기 때문에, 이 자리가 어긋나면 "프로젝트 없음" 으로 죽는다.
+  const found = discoverProjects([cwd, ...projectRoots(), ...extraRoots]);
   let proj = found.find((p) => p.slug === project);
   if (!proj) {
     // cwd 가 프로젝트 안이면(예: code/web) 조상에서도 본다 — requireProject 와 같은 규율.
