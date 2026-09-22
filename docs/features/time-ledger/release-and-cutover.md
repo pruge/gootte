@@ -1,7 +1,7 @@
 # release-and-cutover — @gootte/time-ledger coordinated cutover runbook
 
 > **Architecture SoT:** `fa5dea0` — `docs/features/time-ledger/design-note.md`
-> **Planning only.** Runbook이 아닌 actual execution은 ticket 승인 후.
+> **Planning only.** Actual execution is ticket-approved.
 
 ---
 
@@ -19,73 +19,80 @@ pi-taskflow가 `@gootte/time-ledger` standalone package를 소비하기 위한 *
 ## Pre-conditions
 
 1. T01: `@gootte/time-ledger` package + parity tests green
-2. T02: CLI가 package API로 전환, old/new parity matrix green
-3. T03: release-ready artifact (`.tgz` + exact semver + sha512) exists
+2. T02: CLI/migrate/backend adapters migrated, old/new parity matrix green
+3. T03: release-ready `.tgz` artifact + sha512 evidence exists
 4. T04: consumer contract + runbook exists
+5. P01: pi-taskflow local adoption ticket created
+6. C01: Boss-approved release + quiescent coordinated cutover receipt
 
-## Cutover Steps
+## Cutover Steps (quiescent)
 
 ```
 Phase 1 — Quiescent
-  1. 모든 writer 확인: GoOtTe CLI, pi-taskflow, 기타 consumer가 현재 write 중인지 확인
-  2. lifecycle write 중지: 모든 consumer가 write를 중단하는지 확인
-  3. 버전 pin 전환 준비: 새 version, integrity hash 확정
+  1. All writer confirmation: GoOtTe CLI, pi-taskflow, others idle
+  2. Lifecycle write stop: all consumers pause writing
+  3. Version pin: new version, integrity hash confirmed
 
 Phase 2 — Coordinated Switch
-  4. pi-taskflow: artifact 다운로드 + integrity 검증 → package install
-  5. GoOtTe CLI: 새 package로 전환 (global install 없이)
-  6. parity/readback: 동일 input으로 old vs new output 비교
-  7. 재개: lifecycle write 재개
+  4. pi-taskflow: artifact download + integrity verification → package install
+  5. GoOtTe CLI: versioned bundle switch (Boss-approved global install if needed for live writer)
+  6. Parity/readback: identical input, old vs new output comparison
+  7. Resume: lifecycle write restart
 
 Phase 3 — Verification
-  8. zero-downtime verification: 모든 consumer가 새 package를 경유
-  9. lock contention test: concurrent write가 CAS로 처리되는지
-  10. rollback plan 확인
+  8. Consumer inventory: all consumers use new package
+  9. Lock contention test: concurrent write handled by CAS
+  10. Rollback plan confirmed
 ```
+
+## Lock contention / parity verification
+
+Lock contention test and parity/readback verification occur **BEFORE** writer resume (Phase 2 → Phase 3 → resume). Not after.
 
 ## Rollback (same quiescent procedure)
 
 ```
 Phase 1 — Quiescent
-  1. 모든 writer 확인
-  2. lifecycle write 중지
+  1. All writer confirmation
+  2. Lifecycle write stop
 
 Phase 2 — Coordinated Revert
-  3. pi-taskflow: 이전 artifact로 rollback
-  4. GoOtTe CLI: 이전 버전으로 복원
-  5. parity/readback 확인
+  3. pi-taskflow: previous artifact rollback
+  4. GoOtTe CLI: previous versioned bundle revert
+  5. Parity/readback confirmation
 
 Phase 3 — Verification
-  6. 모든 consumer가 이전 경로를 사용하는지 확인
+  6. All consumers use previous path
 ```
 
 ## Key Rules
 
-- **GoOtTe만 새 global 설치하지 않는다.** 혼합 runtime을 만들지 않는다.
-- **pi-taskflow source 편집 금지.** p1F가 local adoption ticket으로 처리.
-- **lock을 모르는 pi-taskflow writer가 공존할 수 있음**을 숨기지 않는다.
-- **Boss release approval이 없으면 GitHub push/tag/release를 수행하지 않는다.**
-- **exact semver + sha512 pin**, caret 금지.
-- **state schema v2와 package semver를 혼동하지 않는다.**
+- **GoOtTe only new global install prohibited.** Versioned GoOtTe CLI bundle required for live writer.
+- **pi-taskflow source 편집 금지.** p1F handles local adoption.
+- **Migration window coexistence explicitly stated.** Lock-unaware pi-taskflow writer may exist during transition.
+- **Boss release approval required** for GitHub push/tag/release.
+- **Exact semver + sha512 pin**, caret prohibited.
+- **State schema v2 ≠ package semver.** Not mixed.
+- **'zero-downtime' is not claimed.** This is quiescent pause, not zero-downtime.
 
 ## Stop Conditions
 
-- Quiescent phase에서 writer가 중단되지 않으면 cutover를 중단.
-- Parity/readback에서 차이가 발견하면 rollback.
-- Lock contention test가 실패하면 rollback.
+- Quiescent phase fails (writer not paused) → stop cutover.
+- Parity/readback mismatch → rollback.
+- Lock contention test fails → rollback.
 
-## T03 Artifact Coordinates (placeholder)
+## Artifact Coordinates (T03-dependent, exact after T03)
 
 ```
 package: @gootte/time-ledger
 version: 0.1.0
 channel: GitHub Release standalone .tgz asset
-integrity: <sha512-to-be-determined>
-semver-range: exact 0.1.0 (caret prohibited)
+integrity: <sha512-to-be-filled-after-T03-release>
+semver-range: exact 0.1.0
 ```
 
 ## Notes
 
-- 이 runbook은 T04의 handoff 결과이다. p1F가 자기 repo에서 local adoption ticket으로 옮길 때 이 runbook을 참조한다.
-- 결정 복제가 아닌 `fa5dea0` + 이 runbook 참조.
-- 각 단계를 manual file로 추적하되, 여기서는 exact condition만 명시.
+- This runbook is T04 handoff output. p1F references it for local adoption ticket.
+- Decision reference: `fa5dea0` + this runbook. Not copied.
+- Each phase documented in exact manual steps per ticket.
