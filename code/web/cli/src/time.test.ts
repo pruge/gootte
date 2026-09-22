@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -300,30 +300,95 @@ describe("resolveMainRoot — worktree 메인 해소(B3)", () => {
 
 describe("runTimeCommand — ledgerRoot/ticketSourceRoot 분리", () => {
   /** worktree에서 start/end — 티켓은 worktree에서, 레코드는 main state.json에. */
-  test("worktree에서 start → main 원장에 기록되고, worktree 티켓 파일이 있으면 성공", () => {
+  test("worktree에서 start → end — main 원장에 기록되고, worktree 티켓은 HEAD에만 존재", () => {
     const main = mkdtempSync(join(tmpdir(), "gootte-root-split-main-"));
     const wt = mkdtempSync(join(tmpdir(), "gootte-root-split-wt-")) + "/wt";
     try {
-      // 메인 설정
+      // 메인: docs 디렉토리 구조를 commit → worktree에서 자동으로 사용 가능
+      execFileSync("git", ["-C", main, "init", "-q"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "config", "user.email", "t@e.com"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "config", "user.name", "t"], { stdio: "ignore" });
+      mkdirSync(join(main, "docs", "features", "alpha", "tickets"), { recursive: true });
+      writeFileSync(join(main, "AGENTS.md"), "# AGENTS\n");
+      // 🔴 docs 디렉토리를 main에 commit — worktree에서 자동으로 사용 가능
+      execFileSync("git", ["-C", main, "add", "AGENTS.md", "docs"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "commit", "-q", "-m", "init"], { stdio: "ignore" });
+      // main state.json이 없는지 확인
+      expect(existsSync(join(main, ".gootte", "state.json"))).toBe(false);
+      // worktree 생성 (main HEAD에서 분기) — docs/features/alpha/tickets 가 이미 존재
+      execFileSync("git", ["-C", main, "worktree", "add", "-q", "-b", "fm-x", wt], { stdio: "ignore" });
+      // worktree에 T17.md 작성 + add + commit → HEAD에만 존재 (main에는 없음)
+      mkdirSync(join(wt, "docs/features/alpha/tickets"), { recursive: true });
+      writeFileSync(join(wt, "docs/features/alpha/tickets/T17.md"), "# T17\n");
+      execFileSync("git", ["-C", wt, "add", "docs/features/alpha/tickets/T17.md"], { stdio: "ignore" });
+      execFileSync("git", ["-C", wt, "commit", "-q", "-m", "feat: T17"], { stdio: "ignore" });
+      // 🔴 main 경로에 T17 레코드가 없는지 검증
+      expect(readTicketRecords(main)["alpha/T17"]).toBeUndefined();
+      // worktree에서 start
+      const out = runTimeCommand(["start", "alpha", "T17", "--at", "2026-09-09T09:00:00+09:00"], wt);
+      expect(out).toContain("T17 시작 기록");
+      // end 수행
+      runTimeCommand(["end", "alpha", "T17", "--at", "2026-09-09T10:00:00+09:00"], wt);
+      // main state.json에 finishedAt이 있어야 함
+      const mainRecords = readTicketRecords(main);
+      expect(mainRecords["alpha/T17"]?.startedAt).toBe("2026-09-09T09:00:00+09:00");
+      expect(mainRecords["alpha/T17"]?.finishedAt).toBe("2026-09-09T10:00:00+09:00");
+    } finally {
+      rmSync(main, { recursive: true, force: true });
+    }
+  });
+
+  test("working tree 파일이 삭제되어도 HEAD에 T17이 있으면 start 성공", () => {
+    const main = mkdtempSync(join(tmpdir(), "gootte-root-split-main2-"));
+    const wt = mkdtempSync(join(tmpdir(), "gootte-root-split-wt2-")) + "/wt";
+    try {
+      // 메인: T17 없음
       execFileSync("git", ["-C", main, "init", "-q"], { stdio: "ignore" });
       execFileSync("git", ["-C", main, "config", "user.email", "t@e.com"], { stdio: "ignore" });
       execFileSync("git", ["-C", main, "config", "user.name", "t"], { stdio: "ignore" });
       execFileSync("git", ["-C", main, "commit", "--allow-empty", "-q", "-m", "i"], { stdio: "ignore" });
       mkdirSync(join(main, "docs", "features", "alpha", "tickets"), { recursive: true });
       writeFileSync(join(main, "AGENTS.md"), "# AGENTS\n");
-      writeFileSync(join(main, "docs/features/alpha/tickets/T17.md"), "# T17\n");
-      execFileSync("git", ["-C", main, "add", "."], { stdio: "ignore" });
-      execFileSync("git", ["-C", main, "commit", "-q", "-m", "feat"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "add", "AGENTS.md"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "commit", "-q", "-m", "init"], { stdio: "ignore" });
       // worktree 생성
-      execFileSync("git", ["-C", main, "worktree", "add", "-q", "-b", "fm-x", wt], { stdio: "ignore" });
-      // worktree에도 같은 티켓 파일이 있어야 함 (HEAD에서 검증)
-      // worktree에서는 docs/features가 worktree HEAD에 있으므로 그대로 사용 가능
-      // main에서 실행하는 경우와 동일하게 root에서 실행
+      execFileSync("git", ["-C", main, "worktree", "add", "-q", "-b", "fm-y", wt], { stdio: "ignore" });
+      // worktree에 T17.md를 add + commit
+      mkdirSync(join(wt, "docs/features/alpha/tickets"), { recursive: true });
+      writeFileSync(join(wt, "docs/features/alpha/tickets/T17.md"), "# T17\n");
+      execFileSync("git", ["-C", wt, "add", "docs/features/alpha/tickets/T17.md"], { stdio: "ignore" });
+      execFileSync("git", ["-C", wt, "commit", "-q", "-m", "feat: T17"], { stdio: "ignore" });
+      // working tree에서 T17.md를 삭제 — HEAD에는 존재
+      rmSync(join(wt, "docs/features/alpha/tickets/T17.md"), { recursive: true, force: true });
+      expect(existsSync(join(wt, "docs/features/alpha/tickets/T17.md"))).toBe(false);
+      // HEAD fallback으로 start 성공해야 함
       const out = runTimeCommand(["start", "alpha", "T17", "--at", "2026-09-09T09:00:00+09:00"], wt);
       expect(out).toContain("T17 시작 기록");
-      // main state.json에 레코드가 있어야 함
-      const mainRecords = readTicketRecords(main);
-      expect(mainRecords["alpha/T17"]?.startedAt).toBe("2026-09-09T09:00:00+09:00");
+    } finally {
+      rmSync(main, { recursive: true, force: true });
+      const wtParent = join(tmpdir(), "gootte-root-split-wt2-");
+      const entries = existsSync(wtParent) ? readdirSync(wtParent) : [];
+      for (const entry of entries) {
+        rmSync(join(wtParent, entry), { recursive: true, force: true });
+      }
+    }
+  });
+
+  test("main 과 feature worktree HEAD 어디에도 T17이 없으면 기존 fail-closed 유지", () => {
+    const main = mkdtempSync(join(tmpdir(), "gootte-root-split-main3-"));
+    const wt = mkdtempSync(join(tmpdir(), "gootte-root-split-wt3-")) + "/wt";
+    try {
+      execFileSync("git", ["-C", main, "init", "-q"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "config", "user.email", "t@e.com"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "config", "user.name", "t"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "commit", "--allow-empty", "-q", "-m", "i"], { stdio: "ignore" });
+      mkdirSync(join(main, "docs", "features", "alpha", "tickets"), { recursive: true });
+      writeFileSync(join(main, "AGENTS.md"), "# AGENTS\n");
+      execFileSync("git", ["-C", main, "add", "AGENTS.md"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "commit", "-q", "-m", "init"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "worktree", "add", "-q", "-b", "fm-z", wt], { stdio: "ignore" });
+      // worktree에도 T17이 없음
+      expect(() => runTimeCommand(["start", "alpha", "T17"], wt)).toThrow("티켓 파일을 찾을 수 없습니다");
     } finally {
       rmSync(main, { recursive: true, force: true });
     }

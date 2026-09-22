@@ -178,13 +178,30 @@ interface TimeTarget {
   key: string;
 }
 
+/** git HEAD에 파일이 존재하는지 검증 — working tree 파일이 삭제된 경우를 대비. */
+function gitCatFileExists(root: string, relPath: string): boolean {
+  try {
+    execFileSync("git", ["-C", root, "cat-file", "-e", `HEAD:${relPath}`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function target(root: string, feature: string, ticket: string): TimeTarget {
   // 🔴 키는 항상 파일 basename 과 일치해야 조인(`timeRecordKey`)에 닿는다.
-  // "03"·"T03" 같은 번호 인자는 실물 파일명으로 정규화한다 — 날것("f/03")으로 기록하면
-  // 티켓 슬러그("T03")와 어긋나 pending 으로 남는다(구관례 완전 정리 과정에서 발견).
+  // "03"·"T03" 같은 번호 인자는 실물 파일명으로 정규화한다 — 날것("f/03")으로
+  // 기록하면 티켓 슬러그("T03")와 어긋나 pending 으로 남는다(구관례 완전 정리 과정에서 발견).
   const num = ticket.replace(/^T/i, "");
   const ticketsFile = join(root, "docs", "features", feature, "tickets", `T${num}.md`);
   if (existsSync(ticketsFile)) return { root, key: `${feature}/T${num}` };
+  // 🔴 working tree 파일이 삭제되어도 git HEAD 에 존재하면 허용 —
+  // branch HEAD에 commit만 되어 있고 worktree에서 file을 지운 상태에서도 시작 가능하게 한다.
+  if (gitCatFileExists(root, `docs/features/${feature}/tickets/T${num}.md`))
+    return { root, key: `${feature}/T${num}` };
   const issuesDir = join(root, "docs", "features", feature, "issues");
   if (existsSync(issuesDir)) {
     const hit = readdirSync(issuesDir)
@@ -192,10 +209,21 @@ function target(root: string, feature: string, ticket: string): TimeTarget {
       .sort()[0];
     if (hit) return { root, key: `${feature}/${hit.replace(/\.md$/i, "")}` };
   }
+  // 🔴 구관례도 동일 규칙 — HEAD fallback
+  if (existsSync(issuesDir)) {
+    const gitHit = readdirSync(issuesDir)
+      .filter((f) => f.startsWith(num) && f.endsWith(".md"))
+      .sort()[0];
+    if (gitHit && gitCatFileExists(root, `docs/features/${feature}/issues/${gitHit}`))
+      return { root, key: `${feature}/${gitHit.replace(/\.md$/i, "")}` };
+  }
   throw new CliError(
-    `티켓 파일을 찾을 수 없습니다:\n  신관례: ${ticketsFile}\n  구관례: ${issuesDir}/${num}-*.md`,
+    `티켓 파일을 찾을 수 없습니다:
+  신관례: ${ticketsFile}
+  구관례: ${issuesDir}/${num}-*.md`,
   );
 }
+
 
 /** 지금 레코드를 다시 읽는다 — 명령마다 파일이 바뀌므로(target 스냅샷 금지). */
 function current(root: string, key: string): TicketTimeRecord | undefined {
