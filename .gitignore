@@ -22,3 +22,5 @@ code/web/backend/test/fixtures/**/.gootte/
 
 # taskflow 앞문 설정 — 머신마다 워커 경로·모델이 다르니 추적하지 않는다.
 .pi/
+.gootte/
+.worker-session.json
