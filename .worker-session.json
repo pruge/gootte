@@ -1,0 +1,19 @@
+{
+  "name": "w-time-ledger-t01",
+  "slug": "time-ledger",
+  "ticket": "T01",
+  "orchId": "w4Q_p1",
+  "orchPane": "w4Q:p1",
+  "orchRuntime": "w4Q:p1#pid-39175",
+  "workerPane": "w79:p1",
+  "branch": "time-ledger-T01",
+  "base": "main",
+  "baseSha": "021a3063deb587c52451116d6a3f3fec9a1e406c",
+  "verifyCmd": "pnpm run verify",
+  "ports": {
+    "backend": 8812,
+    "frontend": 5306,
+    "studio": 5307
+  },
+  "attempt": 1
+}
