@@ -49,7 +49,7 @@
 | T03 | GoOtTe | w43:p1 | T02 | read-side migration + badge async |
 | T04 | GoOtTe | w43:p1 | T03 | standalone artifact/provenance |
 | T05 | GoOtTe | w43:p1 | T04 | cross-repo handoff/runbook |
-| T06 | GoOtTe | w43:p1 | T03, P01, C01 | terminal legacy deletion |
+| T06 | GoOtTe | w43:p1 | T03, P01, C01 | terminal legacy deletion (also removes writeBadgeV1/mutateState) |
 
 ## 주의사항
 

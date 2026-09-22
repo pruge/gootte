@@ -91,6 +91,7 @@ channel: GitHub Release standalone .tgz asset
 integrity: <sha512-from-T04-receipt>
 semver-range: exact 0.1.0
 generator: code/web/time-ledger/scripts/pack-verify.mjs
+- **No package-local tgz** — only `--pack-destination` output
 tarball: artifacts/time-ledger/gootte-time-ledger-0.1.0.tgz
 receipt: docs/features/time-ledger/receipts/time-ledger-0.1.0.sha512
 ```
