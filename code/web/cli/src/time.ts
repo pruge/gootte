@@ -73,6 +73,37 @@ function parseRelative(specRaw: string): number {
   return total;
 }
 
+/** `<cwd>`의 git common-dir 절대 경로 — 없으면 null. */
+function gitCommonDir(cwd: string): string | null {
+  try {
+    const common = execFileSync("git", ["-C", cwd, "rev-parse", "--git-common-dir"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return resolve(cwd, common);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ledgerRoot와 ticketSourceRoot를 분리하여 반환한다.
+ * ledgerRoot = 메인 프로젝트 루트 (state.json).
+ * ticketSourceRoot = 호출 worktree (티켓 파일).
+ * 🔴 서로 다른 git common-dir이면 fail-closed.
+ */
+function resolveLedgerRoots(cwd: string): { ledgerRoot: string; ticketSourceRoot: string } {
+  const ledgerRoot = resolveMainRoot(cwd);
+  const ticketSourceRoot = cwd;
+  if (ledgerRoot === ticketSourceRoot) return { ledgerRoot, ticketSourceRoot };
+  const ledgerCommon = gitCommonDir(ledgerRoot);
+  const ticketCommon = gitCommonDir(ticketSourceRoot);
+  if (!ledgerCommon || !ticketCommon || ledgerCommon !== ticketCommon) {
+    throw new CliError(`worktree와 메인 프로젝트가 같은 git 저장소가 아닙니다: ${ticketSourceRoot}`);
+  }
+  return { ledgerRoot, ticketSourceRoot };
+}
+
 /**
  * 메인 프로젝트 루트 해소 — cwd 가 worktree 면 config.json 으로, 없으면 git 으로 추론해 생성.
  * 🔴 생성하는 파일은 자기 `.gootte/` 네임스페이스 안이다(INV-2 예외).
@@ -209,19 +240,19 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
         "       gootte time drop <기능> [<티켓>] [--at <TIME>]",
     );
   }
-  const root = resolveMainRoot(cwd);
+  const { ledgerRoot, ticketSourceRoot } = resolveLedgerRoots(cwd);
   const now = new Date();
-  const tCurrent = (key: string): TicketTimeRecord | undefined => current(root, key);
+  const tCurrent = (key: string): TicketTimeRecord | undefined => current(ledgerRoot, key);
   // 🔴 `drop` 만 티켓을 생략할 수 있다 — 기능의 티켓 **전부**를 폐기한다(구 bash CLI `gootte drop <기능>` 승계).
   // 이 갈래는 티켓 파일 해소(`target`)를 타지 않는다 — 티켓이 여럿이므로 하나로 좁힐 수 없다.
-  if (cmd === "drop" && !ticketRaw) return dropFeature(root, feature, at, now);
+  if (cmd === "drop" && !ticketRaw) return dropFeature(ticketSourceRoot, ledgerRoot, feature, at, now);
   if (!ticketRaw) {
     throw new CliError(
       "usage: gootte time <start|pause|resume|end|reset|cancel> <기능> <티켓> [--at <TIME>] [--force]\n" +
         "       gootte time drop <기능> [<티켓>] [--at <TIME>]",
     );
   }
-  const t = target(root, feature, ticketRaw);
+  const t = target(ticketSourceRoot, feature, ticketRaw);
 
   switch (cmd) {
     case "start": {
@@ -229,8 +260,8 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
       if (existing) {
         // --force 면 묻지 않고 새 시작으로 덮어쓴다 — 시작됨·끝남 모두 교체한다.
         if (force) {
-          upsertTicketRecord(root, t.key, { startedAt: resolveTime(at, now), finishedAt: null, pauses: [] });
-          recalcBadge(root);
+          upsertTicketRecord(ledgerRoot, t.key, { startedAt: resolveTime(at, now), finishedAt: null, pauses: [] });
+          recalcBadge(ledgerRoot, ticketSourceRoot);
           return `${t.key} 시작 기록`;
         }
         if (existing.finishedAt !== null) {
@@ -241,8 +272,8 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
         }
       }
       // start 는 처음 기록이다 — 빈 레코드를 명시해 만든다(기존 흔적이 있으면 위에서 걸렀다).
-      upsertTicketRecord(root, t.key, { startedAt: resolveTime(at, now), finishedAt: null, pauses: [] });
-      recalcBadge(root);
+      upsertTicketRecord(ledgerRoot, t.key, { startedAt: resolveTime(at, now), finishedAt: null, pauses: [] });
+      recalcBadge(ledgerRoot, ticketSourceRoot);
       return `${t.key} 시작 기록`;
     }
     case "pause": {
@@ -251,10 +282,10 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
       if (rec.pauses.some((p) => p.resumedAt === null)) {
         throw new CliError(`이미 일시중단된 티켓입니다: ${t.key}`);
       }
-      upsertTicketRecord(root, t.key, {
+      upsertTicketRecord(ledgerRoot, t.key, {
         pauses: [...rec.pauses, { pausedAt: resolveTime(at, now), resumedAt: null }],
       });
-      recalcBadge(root);
+      recalcBadge(ledgerRoot, ticketSourceRoot);
       return `${t.key} 일시중단 기록`;
     }
     case "resume": {
@@ -263,8 +294,8 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
       const open = rec.pauses.find((p) => p.resumedAt === null);
       if (!open) throw new CliError(`일시중단 상태가 아닙니다(시작 전이거나 이미 재개됨): ${t.key}`);
       const pauses = rec.pauses.map((p) => (p.resumedAt === null ? { ...p, resumedAt: resolveTime(at, now) } : p));
-      upsertTicketRecord(root, t.key, { pauses });
-      recalcBadge(root);
+      upsertTicketRecord(ledgerRoot, t.key, { pauses });
+      recalcBadge(ledgerRoot, ticketSourceRoot);
       return `${t.key} 재개 기록`;
     }
     case "end": {
@@ -273,8 +304,8 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
       if (rec.pauses.some((p) => p.resumedAt === null)) {
         throw new CliError(`일시중단 상태입니다 — resume 먼저: ${t.key}`);
       }
-      upsertTicketRecord(root, t.key, { finishedAt: resolveTime(at, now) });
-      recalcBadge(root);
+      upsertTicketRecord(ledgerRoot, t.key, { finishedAt: resolveTime(at, now) });
+      recalcBadge(ledgerRoot, ticketSourceRoot);
       return `${t.key} 완료 기록`;
     }
     case "reset":
@@ -282,8 +313,8 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
       // reset 은 처음 상태로 되돌린다 — 시작·일시중단·완료 여부와 무관하게 기록을 삭제한다.
       // cancel 은 같은 동작의 별칭(기존 스크립트 호환). 기록이 없으면 오타 방지용 오류.
       requireStarted(tCurrent(t.key), t.key);
-      removeTicketRecord(root, t.key); // MD Time: 줄 삭제의 대응물
-      recalcBadge(root);
+      removeTicketRecord(ledgerRoot, t.key); // MD Time: 줄 삭제의 대응물
+      recalcBadge(ledgerRoot, ticketSourceRoot);
       return `${t.key} 시작 취소(레코드 삭제)`;
     }
     case "drop": {
@@ -291,14 +322,14 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
       if (rec?.statusRaw?.startsWith("wontfix")) {
         throw new CliError(`이미 폐기됨: ${t.key}`);
       }
-      upsertTicketRecord(root, t.key, {
+      upsertTicketRecord(ledgerRoot, t.key, {
         // 기존 시작·완료 기록 보존 — drop 은 상태만 바꾼다(bash drop_file 이 Time: 줄을 안 건드리는 것과 동일)
         startedAt: rec?.startedAt ?? null,
         finishedAt: rec?.finishedAt ?? null,
         pauses: rec?.pauses ?? [],
         statusRaw: `wontfix (${resolveDropDate(at, now)})`,
       });
-      recalcBadge(root);
+      recalcBadge(ledgerRoot, ticketSourceRoot);
       return `${t.key} 폐기 기록`;
     }
     default:
@@ -316,14 +347,14 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
  * 🔴 키는 조인과 **같은 규약**(`timeRecordKey` = `<기능>/<파일 basename>`)으로 만든다 —
  * 날것("alpha/03")으로 쓰면 조인에 닿지 않아 폐기가 화면에 안 뜬다.
  */
-function dropFeature(root: string, feature: string, at: string | undefined, now: Date): string {
-  const found = readFeatures([root]).find((f) => f.slug === feature);
+function dropFeature(ticketSourceRoot: string, ledgerRoot: string, feature: string, at: string | undefined, now: Date): string {
+  const found = readFeatures([ticketSourceRoot]).find((f) => f.slug === feature);
   if (!found) throw new CliError(`기능을 찾을 수 없습니다: ${feature}`);
   const tickets = [...found.tickets, ...(found.newTickets ?? [])];
   if (tickets.length === 0) return `${feature}: 폐기할 티켓이 없습니다`;
 
   const dropDate = resolveDropDate(at, now);
-  const records = readTicketRecords(root);
+  const records = readTicketRecords(ledgerRoot);
   let dropped = 0;
   let already = 0;
   for (const t of tickets) {
@@ -333,7 +364,7 @@ function dropFeature(root: string, feature: string, at: string | undefined, now:
       already++;
       continue;
     }
-    upsertTicketRecord(root, key, {
+    upsertTicketRecord(ledgerRoot, key, {
       // 단일 티켓 drop 과 같은 규칙 — 시작·완료 기록은 보존하고 상태만 바꾼다.
       startedAt: rec?.startedAt ?? null,
       finishedAt: rec?.finishedAt ?? null,
@@ -342,17 +373,22 @@ function dropFeature(root: string, feature: string, at: string | undefined, now:
     });
     dropped++;
   }
-  recalcBadge(root);
+  recalcBadge(ledgerRoot, ticketSourceRoot);
   const tail = already > 0 ? ` (이미 폐기 ${already} 개 건너뜀)` : "";
   return `${feature} 기능의 티켓 ${dropped} 개를 폐기 기록${tail}`;
 }
 
 /** 배지 파생 캐시 갱신 — 기록 뒤 같은 트랜잭션의 마지막 걸음(T05).
  * 🔴 레코드 조인(`readFeaturesWithTime`) 뒤의 판정으로 계산한다 — 기록 직후 배지가
- * 방금 바뀐 상태를 반영해야 stale 뷰가 아니다(INV-3, 실측: 조인 안 한 계산은 완료 티켓을 놓쳤다). */
-function recalcBadge(root: string): void {
+ * 방금 바뀐 상태를 반영해야 stale 뷰가 아니다(INV-3, 실측: 조인 안 한 계산은 완료 티켓을 놓쳤다).
+ *
+ * @param ledgerRoot — state.json 이 있는 메인 프로젝트
+ * @param ticketSourceRoot — 기능 문서가 있는 worktree
+ */
+function recalcBadge(ledgerRoot: string, ticketSourceRoot: string): void {
   try {
-    recalcProjectState(root, readFeaturesWithTime([root], root));
+    const features = readFeaturesWithTime([ticketSourceRoot], ledgerRoot);
+    recalcProjectState(ledgerRoot, features);
   } catch {
     // 배지는 파생물 — 재계산 실패가 기록을 막지 않는다(INV-U1). 다음 읽기가 다시 계산한다.
   }

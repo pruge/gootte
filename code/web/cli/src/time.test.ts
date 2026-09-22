@@ -296,25 +296,75 @@ describe("resolveMainRoot — worktree 메인 해소(B3)", () => {
       rmSync(wt, { recursive: true, force: true });
     }
   });
+});
 
-  test("worktree + config 없으면 git 으로 추론해 config.json 을 생성한다", () => {
-    const main2 = mkdtempSync(join(tmpdir(), "gootte-time-main-"));
-    const wt2 = mkdtempSync(join(tmpdir(), "gootte-time-wt2-")) + "/wt";
+describe("runTimeCommand — ledgerRoot/ticketSourceRoot 분리", () => {
+  /** worktree에서 start/end — 티켓은 worktree에서, 레코드는 main state.json에. */
+  test("worktree에서 start → main 원장에 기록되고, worktree 티켓 파일이 있으면 성공", () => {
+    const main = mkdtempSync(join(tmpdir(), "gootte-root-split-main-"));
+    const wt = mkdtempSync(join(tmpdir(), "gootte-root-split-wt-")) + "/wt";
     try {
-      const git = (...args: string[]) => execFileSync("git", ["-C", main2, ...args], { stdio: "ignore" });
-      execFileSync("git", ["init", "-q", main2], { stdio: "ignore" });
-      git("config", "user.email", "t@e.com");
-      git("config", "user.name", "t");
-      git("commit", "--allow-empty", "-q", "-m", "i");
-      git("worktree", "add", "-q", "-b", "fm-x", wt2);
-      // config.json 미리 만들어 두면 git 을 부르지 않는다 — 여기선 없는 상태로 추론.
-      // 🔴 macOS 는 /var 를 /private/var 로 심링크한다 — realpath 로 같은 곳임을 본다.
-      const got = resolveMainRoot(wt2);
-      expect(realpathSync(got)).toBe(realpathSync(main2));
-      expect(existsSync(join(wt2, ".gootte", "config.json"))).toBe(true);
+      // 메인 설정
+      execFileSync("git", ["-C", main, "init", "-q"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "config", "user.email", "t@e.com"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "config", "user.name", "t"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "commit", "--allow-empty", "-q", "-m", "i"], { stdio: "ignore" });
+      mkdirSync(join(main, "docs", "features", "alpha", "tickets"), { recursive: true });
+      writeFileSync(join(main, "AGENTS.md"), "# AGENTS\n");
+      writeFileSync(join(main, "docs/features/alpha/tickets/T17.md"), "# T17\n");
+      execFileSync("git", ["-C", main, "add", "."], { stdio: "ignore" });
+      execFileSync("git", ["-C", main, "commit", "-q", "-m", "feat"], { stdio: "ignore" });
+      // worktree 생성
+      execFileSync("git", ["-C", main, "worktree", "add", "-q", "-b", "fm-x", wt], { stdio: "ignore" });
+      // worktree에도 같은 티켓 파일이 있어야 함 (HEAD에서 검증)
+      // worktree에서는 docs/features가 worktree HEAD에 있으므로 그대로 사용 가능
+      // main에서 실행하는 경우와 동일하게 root에서 실행
+      const out = runTimeCommand(["start", "alpha", "T17", "--at", "2026-09-09T09:00:00+09:00"], wt);
+      expect(out).toContain("T17 시작 기록");
+      // main state.json에 레코드가 있어야 함
+      const mainRecords = readTicketRecords(main);
+      expect(mainRecords["alpha/T17"]?.startedAt).toBe("2026-09-09T09:00:00+09:00");
     } finally {
-      rmSync(main2, { recursive: true, force: true });
-      rmSync(wt2, { recursive: true, force: true });
+      rmSync(main, { recursive: true, force: true });
     }
+  });
+
+  test("다른 repo source는 거부된다 — config.json이 다른 git 저장소의 메인을 가리키면 오류", () => {
+    const main1 = mkdtempSync(join(tmpdir(), "gootte-different-main1-"));
+    const main2 = mkdtempSync(join(tmpdir(), "gootte-different-main2-"));
+    const wt = mkdtempSync(join(tmpdir(), "gootte-different-wt-")) + "/wt";
+    try {
+      execFileSync("git", ["-C", main1, "init", "-q"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main1, "config", "user.email", "t@e.com"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main1, "config", "user.name", "t"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main1, "commit", "--allow-empty", "-q", "-m", "i"], { stdio: "ignore" });
+      mkdirSync(join(main1, "docs", "features", "alpha", "tickets"), { recursive: true });
+      writeFileSync(join(main1, "AGENTS.md"), "# AGENTS\n");
+      writeFileSync(join(main1, "docs/features/alpha/tickets/T01.md"), "# T01\n");
+      execFileSync("git", ["-C", main1, "add", "."], { stdio: "ignore" });
+      execFileSync("git", ["-C", main1, "commit", "-q", "-m", "feat"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main2, "init", "-q"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main2, "config", "user.email", "t@e.com"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main2, "config", "user.name", "t"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main2, "commit", "--allow-empty", "-q", "-m", "i"], { stdio: "ignore" });
+      execFileSync("git", ["-C", main2, "worktree", "add", "-q", "-b", "fm-x", wt], { stdio: "ignore" });
+      // worktree의 config.json을 main1을 가리키도록 — 다른 git 저장소
+      mkdirSync(join(wt, ".gootte"), { recursive: true });
+      writeFileSync(join(wt, ".gootte", "config.json"), JSON.stringify({ mainProject: main1 }));
+      expect(() => runTimeCommand(["start", "alpha", "T01"], wt)).toThrow(/같은 git 저장소가 아닙니다/);
+    } finally {
+      rmSync(main1, { recursive: true, force: true });
+      rmSync(main2, { recursive: true, force: true });
+    }
+  });
+
+  test("메인에서 실행 — 기존 회귀 (root === ticketSourceRoot)", () => {
+    const out = runTimeCommand(["start", "alpha", "T01"], root);
+    expect(out).toContain("T01 시작 기록");
+    expect(rec("alpha/T01")?.startedAt).not.toBeNull();
+  });
+
+  test("존재하지 않는 티켓은 여전히 오류", () => {
+    expectCliError(() => runTimeCommand(["start", "alpha", "T99"], root), "티켓 파일을 찾을 수 없습니다");
   });
 });
