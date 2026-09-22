@@ -1,7 +1,7 @@
-# wayfinder — @gootte/time-ledger package 경계 제거
+# wayfinder — @gootte/time-ledger package 경로 제거
 
-> **Architecture SoT:** `fa5dea0` — `docs/features/time-ledger/design-note.md`
-> **Plan status:** planning (revision 3)
+> **Architecture SoT:** `fa5dea0` → follow-up `ff1c759` — `docs/features/time-ledger/design-note.md`
+> **Plan status:** planning (revision 4)
 > **Implementation:** 금지. 각 티켓 승인 후 순차 진행.
 
 ---
@@ -13,20 +13,19 @@
 ## 실제 consumer graph (codegraph + grep 실측)
 
 ### Prod writers (state mutation)
-| Consumer | Path | Function |
-|---|---|---|
-| CLI | `code/web/cli/src/time.ts` | `runTimeCommand` |
-| Backend route | `code/web/backend/src/routes/time.ts` | imports `runTimeCommand` from `@gootte/cli` (thin facade) |
-| CLI migrate | `code/web/cli/src/migrate-time.ts` | `readTicketRecords`, `writeTicketRecords`, `recalcProjectState` |
-| core-io state-store | `code/web/core-io/src/state-store.ts` | `readTicketRecords`, `upsertTicketRecord`, `removeTicketRecord`, `recalcProjectState` |
+| Consumer | Path | Function | Sync/Async |
+|---|---|---|---|
+| CLI | `code/web/cli/src/time.ts` | `runTimeCommand` | sync → async (T02) |
+| Backend route | `code/web/backend/src/routes/time.ts` | imports `runTimeCommand` from `@gootte/cli` | sync → async (T02) |
+| CLI migrate | `code/web/cli/src/migrate-time.ts` | `readTicketRecords`, `writeTicketRecords`, `recalcProjectState` | sync → async (T02) |
+| core-io state-store | `code/web/core-io/src/state-store.ts` | `upsertTicketRecord`, `recalcProjectState` | sync → async via adapter (T03) |
 
 ### Read-side consumers
-| Consumer | Path | Function |
-|---|---|---|
-| Backend route | `code/web/backend/src/routes/time.ts` | `readFeatures`, `joinTimeRecords` from `@gootte/core-io` |
-| Backend app | `code/web/backend/src/app.ts` | `recalcProjectState` from `@gootte/core-io` |
-| core-io features | `code/web/core-io/src/features.ts` | `applyTimeRecords` from `@gootte/core` |
-| core-io state-store | `code/web/core-io/src/state-store.ts` | `readState`, `hasTimeRecords`, `clearState` |
+| Consumer | Path | Function | Sync/Async |
+|---|---|---|---|
+| Backend route | `code/web/backend/src/routes/time.ts` | `readFeatures`, `joinTimeRecords` from `@gootte/core-io` | async (T03) |
+| Backend app | `code/web/backend/src/app.ts` | `recalcProjectState` | async (T03) |
+| core-io features | `code/web/core-io/src/features.ts` | `applyTimeRecords` from `@gootte/core` | async (T03) |
 
 ### Test consumers
 | Consumer | Path |
@@ -39,19 +38,15 @@
 ### Frontend
 - `@gootte/frontend`은 `allTickets`만 소비 (feature status 목록), time record CRUD 직접 소비 **없음** (codegraph+grep 확인).
 
-### Badge adapter
-- Badge recompute stays in **`@gootte/core-io` adapter** (NOT in `@gootte/time-ledger`).
-- `recalcProjectState` is called by CLI/migrate/backend after mutations.
-
 ## Ticket 그래프
 
 | Ticket | Repo | Authority | 종속 | Capability |
 |---|---|---|---|---|
 | P01 | pi-taskflow | external | T05 | local adoption |
 | C01 | external (Boss) | external | T04 | release approval + cutover receipt |
-| T01 | GoOtTe | w43:p1 | — | package transitions + lock + importLegacy |
-| T02 | GoOtTe | w43:p1 | T01 | GoOtTe write adapters (CLI+migrate) |
-| T03 | GoOtTe | w43:p1 | T02 | read-side migration (core-io join/read, badge adapter, backend app) |
+| T01 | GoOtTe | w43:p1 | — | package transitions + read API + lock |
+| T02 | GoOtTe | w43:p1 | T01 | write adapters (CLI+migrate+backend async) |
+| T03 | GoOtTe | w43:p1 | T02 | read-side migration + badge async |
 | T04 | GoOtTe | w43:p1 | T03 | standalone artifact/provenance |
 | T05 | GoOtTe | w43:p1 | T04 | cross-repo handoff/runbook |
 | T06 | GoOtTe | w43:p1 | T03, P01, C01 | terminal legacy deletion |
@@ -59,12 +54,12 @@
 ## 주의사항
 
 - **구현 금지.** planning만. 각 티켓 승인 후 별도 worker 스폰.
-- T01-T06, C01은 GoOtTe repo에서만 동작.
+- T01-T06는 GoOtTe repo에서 동작. C01은 외부 milestone(Boss approval).
 - T05는 pi-taskflow source 편집 없이 handoff/runbook만 작성.
 - T06는 P01+C01 coordinated cutover 완료 후에만 실행 가능.
 - attribution/push/release 없음.
 
 ## 참조
 
-- 설계 문서: `docs/features/time-ledger/design-note.md` (fa5dea0)
+- 설계 문서: `docs/features/time-ledger/design-note.md` (follow-up `ff1c759`)
 - 이전에 닫힌 acceptance: Commit D `4072b31` (HEAD fallback, end-to-end test)

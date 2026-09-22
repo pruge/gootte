@@ -1,6 +1,6 @@
 # release-and-cutover — @gootte/time-ledger coordinated cutover runbook
 
-> **Architecture SoT:** `fa5dea0` — `docs/features/time-ledger/design-note.md`
+> **Architecture SoT:** `fa5dea0` → follow-up `ff1c759` — `docs/features/time-ledger/design-note.md`
 > **Planning only.** Actual execution is ticket-approved.
 
 ---
@@ -18,10 +18,10 @@ pi-taskflow가 `@gootte/time-ledger` standalone package를 소비하기 위한 *
 
 ## Pre-conditions
 
-1. T01: `@gootte/time-ledger` package + parity tests green
-2. T02: CLI/migrate adapters migrated, old/new parity matrix green
-3. T03: read-side migration complete (core-io join/read, badge adapter, backend app)
-4. T04: release-ready `.tgz` artifact + sha512 evidence exists
+1. T01: `@gootte/time-ledger` package + read/derived API + parity tests green
+2. T02: CLI/migrate/backend async ripple migrated, old/new parity matrix green
+3. T03: read-side migration complete (core-io join/read, badge async adapter, backend app)
+4. T04: release-ready `.tgz` artifact + sha512 evidence exists (generator: `code/web/time-ledger/scripts/pack-verify.mjs`)
 5. T05: consumer contract + runbook exists
 6. P01: pi-taskflow local adoption ticket created
 7. C01: Boss-approved release + quiescent coordinated cutover receipt
@@ -74,6 +74,7 @@ Phase 3 — Verification
 - **Exact semver + sha512 pin**, caret prohibited.
 - **State schema v2 ≠ package semver.** Not mixed.
 - **'zero-downtime' is not claimed.** This is quiescent pause, not zero-downtime.
+- **CLI thin delegate preserved.** `runTimeCommand`, `migrateTime` stay as package delegates (T06 does not delete them).
 
 ## Stop Conditions
 
@@ -89,6 +90,7 @@ version: 0.1.0
 channel: GitHub Release standalone .tgz asset
 integrity: <sha512-from-T04-receipt>
 semver-range: exact 0.1.0
+generator: code/web/time-ledger/scripts/pack-verify.mjs
 tarball: artifacts/time-ledger/gootte-time-ledger-0.1.0.tgz
 receipt: docs/features/time-ledger/receipts/time-ledger-0.1.0.sha512
 ```
