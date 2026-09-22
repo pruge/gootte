@@ -206,6 +206,47 @@ describe("runTimeCommand — bash 규칙 승계(위반은 오류)", () => {
     expectCliError(() => run("drop", "alpha", "T01"), "이미 폐기됨");
   });
 
+  /* ── 기능 전체 폐기(캡틴 지시 2026-09-18) — 구 bash CLI `gootte drop <기능>` 승계 ── */
+
+  test("drop <기능> — 티켓을 생략하면 기능의 티켓 전부를 폐기한다", () => {
+    const out = run("drop", "alpha", "--at", "2026-09-09T10:00:00+09:00");
+    expect(out).toContain("alpha 기능의 티켓 3 개를 폐기 기록");
+    for (const k of ["alpha/T01", "alpha/T02", "alpha/T03"]) {
+      expect(rec(k)?.statusRaw).toBe("wontfix (2026-09-09 10:00)");
+    }
+  });
+
+  test("drop <기능> — 구관례(issues/) 티켓도 같은 키 규약으로 폐기한다", () => {
+    const out = run("drop", "beta");
+    expect(out).toContain("beta 기능의 티켓 1 개를 폐기 기록");
+    expect(rec("beta/01-a")?.statusRaw).toMatch(/^wontfix /);
+  });
+
+  test("drop <기능> — 시작·완료 기록은 보존하고 상태만 바꾼다", () => {
+    run("start", "alpha", "T01", "--at", "2026-09-09T09:00:00+09:00");
+    run("end", "alpha", "T01", "--at", "2026-09-09T09:30:00+09:00");
+    run("drop", "alpha", "--at", "2026-09-09T10:00:00+09:00");
+    const r = rec("alpha/T01")!;
+    expect(r.startedAt).toBe("2026-09-09T09:00:00+09:00");
+    expect(r.finishedAt).toBe("2026-09-09T09:30:00+09:00");
+    expect(r.statusRaw).toBe("wontfix (2026-09-09 10:00)");
+  });
+
+  test("drop <기능> 은 멱등 — 이미 폐기된 티켓은 건너뛴다(단일 티켓은 오류)", () => {
+    run("drop", "alpha");
+    const out = run("drop", "alpha");
+    expect(out).toContain("0 개를 폐기 기록");
+    expect(out).toContain("이미 폐기 3 개 건너뜀");
+  });
+
+  test("drop <기능> — 없는 기능은 오류", () => {
+    expectCliError(() => run("drop", "nope"), "기능을 찾을 수 없습니다");
+  });
+
+  test("티켓 생략은 drop 만 — start 는 여전히 usage 오류", () => {
+    expectCliError(() => run("start", "alpha"), "usage: gootte time");
+  });
+
   test("존재하지 않는 티켓 금지 — MD 파일이 실재해야 기록한다", () => {
     expectCliError(() => run("start", "alpha", "T99"), "티켓 파일을 찾을 수 없습니다");
   });

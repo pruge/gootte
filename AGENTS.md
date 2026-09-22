@@ -63,7 +63,7 @@
 | `pnpm test` · `pnpm test:ports` | vitest 만 · 포트 해석기만 |
 | `pnpm discover <root>` | 로컬 관리대상 프로젝트 발견 |
 | `pnpm gootte <step\|board\|next> …` | 계획 조회·단계 배정 |
-| `gootte start/end/pause/resume/cancel/drop` | 티켓 시간 기록의 유일한 주체 |
+| `gootte start/end/pause/resume/cancel/drop` | 티켓 시간 기록의 유일한 주체 (`drop <기능>` = 그 기능 티켓 전부 폐기) |
 | `pnpm dev` · `dev:tauri` / `build:tauri` / `e2e` | dev 서버·데스크톱 셸·e2e |
 
 ## 구조 파악

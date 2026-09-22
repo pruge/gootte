@@ -16,12 +16,14 @@ import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import type { TicketTimeRecord } from "@gootte/contract";
 import {
+  readFeatures,
   readFeaturesWithTime,
   recalcProjectState,
   readTicketRecords,
   removeTicketRecord,
   upsertTicketRecord,
 } from "@gootte/core-io";
+import { timeRecordKey } from "@gootte/core";
 import { CliError } from "./args";
 
 /** `--at` 해석 — bash `resolve_time` 의 포트. ISO8601(그대로) 또는 상대시간(과거로). */
@@ -201,11 +203,25 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
     pos.push(a);
   }
   const [cmd, feature, ticketRaw] = pos;
-  if (!cmd || !feature || !ticketRaw) throw new CliError("usage: gootte time <start|pause|resume|end|reset|cancel|drop> <기능> <티켓> [--at <TIME>] [--force]");
+  if (!cmd || !feature) {
+    throw new CliError(
+      "usage: gootte time <start|pause|resume|end|reset|cancel> <기능> <티켓> [--at <TIME>] [--force]\n" +
+        "       gootte time drop <기능> [<티켓>] [--at <TIME>]",
+    );
+  }
   const root = resolveMainRoot(cwd);
-  const t = target(root, feature, ticketRaw);
   const now = new Date();
   const tCurrent = (key: string): TicketTimeRecord | undefined => current(root, key);
+  // 🔴 `drop` 만 티켓을 생략할 수 있다 — 기능의 티켓 **전부**를 폐기한다(구 bash CLI `gootte drop <기능>` 승계).
+  // 이 갈래는 티켓 파일 해소(`target`)를 타지 않는다 — 티켓이 여럿이므로 하나로 좁힐 수 없다.
+  if (cmd === "drop" && !ticketRaw) return dropFeature(root, feature, at, now);
+  if (!ticketRaw) {
+    throw new CliError(
+      "usage: gootte time <start|pause|resume|end|reset|cancel> <기능> <티켓> [--at <TIME>] [--force]\n" +
+        "       gootte time drop <기능> [<티켓>] [--at <TIME>]",
+    );
+  }
+  const t = target(root, feature, ticketRaw);
 
   switch (cmd) {
     case "start": {
@@ -288,6 +304,47 @@ export function runTimeCommand(argv: readonly string[], cwd: string = process.cw
     default:
       throw new CliError(`알 수 없는 시간 명령: ${cmd}`);
   }
+}
+
+/**
+ * 기능 하나의 티켓 **전부**를 폐기한다 — 구 bash CLI `gootte drop <기능>` 의 승계.
+ * 읽는 자리는 `readFeatures` 하나다(신관례 `tickets/` + 구관례 `issues/` 를 이미 합쳐 준다).
+ *
+ * 🔴 이미 폐기된 티켓은 **건너뛴다** — 기능 단위는 멱등이다(구 bash 의 기능 갈래가 그랬다).
+ * 단일 티켓 갈래는 그대로 `이미 폐기됨` 오류를 낸다(오타 방지).
+ *
+ * 🔴 키는 조인과 **같은 규약**(`timeRecordKey` = `<기능>/<파일 basename>`)으로 만든다 —
+ * 날것("alpha/03")으로 쓰면 조인에 닿지 않아 폐기가 화면에 안 뜬다.
+ */
+function dropFeature(root: string, feature: string, at: string | undefined, now: Date): string {
+  const found = readFeatures([root]).find((f) => f.slug === feature);
+  if (!found) throw new CliError(`기능을 찾을 수 없습니다: ${feature}`);
+  const tickets = [...found.tickets, ...(found.newTickets ?? [])];
+  if (tickets.length === 0) return `${feature}: 폐기할 티켓이 없습니다`;
+
+  const dropDate = resolveDropDate(at, now);
+  const records = readTicketRecords(root);
+  let dropped = 0;
+  let already = 0;
+  for (const t of tickets) {
+    const key = timeRecordKey(feature, t.slug);
+    const rec = records[key];
+    if (rec?.statusRaw?.startsWith("wontfix")) {
+      already++;
+      continue;
+    }
+    upsertTicketRecord(root, key, {
+      // 단일 티켓 drop 과 같은 규칙 — 시작·완료 기록은 보존하고 상태만 바꾼다.
+      startedAt: rec?.startedAt ?? null,
+      finishedAt: rec?.finishedAt ?? null,
+      pauses: rec?.pauses ?? [],
+      statusRaw: `wontfix (${dropDate})`,
+    });
+    dropped++;
+  }
+  recalcBadge(root);
+  const tail = already > 0 ? ` (이미 폐기 ${already} 개 건너뜀)` : "";
+  return `${feature} 기능의 티켓 ${dropped} 개를 폐기 기록${tail}`;
 }
 
 /** 배지 파생 캐시 갱신 — 기록 뒤 같은 트랜잭션의 마지막 걸음(T05).
