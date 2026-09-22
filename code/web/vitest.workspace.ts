@@ -11,4 +11,5 @@ export default defineWorkspace([
   "./cli",
   "./backend",
   "./frontend",
+  "./time-ledger",
 ]);
