@@ -20,4 +20,7 @@ if [ ! -x "$TSX_BIN" ]; then
 fi
 
 cd "$ROOT_DIR"
-exec pnpm -s -C code/web gootte "$@"
+# 🔴 pnpm 플래그에 기대지 않는다: `pnpm -s` 는 이 pnpm(12.x)에서 "unexpected argument
+# '-s'" 로 죽어 CLI 앞문이 통째로 막혔다. 이미 존재를 확인한 tsx 를 직접 exec 한다 —
+# 준비된 사본의 동작은 그대로고, pnpm 버전에 따라 죽지 않는다.
+exec "$TSX_BIN" "$ROOT_DIR/code/web/cli/src/main.ts" "$@"

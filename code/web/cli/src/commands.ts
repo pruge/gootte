@@ -1,4 +1,4 @@
-import { allTickets, finalizeFeatureStatus, computeDisplaySteps, computeFrontier, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
+import { allTickets, buildTaskflowTimeline, finalizeFeatureStatus, computeDisplaySteps, computeFrontier, computeNext, splitIntoAreas, UNRANKED_STEP, type BoardAreas } from "@gootte/core";
 import { type Feature, type FeatureTicket, type Memo, AREA_LABEL, ALL_AREAS, type BoardAreaId, type TodoStatus } from "@gootte/contract";
 import { basename, dirname, resolve } from "node:path";
 import {
@@ -14,6 +14,7 @@ import {
   planMemoMigration,
   readFeatures,
   readFeaturesWithTime,
+  readTaskflowRecords,
   readMemos,
   readPlacements,
   readPlacementsWithAutoClose,
@@ -661,4 +662,62 @@ export function memoText(argv: readonly string[], cwd: string = process.cwd()): 
     throw new CliError(`${MEMO_USAGE}\n메모를 읽을 수 없다: ${file}\n  원인: ${cause}`);
   }
   return memoListText(slug, memos, filter);
+}
+
+/** `taskflow` 의 사용법 문자열 — 이 명령이 받는 것 전부다. */
+const TASKFLOW_USAGE = "usage: gootte taskflow [프로젝트] [--json]";
+
+/** 사람이 읽는 기간 — 결정적(INV-4). */
+function formatMs(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h${m % 60}m`;
+}
+
+/**
+ * `taskflow [프로젝트] [--json]` — Taskflow canonical state 의 **읽기 전용** 타임라인.
+ *
+ * §13.9: gootte 는 Taskflow 프로젝트의 상태를 쓰지 않는다. 이 명령은
+ * `<프로젝트>/.pi/taskflow/**` 를 읽어 파생 뷰만 낸다(INV-1·INV-2·INV-3).
+ * 쓰기·이관·정규화·수리 경로는 이 명령에 없다 — 없어진 파일은 "없음"으로 보고한다.
+ */
+export function taskflowText(argv: readonly string[], cwd: string = process.cwd()): string {
+  const { positional, flags } = parseArgs(argv);
+  if (positional.length > 1) throw new CliError(TASKFLOW_USAGE);
+  const unknown = Object.keys(flags).filter((f) => f !== "json");
+  if (unknown.length > 0) throw new CliError(`${TASKFLOW_USAGE} (알 수 없는 플래그: --${unknown[0]})`);
+  const project = resolve(positional[0] ?? cwd);
+  const records = readTaskflowRecords(project);
+  const timeline = buildTaskflowTimeline(records);
+
+  if (flags["json"] === true) return JSON.stringify(timeline, null, 2);
+  if (!timeline.present) return `(Taskflow canonical state 없음: ${records.root})`;
+
+  const lines: string[] = [
+    `Taskflow ${project}`,
+    `  tasks ${timeline.totals.tasks} · verified ${timeline.totals.verified} · open questions ${timeline.totals.openQuestions} · elapsed ${formatMs(timeline.totals.elapsedMs)}`,
+  ];
+  for (const feature of timeline.features) {
+    lines.push(`  [${feature.id}] ${feature.goal} — task ${feature.tasks}`);
+  }
+  for (const task of timeline.tasks) {
+    const receipt = task.evidence.receiptId === null ? "-" : task.evidence.receiptId.slice(0, 12);
+    const verdict = task.reviewVerdict === null ? "-" : task.reviewVerdict;
+    lines.push(
+      `  ${task.id}  ${task.state} v${task.version}  review ${verdict}  receipt ${receipt}` +
+        (task.evidence.passed === true ? " ✔verified" : "") +
+        (task.openQuestions > 0 ? `  ❓open ${task.openQuestions}` : ""),
+    );
+    for (const event of task.events) {
+      lines.push(`      ${event.at}  ${event.kind}${event.actor === null ? "" : `  (${event.actor})`}`);
+    }
+    for (const duration of task.durations) {
+      lines.push(`      · ${formatMs(duration.ms)}  ${duration.from} → ${duration.to}`);
+    }
+  }
+  return lines.join("\n");
 }

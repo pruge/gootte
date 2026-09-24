@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { defaultPlanDataDir } from "@gootte/core-io";
 import { CliError } from "./args";
-import { boardText, dbMigrateText, discoverText, featureStateText, frontierText, memoMigrateText, memoText, nextText, projectRoots, statusText, stepClearText, stepText } from "./commands";
+import { boardText, dbMigrateText, discoverText, featureStateText, frontierText, memoMigrateText, memoText, nextText, projectRoots, statusText, stepClearText, stepText, taskflowText } from "./commands";
 import { runTimeCommand } from "./time";
 import { migrateTime } from "./migrate-time";
 
@@ -66,6 +66,10 @@ function run(argv: string[]): number {
 
       case "frontier":
         process.stdout.write(frontierText(rest, planDataDir()) + "\n");
+        return 0;
+      case "taskflow":
+        // §13.9 read-only: reads <프로젝트>/.pi/taskflow/** and writes nothing.
+        process.stdout.write(taskflowText(rest) + "\n");
         return 0;
       case "memo": {
         // 하위 명령 `migrate`(memos-live-with-the-project/T01) 와 읽기를 여기서 갈라 넘긴다.
